@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:pypi.org)",
+      "Bash(python3 -c \"import pypdf; print\\('pypdf ok'\\)\")",
+      "Bash(python3 -c \"import PyPDF2; print\\('PyPDF2 ok'\\)\")",
+      "Bash(python3 -c \"import pdfplumber; print\\('pdfplumber ok'\\)\")",
+      "Bash(pip install *)",
+      "Bash(python3 -c \"import pypdf; print\\('installed'\\)\")",
+      "PowerShell(python -c \"import sys; print\\(sys.version\\)\")",
+      "PowerShell(head *)"
+    ]
+  }
+}

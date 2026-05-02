@@ -1,0 +1,42 @@
+[project]
+site_name = "PySpark — Reading Notes"
+site_description = "Personal study notes on Apache Spark and PySpark, drawing on multiple books."
+site_author = "Arindam"
+copyright = "Copyright © 2026 Arindam. Notes are personal study summaries."
+
+nav = [
+    { "Home" = "index.md" },
+    { "Topics" = [
+        { "Topic index" = "topics/index.md" },
+        # Active topic pages added here as they're written, e.g.:
+        # { "Spark Architecture" = "topics/spark-architecture.md" },
+        # { "Lazy Evaluation" = "topics/lazy-evaluation.md" },
+    ]},
+    { "Books" = [
+        { "Rioux — Data Analysis with Python and PySpark (2022)" = [
+            { "Reading log" = "books/rioux/index.md" },
+            { "1. Introduction" = "books/rioux/chapters/01-introduction.md" },
+            { "2. Your first data program in PySpark" = "books/rioux/chapters/02-first-data-program.md" },
+            { "3. Submitting and scaling your first program" = "books/rioux/chapters/03-submitting-scaling.md" },
+            { "4. Analyzing tabular data with pyspark.sql" = "books/rioux/chapters/04-tabular-data.md" },
+            { "5. Data frame gymnastics: Joining and grouping" = "books/rioux/chapters/05-joining-grouping.md" },
+            { "6. Multidimensional data frames: JSON data" = "books/rioux/chapters/06-json-data.md" },
+            { "7. Bilingual PySpark: Python and SQL" = "books/rioux/chapters/07-python-sql.md" },
+            { "8. Extending PySpark: RDD and UDFs" = "books/rioux/chapters/08-rdd-udfs.md" },
+            { "9. Big data is just a lot of small data: pandas UDFs" = "books/rioux/chapters/09-pandas-udfs.md" },
+            { "10. Window functions" = "books/rioux/chapters/10-window-functions.md" },
+            { "11. Understanding Spark's query planning" = "books/rioux/chapters/11-query-planning.md" },
+            { "12. Preparing features for machine learning" = "books/rioux/chapters/12-ml-feature-prep.md" },
+            { "13. Robust ML with ML Pipelines" = "books/rioux/chapters/13-ml-pipelines.md" },
+            { "14. Building custom ML transformers and estimators" = "books/rioux/chapters/14-custom-ml-transformers.md" },
+        ]},
+    ]},
+    { "Reference" = [
+        { "Glossary"  = "reference/glossary.md" },
+        { "Resources" = "reference/resources.md" },
+    ]},
+]
+
+# NOTE: [project.theme] intentionally omitted. Zensical 0.0.x ships only its
+# default theme; setting name = "modern" or "classic" causes an install error.
+# Add [project.theme] once Zensical 0.1+ ships.

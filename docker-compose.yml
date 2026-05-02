@@ -1,0 +1,12 @@
+services:
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pyspark-notes-docs
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./zensical.toml:/app/zensical.toml
+      - ./docs:/app/docs
+    restart: unless-stopped
