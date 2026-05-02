@@ -5,7 +5,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir "zensical>=0.0.30,<0.1"
+RUN pip install --no-cache-dir "zensical>=0.0.30,<0.1" livereload
+
+
+COPY serve.py /app/serve.py
 
 EXPOSE 8000
-CMD ["zensical", "serve", "--dev-addr", "0.0.0.0:8000"]
+
+CMD ["python", "serve.py"]

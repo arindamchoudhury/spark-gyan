@@ -3,10 +3,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: pyspark-notes-docs
+    container_name: postgres-notes-docs
     ports:
       - "8000:8000"
     volumes:
+      # Mount the project read-write so editing notes triggers live reload.
       - ./zensical.toml:/app/zensical.toml
       - ./docs:/app/docs
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://localhost:8000', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
