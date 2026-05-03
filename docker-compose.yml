@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: postgres-notes-docs
+    container_name: spark-notes-docs
     ports:
       - "8000:8000"
     volumes:
