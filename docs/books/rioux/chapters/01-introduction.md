@@ -29,7 +29,7 @@
 - The **DataFrame API** (the main way you'll use PySpark) maps Python calls to efficient Spark operations that run at the same speed regardless of whether you wrote Scala, Java, or Python. The performance gap between Python and Scala almost entirely disappears when using DataFrames.
 - Performance differences *do* remain with **RDDs** and pure **Python UDFs**, because those cross the Python-JVM boundary repeatedly (covered in Ch 8).
 
-> 📌 **Spark Connect (4.x).** Spark 4.x ships Spark Connect as the default client-server architecture for PySpark. Python code runs in a separate Python process and communicates with the Spark driver over gRPC rather than directly in-process. This improves isolation and IDE support but is transparent for DataFrame API usage.
+> 📌 **Spark Connect (4.x).** Spark 4.x makes Spark Connect the primary client-server architecture. Python code runs in a separate process and communicates with the Spark driver over gRPC rather than in-process (classic mode). The `pyspark` REPL defaults to Connect mode — it attempts to connect to a local Spark Connect server on port 15002 at startup. Plain scripts using `SparkSession.builder` use classic mode unless the `SPARK_REMOTE` environment variable is set. Spark 4.0 added `spark.api.mode` (`"connect"` / `"classic"`) to switch between them. Spark Connect improves isolation and IDE support but is transparent for DataFrame API usage (RDD and SparkContext APIs are not supported in Connect mode).
 
 ### pyspark.pandas (formerly Koalas)
 
@@ -139,8 +139,8 @@ Every Spark operation is one of two things:
 
 | Type | What it is | Examples |
 | --- | --- | --- |
-| **Transformation** | Describes a computation; records the intent; does no actual work | `select()`, `filter()` / `where()`, `groupBy()`, `withColumn()`, `join()`, training an ML model |
-| **Action** | Triggers the actual computation; produces a visible result | `show()`, `write()`, `count()` on a DataFrame, `collect()` |
+| **Transformation** | Describes a computation; records the intent; does no actual work | `select()`, `filter()` / `where()`, `groupBy()`, `withColumn()`, `join()`, `model.transform()` |
+| **Action** | Triggers the actual computation; produces a visible result | `show()`, `write()`, `count()` on a DataFrame, `collect()`, `estimator.fit()` (ML model training) |
 
 > ⚠️ **Pitfall** — `count()` has dual identity: as an aggregation *function* inside `groupBy().agg(F.count("*"))` it is a transformation; as a method called on a DataFrame (`df.count()`) it is an action that triggers full computation.
 
@@ -212,6 +212,7 @@ java -version   # should report 17.x or newer
 ### Python prerequisites
 
 The book assumes basic Python. Appendix C covers:
+
 - List comprehensions
 - `*args` / `**kwargs` packing and unpacking
 - Python typing / mypy

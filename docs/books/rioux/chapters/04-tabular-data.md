@@ -4,7 +4,7 @@
 >
 > Switches from unstructured text to structured tabular data, using a Canadian broadcast-log dataset. Covers reading delimited files, understanding star schemas, and the full toolkit for column-level manipulation: selecting, dropping, creating, renaming, reordering, and summarizing columns. The chapter's running question is: *which TV channels show the greatest proportion of commercials?*
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** Core DataFrame API (`select`, `drop`, `withColumn`, `cast`, `substr`) is unchanged in 4.x. **Important behavioral change:** Spark 4.x enables ANSI mode by default (`spark.sql.ansi.enabled = true`). In Spark 3.x, `cast("invalid_string", "int")` silently returned `null`; in Spark 4.x it raises an `AnalysisException`. Validate data before casting, or use `try_cast()` for nullable semantics.
+> 📌 **Notes adapted to PySpark 4.1.1.** Core DataFrame API (`select`, `drop`, `withColumn`, `cast`, `substr`) is unchanged in 4.x. **Important behavioral change:** Spark 4.x enables ANSI mode by default (`spark.sql.ansi.enabled = true`). In Spark 3.x, `cast("invalid_string", "int")` silently returned `null`; in Spark 4.x it raises a runtime exception — `SparkNumberFormatException` for invalid string-to-numeric casts, `SparkArithmeticException` for overflow. Validate data before casting, or use `try_cast()` for nullable semantics.
 
 ---
 
@@ -78,7 +78,7 @@ logs = spark.read.csv(
 
 > 💡 **No schema at all?** Columns default to `_c0`, `_c1`, … and all types are `string`. Fine for a quick peek, useless for analysis.
 
-> 📌 **ANSI mode & `cast()` in Spark 4.x** — With ANSI mode on by default, casting a malformed string to a numeric type raises an error rather than returning `null`. Use `try_cast(col("x"), IntegerType())` or `F.try_cast()` when the input is dirty.
+> 📌 **ANSI mode & `cast()` in Spark 4.x** — With ANSI mode on by default, casting a malformed string to a numeric type raises an error rather than returning `null`. Use `F.col("x").try_cast(T.IntegerType())` (Column method, 4.0+) or the SQL `TRY_CAST` expression when the input is dirty. Note: `try_cast` is a method on `Column`, not a standalone function in `F`.
 
 ### Delimiter variants in the wild
 
@@ -115,16 +115,28 @@ Logs (fact table)
 # Select by name strings (simplest)
 logs.select("BroadcastLogID", "LogServiceID", "LogDate").show(5, False)
 
-# Four equivalent forms for a single column
-logs.select(logs.LogDate)           # dot notation
-logs.select(logs["LogDate"])        # bracket notation
+# Four syntactically valid forms for a single column
+logs.select(logs.LogDate)           # dot notation        ← avoid
+logs.select(logs["LogDate"])        # bracket notation    ← avoid
 logs.select(F.col("LogDate"))       # col() — most portable
-logs.select("LogDate")              # string shorthand
+logs.select("LogDate")              # string shorthand — preferred for simple references
 
 # Unpack a list of column names with *
 cols_to_keep = ["LogServiceID", "LogDate", "Duration"]
 logs.select(*cols_to_keep)
+
 ```
+
+> ⚠️ **Avoid dot and bracket notation** (Palantir style guide, ONS guide)
+>
+> `logs.LogDate` and `logs["LogDate"]` look convenient but break in common situations:
+>
+> - **Chaining** — if you add a new column with `withColumn()` then immediately filter on it in the same chain, `df.new_col` raises `AttributeError` because the column doesn't exist on `df` yet. `F.col("new_col")` resolves at execution time and works correctly.
+> - **Stale values** — `df.col_name` captures the column reference at definition time. If you overwrite a column with `withColumn()`, the dot reference still points at the old values — a silent bug with no error.
+> - **Special characters** — column names with spaces or symbols (e.g. `"Cost(£)"`) cannot be accessed with dot notation at all.
+> - **Renamed variables** — if you rename the DataFrame variable, every `df.col_name` reference must be updated manually.
+>
+> **Best practice:** use `"col_name"` (string) for simple column references passed to functions; use `F.col("col_name")` for filter conditions, `when()` expressions, and any chained operation where the column may have just been created or overwritten.
 
 **Peeking at many columns in groups of 3:**
 
@@ -155,6 +167,47 @@ logs = logs.drop("BroadcastLogID", "SequenceNO")
 
 > 💡 **When to use which:** use `drop()` when removing a small number of columns from a wide DataFrame; use `select()` when explicitly choosing a small subset to keep.
 
+### Best practices for `drop()`
+
+**1. Prefer `select()` over `drop()` for schema control**
+
+`drop()` is implicit — it keeps whatever columns exist now plus any that arrive later if the upstream schema changes. `select()` is explicit — it defines exactly what comes out. Palantir style guide recommends `select()` as the default because it acts as a schema contract:
+
+```python
+# Fragile — if upstream adds a new column tomorrow, it silently flows through
+df.drop("temp_col")
+
+# Explicit — schema is defined, surprises are caught early
+df.select("id", "name", "country", "duration_seconds")
+```
+
+Reserve `drop()` for cases where you genuinely can't enumerate the columns to keep — e.g. after a join that introduces one redundant key column on a wide DataFrame.
+
+**2. Use `drop()` after joins to remove duplicate key columns**
+
+After a join, both DataFrames' key columns are retained under the same name, creating an ambiguous duplicate. `drop()` is the idiomatic way to clean this up:
+
+```python
+result = logs.join(categories, on="CategoryID", how="left") \
+             .drop(categories["CategoryID"])  # remove the right-side duplicate
+```
+
+Passing the DataFrame-qualified column (`categories["CategoryID"]`) rather than a string ensures you drop the right one when both sides have the same name.
+
+**3. Silently dropping a non-existent column hides typos**
+
+`drop("BroadcastLogId")` (wrong casing) succeeds with no error and no column removed. Always verify with `assert "col" not in df.columns` after a critical drop, or check spelling first:
+
+```python
+cols_to_drop = ["BroadcastLogID", "SequenceNO"]
+assert all(c in logs.columns for c in cols_to_drop), f"column not found: {cols_to_drop}"
+logs = logs.drop(*cols_to_drop)
+```
+
+**4. Don't use `drop()` + `distinct()` to paper over join explosions**
+
+If a join unexpectedly duplicates rows, dropping columns and calling `distinct()` masks the root cause. Investigate why the join multiplied rows instead (non-unique key, unexpected many-to-many) — Palantir style guide calls this out explicitly.
+
 ### 4.3 Creating columns — `withColumn()`
 
 `withColumn(name, col_expr)` appends a new column (or overwrites an existing one with the same name) to the DataFrame:
@@ -181,6 +234,13 @@ Breaking it down:
 | `* 3600`, `* 60`, `+ …` | Standard arithmetic directly on Column objects |
 
 Column arithmetic uses normal Python operators (`+`, `-`, `*`, `/`, `//`, `%`); PySpark respects operator precedence.
+
+> 💡 **When to use `F.col()` vs a plain string**
+>
+> - **Plain string** — works as a shorthand inside PySpark functions: `F.lower("word")`, `F.split("value", " ")`. The function internally wraps it in `col()` for you.
+> - **`F.col()`** — required whenever you use Python operators (`==`, `!=`, `>`, `+`, `*`) or chain Column methods (`.substr()`, `.cast()`, `.alias()`). A plain string has no operators or methods — `"Duration" * 3600` is a Python string repetition, not a column expression.
+>
+> Rule of thumb: if you are doing anything to the column beyond passing it as a name, use `F.col()`.
 
 **`withColumn()` vs `select()` for column creation:**
 
@@ -215,6 +275,20 @@ logs.toDF(*[c.lower() for c in logs.columns]).printSchema()
 
 - `withColumnRenamed(old, new)` — renames a single column; no-op if `old` doesn't exist.
 - `toDF(*new_names)` — replaces **all** column names at once; must pass exactly the right count.
+
+> ⚠️ **Prefer `select()` + `.alias()` over `withColumnRenamed()`** (Palantir style guide)
+>
+> `withColumnRenamed()` adds an extra step to the plan. When you are already writing a `select()`, rename inline with `.alias()` instead:
+>
+> ```python
+> # Discouraged — two operations when one will do
+> df.select("key", "comments").withColumnRenamed("comments", "num_comments")
+>
+> # Preferred — rename in the select itself
+> df.select("key", F.col("comments").alias("num_comments"))
+> ```
+>
+> `withColumnRenamed()` is still appropriate when you need to rename a column without writing a full `select()` — e.g. after a join to resolve a name collision, or when using `toDF()` for bulk renaming.
 
 ### 4.5 Reordering columns
 
@@ -278,17 +352,94 @@ PySpark has no built-in charting. The pattern is:
 
 ```python
 # Aggregate down to a small result, then convert
-summary_df = logs.groupBy("LogServiceID").agg(F.sum("duration_seconds"))
+summary_df = logs.groupBy("LogServiceID").agg(F.sum("duration_seconds").alias("total_seconds"))
 pandas_df   = summary_df.toPandas()   # collects all data onto the driver
 
 import matplotlib.pyplot as plt
 pandas_df.plot(...)
 ```
 
+> 💡 **Always alias `agg()` results.** Without `.alias()`, the output column is named `sum(duration_seconds)` — a raw function-name string that is awkward to reference downstream and inconsistent with the rest of the schema. Palantir style guide: every selected or aggregated column should have a meaningful name.
+
 `toPandas()` pulls the entire DataFrame to the driver node's RAM. Rules of thumb:
+
 - Only call on aggregated or already-small DataFrames.
 - If rows × columns > ~100,000 on a 16 GB driver, reduce further first.
 - Never go back from pandas → PySpark repeatedly; the shuffle cost is high.
+
+### Best practices for charting
+
+**1. Always aggregate in Spark before calling `toPandas()`**
+
+`toPandas()` is identical to `collect()` — it moves every row to the driver heap. If the DataFrame is large and unaggregated, it will OOM or be extremely slow. The safe pattern is always: reduce in Spark first, then convert the small result:
+
+```python
+import pyspark.sql.functions as F
+
+plot_df = (
+    logs.groupBy("LogServiceID")
+        .agg(F.sum("duration_seconds").alias("total_seconds"))
+        .orderBy(F.desc("total_seconds"))
+        .limit(20)
+        .toPandas()
+)
+```
+
+> ⚠️ **Palantir and ONS guidance** — Both guides say to avoid `toPandas()` / `collect()` on unaggregated data entirely. Palantir: "eliminates the benefits of a distributed framework, resulting in lower performance or out-of-memory errors." ONS: "use `.limit()` to bring back only a small number of rows."
+
+**2. For distributional plots, sample or use approximate functions — never pull raw data**
+
+```python
+# Histogram — use approxQuantile to get bin edges, then count per bucket
+quantiles = df.approxQuantile("duration_seconds", [0.0, 0.25, 0.5, 0.75, 1.0], 0.01)
+
+# Scatter plot — sample a fraction first
+sample_pdf = df.sample(fraction=0.01, seed=42).select("x", "y").toPandas()
+
+# Cardinality — approximate is fine for charts
+df.groupBy("channel").agg(F.approx_count_distinct("user_id").alias("est_users"))
+```
+
+`approxQuantile` runs distributed across partitions and returns only five numbers — safe on billion-row DataFrames. `relativeError=0.01` is accurate enough for a chart axis.
+
+**3. Enable Arrow for faster `toPandas()` conversion**
+
+Arrow serializes columnar batches instead of row-at-a-time pickle, typically 10–100× faster:
+
+```python
+spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
+```
+
+Already enabled by default on Databricks. Enable it explicitly in self-managed clusters.
+
+**4. Choose the right library for the chart type**
+
+All mainstream Python plotting libraries require a pandas DataFrame — none read Spark DataFrames directly (except Spark 4.0 native plotting, see below).
+
+| Chart type | Recommended approach |
+|---|---|
+| Bar / line / area | `groupBy().agg()` → `toPandas()` → matplotlib or plotly |
+| Histogram | `approxQuantile()` for bin edges → matplotlib |
+| Scatter | `df.sample(0.001)` → `toPandas()` → plotly or seaborn |
+| Box plot | `approxQuantile([0, .25, .5, .75, 1])` → matplotlib |
+| Correlation heat map | `df.select(numeric_cols).toPandas().corr()` → seaborn `heatmap()` |
+
+**5. Spark 4.0+ native plotting — no `toPandas()` needed**
+
+Spark 4.0 introduced `df.plot` directly on PySpark DataFrames (powered by Plotly). For statistical charts (histogram, box, KDE), Spark computes distributed aggregates and sends only the summary to the driver — no full data collection:
+
+```python
+# Spark 4.0+ / Databricks Runtime 17.0+
+df.plot(kind="hist", column="duration_seconds", bins=50)
+df.plot.scatter(x="LogServiceID", y="duration_seconds")
+df.plot(kind="bar", x="channel", y="total_seconds")
+```
+
+The API mirrors pandas `.plot` — same argument names, same chart types. Use this whenever running on Spark 4.x; it is strictly safer than `toPandas()` for large DataFrames.
+
+**6. On Databricks, use `display()` for interactive exploration**
+
+`display(df)` renders an interactive paginated table with a built-in chart builder — no `toPandas()`, no plotting code required. Use it for ad-hoc EDA; switch to explicit plotting code when you need a reproducible, customised chart.
 
 ---
 

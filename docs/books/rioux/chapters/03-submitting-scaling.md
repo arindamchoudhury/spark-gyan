@@ -139,10 +139,10 @@ import pyspark.sql.functions as F
 Then prefix every function call with `F.`:
 
 ```python
-F.split(F.col("value"), " ")
-F.explode(F.col("line"))
-F.lower(F.col("word"))
-F.regexp_extract(F.col("word"), "[a-z']*", 0)
+F.split("value", " ")
+F.explode("line")
+F.lower("word")
+F.regexp_extract("word", "[a-z']*", 0)
 ```
 
 **Why `F`?**
@@ -171,10 +171,10 @@ import pyspark.sql.functions as F
 
 results = (
     spark.read.text("./data/gutenberg_books/1342-0.txt")
-    .select(F.split(F.col("value"), " ").alias("line"))
-    .select(F.explode(F.col("line")).alias("word"))
-    .select(F.lower(F.col("word")).alias("word"))
-    .select(F.regexp_extract(F.col("word"), "[a-z']*", 0).alias("word"))
+    .select(F.split("value", " ").alias("line"))
+    .select(F.explode("line").alias("word"))
+    .select(F.lower("word").alias("word"))
+    .select(F.regexp_extract("word", "[a-z']*", 0).alias("word"))
     .where(F.col("word") != "")
     .groupby("word")
     .count()
@@ -204,10 +204,10 @@ spark = (
 
 results = (
     spark.read.text("./data/gutenberg_books/1342-0.txt")
-    .select(F.split(F.col("value"), " ").alias("line"))
-    .select(F.explode(F.col("line")).alias("word"))
-    .select(F.lower(F.col("word")).alias("word"))
-    .select(F.regexp_extract(F.col("word"), "[a-z']*", 0).alias("word"))
+    .select(F.split("value", " ").alias("line"))
+    .select(F.explode("line").alias("word"))
+    .select(F.lower("word").alias("word"))
+    .select(F.regexp_extract("word", "[a-z']*", 0).alias("word"))
     .where(F.col("word") != "")
     .groupby("word")
     .count()
@@ -243,7 +243,71 @@ spark-submit \
   ./code/Ch03/word_count_submit.py
 ```
 
-> 📌 **Spark Connect (4.x)** — When using Spark Connect (the default client-server mode in Spark 4.x), `spark-submit` still works for local and cluster modes. The Python process now communicates with the driver over gRPC, but this is transparent from the script's perspective.
+### `spark-submit` against a remote cluster
+
+`spark-submit` can run the driver in two places:
+
+**Client mode** (default for interactive use) — driver JVM runs on your machine; executors run on cluster nodes. Your machine must be reachable from the cluster. Good for debugging (logs appear locally), bad for production (driver dies if your machine disconnects).
+
+**Cluster mode** — you submit and disconnect; the cluster manager starts the driver on a cluster node alongside the executors. Standard for production batch jobs.
+
+```bash
+# Cluster mode on YARN
+spark-submit \
+  --master yarn \
+  --deploy-mode cluster \
+  --py-files dependencies.zip \
+  my_job.py
+
+# Standalone cluster
+spark-submit \
+  --master spark://host:7077 \
+  --deploy-mode cluster \
+  my_job.py
+```
+
+The `--master` flag points at the cluster manager: `yarn`, `spark://host:7077` (standalone), `k8s://https://...` (Kubernetes).
+
+| | Client mode | Cluster mode |
+|---|---|---|
+| Driver runs on | your machine | cluster node |
+| Logs appear | locally | on cluster |
+| Use for | debugging | production |
+| Machine can disconnect | no | yes |
+
+### Spark Connect (Spark 3.4+)
+
+Spark Connect is a thin-client protocol over gRPC — your Python process never runs a JVM locally.
+
+```
+your machine (Python client) ──gRPC──► Spark Connect server ──► executors
+```
+
+Instead of `spark-submit`, you connect with a URL and run your script directly:
+
+```python
+spark = SparkSession.builder \
+    .remote("sc://spark-connect-server:15002") \
+    .getOrCreate()
+```
+
+```bash
+# No spark-submit — just run the script
+python my_job.py
+```
+
+The client sends a **logical plan** (not code) to the server; the server compiles and executes it. No local JVM, no `JAVA_HOME`, no `SPARK_HOME` needed on the client machine.
+
+| | `spark-submit` | Spark Connect |
+|---|---|---|
+| Driver location | your machine or cluster node | always on server |
+| Local JVM required | yes | no |
+| How you run | `spark-submit my_job.py` | `python my_job.py` |
+| Connection | `--master yarn` etc. | `sc://host:port` |
+| Interactive notebooks | awkward | native fit |
+| Spark version | all | 3.4+ |
+
+Spark Connect is the direction for client-side tooling (notebooks, IDEs, lightweight scripts). `spark-submit` remains the standard for cluster-side batch jobs where the driver should be managed by the cluster.
 
 ---
 
@@ -254,7 +318,7 @@ The author flags three things intentionally left out:
 | Topic | Where it's covered |
 | --- | --- |
 | Partition management and data distribution | Ch 11 (Spark UI, query planning) |
-| Detailed SparkSession configuration (memory, cores, connectors) | Ch 11 (resources), Ch 9 (external connectors) |
+| Detailed SparkSession configuration (memory, cores) | Ch 11 (query planning and resources) |
 | Manually ordering transformations for performance | Ch 11 (Catalyst optimizer) |
 
 The key insight: Spark's Catalyst optimizer lets you **write for readability** and handles most physical planning automatically. Only reach for manual tuning when profiling reveals a bottleneck.

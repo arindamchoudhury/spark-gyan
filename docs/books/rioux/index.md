@@ -9,8 +9,8 @@
 | ✅ done | 3. Submitting and scaling your first PySpark program | — |
 | ✅ done | 4. Analyzing tabular data with pyspark.sql | — |
 | ✅ done | 5. Data frame gymnastics: Joining and grouping | — |
-| ⬜ todo | 6. Multidimensional data frames: Using PySpark with JSON data | — |
-| ⬜ todo | 7. Bilingual PySpark: Blending Python and SQL code | — |
+| ✅ done | 6. Multidimensional data frames: Using PySpark with JSON data | — |
+| ✅ done | 7. Bilingual PySpark: Blending Python and SQL code | — |
 | ⬜ todo | 8. Extending PySpark with Python: RDD and UDFs | — |
 | ⬜ todo | 9. Big data is just a lot of small data: Using pandas UDFs | — |
 | ⬜ todo | 10. Your data under a different lens: Window functions | — |

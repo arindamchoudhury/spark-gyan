@@ -1,0 +1,1255 @@
+Banking on what we know: pyspark.sql vs. plain SQL  153
+
+     PySpark's SQL heritage is more than skin deep: the name of the module--
+pyspark.sql--is a dead giveaway. PySpark developers recognized the heritage of the
+SQL programming language for data manipulation and used the same keywords to
+name their method. Let's look at a quick example in both SQL and plain PySpark and
+look at similarities between the keywords used. In listing 7.1, I load a CSV with infor-
+mation about the periodic table of elements, and I query the data set to find the num-
+ber of entries with a liquid state per period. The code is presented both in PySpark
+and SQL form, and, without much context, we can see similarities. I draw the parallels
+between the two versions in figure 7.1.
+
+    Compared to the SQL language, PySpark's data manipulation API differs in two
+main ways:
+
+     PySpark will always start with the name of the data frame you are working with.
+        SQL refers to the table (or target) using a from keyword.
+
+     PySpark chains the transformations and actions as methods on the data frame,
+        whereas SQL splits them into two groups: the operation group and the condition
+        group. The first one is before the from clause and operates on columns. The
+        second is after the from clause and groups, filters, and orders the structure of
+        the result table.
+
+   TIP SQL is not case-sensitive, so you can either use lowercase or uppercase.
+
+    Listing 7.1 Reading and counting the liquid elements by period
+
+elements = spark.read.csv(
+       "./data/elements/Periodic_Table_Of_Elements.csv",
+       header=True,
+       inferSchema=True,
+
+)
+
+elements.where(F.col("phase") == "liq").groupby("period").count().show()
+
+-- In SQL: We assume that the data is in a table called `elements`
+
+SELECT
+   period,
+   count(*)
+
+FROM elements
+WHERE phase = 'liq'
+GROUP BY period;
+
+Both would return the same results: one element in period four (Bromine) and one
+in period six (Mercury).
+
+    Whether you prefer the order of operations from PySpark or SQL will depend on
+how you build queries mentally and how familiar you are with the respective languages.
+Fortunately, PySpark makes it easy to move from one to the other, and even to work
+with both at once.
+154                     CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+      elements                                                 select period, count(*)
+     .where(F.col("phase") == "liquid")                                          from elements
+     .groupby("period")
+     .count()                                                  where phase = "liquid"
+                                                                           group by period;
+
+       data source                                                  actions / display
+     transformations                                                         data source
+     actions / display
+                                         transformations
+
+Figure 7.1 PySpark and SQL share the same keywords, but the order of operations differs. PySpark looks like
+an ordered list of operations (take this table, do these transformations, then finally show the result), while SQL
+has a more descriptive approach (show me the results from that table after performing these transformations).
+
+7.2 Preparing a data frame for SQL
+
+          Since we can think of PySpark data frames like tables on steroids, it's not far-fetched
+          to think about querying them using a language designed to query tables. Spark pro-
+          vides a full SQL API that is documented in the same fashion as the PySpark API
+          (http://mng.bz/vozJ). The Spark SQL API also defines the functions used in the
+          pyspark.sql API, such as substr() or size().
+
+       NOTE Spark's SQL API only covers the data manipulation subset of Spark. For
+       instance, you won't be able to do machine learning using SQL (see chapter 13).
+
+7.2.1  Promoting a data frame to a Spark table
+
+       In this section, I cover the simple steps to get a Spark data frame using SQL. PySpark
+       maintains boundaries between its own name spacing and Spark SQL's name spacing;
+       we, therefore, have to explicitly promote them.
+
+           First, let's see what happens when we don't do anything. The code in listing 7.2
+       shows an example.
+
+       Listing 7.2 Trying (and failing) at querying a data frame SQL style
+
+       try:
+              spark.sql(
+                     "select period, count(*) from elements "
+                     "where phase='liq' group by period"
+              ).show(5)
+
+       except AnalysisException as e:
+              print(e)
+
+       # 'Table or view not found: elements; line 1 pos 29'
+                     Preparing a data frame for SQL                     155
+
+Here, PySpark doesn't make the link between the python variable elements, which
+points to the data frame, and a potential table elements that can be queried by Spark
+SQL. To allow a data frame to be queried via SQL, we need to register it.
+
+    When we assign a data frame to a variable, Python points to the data frame. Spark
+SQL does not have visibility over the variables Python assigns.
+
+    When you want to create a table/view to query with Spark SQL, use the createOr-
+ReplaceTempView() method. This method takes a single string parameter, which is
+the name of the table you want to use. This transformation will look at the data frame
+referenced by the Python variable on which the method was applied and will create a
+Spark SQL reference to the same data frame.
+
+   NOTE Although you can name the table the same name as the variable you
+   are using, you are not forced to do so.
+
+Once we have registered our elements table that points to the same data frame as our
+Python variable of the same name, we can query our table without any problems. Let's
+rerun the same code block as in listing 7.2 and see if it succeeds.
+
+   NOTE In this chapter, I use the term table and view pretty loosely. In SQL,
+   they are distinct concepts: the table is materialized in memory and on disk,
+   and the view is computed on the fly. Spark's temp views are conceptually
+   closer to a view than a table. Spark SQL also has tables, but we will not be
+   using them, and will instead read and materialize our data into a data
+   frame.
+
+Listing 7.3 Trying (and succeeding at) querying a data frame SQL style
+
+elements.createOrReplaceTempView("elements")         We register our table using the
+spark.sql(                                           createOrReplaceTempView() method
+                                                     on the element data frame.
+
+    "select period, count(*) from elements where phase='liq' group by period"
+
+).show(5)
+
+# +------+--------+
+
+# |period|count(1)|
+
+# +------+--------+  The same query works once
+                     Spark is able to de-reference
+#|  6|     1|        the SQL view name.
+
+#|  4|     1|
+
+# +------+--------+
+
+Now we have a view registered. In the case of a low number of views to manage, it's
+pretty easy to keep the name in memory. What about if you have dozens of views or you
+need to delete some? Enter the catalog, Spark's way of managing its SQL namespace.
+156                   CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+       Advanced-ish topic: Spark SQL views and persistence
+
+       PySpark has four methods to create temporary views, and they look quite similar at
+       first glance:
+
+            createGlobalTempView()
+            createOrReplaceGlobalTempView()
+            createOrReplaceTempView()
+            createTempView()
+
+       We can see that there is a two-by-two matrix of possibilities:
+
+            Do I want to replace an existing view (OrReplace)?
+            Do I want to create a global view (Global)?
+
+       The first one is relatively easy to answer: if you use createTempView with a name
+       already being used for another table, the method will fail. On the other hand, if you
+       use createOrReplaceTempView(), Spark will replace the old table with a new one.
+       In SQL, it is equivalent to using CREATE VIEW versus CREATE OR REPLACE VIEW. I
+       personally always use the latter, as it mimics Python's way of doing things: when
+       reassigning a variable, you comply.
+
+       What about Global? The difference between a local view and a global view has to do
+       with how long it will last in memory. A local table is tied to your SparkSession, while
+       a global table is tied to the Spark application. The differences at this time are not
+       significant, as we are not using multiple SparkSessions that need to share data. In
+       the context of data analysis with Spark, you won't deal with multiple SparkSessions
+       at once, so I usually don't use the Global methods.
+
+7.2.2  Using the Spark catalog
+
+       The Spark catalog is an object that allows working with Spark SQL tables and views. A
+       lot of its methods have to do with managing the metadata of those tables, such as their
+       names and the level of caching (which I'll cover in detail in chapter 11). We will look
+       at the most basic set of functionality in this section, setting the stage for more
+       advanced material, such as table caching (chapter 11) and UDF (chapter 8).
+
+           We can use the catalog to list the tables/views we have registered and drop them if
+       we are done. The code in the next listing provides the simple methods to do those
+       tasks. Since they are mostly mimicking PySpark's data frame functionality, I think that
+       an example shows it best.
+
+       Listing 7.4 Using the catalog to display our registered view and then drop it
+
+       spark.catalog  The catalog is reached through the
+                      catalog property of our SparkSession.
+
+       # <pyspark.sql.catalog.Catalog at 0x117ef0c18>
+
+       spark.catalog.listTables()  The listTables method gives us a list of Table
+                                   objects that contain the information we want.
+                            SQL and PySpark                    157
+
+# [Table(name='elements', database=None, description=None,
+
+#          tableType='TEMPORARY', isTemporary=True)]
+
+spark.catalog.dropTempView("elements")                  To delete a view, we use the
+                                                        method dropTempView() and
+spark.catalog.listTables()            Our catalog now   pass the name of the view as
+# []                                  has no table for  a parameter.
+                                      us to query.
+
+Now that we understand how we can manage a Spark SQL view within PySpark, we can
+start looking at manipulating data using both languages.
+
+7.3 SQL and PySpark
+
+          The integration between Python (through PySpark) and SQL is well thought-out and
+          can improve the speed at which we can write code. This section focuses on using only
+          SQL for manipulating data, with Python playing a coordinating role with the catalog
+          and instructions. I will review the most common operations from a pure SQL and
+          PySpark perspective to illustrate how basic manipulations are written.
+
+               For the remainder of the chapter, we will use a public data set provided by Back-
+          blaze, which provided hard-drive data and statistics. Backblaze is a company that pro-
+          vides cloud storage and backup. Since 2013, they have provided data on the drives in
+          their data center, and over time have moved to a focus on failures and diagnosis. Their
+          (clean) data is in the gigabytes range, which, although not that big yet, is certainly
+          Spark-worthy, as it'll be more than the memory available on your home computer. Back-
+          blaze has a lot more historical data available on their website, should you want a larger
+          data set. A convenience shell script is also provided for downloading everything in one
+          fell swoop. For those working locally and afraid of blowing your memory, you can use
+          Q3 2019. The syntax will differ marginally between both workflows. A computer with at
+          least 16 GB of RAM should be able to handle all files. Backblaze provides documenta-
+          tion mostly in the form of SQL statements, which is perfect for what we're learning.
+
+               To get the files, you can either download them from the website (http://mng
+          .bz/4jZa) or use the backblaze_download_data.py available in the code repository,
+          which requires the wget package to be installed. The data needs to be in the ./data/
+          backblaze directory.
+
+   Listing 7.5 Downloading the data from Backblaze
+
+$ pip install wget
+
+$ python code/Ch07/download_backblaze_data.py full
+
+# [some data download progress bars]    Windows users, use
+$ ls data/backblaze                     "dir data\backblaze".
+
+__MACOSX/      data_Q2_2019.zip data_Q4_2019/
+
+data_Q1_2019.zip data_Q3_2019/               data_Q4_2019.zip
+
+data_Q2_2019/       data_Q3_2019.zip drive_stats_2019_Q1/
+158  CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+     Make sure you unzip the files into the directory before trying to read them. Unlike
+     many other codecs (e.g., Gzip, Bzip2, Snappy, and LZO), PySpark will not decom-
+     press zip files automatically when reading them, so we need to do it ahead of time.
+     The unzip command can be used if you are using the command line (you might
+     need to install the tool on Linux). On Windows, I usually use Windows Explorer and
+     unzip by hand.
+
+         The code to ingest and prep the data is pretty straightforward. We read each data
+     source separately, and then we make sure that each data frame has the same columns
+     as its peers. In our case, the data for the fourth quarter has two more columns than
+     the others, so we add the missing columns. When joining the four data frames, we use
+     a select method so that their column order is the same. We continue by casting all the
+     columns containing a SMART measurement as a long, since they are documented as
+     integral values. Finally, we register our data frame as a view so that we can use SQL
+     statements on it.
+
+         Listing 7.6 Reading Backblaze data into a data frame and registering a view
+
+     DATA_DIRECTORY = "./data/backblaze/"
+
+     q1 = spark.read.csv(
+            DATA_DIRECTORY + "drive_stats_2019_Q1", header=True, inferSchema=True
+
+     )
+     q2 = spark.read.csv(
+
+            DATA_DIRECTORY + "data_Q2_2019", header=True, inferSchema=True
+     )
+     q3 = spark.read.csv(
+
+            DATA_DIRECTORY + "data_Q3_2019", header=True, inferSchema=True
+     )
+     q4 = spark.read.csv(
+
+            DATA_DIRECTORY + "data_Q4_2019", header=True, inferSchema=True
+     )
+
+     # Q4 has two more fields than the rest
+
+     q4_fields_extra = set(q4.columns) - set(q1.columns)
+
+     for i in q4_fields_extra:
+            q1 = q1.withColumn(i, F.lit(None).cast(T.StringType()))
+            q2 = q2.withColumn(i, F.lit(None).cast(T.StringType()))
+            q3 = q3.withColumn(i, F.lit(None).cast(T.StringType()))
+
+     # if you are only using the minimal set of data, use this version
+     backblaze_2019 = q3
+
+     # if you are using the full set of data, use this version
+     backblaze_2019 = (
+
+            q1.select(q4.columns)
+            .union(q2.select(q4.columns))
+            .union(q3.select(q4.columns))
+                   Using SQL-like syntax within data frame methods                       159
+
+              .union(q4)
+       )
+
+       # Setting the layout for each column according to the schema
+
+       backblaze_2019 = backblaze_2019.select(
+              [
+                     F.col(x).cast(T.LongType()) if x.startswith("smart") else F.col(x)
+                     for x in backblaze_2019.columns
+              ]
+
+       )
+
+       backblaze_2019.createOrReplaceTempView("backblaze_stats_2019")
+
+7.4 Using SQL-like syntax within data frame methods
+
+          Our goal in this section is to perform a quick exploratory data analysis on a subset of
+          the columns presented. We will reproduce the failure rates that Backblaze computes
+          and identify the models with the greatest and least amount of failures in 2019.
+
+7.4.1  Get the rows and columns you want: select and where
+
+       select and where are used to narrow down the columns (select) and the rows (where)
+       you want to keep in your data frame. In listing 7.7, I use select and where to show a few
+       hard drives' serial numbers that have failed at some point (failure = 1). Both select()
+       and where() were introduced in chapter 2 and have been used since; I want to draw the
+       focus once more to the differences between the SQL and Python syntax.
+
+           To use SQL within your PySpark program, use the sql method of the SparkSession
+       object. This method takes a string containing a SQL statement. It's as simple as that!
+
+       Listing 7.7 Comparing select and where in PySpark and SQL
+
+       spark.sql(
+
+           "select serial_number from backblaze_stats_2019 where failure = 1"
+
+       ).show(     Since a SQL statement returns a data frame,
+              5    we still have to show() it to see the results.
+
+       )
+
+       backblaze_2019.where("failure = 1").select(F.col("serial_number")).show(5)
+
+       # +-------------+
+
+       # |serial_number|
+
+       # +-------------+
+
+       # | 57GGPD9NT|
+
+       #|        ZJV02GJM|
+
+       #|        ZJV03Y00|
+
+       #|        ZDEB33GK|
+
+       #|        Z302T6CW|
+
+       # +-------------+
+
+       # only showing top 5 rows
+
+       Let's recap the differences between Python and SQL code using the example in list-
+       ing 7.7. PySpark makes you think about how you want to chain the operations. In our
+160    CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+       case, we start by filtering the data frame and then select the column of interest. SQL
+       presents an alternative construction:
+
+           1 You put the columns you want to select at the beginning of your statement. This
+               is called the SQL operation: select serial_number.
+
+           2 You add one or more tables to query, called the target: from backblaze_
+               stats_2019.
+
+           3 You add the conditions, such as filtering: where failure = 1.
+
+       Every operation we will look at in this chapter will be classified as an operation, a tar-
+       get, or a condition so you can know where it fits in the statement.
+
+           As a final note, SQL has no notion of creating columns with withColumns() or
+       renaming them with withColumnRenamed. Everything has to go through SELECT. In the
+       next section, I cover grouping records together; I also take the opportunity to cover
+       aliasing there.
+
+       TIP If you have a table you want to extract as a data frame, you assign the
+       result of a SELECT statement to a variable. As an example, you could do
+       failures = spark.sql("select serial_number . . ."), and the resulting
+       data frame would be assigned to the variable failures.
+
+7.4.2  Grouping similar records together: group by and order by
+
+       The PySpark syntax for groupby() and orderby() was covered in detail in chapter 5.
+       In this section, I introduce the SQL syntax--through a comparison with the Python
+       syntax--by looking at the capacity, in gigabytes, of the hard drives included in the
+       data, by model. For this, we use a little arithmetic and the pow() function (available in
+       pyspark.sql.functions) that elevates its first argument to the power of the second.
+       We can see similarities between the SQL and PySpark vocabulary, but once again, the
+       order of the transformations is different.
+
+           Listing 7.8 Grouping and ordering in PySpark and SQL
+
+       spark.sql(
+              """SELECT
+                           model,
+                           min(capacity_bytes / pow(1024, 3)) min_GB,
+                           max(capacity_bytes/ pow(1024, 3)) max_GB
+                     FROM backblaze_stats_2019
+                     GROUP BY 1
+                     ORDER BY 3 DESC"""
+
+       ).show(5)
+
+       backblaze_2019.groupby(F.col("model")).agg(
+              F.min(F.col("capacity_bytes") / F.pow(F.lit(1024), 3)).alias("min_GB"),
+              F.max(F.col("capacity_bytes") / F.pow(F.lit(1024), 3)).alias("max_GB"),
+
+       ).orderBy(F.col("max_GB"), ascending=False).show(5)
+           Using SQL-like syntax within data frame methods    161
+
+       # +--------------------+--------------------+-------+
+
+       #|  model|                 min_GB| max_GB|
+
+       # +--------------------+--------------------+-------+
+
+       #|  ST16000NM001G|         14902.0|14902.0|
+
+       # | TOSHIBA MG07ACA14TA|-9.31322574615478...|13039.0|
+
+       # |HGST HUH721212ALE600|   11176.0|11176.0|
+
+       #|  ST12000NM0007|-9.31322574615478...|11176.0|
+
+       #|  ST12000NM0008|         11176.0|11176.0|
+
+       # +--------------------+--------------------+-------+
+
+       # only showing top 5 rows
+
+       In PySpark, once again, we look at the logical order of operations. We groupby the
+       capacity_GB column, which is a computed column. Just like in PySpark, arithmetic
+       operations can be performed using the usual syntax in SQL. Furthermore, the pow()
+       function is also implemented in Spark SQL. If you need to see which functions can be
+       used out of the box, the Spark SQL API doc contains the necessary information
+       (http://mng.bz/vozJ).
+
+           To alias a column, we just add the name after the column descriptor, preceded
+       by a space. In our case, min(capacity_bytes / pow(1024, 3)) is aliased to min_GB--a
+       much friendlier name! Some will prefer to use the keyword as so that the line reads
+       min(capacity_bytes / pow(1024, 3)) as min_GB; in Spark SQL, it's a matter of per-
+       sonal preference.
+
+           Grouping and ordering are conditions in SQL, so they are at the end of the state-
+       ment. They both follow the same convention as PySpark:
+
+            We provide the columns to group by, separated by a comma.
+            For order by, we provide the column names to the clause with an optional
+
+               DESC argument if we want to order by descending order (the default is ASC for
+               ascending).
+
+       One thing worth noting is that we group by 1 and order by 3 DESC. This is a short-
+       hand way of referring to the columns in the SQL operation by position rather than
+       name. In this case, it saves us from writing group by capacity_bytes / pow(1024, 3)
+       or order by max(capacity_bytes / pow(1024,3)) DESC in the conditions block. We
+       can use numerical aliases in group by and order by clauses. While they are nifty,
+       abusing them makes your code more fragile and hard to maintain should you
+       change the query.
+
+           Looking at the results from our query, there are some drives that report more than
+       one capacity. Furthermore, we have some drives that report negative capacity, which is
+       really odd. Let's focus on seeing how prevalent this is.
+
+7.4.3  Filtering after grouping using having
+
+       Because of the order of the evaluation of operations in SQL, where is always applied
+       before group by. What happens if we want to filter the values of columns created after
+       the group by operation? We use a new keyword: having!
+162      CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+         As an example, let's assume that, for each model, the maximum reported capac-
+     ity is the correct one. The code in the next listing shows how we can accomplish this
+     in both languages.
+
+        Listing 7.9 Using having in SQL and relying on where in PySpark
+
+     spark.sql(
+            """SELECT
+                         model,
+                         min(capacity_bytes / pow(1024, 3)) min_GB,
+                         max(capacity_bytes/ pow(1024, 3)) max_GB
+                   FROM backblaze_stats_2019
+                   GROUP BY 1
+                   HAVING min_GB != max_GB
+                   ORDER BY 3 DESC"""
+
+     ).show(5)
+
+     backblaze_2019.groupby(F.col("model")).agg(
+            F.min(F.col("capacity_bytes") / F.pow(F.lit(1024), 3)).alias("min_GB"),
+            F.max(F.col("capacity_bytes") / F.pow(F.lit(1024), 3)).alias("max_GB"),
+
+     ).where(F.col("min_GB") != F.col("max_GB")).orderBy(
+            F.col("max_GB"), ascending=False
+
+     ).show(
+            5
+
+     )
+
+     # +--------------------+--------------------+-------+
+
+     #|  model|                 min_GB| max_GB|
+
+     # +--------------------+--------------------+-------+
+
+     # | TOSHIBA MG07ACA14TA|-9.31322574615478...|13039.0|
+
+     #|  ST12000NM0007|-9.31322574615478...|11176.0|
+
+     # |HGST HUH721212ALN604|-9.31322574615478...|11176.0|
+
+     #|  ST10000NM0086|-9.31322574615478...| 9314.0|
+
+     # |HGST HUH721010ALE600|-9.31322574615478...| 9314.0|
+
+     # +--------------------+--------------------+-------+
+
+     # only showing top 5 rows
+
+     having is a syntax unique to SQL: it can be thought of as a where clause that can only
+     be applied to aggregate fields, such as count(*) or min(date). Since it is equivalent in
+     functionality to where, having is in the condition block after the group by clause. In
+     PySpark, we do not have having as a method. Since each method returns a new data
+     frame, we do not have to have a different keyword, and can simply use where with the
+     column we created instead.
+
+        NOTE We will ignore (for now) those capacity-reporting inconsistencies.
+        They'll come back as exercises.
+
+     So far, we've covered the most important SQL operation: selecting columns with
+     select. Next, let's materialize our work, SQL-style.
+       Using SQL-like syntax within data frame methods           163
+
+7.4.4  Creating new tables/views using the CREATE keyword
+
+       Now that we have queried the data and are getting the hang of it in SQL, we might
+       want to check our work and save some data so that we do not have to process every-
+       thing from scratch the next time. For this, we can create either a table or a view, which
+       we can then query directly.
+
+            Creating a table or a view is very easy in SQL: prefix our query by CREATE
+       TABLE/VIEW. Here, creating a table or a view will have a different impact. If you have a
+       Hive metastore connected, creating a table will materialize the data, whereas a view
+       will only keep the query. To use a baking analogy, CREATE TABLE will store a cake,
+       whereas CREATE VIEW will refer to the ingredients (the original data) and the recipe
+       (the query).
+
+           To demonstrate this, I will reproduce the drive_days and failures that compute
+       the number of days of operation that a model has and the number of drive failures it
+       has had, respectively. The code in listing 7.10 shows how it is done: prefix your select
+       query with a CREATE [TABLE/VIEW].
+
+           In PySpark, we do not have to rely on extra syntax. A newly created data frame has
+       to be assigned to a variable and then we are good to go.
+
+       Listing 7.10 Creating a view in Spark SQL and in PySpark
+
+       backblaze_2019.createOrReplaceTempView("drive_stats")
+
+       spark.sql(
+              """
+              CREATE OR REPLACE TEMP VIEW drive_days AS
+                     SELECT model, count(*) AS drive_days
+                     FROM drive_stats
+                     GROUP BY model"""
+
+       )
+
+       spark.sql(
+              """CREATE OR REPLACE TEMP VIEW failures AS
+                           SELECT model, count(*) AS failures
+                           FROM drive_stats
+                           WHERE failure = 1
+                           GROUP BY model"""
+
+       )
+
+       drive_days = backblaze_2019.groupby(F.col("model")).agg(
+              F.count(F.col("*")).alias("drive_days")
+
+       )
+
+       failures = (
+              backblaze_2019.where(F.col("failure") == 1)
+              .groupby(F.col("model"))
+              .agg(F.count(F.col("*")).alias("failures"))
+
+       )
+164    CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+       Creating tables from data in SQL
+
+       You can also create a table from data on a hard drive or HDFS. For this, you can use
+       a modified SQL query. Since we are reading a CSV file, we prefix our path with csv.:
+
+       spark.sql("create table q1 as select * from
+                csv.`./data/backblaze/drive_stats_2019_Q1`")
+
+       I much prefer relying on PySpark syntax for reading and setting the schema from my
+       data source and then using SQL, but the option is there for the taking.
+
+7.4.5  Adding data to our table using UNION and JOIN
+
+       So far, we've seen how to query a single table at a time. In practice, you'll often get
+       multiple tables related to one another. We already witnessed this problem by having
+       one historical table per quarter, which needed to be stacked together (or unioned),
+       and with our drive_days and failures tables, which each paint a single dimension of
+       the story until they are merged (or joined).
+
+           Joins and unions are the only clauses we'll see that modify the target piece in our
+       SQL statement. In SQL, a query is operating on a single target at a time. We already
+       saw at the beginning of the chapter how to use PySpark to union tables together. In
+       SQL, we follow the same blueprint: SELECT columns FROM table1 UNION ALL SELECT
+       columns FROM table2.
+
+       PySpark's union() vs. SQL UNION
+
+       In SQL, UNION removes the duplicate records. PySpark's union() doesn't, which is
+       why it's equivalent to a SQL UNION ALL. If you want to drop the duplicates, which is
+       an expensive operation when working in a distributed context, use the distinct()
+       function after your union(). This is one of the rare cases where PySpark's vocabulary
+       doesn't follow SQL's, but it's for a good reason. Most of the time, you'll want the
+       UNION ALL behavior.
+
+       It is always a good idea to make sure that your data frames have the same columns,
+       with the same types, in the same order, before attempting a union. In the PySpark
+       solution, we used the fact that we could extract the columns in a list to select the data
+       frames in the same fashion. Spark SQL does not have a simple way to do the same, so
+       you would have to type all the columns. This is okay when you just have a few, but
+       we're talking hundreds here.
+
+           One easy way to circumvent this is to use the fact that a Spark SQL statement is a
+       string. We can take our list of columns, transform it into a SQL-esque string, and be
+       done with it. This is exactly what I did in listing 7.11. It's not a pure Spark SQL solu-
+       tion, but it's much friendlier than making you type all the columns one by one.
+
+          WARNING Do not allow for plain string insertion if you are processing user
+          input! This is the best way to have a SQL injection, where a user can craft a
+               Using SQL-like syntax within data frame methods                165
+
+   string that will wreak havoc on your data. For more information about SQL
+   injections and why they can be so dangerous, review the Open Web Applica-
+   tion Security Project article on the subject (http://mng.bz/XWdG).
+
+   Listing 7.11 Unioning tables together in Spark SQL and in PySpark
+
+columns_backblaze = ", ".join(q4.columns)                   We use the join() method on a
+                                                            separator string to create a string
+q1.createOrReplaceTempView("Q1")                            containing all the elements in the
+q2.createOrReplaceTempView("Q2")                            list, separated by ,.
+q3.createOrReplaceTempView("Q3")
+
+q4.createOrReplaceTempView("Q4")           We promote our quarterly data
+                                           frames to Spark SQL views so we
+spark.sql(                                 can use them in our query.
+       """
+
+   CREATE OR REPLACE TEMP VIEW backblaze_2019 AS
+
+   SELECT {col} FROM Q1 UNION ALL
+
+   SELECT {col} FROM Q2 UNION ALL
+
+   SELECT {col} FROM Q3 UNION ALL
+
+   SELECT {col} FROM Q4
+
+""".format(
+
+      col=columns_backblaze
+
+   )
+
+)                            This is taken
+backblaze_2019 = (           from listing 7.6.
+
+   q1.select(q4.columns)
+
+   .union(q2.select(q4.columns))
+
+   .union(q3.select(q4.columns))
+
+   .union(q4)
+
+)
+
+Joins are equally as simple in SQL. We add a [DIRECTION] JOIN table [ON] [LEFT
+COLUMN] [COMPARISON OPERATOR] [RIGHT COLUMN] in the target portion of our state-
+ment. The direction is the same parameter of our how in PySpark. The on clause is a
+series of comparisons between columns. In the example in listing 7.12, we join the
+records where the value in the model column is equal (=) on both drive_days and
+failures tables. More than one condition? Use parentheses and logical operators
+(AND, OR), just like when working in Python (for more information, see chapter 5).
+
+   Listing 7.12 Joining tables in Spark SQL and in PySpark
+
+spark.sql(
+       """select
+                    drive_days.model,
+                    drive_days,
+                    failures
+       from drive_days
+       left join failures
+       on
+              drive_days.model = failures.model"""
+
+).show(5)
+
+drive_days.join(failures, on="model", how="left").show(5)
+166    CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+7.4.6  Organizing your SQL code better through subqueries
+       and common table expressions
+
+       The last pieces of SQL syntax we will look at on their own are the subquery and the com-
+       mon table expression. A lot of SQL references do not talk about them until very late,
+       which is a shame because they are (a) easy to understand and (b) very helpful in keep-
+       ing your code clean. In a nutshell, they allow you to create tables local to your query. In
+       Python, this is similar to using the with statement or using a function block to limit the
+       scope of a query. I will show the function approach, as it is much more common.1
+
+           For our example, we will take our drive_days and failures table definitions and
+       bundle them into a single query that will measure the models with the highest rate of
+       failure in 2019. The code in listing 7.13 shows how we can do this using a subquery. A
+       subquery simply replaces a table name with a standalone SQL query. In the example,
+       we can see that the name of the table has been replaced by the SELECT query that
+       formed the table. We can alias the table referred to in the subquery by adding the
+       name at the end of the statement, after the closing parenthesis.
+
+           Listing 7.13 Finding drive models with highest failure rates using subqueries
+
+       spark.sql(
+              """
+              SELECT
+                     failures.model,
+                     failures / drive_days failure_rate
+              FROM (
+                     SELECT
+                            model,
+                            count(*) AS drive_days
+                     FROM drive_stats
+                     GROUP BY model) drive_days
+              INNER JOIN (
+                     SELECT
+                            model,
+                            count(*) AS failures
+                     FROM drive_stats
+                     WHERE failure = 1
+                     GROUP BY model) failures
+              ON
+                     drive_days.model = failures.model
+              ORDER BY 2 desc
+              """
+
+       ).show(5)
+
+       Subqueries are cool but can be hard to read and debug, since you are adding com-
+       plexity into the main query. This is where common table expressions, or CTEs, are
+       especially useful. A CTE is a table definition, just like in the subquery case. The
+
+1 The with statement is usually used with resources that need to be cleaned up at the end. It doesn't really apply
+  here, but I felt like the comparison was worth mentioning.
+             Using SQL-like syntax within data frame methods                          167
+
+difference here is that you put them at the top of your main statement (before your
+main SELECT) and prefix with the word WITH. In the next listing, I take the same state-
+ment as the subquery case but use two CTE instead. These can also be considered
+makeshift CREATE statements that get dropped at the end of the query, just like the
+with keyword in Python.
+
+Listing 7.14 Finding highest failure rates using common table expressions
+
+spark.sql(
+
+"""
+
+WITH drive_days as (
+
+     SELECT
+
+            model,
+
+            count(*) AS drive_days
+
+       FROM drive_stats             We can refer to
+       GROUP BY model),             drive_days and
+failures as (                       failures in our
+       SELECT                       main query.
+
+              model,
+
+            count(*) AS failures
+
+     FROM drive_stats
+
+     WHERE failure = 1
+
+     GROUP BY model)
+
+SELECT
+
+     failures.model,
+
+     failures / drive_days failure_rate
+
+FROM drive_days
+
+INNER JOIN failures
+
+ON
+
+     drive_days.model = failures.model
+
+ORDER BY 2 desc
+
+"""
+
+).show(5)
+
+In Python, the best alternative I've found is to wrap statements in a function. Any
+intermediate variable created in the scope of the function would not be kept once the
+function returns. My version of the query using PySpark is in the next listing.
+
+Listing 7.15 Finding the highest failure rate using Python scope rules
+
+def failure_rate(drive_stats):                                          We are creating
+       drive_days = drive_stats.groupby(F.col("model")).agg(            intermediate data
+              F.count(F.col("*")).alias("drive_days")                   frames within the
+       )                                                                body of the function
+       failures = (                                                     to avoid having a
+              drive_stats.where(F.col("failure") == 1)                  monster query.
+
+       .groupby(F.col("model"))                               Our answer data frame
+       .agg(F.count(F.col("*")).alias("failures"))            uses both intermediate
+)                                                             data frames.
+answer = (
+
+     drive_days.join(failures, on="model", how="inner")
+
+     .withColumn("failure_rate", F.col("failures") / F.col("drive_days"))
+168       CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+          .orderBy(F.col("failure_rate").desc())
+
+       )
+
+              return answer                  We are testing if we have a variable
+                                             drive_days in scope once the function
+       failure_rate(backblaze_2019).show(5)  returned confirms that our intermediate
+       print("drive_days" in dir())          frames are neatly confined inside the
+                                             function scope.
+
+       In this section, we transformed data using both the PySpark/Python data transforma-
+       tion APIs, as well as Spark SQL. PySpark gives the floor to SQL without too much cer-
+       emony. This can be very convenient if you happen to hang out with DBAs and SQL
+       developers, as you can collaborate using their preferred language, knowing that
+       Python is right around the corner. Everybody wins!
+
+7.4.7  A quick summary of PySpark vs. SQL syntax
+
+       PySpark borrowed a lot of vocabulary from the SQL world. I think this was a very
+       smart idea: there are generations of programmers who know SQL, and adopting the
+       same keywords makes it easy to communicate. Where we see a lot of difference is in
+       the order of the operations: PySpark will naturally encourage you to think about the
+       order in which the operations should be performed. SQL follows a more rigid frame-
+       work that requires you to remember if your operation belongs in the operation, the
+       target, or the condition clause.
+
+           I find PySpark's way of treating data manipulation more intuitive, but will rely on
+       my years of SQL experience as a data analyst when convenient. When writing SQL, I
+       usually write my query out of order, starting with the target and building as I go. Not
+       everything needs to be top to bottom!
+
+           So far, I've tried to keep both languages in a vacuum. We'll now break the barrier
+       and unleash the power of Python + SQL. This will simplify how we write certain trans-
+       formations and make our code easier to write and a lot less busy.
+
+       Exercise 7.1
+
+       Taking the elements data frame, which PySpark code is equivalent to the following
+       SQL statement?
+
+       select count(*) from elements where Radioactive is not null;
+
+           a element.groupby("Radioactive").count().show()
+           b elements.where(F.col("Radioactive").isNotNull()).groupby()
+
+               .count().show()
+           c elements.groupby("Radioactive").where(F.col("Radioactive").isNot
+
+               Null()).show()
+           d elements.where(F.col("Radioactive").isNotNull()).count()
+           e None of the queries above
+       Simplifying our code: Blending SQL and Python        169
+
+7.5 Simplifying our code: Blending SQL and Python
+
+          PySpark is rather accommodating when taking method and function parameters: you
+          can pass a column name (as a string) instead of a column object (F.col()) when
+          using groupby() (see chapter 4). In addition, there are a few methods we can use to
+          cram a little SQL syntax into our PySpark code. You'll see that there aren't many
+          methods in which you can use this, but it's so useful and well done that you'll end up
+          using it all the time.
+
+               This section will build on the code we've written so far. We're going to write a func-
+          tion that, for a given capacity, will return the top three most reliable drives according
+          to our failure rate. We'll leverage the code we've already written and simplify it.
+
+7.5.1  Using Python to increase the resiliency and simplifying
+       the data reading stage
+
+       We start by simplifying the code to read the data. The data ingestion part of the pro-
+       gram is displayed in listing 7.16. There are a few changes compared to our original
+       data ingestion.
+
+           First, I put all the directories in a list so that I could read them using a list compre-
+       hension. This removes some repetitive code and will also work easily if I remove or
+       add files (if you are only using Q3 2019, you can remove the other entries in the list).
+
+           Second, since we do not need the SMART (Self-Monitoring, Analysis, and Reporting
+       Technology, a monitoring system included in most hard drives; see http://mng.bz/jydV
+       for more information.) measurements, I take the intersection of the columns
+       instead of trying to fill in the missing columns with null values. In order to create a
+       common intersection that will apply to any number of data sources, I use reduce,
+       which applies the anonymous function on all the column sets, resulting in the com-
+       mon columns between all the data frames. (For those unfamiliar with reduce, I find
+       the Python documentation very explicit and easy to follow: http://mng.bz/y4YG.) I
+       also add an assertion on the common set of columns, as I want to make sure it con-
+       tains the columns I need for the analysis. Assertions are a good way to short-circuit an
+       analysis if certain conditions are not met. In this case, if I am missing one of the col-
+       umns, I'd rather have my program fail early with an AssertionError than have a huge
+       stack trace later.
+
+           Finally, I use a second reduce for unioning all the distinct data frames into a cohe-
+       sive one. The same principle is used as when I created the common variables. This
+       makes the code a lot cleaner, and it will work without any modifications should I want
+       to add more sources or remove some.
+
+       Listing 7.16 The data ingestion part of our program
+
+       from functools import reduce
+
+       import pyspark.sql.functions as F
+       from pyspark.sql import SparkSession
+170    CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+       spark = SparkSession.builder.getOrCreate()
+
+       DATA_DIRECTORY = "./data/backblaze/"
+
+       DATA_FILES = [
+              "drive_stats_2019_Q1",
+              "data_Q2_2019",
+              "data_Q3_2019",
+              "data_Q4_2019",
+
+       ]
+
+       data = [
+              spark.read.csv(DATA_DIRECTORY + file, header=True, inferSchema=True)
+              for file in DATA_FILES
+
+       ]
+
+       common_columns = list(
+              reduce(lambda x, y: x.intersection(y), [set(df.columns) for df in data])
+
+       )
+
+       assert set(["model", "capacity_bytes", "date", "failure"]).issubset(
+              set(common_columns)
+
+       )
+
+       full_data = reduce(
+              lambda x, y: x.select(common_columns).union(y.select(common_columns)), data
+
+       )
+
+7.5.2  Using SQL-style expressions in PySpark
+
+       Now that our data has been read and is in a steady state, we can process it so that it can
+       easily answer our question. Three methods accept SQL-type statements: select-
+       Expr(), expr(), and where()/filter(). In this section, we use SQL-style expressions
+       when appropriate to showcase when it makes sense to fuse both languages. At the end
+       of this section, we have code that
+
+            Selects only the useful columns for our query
+            Gets our drive capacity in gigabytes
+            Computes the drive_days and failures data frames
+            Joins the two data frames into a summarized one and computes the failure rate
+
+       The code is available in the following listing.
+
+       Listing 7.17 Processing our data so it's ready for the query function
+
+       full_data = full_data.selectExpr(
+              "model", "capacity_bytes / pow(1024, 3) capacity_GB", "date", "failure"
+
+       )
+
+       drive_days = full_data.groupby("model", "capacity_GB").agg(
+              F.count("*").alias("drive_days")
+
+       )
+Simplifying our code: Blending SQL and Python  171
+
+failures = (
+       full_data.where("failure = 1")
+       .groupby("model", "capacity_GB")
+       .agg(F.count("*").alias("failures"))
+
+)
+
+summarized_data = (
+       drive_days.join(failures, on=["model", "capacity_GB"], how="left")
+       .fillna(0.0, ["failures"])
+       .selectExpr("model", "capacity_GB", "failures / drive_days failure_rate")
+       .cache()
+
+)
+
+selectExpr() is just like the select() method with the exception that it will pro-
+cess SQL-style operations. I am quite a fan of this method since it removes a bit of
+syntax when manipulating columns with functions and arithmetic. In our case, the
+PySpark alternative (displayed in the next listing) is a little more verbose and cum-
+bersome to write and read, especially since we have to create a literal 1024 column
+to apply the pow() function.
+
+   Listing 7.18 Replacing selectExpr() with a regular select()
+
+full_data = full_data.select(
+       F.col("model"),
+       (F.col("capacity_bytes") / F.pow(F.lit(1024), 3)).alias("capacity_GB"),
+       F.col("date"),
+       F.col("failure")
+
+)
+
+The second method is simply called expr(). It wraps a SQL-style expression into a col-
+umn. This is kind of a generalized selectExpr() that you can use in lieu of F.col()
+(or the column name) when you want to modify a column. If we take our failures
+table from listing 7.17, we can use an expr (or expression) as the agg() argument. This
+alternative syntax is shown in the next listing. I like doing it in agg() parameters,
+because it saves a lot of alias().
+
+   Listing 7.19 Using a SQL expression in our failures data frame code
+
+failures = (
+       full_data.where("failure = 1")
+       .groupby("model", "capacity_GB")
+       .agg(F.expr("count(*) failures"))
+
+)
+
+The third method, and my favorite, is the where()/filter() method. I find the syn-
+tax for filtering in SQL much less verbose than regular PySpark; being able to use the
+SQL syntax as the argument of the filter() method with no ceremony is a godsend.
+In our final program, I am able to use full_data.where("failure = 1") instead of
+wrapping the column name in F.col() like we've been doing.
+172                  CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+         I reuse this convenience in the query function, which is displayed in listing 7.20.
+     This time, I use string interpolation in conjunction with between. This doesn't save
+     many key strokes, but it's easy to understand, and you don't get as much line noise as
+     when using the data.capacity_GB.between(capacity_min, capacity_max) (if you
+     prefer using the column function, you can also use this syntax: F.col("capacity_GB")
+     .between(capacity_min, capacity_max)). At this point, it's very much a question of
+     personal style and how familiar you are with each approach.
+
+     Listing 7.20 The most_reliable_drive_for_capacity() function
+
+     def most_reliable_drive_for_capacity(data, capacity_GB=2048, precision=0.25,
+              top_n=3):
+
+            """Returns the top 3 drives for a given approximate capacity.
+
+         Given a capacity in GB and a precision as a decimal number, we keep the N
+         drives where:
+
+         - the capacity is between (capacity * 1/(1+precision)), capacity *
+
+         (1+precision)
+
+         - the failure rate is the lowest
+
+         """                                                              I used a SQL-style
+         capacity_min = capacity_GB / (1 + precision)            expression in my where()
+         capacity_max = capacity_GB * (1 + precision)           method, without having to
+
+                                                                      use any other special
+                                                                         syntax or method.
+
+         answer = (
+
+         data.where(f"capacity_GB between {capacity_min} and {capacity_max}")
+
+         .orderBy("failure_rate", "capacity_GB", ascending=[True, False])
+
+                .limit(top_n)  Since we want to return the top N
+          )                    results, not just show them, I use
+                               limit() instead of show().
+         return answer
+
+     most_reliable_drive_for_capacity(summarized_data, capacity_GB=11176.0).show()
+
+     # +--------------------+-----------+--------------------+
+
+     #|                 model|capacity_GB|  failure_rate|
+
+     # +--------------------+-----------+--------------------+
+
+     # |HGST HUH721010ALE600|  9314.0|                 0.0|
+
+     # |HGST HUH721212ALN604| 11176.0|1.088844437497695E-5|
+
+     # |HGST HUH721212ALE600| 11176.0|1.528677999266234...|
+
+     # +--------------------+-----------+--------------------+
+
+7.6 Conclusion
+
+          You do not need to learn or use SQL to effectively work with PySpark. That being said,
+          since the data manipulation API shares so much vocabulary and functionality with
+          SQL, you will have a much more productive time with PySpark if you have a basic
+          understanding of the syntax and query structure.
+
+               My family speaks both English and French, and sometimes you don't always know
+          where one language starts and one ends. I tend to think in both languages, and some-
+          times blend them in a single sentence. Likewise, I find that some problems are easier
+Additional exercises  173
+
+to solve with Python, and some are more in SQL's territory. You will find your own bal-
+ance, as well, which is why it's nice to have the option. Just like spoken languages, the
+goal is to express your thoughts and intentions as clearly as possible while keeping
+your audience in mind.
+
+Summary
+
+     Spark provides a SQL API for data manipulation. This API supports ANSI SQL.
+     Spark (and PySpark, by extension) borrows a lot of vocabulary and expected
+
+        functionality from the way SQL manipulates tables. This is especially evident
+        since the data manipulation module is called pyspark.sql.
+     PySpark's data frames need to be registered as views or tables before they can be
+        queried with Spark SQL. You can give them a different name than the data
+        frame you're registering.
+     PySpark's own data frame manipulation methods and functions borrow SQL
+        functionality, for the most part. Some exceptions, such as union(), are present
+        and documented in the API.
+     Spark SQL queries can be inserted in a PySpark program through the
+        spark.sql function, where spark is the running SparkSession.
+     Spark SQL table references are kept in a Catalog, which contains the metadata
+        for all tables accessible to Spark SQL.
+     PySpark will accept SQL-style clauses in where(), expr(), and selectExpr(),
+        which can simplify the syntax for complex filtering and selection.
+     When using Spark SQL queries with user-provided input, be careful with sanitiz-
+        ing the inputs to avoid potential SQL injection attacks.
+
+Additional exercises
+
+Exercise 7.2
+
+If we look at the code that follows, we can simplify it even further and avoid creating
+two tables outright. Can you write a summarized_data without having to use a table
+other than full_data and no join? (Bonus: Try using pure PySpark, then pure Spark
+SQL, and then a combo of both.)
+
+full_data = full_data.selectExpr(
+       "model", "capacity_bytes / pow(1024, 3) capacity_GB", "date", "failure"
+
+)
+
+drive_days = full_data.groupby("model", "capacity_GB").agg(
+       F.count("*").alias("drive_days")
+
+)
+
+failures = (
+       full_data.where("failure = 1")
+       .groupby("model", "capacity_GB")
+       .agg(F.count("*").alias("failures"))
+
+)
+174  CHAPTER 7 Bilingual PySpark: Blending Python and SQL code
+
+     summarized_data = (
+            drive_days.join(failures, on=["model", "capacity_GB"], how="left")
+            .fillna(0.0, ["failures"])
+            .selectExpr("model", "capacity_GB", "failures / drive_days failure_rate")
+            .cache()
+
+     )
+
+     Exercise 7.3
+
+     The analysis in the chapter is flawed in that the age of a drive is not taken into consid-
+     eration. Instead of ordering the model by failure rate, order by average age at failure
+     (assume that every drive fails on the maximum date reported if they are still alive).
+     (Hint: Remember that you need to count the age of each drive first.)
+
+     Exercise 7.4
+
+     What is the total capacity (in TB) that Backblaze records at the beginning of each
+     month?
+
+     Exercise 7.5
+
+        NOTE There is a much more elegant way to solve this problem that we see in
+        chapter 10 using window functions. In the meantime, this exercise can be
+        solved with the judicious usage of group bys and joins.
+
+     If you look at the data, you'll see that some drive models can report an erroneous
+     capacity. In the data preparation stage, restage the full_data data frame so that the
+     most common capacity for each drive is used.
+
