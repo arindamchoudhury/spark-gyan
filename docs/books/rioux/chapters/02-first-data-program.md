@@ -91,6 +91,45 @@ What each piece does:
 
 > 💡 **Tip** — This pattern (env var + custom log4j2.xml) is the standard script setup used throughout the book. A minimal `log4j2.xml` that sets `org.apache.spark` to `WARN` eliminates Spark's own log lines entirely, leaving only your application output.
 
+### Passing multiple config values
+
+Chaining `.config()` calls is the idiomatic approach — there is no limit on the number of calls:
+
+```python
+spark = (
+    SparkSession
+    .builder
+    .config("spark.ui.port", "4042")
+    .config("spark.driver.extraJavaOptions",
+            f"-Dlog4j2.configurationFile={conf_path}")
+    .getOrCreate()
+)
+```
+
+When config needs to be assembled programmatically from separate sources (e.g. a base config dict plus an environment-specific override), use `SparkConf.setAll()` and pass the result to `.config(conf=...)`:
+
+```python
+from pyspark import SparkConf
+from pyspark.sql import SparkSession
+
+base_conf = SparkConf().setAll([
+    ("spark.ui.port", "4042"),
+])
+log_conf = SparkConf().setAll([
+    ("spark.driver.extraJavaOptions",
+     f"-Dlog4j2.configurationFile={conf_path}"),
+])
+
+merged = SparkConf().setAll(base_conf.getAll() + log_conf.getAll())
+
+spark = SparkSession.builder.config(conf=merged).getOrCreate()
+```
+
+- `SparkConf.getAll()` returns a list of `(key, value)` tuples — easy to combine with `+`.
+- `.config(conf=...)` accepts a `SparkConf` object instead of individual key/value pairs.
+
+> 💡 **Rule of thumb** — use chained `.config()` when all settings are known at write time; use `SparkConf` when building config dynamically (loading from a file, merging environment-specific overrides, or sharing a conf object across multiple session builders).
+
 ### The log4j2.xml file
 
 Place `log4j2.xml` alongside your script (the `os.path.abspath` call resolves it from there). Three decisions govern the whole file:
