@@ -375,6 +375,16 @@ episode_schema = T.StructType([
 
 > 💡 **Partial schema**: passing a `StructType` that covers only a subset of fields makes PySpark read **only those fields** — a cheap way to avoid reading a wide document when you need just a few columns.
 
+> 💡 **`F.schema_of_json(json_str)`** — infers a schema from a single JSON string literal at plan time and returns it as a DDL string. Useful for quickly bootstrapping a schema during development:
+> ```python
+> schema_ddl = spark.range(1).select(
+>     F.schema_of_json(F.lit('{"name":"Silicon Valley","type":"Scripted"}'))
+> ).first()[0]
+> # → 'STRUCT<name: STRING, type: STRING>'
+> T.StructType.fromDDL(schema_ddl)  # convert to StructType if needed
+> ```
+> Do not use in production — it sees only the fields present in that one example (see best practices in §4.3).
+
 ### 4.2 Reading with a strict schema
 
 ```python
@@ -388,8 +398,69 @@ shows_with_schema = spark.read.json(
 - JSON has no native date/timestamp types. A `DateType()` or `TimestampType()` field in the schema tells the reader to parse ISO-8601 strings into those types automatically.
 - `mode="FAILFAST"` — crash on any malformed record.
 - `mode="PERMISSIVE"` (default) — set malformed records to null silently.
+- `mode="DROPMALFORMED"` — silently drop any row that cannot be parsed; the row disappears from the output entirely.
 
 > ⚠️ **Prefer `FAILFAST` in production**: `PERMISSIVE` mode can silently turn bad records into null rows, which then propagate wrong results downstream. The earlier you surface a schema mismatch, the cheaper it is to fix. `FAILFAST` errors identify the type mismatch but not which field — narrow down by elimination.
+
+> 📌 **Catching `FAILFAST` errors — Spark 4.x vs book**: Listing 6.20 catches the error with `from py4j.protocol import Py4JJavaError`. This reached directly into the py4j JVM bridge and is now considered an internal API. Use `pyspark.errors` instead:
+>
+> ```python
+> # Book (Spark 3.2) — avoid
+> from py4j.protocol import Py4JJavaError
+> try:
+>     spark.read.json(path, schema=my_schema, mode="FAILFAST").count()
+> except Py4JJavaError as e:
+>     print(e.java_exception.getMessage())
+>
+> # Current best practice (Spark 3.3+ / 4.x)
+> from pyspark.errors import SparkRuntimeException
+> try:
+>     spark.read.json(path, schema=my_schema, mode="FAILFAST").count()
+> except SparkRuntimeException as e:
+>     print(e.message)
+> ```
+>
+> `pyspark.errors` exceptions are proper Python exceptions with a clean `message` attribute and correct `isinstance()` behaviour. Key classes: `PySparkException` (base), `AnalysisException` (bad column / unresolved reference), `ParseException` (malformed SQL/DDL), `SparkRuntimeException` (runtime errors including `FAILFAST` violations), `IllegalArgumentException` (bad function argument).
+
+**Full reader options reference (standard open-source PySpark)**
+
+*Malformed record handling*
+
+| Option | Values / default | Notes |
+|---|---|---|
+| `mode` | `PERMISSIVE` *(default)*, `FAILFAST`, `DROPMALFORMED` | How to handle bad records |
+| `columnNameOfCorruptRecord` | string *(default: `_corrupt_record`)* | `PERMISSIVE` only — stores the raw bad-record string; the column must also be declared in the schema |
+
+*Type parsing*
+
+| Option | Default | Notes |
+|---|---|---|
+| `timestampFormat` | `yyyy-MM-dd'T'HH:mm:ss[.SSS][XXX]` | Pattern for `TimestampType` fields |
+| `dateFormat` | `yyyy-MM-dd` | Pattern for `DateType` fields |
+| `timestampNTZFormat` | ISO-8601 | Pattern for `TimestampNTZType` fields (Spark 3.4+) |
+
+*Schema inference*
+
+| Option | Default | Notes |
+|---|---|---|
+| `inferSchema` | `true` | Set `false` to skip type inference and read everything as string |
+| `primitivesAsString` | `false` | Force all primitives to `StringType` regardless of inferred type |
+| `prefersDecimal` | `false` | Infer floating-point numbers as `DecimalType` instead of `DoubleType` |
+| `dropFieldIfAllNull` | `false` | Exclude columns where every value is null during schema inference |
+
+> ⚠️ **`columnNameOfCorruptRecord` requires schema declaration**: the corrupt-record column must be present in the schema you pass to the reader, otherwise the raw string is silently discarded even in `PERMISSIVE` mode:
+> ```python
+> schema_with_corrupt = T.StructType([
+>     T.StructField("name", T.StringType()),
+>     T.StructField("type", T.StringType()),
+>     T.StructField("corrupt_record", T.StringType()),  # must be here
+> ])
+> df = spark.read.json(path, schema=schema_with_corrupt,
+>                      mode="PERMISSIVE",
+>                      columnNameOfCorruptRecord="corrupt_record")
+> ```
+
+> ⚠️ **`schemaEvolutionMode` and `rescuedDataColumn` are not standard Spark options**: these are Databricks Runtime features. Passing them to a vanilla Spark reader silently has no effect.
 
 ### 4.3 JSON-formatted schemas
 
@@ -405,9 +476,116 @@ restored = T.StructType.fromJson(json.loads(schema_str))
 assert restored == df.schema  # True
 ```
 
-`StructField` JSON shape: `{"name": "...", "type": "...", "nullable": true, "metadata": {}}`. Complex types have additional fields: arrays add `containsNull` + `elementType`; maps add `keyType`, `valueType`, `valueContainsNull`.
+A `StructField` always serialises to exactly four keys: `name`, `type`, `nullable`, `metadata`. The value of `type` is a string for scalars and a nested object for complex types:
+
+```json
+// scalar
+{"name": "name", "type": "string", "nullable": true, "metadata": {}}
+
+// array — type becomes an object
+{"name": "genres",
+ "type": {"type": "array", "elementType": "string", "containsNull": true},
+ "nullable": true, "metadata": {}}
+
+// map
+{"name": "mapped",
+ "type": {"type": "map", "keyType": "string", "valueType": "long", "valueContainsNull": true},
+ "nullable": true, "metadata": {}}
+
+// struct — type.fields is a recursive array of StructField objects
+{"name": "schedule",
+ "type": {"type": "struct", "fields": [...]},
+ "nullable": true, "metadata": {}}
+```
 
 > 💡 **Spark 4.0+ — `toDDL()` shortcut**: `df.schema.toDDL()` produces a DDL string which is more human-readable than the JSON representation and directly usable in SQL DDL statements.
+
+**Best practices**
+
+- **Never use `inferSchema` or `schema_of_json()` in production.** Both infer from a sample only — a field that is null or absent in the sample is inferred as `StringType`. When incremental data arrives with the real type, you get a schema mismatch at merge/write time. Always define the schema explicitly.
+
+- **Choose serialization format by use case:**
+
+  | Use case | Format | Reason |
+  |---|---|---|
+  | Simple/flat schema | DDL string (`toDDL()`) | Human-readable; directly usable in SQL `CREATE TABLE` |
+  | Complex/nested schema | JSON (`schema.json()`) | Preserves `nullable`, `metadata`, complex type details |
+  | Schema shared across teams | JSON file versioned in git | Single source of truth; diffs are readable |
+
+- **Validate schema at ingestion, not downstream.** A mismatch caught at read time is cheap; one caught three joins later is not. `df.schema == expected` only reports pass/fail — use a diff to surface exactly what changed.
+
+  *Flat diff — one level only, simple cases:*
+  ```python
+  def schema_diff_flat(actual: T.StructType, expected: T.StructType) -> dict:
+      a = {f.name: f for f in actual}
+      e = {f.name: f for f in expected}
+      return {
+          "missing":  {k: e[k] for k in e if k not in a},
+          "extra":    {k: a[k] for k in a if k not in e},
+          "mismatch": {k: {"actual": a[k].dataType, "expected": e[k].dataType}
+                       for k in a if k in e and a[k] != e[k]},
+      }
+
+  diff = schema_diff_flat(df.schema, expected)
+  assert not any(diff.values()), f"Schema diff: {diff}"
+  ```
+
+  *Recursive diff — nested structs, arrays, maps:*
+
+  ```python
+  def schema_diff(actual: T.DataType, expected: T.DataType, path: str = "") -> list:
+      issues = []
+      if type(actual) != type(expected):
+          issues.append(f"{path or 'root'}: type {type(actual).__name__} → {type(expected).__name__}")
+          return issues
+      if isinstance(expected, T.StructType):
+          a_fields = {f.name: f for f in actual}
+          e_fields = {f.name: f for f in expected}
+          for name, ef in e_fields.items():
+              fp = f"{path}.{name}" if path else name
+              if name not in a_fields:
+                  issues.append(f"{fp}: missing")
+              else:
+                  af = a_fields[name]
+                  if af.nullable != ef.nullable:
+                      issues.append(f"{fp}: nullable {af.nullable} → {ef.nullable}")
+                  issues.extend(schema_diff(af.dataType, ef.dataType, fp))
+          for name in a_fields:
+              if name not in e_fields:
+                  fp = f"{path}.{name}" if path else name
+                  issues.append(f"{fp}: unexpected extra field")
+      elif isinstance(expected, T.ArrayType):
+          if actual.containsNull != expected.containsNull:
+              issues.append(f"{path}[]: containsNull {actual.containsNull} → {expected.containsNull}")
+          issues.extend(schema_diff(actual.elementType, expected.elementType, f"{path}[]"))
+      elif isinstance(expected, T.MapType):
+          issues.extend(schema_diff(actual.keyType, expected.keyType, f"{path}[key]"))
+          issues.extend(schema_diff(actual.valueType, expected.valueType, f"{path}[value]"))
+          if actual.valueContainsNull != expected.valueContainsNull:
+              issues.append(f"{path}[value]: valueContainsNull {actual.valueContainsNull} → {expected.valueContainsNull}")
+      else:
+          if actual != expected:
+              issues.append(f"{path}: {actual.simpleString()} → {expected.simpleString()}")
+      return issues
+
+  expected = T.StructType.fromJson(json.loads(Path("schemas/shows.json").read_text()))
+  issues = schema_diff(df.schema, expected)
+  assert not issues, "Schema mismatch:\n" + "\n".join(f"  {i}" for i in issues)
+  ```
+
+  Example output for a nested mismatch:
+  ```
+  Schema mismatch:
+    _embedded.episodes[].airdate: date → timestamp
+    _embedded.episodes[].number: nullable True → False
+    network: missing
+  ```
+
+- **Store schemas as files versioned alongside code**, not hardcoded inline. Load them at runtime with `T.StructType.fromJson(json.loads(...))` or `DataType.fromDDL(...)`. This makes schema changes reviewable in PRs.
+
+- **Use `schema.json()` over `schema.jsonValue()` for storage.** `json()` returns a string ready for `open().write()`; `jsonValue()` returns a Python dict requiring an extra `json.dumps()` step — it's useful when you need to manipulate the schema structure programmatically before saving.
+
+- **`schema_of_json()` is exploration-only** (see §4.1) — it infers from a single example at plan time. A field absent in the sample but present in later batches is silently dropped.
 
 ---
 
@@ -460,6 +638,26 @@ collected = episodes.groupby("id").agg(
 - `F.collect_set(col)` — one array element per distinct value; deduplicated; **order is not guaranteed**.
 
 > ❓ Revisit: `F.sort_array(F.collect_list(...))` or window functions for ordered collection.
+
+**Collecting an exploded map** — there is no `collect_map()`. The pattern is: explode the map (which yields separate `key` and `value` columns), `collect_list()` both independently in the same `agg()`, then reconstruct with `map_from_arrays()`:
+
+```python
+# 1. explode: one row per key-value pair
+exploded = shows_map.select(
+    "id", F.explode("mapped").alias("key", "value")
+)
+
+# 2. collect both lists in a single agg(), then rebuild the map
+collected = exploded.groupby("id").agg(
+    F.collect_list("key").alias("keys"),
+    F.collect_list("value").alias("values"),
+).select(
+    "id",
+    F.map_from_arrays("keys", "values").alias("mapped"),
+)
+```
+
+The two `collect_list()` calls share the same `groupby`, so corresponding keys and values stay aligned by position — `map_from_arrays` zips them back together. Order is not guaranteed (same caveat as array collect), but key-value pairing is preserved.
 
 ### 5.3 Struct as a function
 
