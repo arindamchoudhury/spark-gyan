@@ -8,9 +8,20 @@ nav = [
     { "Home" = "index.md" },
     { "Topics" = [
         { "Topic index" = "topics/index.md" },
-        # Active topic pages added here as they're written, e.g.:
-        # { "Spark Architecture" = "topics/spark-architecture.md" },
-        # { "Lazy Evaluation" = "topics/lazy-evaluation.md" },
+        { "Lazy evaluation & execution model" = "topics/lazy-evaluation.md" },
+        { "Catalyst: column pruning & predicate pushdown" = "topics/catalyst-optimizations.md" },
+        { "ANSI mode" = "topics/ansi-mode.md" },
+        { "pyspark.errors exception hierarchy" = "topics/pyspark-errors.md" },
+        { "Column references: F.col() vs strings" = "topics/column-references.md" },
+        { "select() best practices" = "topics/select-best-practices.md" },
+        { "Explode and array expansion patterns" = "topics/explode-patterns.md" },
+        { "Schema definition: StructType vs DDL" = "topics/schema-definition.md" },
+        { "coalesce() and repartition()" = "topics/coalesce-repartition.md" },
+        { "Logging: log4j2.xml and setLogLevel()" = "topics/logging.md" },
+        { "groupBy().agg() pattern" = "topics/groupby-agg.md" },
+        { "RDD vs DataFrame" = "topics/rdd-vs-dataframe.md" },
+        { "Python↔JVM boundary and UDF cost" = "topics/python-jvm-boundary.md" },
+        { "union() and multi-source schema alignment" = "topics/union-schema-alignment.md" },
     ]},
     { "Books" = [
         { "Rioux — Data Analysis with Python and PySpark (2022)" = [
