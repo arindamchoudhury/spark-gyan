@@ -1,0 +1,1214 @@
+                    Big data is just
+               a lot of small data:
+              Using pandas UDFs
+
+This chapter covers
+
+ Using pandas Series UDFs to accelerate column
+   transformation compared to Python UDFs
+
+ Addressing the cold start of some UDFs using
+   Iterator of Series UDF
+
+ Controlling batch composition in a split-apply-
+   combine programming pattern
+
+ Confidently making a decision about the best
+   pandas UDF to use
+
+     This chapter approaches the distributed nature of PySpark a little differently. If we
+     take a few seconds to think about it, we read data into a data frame, and Spark dis-
+     tributes the data across partitions on nodes. What if we could directly operate on
+     those partitions as if they were single-node data frames? More interestingly, what if
+     we control how those single-node partitions are created and used using a tool we
+     know? What about pandas?
+
+         PySpark's interoperability with pandas (also colloquially called pandas UDF) is
+     a huge selling point when performing data analysis at scale. pandas is the domi-
+     nant in-memory Python data manipulation library, while PySpark is the domi-
+     nantly distributed one. Combining both of them unlocks additional possibilities.
+
+                                                          192
+                                                                                                                                    193
+
+          In this chapter, we start by scaling some basic pandas data manipulation functional-
+          ity. We then look into operations on GroupedData and how PySpark plus Pandas
+          implement the split-apply-combine pattern common to data analysis. We finish with
+          the ultimate interaction between pandas and PySpark: treating a PySpark data frame
+          like a small collection of pandas DataFrames.
+
+               This chapter obviously makes great use of the pandas (http://pandas.pydata.org)
+          library. Extensive pandas knowledge is a nice-to-have but is in no way expected. This
+          chapter will cover the necessary pandas skills to use in within a basic pandas UDF. If
+          you wish to level up your pandas skills to become a pandas UDF ninja, I warmly recom-
+          mend the Pandas in Action book by Boris Paskhaver (Manning, 2021).
+
+             The tale of two versions
+
+               PySpark 3.0 completely changed how we interact with the pandas UDF API and added
+               a lot of functionality and performance improvements. Because of this, I've structured
+               this chapter with PySpark 3.0 in mind. For those using PySpark 2.3 or 2.4, I've added
+               some sidebars when applicable with the appropriate syntax for convenience.
+
+               pandas UDF was introduced in PySpark 2.3. If you are using Spark 2.2 or a previous
+               version, you're out of luck!
+
+          For the examples in the chapter, you need three previously unused libraries: pandas,
+          scikit-learn, and PyArrow. If you have installed Anaconda (see appendix B), you can
+          use conda to install the libraries; otherwise, you can use pip.1
+
+               If you are using Spark 2.3 or 2.4, you also need to set a flag in the conf/spark-
+          env.sh file of your Spark root directory to account for a change in Arrow serialization
+          format. The Spark root directory is the one we set with the SPARK_HOME environment
+          variable when installing Spark, as seen in appendix B. In the conf/ directory, you
+          should find a spark-env.sh.template file. Make a copy, name it spark-env.sh, and add
+          this line in the file:
+
+             ARROW_PRE_0_15_IPC_FORMAT=1
+
+          This will tell PyArrow to use a serialization format compatible with a version of Spark
+          greater than 2.0, instead of the newer one that is only compatible with Spark 3.0. The
+          Spark JIRA ticket contains more information about this (https://issues.apache.org/
+          jira/browse/SPARK-29367). You can also use PyArrow version 0.14 and avoid the prob-
+          lem altogether:
+
+             # Conda installation
+             conda install pandas scikit-learn pyarrow
+
+1 On Windows, sometimes you might have issues with the pip wheels. If this is the case, refer to the PyArrow
+   documentation page for installing: https://arrow.apache.org/docs/python/install.html
+194    CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+       # Pip installation
+       pip install pandas scikit-learn pyarrow
+
+9.1 Column transformations with pandas:
+        Using Series UDF
+
+          In this section, we cover the simplest family of pandas UDFs: the Series UDFs. This
+          family shares a column-first focus with regular PySpark data transformation func-
+          tions. All of our UDFs in this section will take a Column object (or objects) as input
+          and return a Column object as output. In practice, they serve as the most common
+          type of UDF and work in cases where you want to bring a functionality already
+          implemented in pandas--or a library that plays well with pandas--and promote it
+          to the distributed world of PySpark.
+
+               PySpark provides three types of Series UDFs. Here is a summary of them; we will
+          explore them further in the rest of the section:
+
+                The Series to Series is the simplest. It takes Columns objects as inputs, converts
+                   them to pandas Series objects (giving it its name), and returns a Series object
+                   that gets promoted back to a PySpark Column object.
+
+                The Iterator of Series to Iterator of Series differs in the sense that the Column objects
+                   get batched into batches and then fed as Iterator objects. It takes a single Column
+                   object as input and returns a single Column. It provides performance improve-
+                   ments, especially when the UDF need to initialize an expensive state before
+                   working on the data (e.g., local ML models created in scikit-learn).
+
+                The Iterator of multiple Series to Iterator of Series is a combination of the previous Series
+                   UDFs and can take multiple Columns as input, like the Series to Series UDF, yet
+                   preserves the iterator pattern from the Iterator of Series to Iterator of Series.
+
+              NOTE There is also a Series to Scalar UDF that is part of the Group Aggregate
+              UDF family. See section 9.2.1 for more information. Although it looks similar
+              to the three previously mentioned, it serves a different purpose.
+
+          Before we start exploring Series UDF, let's grab a data set to experiment with. The
+          next section introduces how to connect PySpark to Google BigQuery's data sets to effi-
+          ciently read data from a data warehouse.
+
+9.1.1  Connecting Spark to Google's BigQuery
+
+       This section provides instructions for connecting PySpark to Google's BigQuery,
+       where we will use the National Oceanic and Atmospheric Administration's (NOAA)
+       Global Surface Summary of the Day (GSOD) data set. In the same vein, this provides a
+       blueprint for connecting PySpark to other data warehouses, such as SQL or NoSQL
+       databases. Spark has a growing list of connectors to popular data storage and process-
+       ing solutions--and we can't reasonably cover all of them!--but it'll often follow the
+       same steps as we are using with BigQuery:
+Column transformations with pandas: Using Series UDF  195
+
+1 Install and configure the connector (if necessary), following the vendor's
+   documentation.
+
+2 Customize the SparkReader object to account for the new data source type.
+3 Read the data, authenticating as needed.
+
+You do not need to use BigQuery
+
+I understand that getting a GCP account just to access some data can be a little
+annoying. I recommend you try--it's quite representative of connecting Spark with
+external data sources--but should you want to simply get familiar with the contents
+of this chapter, skip the rest of this section and use the (Parquet) data available from
+the repository:
+
+gsod = (
+       reduce(
+              lambda x, y: x.unionByName(y, allowMissingColumns=True),
+              [
+                     spark.read.parquet(f"./data/gsod_noaa/gsod{year}.parquet")
+                     for year in range(2010, 2021)
+              ],
+       )
+       .dropna(subset=["year", "mo", "da", "temp"])
+       .where(F.col("temp") != 9999.9)
+       .drop("date")
+
+)
+
+INSTALLING AND CONFIGURING THE CONNECTOR
+
+Google BigQuery is a serverless data warehouse engine that uses a SQL dialect to rap-
+idly process data. Google provides a number of public data sets for experimentation.
+In this section, we install and configure the Google Spark BigQuery connector to
+directly access the data made available through BigQuery.
+
+    First, you need a GCP account. Once your account is created, you need to create a
+service account and a service account key to tell BigQuery to give you access to the
+public data programmatically. To do so, select Service Account (under IAM & Admin)
+and click + Create Service Account. Give a meaningful name to your service account.
+In the service account permissions menu, select BigQuery  BigQuery admin and click
+Continue. In the last step, click + CREATE KEY and select JSON. Download the key and
+store it somewhere safe (see figure 9.1).
+
+   WARNING Treat this key like any other password. If a malicious person steals
+   your key, go back to the Service Accounts menu, delete this key, and create a
+   new one.
+
+With your account created and your key downloaded, you can now fetch the connec-
+tor. The connector is hosted on GitHub (http://mng.bz/aDZz). Because it is under
+active development, the instructions for installation and usage might change over time.
+196  CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+Figure 9.1 The key under the BigQuery-DataAnalysisPySpark service account I created
+
+          I encourage you to read its README. No need to download the connector right now:
+          we'll let Spark take care of that during the next step.
+
+           MAKING THE CONNECTION BETWEEN PYSPARK AND BIGQUERY THROUGH THE CONNECTOR
+          Now we make the connection between BigQuery and our PySpark environment
+          using the connector and the key created in the previous section. This will close the
+          loop and directly connect our PySpark shell to BigQuery, effectively using it as an
+          external data store.
+
+               If you use PySpark through a regular Python shell and have it running (as seen in
+          appendix B), you need to restart your Python shell. Simply using spark.stop() and
+          starting a new SparkSession will not work in this case, as we are adding a new depen-
+          dency to our Spark installation. With a fresh Python REPL, we add, in listing 9.1, a
+          config flag: spark.jars.packages. This instructs Spark to fetch and install external
+          dependencies, in our case, the com.google.cloud.spark:spark-bigquery connector.
+          As it is a Java/Scala dependency, we need to match the correct Spark and Scala version
+          (at the time of writing, it is Spark 3.2, using Scala 2.12); refer to the connector's
+          README for the latest information.
+
+                The log messages printed when the SparkSession gets instantiated are self-
+          explanatory: Spark fetches the connector from Maven Central--a central repository
+          for Java and JVM language packages, similar to Python's PyPI when you use pip--
+          installs it, and configures it for your Spark instance. No need for manual download!
+            Column transformations with pandas: Using Series UDF                      197
+
+   Listing 9.1 Initializing PySpark within your Python shell with BigQuery connector
+
+from pyspark.sql import SparkSession         I took the package version recommended for the
+                                       Spark/Scala version (3.2/2.12) on my computer. Check
+spark = SparkSession.builder.config(  the connector's repository for the most recent version.
+       "spark.jars.packages",
+
+   "com.google.cloud.spark:spark-bigquery-with-dependencies_2.12:0.19.1",
+
+).getOrCreate()
+
+# [...]
+
+# com.google.cloud.spark#spark-bigquery-with-dependencies_2.12 added as a
+
+   dependency
+
+# :: resolving dependencies :: org.apache.spark#spark-submit-parent-77d4bbf3-
+
+   1fa4-4d43-b5f7-59944801d46c;1.0
+
+#  confs: [default]
+
+#  found com.google.cloud.spark#spark-bigquery-with-
+
+   dependencies_2.12;0.19.1 in central
+
+# downloading https://repo1.maven.org/maven2/com/google/cloud/spark/spark-
+
+   bigquery-with-dependencies_2.12/0.19.1/spark-bigquery-with-
+
+   dependencies_2.12-0.19.1.jar ...
+
+#  [SUCCESSFUL ] com.google.cloud.spark#spark-bigquery-with-
+
+   dependencies_2.12;0.19.1!spark-bigquery-with-dependencies_2.12.jar
+
+   (888ms)
+
+# :: resolution report :: resolve 633ms :: artifacts dl 889ms
+
+#  :: modules in use:
+
+#  com.google.cloud.spark#spark-bigquery-with-dependencies_2.12;0.19.1
+
+   from central in [default]
+
+#  ---------------------------------------------------------------------
+
+#  |                   |              modules                     || artifacts |
+
+#  |        conf       | number| search|dwnlded|evicted|| number|dwnlded|
+
+#  ---------------------------------------------------------------------
+
+#  |        default    | 1 | 1 | 1 | 0 || 1 | 1 |
+
+#  ---------------------------------------------------------------------
+
+# :: retrieving :: org.apache.spark#spark-submit-parent-77d4bbf3-1fa4-4d43-
+
+   b5f7-59944801d46c
+
+#  confs: [default]
+
+#  1 artifacts copied, 0 already retrieved (33158kB/23ms)
+
+Now that PySpark is connected to BigQuery, we simply have to read the data, using
+our authentication key via GCP.
+
+   Using the connector when invoking PySpark directly
+
+   If you are in an environment where you can't dynamically download dependencies
+   (e.g., behind a corporate firewall), you can download the jar manually and add its loca-
+   tion for the spark.jars config flag when instantiating your SparkSession. An alter-
+   native way, when using pyspark or spark-submit as a way to launch a REPL or a
+   PySpark job, is to use the --jars configuration flag:
+
+   pyspark --jars spark-bigquery-latest.jar
+   spark-submit --jars spark-bigquery-latest.jar my_job_file.py
+
+   If you are using PySpark in the cloud, refer to your provider documentation. Each
+   cloud provider has a different way of managing Spark dependencies and libraries.
+198           CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+     If you use PySpark through your Python/IPython shell, you can load the library directly
+     from Maven (Java/Scala's equivalent of PyPI) when creating your SparkSession.
+
+     READING THE DATA FROM BIGQUERY USING OUR SECRET KEY
+     We are now in the final stage before we can start creating pandas UDFs: with our envi-
+     ronment configured, we just have to read the data. In this section, we assemble 10 years'
+     worth of weather data located in BigQuery, which totals over 40 million records.
+
+         Reading data from BigQuery is straightforward. In listing 9.2, we use the bigquery-
+     specialized SparkReader--provided by the connector library we embedded to our
+     PySpark shell--which provides two options:
+
+          The table parameter pointing to the table we want to ingest. The format is
+             project.dataset.table; the bigquery-public-data is a project available to all.
+
+          The credentialsFile is the JSON key downloaded in section 9.1.1. You need
+             to adjust the path and file name according to the location of the file.
+
+     Listing 9.2 Reading the stations and gsod tables for 2010 to 2020
+
+     The stations table is available in BigQuery under  Since all the tables are read the
+     bigquery-public-data.noaa_gsod.gsodXXXX,           same way, I abstract my reading
+     where XXXX is the four-digit year.                 routine in a reusable function,
+                                                        returning the resulting data frame.
+       from functools import reduce
+       import pyspark.sql.functions as F
+
+     def read_df_from_bq(year):                                 I use the bigquery specialized
+            return (                                            reader via the format() method.
+                   spark.read.format("bigquery").option(
+
+              "table", f"bigquery-public-data.noaa_gsod.gsod{year}"
+
+     )
+
+                   # .option("credentialsFile", "bq-key.json")  I pass my JSON service
+                   .load()                                      account key to the
+            )                                                   credentialsFile option to
+                                                                tell Google I am allowed to
+     gsod = (                                                   use the BigQuery service.
+
+     reduce(
+
+     lambda x, y: x.unionByName(y, allowMissingColumns=True),
+
+     [read_df_from_bq(year) for year in range(2010, 2021)],
+
+            )                                                            I create a lambda
+            .dropna(subset=["year", "mo", "da", "temp"])             function over my list
+            .where(F.col("temp") != 9999.9)                       comprehension of data
+            .drop("date")                                       frames to union them all.
+     )
+
+     Rather than using a looping construct, here I propose a handy pattern for unioning
+     multiple tables in PySpark using reduce, also used in chapter 7. It's easier to under-
+     stand the reduce operation if we break it down into discrete steps.
+
+         I start with a range of years (in my example, 2010 to 2020, including 2010 but
+     excluding 2020). For this, I use the range() function.
+       Column transformations with pandas: Using Series UDF            199
+
+           I apply my helper function, read_df_from_bq(), to each year via a list comprehen-
+       sion, yielding a list of data frames. I don't have to worry about memory consumption
+       as the list contains only a reference to the data frame (DataFrame[...]).
+
+           As a reducing function, I use a lambda function (which we used when creating
+       one-usage functions in chapter 8) that unions two data frames by column names (with
+       unionByName). reduce will take the first data frame in the list and union it with the sec-
+       ond. It'll then take the result of the previous union and apply it again with the next
+       data frame in line. The end result is a single data frame that contains every record
+       from 2010 to 2020 inclusively.
+
+           We could do this iteratively, using a for loop. In the next listing, I show how to accom-
+       plish the same goal without using reduce(). Since higher-order functions usually yield
+       cleaner code, I prefer using them instead of looping constructs where it make sense.
+
+       Listing 9.3 Reading the gsod data from 2010 to 2020 via a loop
+
+       gsod_alt = read_df_from_bq(2010)                                When using a looping
+       for year in range(2011, 2020):                                  approach to union tables,
+                                                                       you need an explicit
+              gsod_alt = gsod_alt.unionByName(                         starting seed. I use the
+                     read_df_from_bq(year), allowMissingColumns=True   table from 2010.
+
+              )
+       gsod_alt = gsod_alt.drop("date")
+
+       Because gsod2020 has an additional date column that the previous years do not,
+       unionByName will fill the values with null since we passed True to the allowMissing-
+       Columns attribute. Instead, the date is represented in the data set via three integer col-
+       umns: year, mo (for month), and da (for day).
+
+          TIP If you are using a local Spark, loading 2010-2019 will make the examples
+          in this chapter rather slow. I use 2018 only when working on my local instance,
+          so I don't have to wait too long for code execution. Inversely, if you are work-
+          ing with a more powerful setup, you can add years to the range. The gsod
+          tables go back to 1929.
+
+       In this section, we read a large amount of data from a warehouse and assembled a sin-
+       gle data frame representing the weather information across the globe for a period of
+       10 years. In the next sections, I introduce the three members of the Series UDF, start-
+       ing with the most common: the Series to Series UDF.
+
+9.1.2  Series to Series UDF: Column functions, but with pandas
+
+       In this section, we cover the most common type of Pandas UDF: the Series to Series
+       UDF, also called Scalar UDF. Series to Series UDFs are akin to most of the functions in
+       the pyspark.sql model. For the most part, they work just like Python UDFs (seen in
+       chapter 8), with one key difference: Python UDFs work on one record at a time, and
+       you express your logic through regular Python code. Scalar UDFs work on one Series
+       at a time, and you express your logic through pandas code. The difference is subtle,
+       and it's easier to explain visually.
+200          CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+         In a Python UDF, when you pass column objects to your UDF, PySpark will unpack
+     each value, perform the computation, and then return the value for each record in
+     a Column object. In a Scalar UDF, depicted in figure 9.2, PySpark will serialize
+     (through a library called PyArrow, which we installed at the beginning of the chap-
+     ter) each partitioned column into a pandas Series object (http://mng.bz/g41l).
+     You then perform the operations on the Series object directly, returning a Series of
+     the same dimension from your UDF. From an end user perspective, they are the same
+     functionally. Because pandas is optimized for rapid data manipulation, it is preferable
+     to use a Series to Series UDF when you can instead of using a regular Python UDF, as
+     it'll be much faster.
+
+     When using a Python UDF, each record    Original  When using a pandas UDF , each column chunk
+     is processed by the UDF one at a time.  column    is converted into a pandas series before being
+                                                       processed by the UDF as a single object.
+
+                                             ...
+
+     Record  New record                                pandas                   New
+                                                       series                   series
+
+     ...
+
+                                                       ...                      ...
+
+                                             Modified
+                                             column
+
+                                                                                ...
+
+                In both cases, the records/chunks are reassembled as a single, modified column.
+
+     Figure 9.2 Comparing a Python UDF to a pandas scalar UDF. The former splits a column into individual
+     records, whereas the latter breaks them into Series.
+
+      Now armed with the "how it works" of Series to Series UDFs, let's create one ourselves.
+      I chose to create a simple function that will transform Fahrenheit degrees to Celsius.
+      In Canada, we use both scales depending on the usage: °F for cooking, °C for body or
+      outside temperature. As a true Canadian, I cook my dinner at 350°F but know that
+      10°C is sweater weather. The function is depicted in listing 9.4. The building blocks
+      are eerily similar, but we can pick out two main differences:
+           Column transformations with pandas: Using Series UDF                   201
+
+     Instead of udf(), I use pandas_udf(), again, from the pyspark.sql.functions
+        module. Optionally (but recommended), we can pass the return type of the
+        UDF as an argument to the pandas_udf() decorator.
+
+     Our function signature is also different: rather than using scalar values (such as
+        int or str), the UDF takes pd.Series and return a pd.Series.
+
+The code within the function could be used as is for a regular Python UDF. I am
+(ab)using the fact that you can do arithmetic operations with a pandas Series.
+
+Listing 9.4 Creating a pandas scalar UDF that transforms Fahrenheit into Celsius
+
+import pandas as pd            For a scalar UDF, the biggest
+import pyspark.sql.types as T  change happens in the decorator
+
+                               used. I could use the pandas_udf
+
+                               function directly too.
+
+@F.pandas_udf(T.DoubleType())
+
+def f_to_c(degrees: pd.Series) -> pd.Series:    The signature for a Series to Series
+       """Transforms Farhenheit to Celcius."""  UDF is a function that takes one
+       return (degrees - 32) * 5 / 9            or multiple pandas.Series.
+
+TIP If you're using a Spark 2 version, you need to add another parameter to
+the decorator here, as only Spark 3.0 and above recognize function signa-
+tures for pandas UDFs. The code in listing 9.4 would read @F.pandas_udf
+(T.DoubleType(), PandasUDFType.SCALAR). See the official PySpark docu-
+mentation here: http://mng.bz/5KZz.
+
+In listing 9.5, we apply our newly created Series to Series UDF to the temp column of
+the gsod data frame, which contains the temperature (in Fahrenheit) of each station-
+day combination. Just like with regular Python UDFs, Series to Series (and all Scalar
+UDF) are used like any data manipulation function. Here, I create a new column,
+temp_c, with withColumn() and apply the f_to_c temperature on the temp column.
+
+Listing 9.5 Using a Series to Series UDF like any other column manipulation function
+
+gsod = gsod.withColumn("temp_c", f_to_c(F.col("temp")))
+gsod.select("temp", "temp_c").distinct().show(5)
+
+# +-----+-------------------+
+
+# | temp|  temp_c|
+
+# +-----+-------------------+
+
+# | 37.2| 2.8888888888888906|
+
+# | 85.9| 29.944444444444443|
+
+# | 53.5| 11.944444444444445|
+
+# | 71.6| 21.999999999999996|
+
+# |-27.6|-33.111111111111114|
+
+# +-----+-------------------+
+
+# only showing top 5 rows
+
+Series to Series UDFs, just like regular Python UDFs, are very convenient when the
+record-wise transformation (or mapping) you want to apply to your data frame is not
+202  CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+     available within the stock PySpark functions (pyspark.sql.functions). Creating a
+     Fahrenheit-to-Celsius converter as part of core Spark would be a little intense, so
+     a Python or a pandas Series to Series UDF is a way to extend the core functionality
+     with minimal fuss. Next, we see how to gain more control over the split and use the
+     split-apply-combine pattern in PySpark.
+
+     Working with complex types in pandas UDF
+
+     PySpark has a richer data type system than pandas, which clubs strings and complex
+     types into a catchall object type. Since you are dropping from PySpark into pandas
+     during the execution of the UDF, you are solely responsible for aligning the types
+     accordingly. This is where the return type attribute of the pandas_udf decorator
+     comes in handy, as it'll help in diagnosing bugs early.
+
+     What if you want to accept or return complex types, such as the array of the struct?
+     pandas will accept as values within a series a list of items that will be promoted to
+     an ArrayType column. For StructType columns, you will need to replace the rele-
+     vant pd.Series by a pd.DataFrame. In chapter 6, we saw that struct columns are
+     like mini data frames, and the equivalence continues here!
+
+9.1.3 Scalar UDF + cold start = Iterator of Series UDF
+
+              TIP This is only available with PySpark 3.0+.
+
+          This section combines the other two types of Scalar UDFs: the Iterator of Series to
+          Iterator of Series UDF and the Iterator of multiple Series to Iterator of Series. (Try to
+          say that quickly five times!) Because they are so similar to the Series to Series UDF in
+          their application, I will focus on the Iterator portion that gives them their power. Iter-
+          ator of Series UDFs are very useful when you have an expensive cold start operation you
+          need to perform. By cold start, we mean an operation we need to perform once at the
+          beginning of the processing step, before working through the data. Deserializing a
+          local ML model (fitted with scikit-learn or another Python modeling library) is an
+          example: we would need to unpack and read the model once for the whole data
+          frame, and then it could be used to process all records. Here, I'll reuse our f_to_c
+          function but will add a cold start to demonstrate the usage.
+
+               Our UDF in listing 9.6 is similar to the Series to Series UDF from section 9.1.2.
+          A few differences should be noted:
+
+                The signature goes from (pd.Series) -> pd.Series to (Iterator[pd.Series]) ->
+                   Iterator[pd.Series]. This is consequential to using an Iterator of Series UDF.
+
+                When working with the Series to Series UDF, we assumed that PySpark would
+                   give us one batch at a time. Here, since we are working with an Iterator of
+                   Series, we are explicitly iterating over each batch one by one. PySpark will dis-
+                   tribute the work for us.
+
+                Rather than using a return value, we yield so that our function returns an
+                   iterator.
+              Column transformations with pandas: Using Series UDF                 203
+
+Listing 9.6 Using an Iterator of Series to Iterator of Series UDF
+
+from time import sleep
+
+from typing import Iterator        The signature is now (Iterator[pd.Series]) ->
+                                    Iterator[pd.Series]. Notice the add-on of the
+                                    Iterator keyword (from the typing module).
+
+@F.pandas_udf(T.DoubleType())
+
+def f_to_c2(degrees: Iterator[pd.Series]) -> Iterator[pd.Series]:
+
+"""Transforms Farhenheit to Celcius."""
+
+sleep(5)                                                            We simulate a cold start using
+for batch in degrees:                                               sleep() for five seconds. The cold
+                                                                    start will happen on each worker
+       yield (batch - 32) * 5 / 9                                   once, rather than for every batch.
+
+gsod.select(                                    Since we are working with
+                                                an iterator here, we iterate
+"temp", f_to_c2(F.col("temp")).alias("temp_c")  over each batch, using yield
+                                                (instead of return).
+).distinct().show(5)
+
+# +-----+-------------------+
+
+# | temp|               temp_c|
+
+# +-----+-------------------+
+
+# | 37.2| 2.8888888888888906|
+
+# | 85.9| 29.944444444444443|
+
+# | 53.5| 11.944444444444445|
+
+# | 71.6| 21.999999999999996|
+
+# |-27.6|-33.111111111111114|
+
+# +-----+-------------------+
+
+# only showing top 5 rows
+
+We have covered the Iterator of Series to Iterator of Series case. What about the Itera-
+tor of multiple Series to Iterator of Series? This special case is to wrap multiple col-
+umns in a single iterator. For this example, I'll assemble the year, mo, and da columns
+(representing the year, month, and day) into a single column. This example requires
+more data transformation than when using an Iterator of a single Series; I illustrate
+the process of data transformation in figure 9.3.
+
+    Our date assembly UDF works like this:
+
+    1 year_mo_da is an Iterator of a tuple of Series, representing all the batches of val-
+        ues contained in the year, mo, and da columns.
+
+    2 To access each batch, we use a for loop over the iterator, the same principle as
+        for the Iterator of Series UDF (section 9.1.3).
+
+    3 To extract each individual series from the tuple, we use multiple assignments.
+        In this case, year will map to the first Series of the tuple, mo to the second, and
+        da to the third.
+
+    4 Since pd.to_datetime requests a data frame containing the year, month, and
+        day columns, we create the data frame via a dictionary, giving the keys the rele-
+        vant column names. pd.to_datetime returns a Series.
+
+    5 Finally, we yield the answer to build the Iterator of Series, fulfilling our contract.
+204  CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+     @F.pandas_udf(T.DateType())                                           Iterator[pd.Series]:
+     def create_date(
+
+            year_mo_da: Iterator[Tuple[pd.Series, pd.Series, pd.Series]])
+
+                      I[(             ), ...]                      year_mo_da is an Iterator of
+                                                                   Tuple of (three) Series. The
+     for year, mo, da in year_mo_da:                               iterator is for processing the
+                                                                   data from the columns/series
+year = ; mo = ; da =                  We iterate over each batch   one batch at a time. We wrap
+                                      using a for loop. Because    the columns/series in a tuple
+                                      the columns are wrapped      so the batch size is consistent
+                                      into a tuple, we unpack it   when PySpark does the
+                                      using multiple assignments.  processing.
+
+     yield pd.to_datetime(
+            pd.DataFrame(dict(year=year, month=mo, day=da))
+
+     )
+
+                              {year = ; mo = ; da = }
+
+                                                 pd_to_datetime requires a data
+                                                 frame containing the column's year,
+                                                 month, and day. We wrap our series
+                                                 into a dict to provide the relevant
+                                                 column names and pass the result to
+                                                 pd.DataFrame before returning
+                                                 the date Series.
+
+Figure 9.3 The transformation of three Series of values into a single date column. We iterate over each batch
+using a for loop, use multiple assignment to get the individual columns from the tuple, and pack them into a
+dictionary that feeds into a data frame where we can apply our to_datetime() function.
+
+         Listing 9.7 Assembling the date from three columns using an Iterator of multiple Series UDF
+
+     from typing import Tuple
+
+     @F.pandas_udf(T.DateType())
+     def create_date(
+
+            year_mo_da: Iterator[Tuple[pd.Series, pd.Series, pd.Series]]
+     ) -> Iterator[pd.Series]:
+
+            """Merges three cols (representing Y-M-D of a date) into a Date col."""
+            for year, mo, da in year_mo_da:
+
+                   yield pd.to_datetime(
+                          pd.DataFrame(dict(year=year, month=mo, day=da))
+
+                   )
+
+     gsod.select(
+            "year", "mo", "da",
+            create_date(F.col("year"), F.col("mo"), F.col("da")).alias("date"),
+
+     ).distinct().show(5)
+
+     This concludes our overview of how to use Scalar UDFs. Scalar UDFs are very
+     useful when you make column-level transformations, just like the functions in
+UDFs on grouped data: Aggregate and apply  205
+
+pyspark.sql.functions. When using any Scalar user-defined function, you need to
+remember that PySpark will not guarantee the order or the composition of the batches
+when applying it. If you follow the same "columns in, columns out" mantra we use when
+working with PySpark column functions, you'll do great.
+
+   TIP By default, Spark will aim for 10,000 records per batch. You can custom-
+   ize the maximum size of each batch using the spark.sql.execution.arrow
+   .maxRecordsPerBatch config when creating the SparkSession object; 10,000
+   records is a good balance for most jobs. If you are working with memory-
+   starved executors, you might want to reduce this.
+
+Should you need to worry about batch composition based on one or more columns,
+you'll learn how to apply UDFs on a GroupedData object (seen in chapter 5) to have a
+finer level of control over the records in the next section. We will not only create
+aggregate functions (e.g., sum()) but also apply functions while controlling the batches'
+composition.
+
+Exercise 9.1
+
+What are the values of WHICH_TYPE and WHICH_SIGNATURE in the following code block?
+
+exo9_1 = pd.Series(["red", "blue", "blue", "yellow"])
+
+def color_to_num(colors: WHICH_SIGNATURE) -> WHICH_SIGNATURE:
+       return colors.apply(
+              lambda x: {"red": 1, "blue": 2, "yellow": 3}.get(x)
+       )
+
+color_to_num(exo9_1)
+
+#0 1
+#1 2
+#2 2
+#3 3
+
+color_to_num_udf = F.pandas_udf(color_to_num, WHICH_TYPE)
+
+9.2 UDFs on grouped data: Aggregate and apply
+
+          This section covers UDFs in the case where you need to worry about the composition
+          of the batches. This is useful in two cases. For completion, I provide the common
+          names used in Spark 3 versions:
+
+                Group aggregate UDFs: You need to perform aggregate functions such as count()
+                   or sum(), as we saw in chapter 5.
+
+                Group map UDFs: Your data frame can be split into batches based on the values
+                   of certain columns; you then apply a function on each batch as if it were a pandas
+206                       CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+             DataFrame before combining each batch back into a Spark data frame. For
+             instance, we could have our gsod data batched by station month and perform
+             operations on the resulting data frames.
+
+     Both group aggregate and group map UDFs are PySpark's answer to the split-apply-
+     combine pattern. At the core, split-apply-combine is just a series of three steps that are
+     frequently used in data analysis:
+
+         1 Split your data set into logical batches (using groupby()).
+         2 Apply a function to each batch independently.
+         3 Combine the batches into a unified data set.
+
+     To be perfectly honest, I did not know this pattern's name until somebody pointed at
+     my code one day and said, "This is some nice split-apply-combine work you did there."
+     You probably use it intuitively as well. In the PySpark world, I see it more as a divide
+     and process move, as illustrated in figure 9.4.
+
+     ... ... ......                                                             ...  .........
+                                                      ...
+                                                           ...
+
+     Original data frame              Split                        Apply                Combine
+                            (the data frame into           (the transformation  (each chunk back into
+                          in-memory manageable
+                                                              to each chunk          a data frame)
+                                    chunks)                  independently)
+
+     Figure 9.4 Split-apply-combine depicted visually. We batch/group the data frame and
+     process each one with pandas before unioning them into a (Spark) data frame again.
+
+     Here, we will cover each type of UDF and illustrate how each relates to the split-apply-
+     combine pattern. While group map and group aggregate UDFs are clubbed in the
+     same family and both work on GroupedData objects (seen in chapter 5 when we review
+     the groupby() method), their syntax and usage are quite different.
+
+        WARNING With great power comes great responsibility: when grouping your
+        data frame, make sure each batch/group is "pandas-size," (i.e., it can be
+        loaded comfortably in memory). If one or more batches is too big, you'll get
+        an out-of-memory exception.
+UDFs on grouped data: Aggregate and apply                                  207
+
+9.2.1 Group aggregate UDFs
+
+              NOTE Only available from Spark 2.4 on. Spark 2.4 provided a functionType
+              of PandasUDFType.GROUPED_AGG (from pyspark.sql.functions; see http://
+              mng.bz/6Zmy).
+
+          This section covers the group aggregate UDF, also known as the Series to Scalar UDF.
+          With such a name, we already can imagine that it shares some affinities with the Series
+          to Series UDF seen in section 9.1.2. Unlike the Series to Series, the group aggregate
+          UDF distills the Series received as input to a single value. In the split-apply-combine
+          pattern, the apply stage collapses the batches into a single record based on the values
+          of the columns we batch against.
+
+               PySpark provides the group aggregate functionality though the groupby().agg()
+          pattern we learned during chapter 5. A group aggregate UDF is simply a custom
+          aggregate function we pass as an argument to agg(). For this section's example, I
+          wanted to do something a little more complex than reproducing the common aggre-
+          gate functions (count, min, max, average). In listing 9.8, I compute the linear slope of
+          the temperature for a given period using scikit-learn's LinearRegression object. You
+          do not need to know scikit-learn or machine learning to follow along; I'm using basic
+          functionality and explain each step.
+
+              NOTE This is not a machine learning exercise: I am just using scikit-learn's
+              plumbing to create a feature. Machine learning in Spark is covered in part 3
+              of this book. Don't take this code as robust model training!
+
+          To train a model in scikit-learn, we start by initializing the model object. In this case, I
+          use LinearRegression() without any other parameters. I then fit the model, provid-
+          ing X, my feature matrix, and y, my prediction vector. In this case, since I have a single
+          feature, I need to "reshape" my X matrix, or scikit-learn will complain about a shape
+          mismatch. It does not change the values of the matrix whatsoever.
+
+              TIP fit() is the common method for training an ML model. As a matter of
+              fact, Spark ML library uses the same method when training a distributed ML
+              model. See chapter 13 for more information.
+
+          At the end of the fit method, our LinearRegression object has trained a model and,
+          in the case of a linear regression, keeps its coefficient in a coef_ vector. Since I really
+          only care about the coefficient, I simply extract and return it.
+
+Listing 9.8 Creating a grouped aggregate UDF
+
+from sklearn.linear_model import LinearRegression  I import the linear
+                                                   regression object from
+
+                                                   sklearn.linear_model.
+
+@F.pandas_udf(T.DoubleType())
+
+def rate_of_change_temperature(day: pd.Series, temp: pd.Series) -> float:
+
+"""Returns the slope of the daily temperature for a given period of time."""
+208                            CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+                     return (
+
+   I initialize the  LinearRegression()
+LinearRegression
+                     .fit(X=day.astype(int).values.reshape(-1, 1), y=temp)
+            object.
+                            .coef_[0]                                        The fit method trains the
+                                                                           model, using the day Series
+                     )
+                                                                            as a feature and the temp
+                                      Since I only have one feature,          series as the prediction.
+                                       I select the first value of the
+                                        coef_ attribute as my slope.
+
+     It's easy to apply a grouped aggregate UDF to our data frame. In listing 9.9, I
+     groupby() the station code, name, and country, as well as the year and the month.
+     I pass my newly created grouped aggregate function as a parameter to agg(), passing
+     my Column objects as parameters to the UDF.
+
+                     Listing 9.9 Applying our grouped aggregate UDF using agg()
+
+     result = gsod.groupby("stn", "year", "mo").agg(
+
+                     rate_of_change_temperature(gsod["da"], gsod["temp"]).alias(
+
+                     "rt_chg_temp"
+
+            )                                                                   Applying a grouped aggregate
+     )                                                                       UDF is the same as using a Spark
+                                                                           aggregating function: you add it as
+     result.show(5, False)                                                  an argument to the agg() method
+     # +------+----+---+---------------------+
+                                                                                    of the GroupedData object.
+
+     # |stn |year|mo |rt_chg_temp                                       |
+
+     # +------+----+---+---------------------+
+
+     # |010250|2018|12 |-0.01014397905759162 |
+
+     # |011120|2018|11 |-0.01704736746691528 |
+
+     # |011150|2018|10 |-0.013510329829648423|
+
+     # |011510|2018|03 |0.020159116598556657 |
+
+     # |011800|2018|06 |0.012645501680677372 |
+
+     # +------+----+---+---------------------+
+
+     # only showing top 5 rows
+
+     In this section, we created a custom aggregate function using the Series to Scalar
+     UDF, also known at the group aggregate UDF. Following our split-apply-combine
+     pattern, a successful group aggregate UDF usage relies on the groupby() method
+     and uses a Series to Scalar UDF as one or more of the arguments to agg(). Like its
+     namesake, the return value of the apply stage is a singular value, so each batch
+     becomes a single record that gets combined in a grouped data frame. In the next
+     section, we explore an alternative to the aggregation pattern, where the return value
+     of the apply stage is a data frame.
+
+9.2.2 Group map UDF
+
+              NOTE Only available from Spark 2.3+. Spark 2.3/2.4 provide a functionType
+              of PandasUDFType.GROUPED_MAP and use the apply() method (from pyspark
+              .sql.functions; see http://mng.bz/oa8M) and a @pandas_udf() decorator.
+
+          The second type of UDF on grouped data is the group map UDF. Unlike the group
+          aggregate UDF, which returns a scalar value as a result over a batch, the grouped map
+UDFs on grouped data: Aggregate and apply  209
+
+UDF maps over each batch and returns a (pandas) data frame that gets combined
+back into a single (Spark) data frame. Because of this flexibility, PySpark provides a
+different usage pattern (and the syntax changed greatly between Spark 2 and Spark 3;
+see the note at the top of this section).
+
+    Before looking at the PySpark plumbing, we focus on the pandas side of the
+equation. Where scalar UDFs relied on pandas Series, group map UDFs use pandas
+DataFrame. Each logical batch from step 1 in figure 9.4 becomes a pandas Data-
+Frame ready for action. Our function must return a complete DataFrame, meaning
+that all the columns we want to display need to be returned, including the one we
+grouped against.
+
+    Our scale_temperature function in listing 9.10 looks very much like a pandas
+function--no pandas_udf() decorator (when using Spark 3) needed. pandas func-
+tions, when applied as group map UDFs, don't need any special definition. The return
+value data frame contains six columns: stn, year, mo, da, temp, and temp_norm. All the
+columns but temp_norm are assumed to be present in the input data frame. We create
+the temp_norm column, which holds the scaled temperature using the maximum and
+minimum temperature for each batch/pandas DataFrame. Since I have a division in
+my UDF, I am giving a reasonable value of 0.5 if the minimum temperature in my
+batch equals the maximum temperature. By default, pandas will give an infinite value
+for division by zero; PySpark will interpret this as null.
+
+    Listing 9.10 A group map UDF to scale temperature values
+
+def scale_temperature(temp_by_day: pd.DataFrame) -> pd.DataFrame:
+       """Returns a simple normalization of the temperature for a site.
+
+       If the temperature is constant for the whole window, defaults to 0.5."""
+       temp = temp_by_day.temp
+       answer = temp_by_day[["stn", "year", "mo", "da", "temp"]]
+       if temp.min() == temp.max():
+
+              return answer.assign(temp_norm=0.5)
+       return answer.assign(
+
+              temp_norm=(temp - temp.min()) / (temp.max() - temp.min())
+       )
+
+Now that the apply is step done, the rest is a piece of cake. Just like with the group
+aggregate UDF, we use groupby() to split a data frame into manageable batches but
+then pass our function to the applyInPandas() method. The method takes a function
+as a first argument and a schema as a second. I am using the simplified DDL syntax
+seen in chapter 7 here; if you are more comfortable with the StructType syntax seen
+in chapter 6, it can be applied here interchangeably.
+
+   TIP Spark 2 uses the pandas_udf() decorator and passes the return schema
+   as an argument, so if you're using this version, you would use the apply()
+   method here.
+210  CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+     In the next listing, we group our data frame using three columns: stn, year, and mo.
+     Each batch will represent a station-month's worth of observation. My UDF has six col-
+     umns in its return value; the data frame after applyInPandas() has the same six.
+
+         Listing 9.11 Split-apply-combing in PySpark
+
+     gsod_map = gsod.groupby("stn", "year", "mo").applyInPandas(
+            scale_temperature,
+            schema=(
+                   "stn string, year string, mo string, "
+                   "da string, temp double, temp_norm double"
+            ),
+
+     )
+
+     gsod_map.show(5, False)
+
+     # +------+----+---+---+----+-------------------+
+
+     # |stn |year|mo |da |temp|temp_norm  |
+
+     # +------+----+---+---+----+-------------------+
+
+     # |010250|2018|12 |08 |21.8|0.06282722513089001|
+
+     # |010250|2018|12 |27 |28.3|0.40314136125654443|
+
+     # |010250|2018|12 |31 |29.1|0.4450261780104712 |
+
+     # |010250|2018|12 |19 |27.6|0.36649214659685864|
+
+     # |010250|2018|12 |04 |36.6|0.8376963350785339 |
+
+     # +------+----+---+---+----+-------------------+
+
+          Group map UDFs are highly flexible constructs: as long as you respect the schema you
+          provide to the applyInPandas(), Spark will not require that you keep the same (or
+          any) number of records. This is as close as we will get to treating a Spark data frame
+          like a predetermined collection (via groupby()) of a pandas DataFrame. If you do not
+          care about the chunk composition but need the flexibility of "pandas DataFrame in,
+          pandas DataFrame out," see the mapInPandas() method of the PySpark DataFrame
+          object: it reuses the iterator pattern seen in section 9.1.3 but applies it to a full data
+          frame instead of a number of series.
+
+               Because of that flexibility, group map UDFs are often those I see developers having
+          the hardest time to get right. This is where your pen and paper comes in: map your
+          inputs and outputs, taking the time to ensure that the structure of your data frame
+          stays consistent.
+
+               The next and final section of this chapter summarizes how to decide between the
+          cornucopia of pandas UDFs. By utilizing a few questions, you'll know which one to
+          use, every time.
+
+9.3 What to use, when
+
+          This small final section is about making the right choice regarding pandas UDFs.
+          Because each one fills a specific use case, I think that the best way to approach this is
+          to use the properties of each and ask ourselves a few questions about our use case.
+          This way, there is no more hesitation!
+                        What to use, when                                                                                            211
+
+In figure 9.5, I provide a small decision tree to follow when you hesitate about which
+pandas UDF to use. Here's a summary:
+
+     If you need to control how the batches are made, you need to use a grouped
+        data UDF. If the return value is scalar, group aggregate, or otherwise, use a
+        group map and return a transformed (complete) data frame.
+
+     If you only want batches, you have more options. The most flexible is mapIn-
+        Pandas(), where an iterator of pandas DataFrame comes in and a transformed
+        one comes out. This is very useful when you want to distribute a pandas/local
+        data transformation on the whole data frame, such as with inference of local
+        ML models. Use it if you work with most of the columns from the data frame,
+        and use a Series to Series UDF if you only need a few columns.
+
+     If you have a cold-start process, use a Iterator of Series/multiple Series UDF,
+        depending on the number of columns you need within your UDF.
+
+     Finally, if you only need to transform some columns using pandas, a Series to
+        Series UDF is the way to go.
+
+                                                Do I need to have control regarding
+                                                    how PySpark splits the data
+                                                          frame into batches
+                                                        (split-apply-combine) ?
+
+                           Yes, I need a
+                        grouped data UDF.
+
+                                                                                            No
+
+What am I returning                           Do I want to perform pandas
+   from the UDF?                              operations on the complete
+
+I aggregate the series  I map the data frame    data frame or only some
+   in a single value.      in a transformed                columns?
+                              data frame.
+
+Group aggregate         Group map UDF         Complete                                                        Columns are good.
+         UDF                                  data frame
+                                                                                                      Do I have a process that
+                                              mapInPandas ()                                    needs to be "cold started" (loading
+
+                                                                                                   an ML model or making long
+                                                                                                             computations)?
+
+                                                  Yes, I have a cold start.                                           No
+                                              I need an Iterator-based UDF.
+                                                                                                                   Series to
+                                                            How many columns do I                                 Series UDF
+                                                            need to use in my UDF?
+
+                                                     One                                             Two or more
+
+                                              Iterator of                                          Iterator of
+                                               Series to                                        multiple Series
+                                              Iterator of
+                                              Series UDF                                         to Iterator of
+                                                                                                   Series UDF
+
+Figure 9.5 A summary of the decision-making for selecting the UDF
+212  CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+     pandas UDFs are quite useful for extending PySpark with transformations that are not
+     included in the pyspark.sql module. I find that they're also quite easy to understand
+     but pretty hard to get right. I finish this chapter with a few pointers on testing out and
+     debugging your pandas UDF.
+
+         The most important aspect of a pandas UDF (and any UDF) is that it needs to
+     work on the nondistributed version of your data. For regular UDFs, this means pass-
+     ing any argument of the type of values you expect should yield an answer. For instance, if
+     you divide an array of values by another one, you need to cover the case of dividing by
+     zero. The same is true for any pandas UDF: you need to be lenient with the input you
+     accept and strict with the output you provide.
+
+         To test your pandas UDF, my favorite strategy is to bring a sample of the data using
+     the func() method of my UDF. This way, I can play around in the REPL until I get it
+     just right, then promote it to my script. I show an example of the rate_of_change_-
+     temperature() UDF, applied locally, in the next listing.
+
+     Listing 9.12 Moving one station, one month's worth of data into a local pandas DataFrame
+
+     gsod_local = gsod.where(
+            "year = '2018' and mo = '08' and stn = '710920'"
+
+     ).toPandas()
+
+     print(                                                   Using func() to access
+            rate_of_change_temperature.func(                  the underlying pandas
+                   gsod_local["da"], gsod_local["temp_norm"]  function of our UDF
+            )
+
+     )
+     # -0.007830974115511494
+
+     When bringing a sample of your data frame into a pandas DataFrame for a grouped
+     map or grouped aggregate UDF, you need to ensure you're getting a full batch to
+     reproduce the results. In our specific case, since we grouped by "station", "year",
+     "month", I brought one station and one month (one specific year/month, to be precise)
+     of data. Since the grouping of the data happens at PySpark's level (via groupby()),
+     you need to think of the filters for your sample data in the same way.
+
+         pandas UDFs are probably the most powerful feature PySpark offers for data
+     manipulation. This chapter covered the most useful and frequent types. With the
+     popularity of the Python programming language within the Spark ecosystem, I am
+     confident that new types of optimized UDFs will make their entrance. pandas,
+     PySpark--you no longer have to choose. Use the right tool for the job and for your
+     data, knowing that you can leverage powerful pandas UDFs to scale your code when
+     it make sense.
+Additional exercises  213
+
+Summary
+
+     pandas UDFs allow you to take code that works on a pandas DataFrame and
+        scale it to the Spark data frame structure. Efficient serialization between the two
+        data structures is ensured by PyArrow.
+
+     We can group pandas UDFs into two main families, depending on the level of
+        control we need over the batches. Series and Iterator of Series (and Iterator of
+        DataFrame/mapInPandas) will batch efficiently, with the user having no control
+        over the batch composition.
+
+     If you need control over the contents of each batch, you can use grouped data
+        UDFs with the split-apply-combine programming pattern. PySpark provides
+        access to the values inside each batch of a GroupedData object, either as a Series
+        (group aggregate UDF) or as a data frame (group map UDF).
+
+Additional exercises
+
+Exercise 9.2
+
+Using the following definitions, create a temp_to_temp(value, from_temp, to_temp)
+that takes a numerical value in from_temp degrees and converts it to to degrees. Use
+a pandas UDF this time (we did the same exercise in chapter 8).
+
+     C = (F - 32) * 5 / 9 (Celsius)
+     K = C + 273.15 (Kelvin)
+     R = F + 459.67 (Rankine)
+
+Exercise 9.3
+
+Modify the following code block to use Celsius degrees instead of Fahrenheit. How is
+the result of the UDF different if applied to the same data frame?
+
+def scale_temperature(temp_by_day: pd.DataFrame) -> pd.DataFrame:
+       """Returns a simple normalization of the temperature for a site.
+
+       If the temperature is constant for the whole window, defaults to 0.5."""
+       temp = temp_by_day.temp
+       answer = temp_by_day[["stn", "year", "mo", "da", "temp"]]
+       if temp.min() == temp.max():
+
+              return answer.assign(temp_norm=0.5)
+       return answer.assign(
+
+              temp_norm=(temp - temp.min()) / (temp.max() - temp.min())
+       )
+
+Exercise 9.4
+
+Complete the schema of the following code block, using scale_temperature_C from
+the previous exercise. What happens if we apply our group map UDF like so instead?
+
+gsod_exo = gsod.groupby("year", "mo").applyInPandas(scale_temperature, schema=???)
+214  CHAPTER 9 Big data is just a lot of small data: Using pandas UDFs
+
+     Exercise 9.5
+     Modify the following code block to return both the intercept of the linear regression
+     as well as the slope in an ArrayType. (Hint: The intercept is in the intercept_ attri-
+     bute of the fitted model.)
+
+     from sklearn.linear_model import LinearRegression
+
+     @F.pandas_udf(T.DoubleType())
+     def rate_of_change_temperature(day: pd.Series, temp: pd.Series) -> float:
+
+            """Returns the slope of the daily temperature for a given period of
+              time."""
+
+            return (
+                   LinearRegression()
+                   .fit(X=day.astype("int").values.reshape(-1, 1), y=temp)
+                   .coef_[0]
+
+            )
+

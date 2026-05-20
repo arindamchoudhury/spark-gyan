@@ -81,3 +81,22 @@ Last verified: **2026-05-12** against Spark 4.1.1 docs.
 ## SparkR
 
 - SparkR is **deprecated in Spark 4.x** — do not use for new projects.
+
+---
+
+## pandas UDF (pandas_udf / Arrow)
+
+Last verified: **2026-05-20** against Spark 4.1.1 / PySpark 4.1.1.
+
+| Claim | Verified value | Notes |
+|---|---|---|
+| pandas minimum version (Spark 4.1) | **2.2.0** | Was 2.0.0 in Spark 4.0; was 1.0.5 in Spark 3.x |
+| `convertToArrowArraySafely` default | **on** (Spark 4.1) | Unsafe Arrow casts (int overflow, float truncation) now raise errors |
+| Arrow-native UDFs | Added **Spark 4.1** | `@F.udf(..., useArrow=True)` / `@F.udtf(..., useArrow=True)`; bypass pandas entirely |
+| Iterator API in GROUPED_MAP | Added **Spark 4.1** | `applyInPandas` now accepts an iterator of DataFrames variant |
+| Keyword arguments in SCALAR/GROUPED_AGG | Added **Spark 4.0** | Typed pandas UDFs with function decorators enhanced |
+| Legacy `PandasUDFType.SCALAR` syntax | Deprecated (use type hints) | Removed need for explicit PandasUDFType since Spark 3.0 |
+| `ARROW_PRE_0_15_IPC_FORMAT=1` workaround | **Obsolete** (was Spark 2.x only) | Not needed on Spark 3.0+ |
+| Default Arrow batch size | **10,000 records** | `spark.sql.execution.arrow.maxRecordsPerBatch` |
+
+Sources: [PySpark 4.1.1 pandas_udf docs](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.pandas_udf.html), [Spark 4.1.0 release notes](https://spark.apache.org/releases/spark-release-4.1.0.html), [PySpark upgrade guide](https://spark.apache.org/docs/latest/api/python/migration_guide/pyspark_upgrade.html)
