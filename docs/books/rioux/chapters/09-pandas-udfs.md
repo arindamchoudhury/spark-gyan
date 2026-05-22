@@ -19,12 +19,15 @@
 
 - PySpark distributes a DataFrame across partitions. pandas UDFs let you operate on **each partition (or batch within a partition) as a local pandas object** — a Series or a DataFrame — rather than record by record.
 - Serialisation between Spark and pandas is handled by **PyArrow** (zero-copy columnar format). This is why pandas UDFs are significantly faster than regular Python UDFs: one Arrow batch per UDF call vs. one Python call per row.
-- Two main families:
+- Two main families, five total UDF types:
 
-| Family | Controls batch composition? | Input / output |
+| Family | UDF type | Signature |
 |---|---|---|
-| **Scalar (Series) UDFs** | No — Spark decides batches | Series → Series, or Iterator[Series] → Iterator[Series] |
-| **Grouped data UDFs** | Yes — you choose `groupby()` keys | Series → scalar (aggregate) or DataFrame → DataFrame (map) |
+| **Scalar** — Spark decides batches | Series to Series | `pd.Series` → `pd.Series` |
+| | Iterator of Series to Iterator of Series | `Iterator[pd.Series]` → `Iterator[pd.Series]` |
+| | Iterator of multiple Series to Iterator of Series | `Iterator[Tuple[pd.Series, ...]]` → `Iterator[pd.Series]` |
+| **Grouped data** — you control batches via `groupby()` | Group aggregate (Series to Scalar) | `pd.Series` → scalar |
+| | Group map | `pd.DataFrame` → `pd.DataFrame` |
 
 ---
 
