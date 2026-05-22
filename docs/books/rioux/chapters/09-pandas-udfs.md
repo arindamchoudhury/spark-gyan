@@ -72,6 +72,20 @@ gsod = (
 
 > 💡 **Tip** — On a local Spark instance, limit to a single year (e.g., 2018) to keep execution fast.
 
+### Libraries that "play well with pandas"
+
+The book names **scikit-learn** explicitly. The broader category is any library whose functions accept and return `pd.Series` or `np.ndarray` — most of the scientific Python stack qualifies:
+
+| Library | Fits because… | Typical pandas UDF use |
+|---|---|---|
+| **NumPy** | Series wraps a NumPy array; arithmetic ops are automatic | Vectorised math not in Spark built-ins (trig, log, clip) |
+| **scikit-learn** | Models fit/predict on arrays; no per-row conversion needed | Distributed inference; cold-start load with Iterator UDF |
+| **SciPy** | `scipy.stats` functions accept Series directly | CDFs, distribution fitting, signal processing per group |
+| **statsmodels** | Fits statistical models on DataFrames | OLS, ARIMA per entity with group map UDF |
+| **Prophet** | Takes a DataFrame with `ds`/`y` columns | Per-entity time-series forecasting with group map UDF |
+
+The key criterion: if `library_function(my_series)` works in a plain Python session, it works inside a pandas UDF body with zero extra conversion. Libraries that only speak raw Python scalars belong in regular Python UDFs instead.
+
 ---
 
 ## 3. Series UDFs (Scalar UDFs)
