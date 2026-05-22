@@ -45,8 +45,12 @@ import pyspark.sql.types as T
 
 ### Batch size
 
+When Spark executes a Series UDF, it doesn't hand the entire partition to pandas at once. It splits the partition's columns into **Arrow record batches** and calls the UDF function once per batch, then concatenates the results. Smaller batches lower peak JVM and Python memory per call; larger batches reduce per-call overhead and give pandas more data to vectorise over in a single pass.
+
 - Default: **10,000 records per Arrow batch** (`spark.sql.execution.arrow.maxRecordsPerBatch`).
-- Reduce on memory-constrained executors; raising it marginally helps throughput but risks OOM.
+- Reduce on memory-constrained executors; if wide (many columns), reduce further — column count multiplies the memory cost per batch.
+- Raising it marginally helps throughput but risks OOM on large or wide partitions.
+- `maxRecordsPerBatch` does **not** apply to grouped data UDFs — each group arrives whole; it is the user's responsibility to ensure a group fits in memory.
 
 ### Data used in this chapter
 

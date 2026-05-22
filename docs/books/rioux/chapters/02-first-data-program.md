@@ -344,6 +344,38 @@ Before writing code, sketch the steps. For this problem:
 
 The DataFrame is the dominant structure in modern PySpark. The module for it is named `pyspark.sql` — it takes heavy inspiration from SQL.
 
+### Cross-platform file paths
+
+Always build file paths with `pathlib.Path` and call `.as_posix()` before passing to Spark. Forward slashes are required by Spark's Java layer; `Path.__str__` produces backslashes on Windows.
+
+```python
+from pathlib import Path
+
+# Anchor to the project root (one level above the script/notebook)
+try:
+    root_dir = Path(__file__).resolve().parent.parent  # .parent = script dir, .parent.parent = one level up (../)
+except NameError:
+    root_dir = Path.cwd().parent                       # .parent = ../ from wherever you launched the REPL/notebook
+
+# Build the path and convert to a forward-slash string
+path = (root_dir / "data" / "gutenberg_books" / "1342-0.txt").as_posix()
+book = spark.read.text(path)
+```
+
+The `try/except NameError` handles the fact that `__file__` is only defined in script files, not in a REPL or Jupyter notebook. Adjust `.parent` / `.parent.parent` to match your project layout.
+
+The `/` operator is `pathlib`'s idiomatic path joiner — the Python docs use it in all examples and it is the recommended replacement for `os.path.join`:
+
+```python
+# Old style
+os.path.join(root_dir, "data", "gutenberg_books", "1342-0.txt")
+
+# pathlib style — reads like an actual path, cross-platform
+root_dir / "data" / "gutenberg_books" / "1342-0.txt"
+```
+
+Both produce the same result. Prefer `/` for readability; finish with `.as_posix()` whenever the result is passed to Spark.
+
 ### `spark.read` — the DataFrameReader
 
 `spark.read` gives you a `DataFrameReader` object with format-specific methods:
