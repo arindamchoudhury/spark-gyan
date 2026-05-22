@@ -29,6 +29,34 @@
 | **Grouped data** — you control batches via `groupby()` | Group aggregate (Series to Scalar) | `pd.Series` → scalar |
 | | Group map | `pd.DataFrame` → `pd.DataFrame` |
 
+### Why doesn't Spark provide its own UDF language?
+
+It does — **built-in functions** (`pyspark.sql.functions`) *are* Spark's native way. They are written in Scala, run entirely inside the JVM, and are fully visible to the Catalyst optimiser. The design intent is: reach for built-ins first; use a UDF only when no built-in covers your case.
+
+UDFs exist as an escape hatch, and their cost comes down to a fundamental constraint: **Python is a separate process from the JVM**. There is no way to run CPython code inside the JVM without crossing a process boundary.
+
+| | Runs in | Catalyst-aware? | Boundary crossing |
+|---|---|---|---|
+| Built-in functions (`F.sum`, `F.col`, …) | JVM (Scala) | ✅ fully | None |
+| Scala / Java UDF | JVM | Partial | None |
+| Python UDF (`@F.udf`) | Python process | ❌ black box | Per row — serialise every record via Py4J |
+| pandas UDF (`@F.pandas_udf`) | Python process | ❌ black box | Per Arrow batch — far cheaper |
+| Arrow-native UDF (Spark 4.1+) | Python process | ❌ black box | Per Arrow batch, no pandas conversion |
+
+Spark's answer has been to make the crossing as cheap as possible: pandas UDFs batch via Arrow instead of pickling per row; Arrow-native UDFs (Spark 4.1) remove the pandas conversion layer on top of that.
+
+Two hierarchies apply depending on what you're optimising for:
+
+**By performance** (fastest → slowest):
+
+built-in function → Arrow-native UDF → pandas UDF → Python UDF
+
+**By practical reach** (what to actually reach for):
+
+built-in function → pandas UDF → Arrow-native UDF → Python UDF
+
+The practical order differs because pandas UDFs have been around since Spark 2.3 and the entire scientific Python ecosystem (scikit-learn, scipy, statsmodels) speaks `pd.Series` — whenever you need those libraries, pandas UDF is the right tool regardless of the overhead. Arrow-native UDFs (Spark 4.1+) are the better choice only when you need raw speed *and* `pyarrow.compute` covers your logic without needing pandas or its ecosystem.
+
 ---
 
 ## 2. Setup and dependencies
@@ -79,6 +107,35 @@ gsod = (
 
 > 💡 **Tip** — On a local Spark instance, limit to a single year (e.g., 2018) to keep execution fast.
 
+The cleaned `gsod` DataFrame has 31 columns. Key ones used in this chapter:
+
+| Column | Type | Notes |
+|---|---|---|
+| `stn` | string | Station identifier |
+| `year`, `mo`, `da` | string | Year, month, day |
+| `temp` | double | Mean temperature in °F; `9999.9` = missing (filtered out above) |
+| `dewp` | double | Dew point in °F; `9999.9` = missing |
+| `slp`, `stp` | double | Sea-level / station pressure; `9999.9` = missing |
+| `visib` | double | Visibility in miles; `999.9` = missing |
+| `wdsp`, `mxpsd`, `gust` | double | Wind speed / max / gust; `999.9` = missing |
+| `max`, `min` | double | Max/min temperature; `flag_max`/`flag_min` = NULL when derived |
+| `prcp` | double | Precipitation; `99.99` = missing |
+| `sndp` | double | Snow depth; `999.9` = missing |
+| `fog`, `rain_drizzle`, `snow_ice_pellets`, `hail`, `thunder`, `tornado_funnel_cloud` | int | Binary weather indicators (0/1) |
+
+> 💡 **Sentinel pattern** — missing values are encoded as out-of-range numbers (`9999.9`, `999.9`, `99.99`), not `null`. The `.where(F.col("temp") != 9999.9)` filter in the ingestion code is handling exactly this — always check for sentinels before aggregating.
+
+> ⚠️ **Expected warning with this dataset** — loading the 31-column GSOD schema triggers:
+> ```
+> WARN SparkStringUtils - Truncated the string representation of a plan since it was too large.
+> This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+> ```
+> Spark truncates plan strings at **25 fields** by default; GSOD has 31. No data is lost — it's cosmetic. Fix by raising the limit on the session:
+> ```python
+> spark.conf.set("spark.sql.debug.maxToStringFields", 50)
+> ```
+> Or set it at `SparkSession` creation time via `.config("spark.sql.debug.maxToStringFields", 50)`.
+
 ### Libraries that "play well with pandas"
 
 The book names **scikit-learn** explicitly. The broader category is any library whose functions accept and return `pd.Series` or `np.ndarray` — most of the scientific Python stack qualifies:
@@ -120,9 +177,18 @@ gsod.select("temp", "temp_c").distinct().show(5)
 
 - **Why faster than Python UDF?** One vectorised pandas operation per batch vs. one Python call per row.
 - Accepts multiple Series: `def my_udf(a: pd.Series, b: pd.Series) -> pd.Series`.
-- Complex return types: return a `pd.DataFrame` when the output schema is a `StructType`.
 
 > ⚠️ **Pitfall** — Spark **does not guarantee batch composition or ordering**. Don't write logic that assumes records from the same group land in the same batch — use a grouped data UDF for that.
+
+#### Working with complex types
+
+PySpark has a richer type system than pandas, which collapses strings and complex types into a catchall `object` dtype. When you drop from PySpark into pandas inside a UDF, **you are solely responsible for aligning types** — this is why specifying the return type in `@F.pandas_udf(return_type)` is recommended, not optional: it surfaces type mismatches early.
+
+| PySpark type | What to use in the UDF |
+|---|---|
+| Scalar (`IntegerType`, `DoubleType`, …) | Plain `pd.Series` |
+| `ArrayType` | `pd.Series` whose values are Python lists — Spark promotes them back to `ArrayType` |
+| `StructType` | `pd.DataFrame` — struct columns are mini DataFrames, the equivalence holds inside UDFs too |
 
 ### 3.2 Iterator of Series → Iterator of Series (cold start)
 
@@ -279,7 +345,7 @@ print(rate_of_change_temperature.func(gsod_local["da"], gsod_local["temp"]))
 Spark 4.1 adds Arrow-native UDF support that bypasses pandas entirely and works directly with `pyarrow.Array` objects. Two ways to get it:
 
 - **`@arrow_udf` decorator** — a dedicated decorator; takes `pa.Array` in, returns `pa.Array` out.
-- **`useArrow=True` on `@F.udf`** — opts an existing UDF into Arrow mode via a config flag. Can also be enabled session-wide with `spark.sql.execution.pythonUDF.arrow.enabled`.
+- **`useArrow=True` on `@F.udf`** — opts an existing UDF into Arrow mode. Can also be enabled session-wide: `spark.conf.set("spark.sql.execution.pythonUDF.arrow.enabled", True)`. This config defaults to `true` in Spark 4.2+; in Spark 4.1 it must be set explicitly.
 
 ```python
 import pyarrow as pa
