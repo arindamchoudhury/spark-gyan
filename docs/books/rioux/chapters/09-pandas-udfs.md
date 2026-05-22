@@ -192,7 +192,7 @@ PySpark has a richer type system than pandas, which collapses strings and comple
 
 ### 3.2 Iterator of Series → Iterator of Series (cold start)
 
-Same as Series → Series, but you receive an iterator of batches. The key win: an **expensive initialisation** (loading an ML model, compiling a regex) happens **once per partition**, not once per batch.
+Same as Series → Series, but you receive an iterator of batches. The key win: an **expensive initialisation** (loading an ML model from disk, opening a DB connection, loading a large lookup table) happens **once per partition**, not once per batch.
 
 ```python
 from typing import Iterator
