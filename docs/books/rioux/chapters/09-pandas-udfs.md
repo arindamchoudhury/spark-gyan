@@ -268,7 +268,7 @@ The **split-apply-combine** pattern is a standard data analysis term coined by H
 >
 > Same `applyInPandas(my_func, schema="...")` call either way — the signature determines the behaviour.
 
-> ⚠️ **Spark 4.1.x bug (SPARK-54531)** — Group aggregate and window aggregate pandas UDFs are broken in Spark 4.1.x and produce `BrokenPipeError` at runtime. Both share a serializer with group map UDFs despite having different semantics; the fix is in Spark 4.2.0. Workaround: rewrite as `applyInPandas` (group map) — return a one-row `pd.DataFrame` per group instead of a scalar.
+> ⚠️ **PySpark 4.1.x bug (SPARK-54531)** — Group aggregate and window aggregate pandas UDFs are broken in PySpark 4.1.x and produce `BrokenPipeError` at runtime. The root cause is a PySpark serializer bug: `GroupPandasUDFSerializer` is shared between `SQL_GROUPED_AGG_PANDAS_UDF`, `SQL_WINDOW_AGG_PANDAS_UDF`, and `SQL_GROUPED_MAP_PANDAS_UDF` despite fundamentally different semantics. The fix (a dedicated `ArrowStreamAggPandasUDFSerializer`) is in PySpark 4.2.0. Workaround: rewrite as `applyInPandas` (group map) — return a one-row `pd.DataFrame` per group instead of a scalar.
 >
 > The same bug affects:
 > - ❌ `groupby().agg(pandas_udf(...))` — group aggregate
