@@ -180,6 +180,21 @@ gsod.select("temp", "temp_c").distinct().show(5)
 
 > ⚠️ **Pitfall** — Spark **does not guarantee batch composition or ordering**. Don't write logic that assumes records from the same group land in the same batch — use a grouped data UDF for that.
 
+> ⚠️ **Type checker warning** — `@F.pandas_udf(T.DoubleType())` will produce a Pylance/pyright error:
+> ```
+> No overloads for "pandas_udf" match the provided arguments
+> Untyped function decorator obscures type of function
+> ```
+> This is a **known PySpark stub bug** ([SPARK-43189](https://issues.apache.org/jira/browse/SPARK-43189), filed April 2023, still open). The stubs were written for the old Spark 2.x API that required an explicit `functionType` argument (`PandasUDFType.SCALAR`). The modern Spark 3.0+ API infers the UDF type from Python type hints and needs only the return type — but no overload for that pattern exists in the stubs. The PySpark team's own codebase works around this with `# type: ignore[call-overload]`. Workarounds:
+> ```python
+> @F.pandas_udf(T.DoubleType())  # type: ignore[arg-type]
+> def f_to_c(degrees: pd.Series) -> pd.Series: ...
+> ```
+> Or suppress session-wide in `pyrightconfig.json`:
+> ```json
+> { "reportUntypedFunctionDecorator": "none", "reportCallIssue": "none" }
+> ```
+
 #### Working with complex types
 
 PySpark has a richer type system than pandas, which collapses strings and complex types into a catchall `object` dtype. When you drop from PySpark into pandas inside a UDF, **you are solely responsible for aligning types** — this is why specifying the return type in `@F.pandas_udf(return_type)` is recommended, not optional: it surfaces type mismatches early.
@@ -232,17 +247,47 @@ gsod.select(
 
 ## 4. UDFs on grouped data (split-apply-combine)
 
-The **split-apply-combine** pattern:
+The **split-apply-combine** pattern is a standard data analysis term coined by Hadley Wickham in a [2011 Journal of Statistical Software paper](https://www.jstatsoft.org/v40/i01/), introduced alongside the R `plyr` package. Pandas `groupby()`, dplyr, and Spark's `applyInPandas()` all implement the same concept.
 
 1. **Split** — `groupby()` divides the DataFrame into batches keyed by column values.
 2. **Apply** — a function runs on each batch independently (as a local pandas object).
 3. **Combine** — results are unioned back into a Spark DataFrame.
 
-> ⚠️ **Memory warning** — each batch must fit in executor memory. If one group is enormous, you get OOM. Spark 4.1 added an iterator API to `applyInPandas` as a safety valve for skewed data.
+> ⚠️ **Memory warning** — each batch must fit in executor memory. If one group is enormous, you get OOM. Spark 4.1 added an iterator API to `applyInPandas` as a safety valve for skewed data. **This is opt-in** — Spark detects which form you're using from the function's type hints:
+>
+> ```python
+> # Normal: whole group loaded into memory at once
+> def my_func(df: pd.DataFrame) -> pd.DataFrame:
+>     return df.transform(...)
+>
+> # Iterator: Spark feeds the group as batches — avoids OOM on large groups
+> def my_func(batches: Iterator[pd.DataFrame]) -> Iterator[pd.DataFrame]:
+>     for batch in batches:
+>         yield batch.transform(...)
+> ```
+>
+> Same `applyInPandas(my_func, schema="...")` call either way — the signature determines the behaviour.
+
+> ⚠️ **Spark 4.1.x bug (SPARK-54531)** — Group aggregate and window aggregate pandas UDFs are broken in Spark 4.1.x and produce `BrokenPipeError` at runtime. Both share a serializer with group map UDFs despite having different semantics; the fix is in Spark 4.2.0. Workaround: rewrite as `applyInPandas` (group map) — return a one-row `pd.DataFrame` per group instead of a scalar.
+>
+> The same bug affects:
+> - ❌ `groupby().agg(pandas_udf(...))` — group aggregate
+> - ❌ `pandas_udf(...).over(window)` — window aggregate
+> - ✅ `groupby().applyInPandas(...)` — group map (unaffected)
 
 ### 4.1 Group aggregate UDF (Series → scalar)
 
-A custom `agg()` function. Takes Series inputs, returns a single scalar per group. The "apply" stage collapses each group to one row.
+A custom `agg()` function. Takes Series inputs, returns a single scalar per group. The "apply" stage collapses each group to one row. This is a **reduction**, not a transform — N values in, one value out:
+
+```
+# Series → Series (transform): same length
+[37.2, 85.9, 42.1, 91.0]  →  [2.9, 30.0, 5.6, 32.8]
+
+# Group aggregate (reduction): many → one
+[37.2, 85.9, 42.1, 91.0]  →  64.05
+```
+
+Contrast with `groupby().transform()` (keeps all rows) vs `groupby().agg()` (one row per group) in plain pandas — same distinction.
 
 ```python
 from sklearn.linear_model import LinearRegression
@@ -272,7 +317,19 @@ result.show(5, False)
 
 ### 4.2 Group map UDF (DataFrame → DataFrame)
 
-Receives an entire group as a `pd.DataFrame`, returns a `pd.DataFrame`. The returned schema must match the one declared in `applyInPandas()`. Unlike aggregate UDFs, **row count can change**.
+Receives an entire group as a `pd.DataFrame`, returns a `pd.DataFrame`. The returned schema must match the one declared in `applyInPandas()`. The output row count doesn't have to match the input — your function can return fewer rows (filtering), the same rows (transforming), or more rows (interpolating).
+
+The key contrast with group aggregate:
+
+```
+# Group aggregate: N rows → 1 scalar (group collapses)
+[37.2, 42.1, 39.8]  →  0.24
+
+# Group map: N rows → M rows (group survives, transformed)
+[37.2, 42.1, 39.8]  →  [-2.9, 1.9, -0.4]   (e.g. demeaned)
+```
+
+Fewer rows (filtering outliers) and more rows (interpolating missing dates) are both valid — Spark unions whatever DataFrames come back from each group.
 
 ```python
 def scale_temperature(temp_by_day: pd.DataFrame) -> pd.DataFrame:
