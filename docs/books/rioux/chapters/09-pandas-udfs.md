@@ -268,12 +268,17 @@ The **split-apply-combine** pattern is a standard data analysis term coined by H
 >
 > Same `applyInPandas(my_func, schema="...")` call either way — the signature determines the behaviour.
 
-> ⚠️ **PySpark 4.1.x bug (SPARK-54531)** — Group aggregate and window aggregate pandas UDFs are broken in PySpark 4.1.x and produce `BrokenPipeError` at runtime. The root cause is a PySpark serializer bug: `GroupPandasUDFSerializer` is shared between `SQL_GROUPED_AGG_PANDAS_UDF`, `SQL_WINDOW_AGG_PANDAS_UDF`, and `SQL_GROUPED_MAP_PANDAS_UDF` despite fundamentally different semantics. The fix (a dedicated `ArrowStreamAggPandasUDFSerializer`) is in PySpark 4.2.0. Workaround: rewrite as `applyInPandas` (group map) — return a one-row `pd.DataFrame` per group instead of a scalar.
+> ⚠️ **PySpark 4.1.0+ noise (SPARK-54344)** — `BrokenPipeError: [Errno 32] Broken pipe` appears in notebook output when running pandas UDFs. **Queries actually succeed** — the error is cosmetic. The cause: SPARK-54344 changed worker recycling so idle workers flush output after the JVM has already closed the socket. Worker stderr goes unconditionally to JVM `System.err` with no config gate, so no Spark config flag silences it.
 >
-> The same bug affects:
-> - ❌ `groupby().agg(pandas_udf(...))` — group aggregate
-> - ❌ `pandas_udf(...).over(window)` — window aggregate
-> - ✅ `groupby().applyInPandas(...)` — group map (unaffected)
+> **Workaround** — redirect fd 2 before `SparkSession` initialisation:
+> ```python
+> import os
+> _errfd = os.open("/tmp/spark-stderr.log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+> os.dup2(_errfd, 2)
+> os.close(_errfd)
+> # now create SparkSession
+> ```
+> See [deep-dive article](https://medium.com/@arindam_62474/a-deep-dive-into-what-causes-it-why-every-config-knob-fails-and-how-to-actually-silence-it-17755d23e1ad) for full analysis.
 
 ### 4.1 Group aggregate UDF (Series → scalar)
 
@@ -331,6 +336,8 @@ The key contrast with group aggregate:
 
 Fewer rows (filtering outliers) and more rows (interpolating missing dates) are both valid — Spark unions whatever DataFrames come back from each group.
 
+Inside the function, `temp_by_day` is a plain **pandas DataFrame** — not a Spark `GroupedData` object. Spark shuffles the data so all rows for a given `(stn, year, mo)` land on the same partition, converts them to a pandas DataFrame, then calls your function. By the time Python sees it, the grouping is done and you're writing ordinary local pandas logic. The DataFrame includes all columns from the original Spark DataFrame, including the groupby key columns ([official docs](https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html): *"The input data contains all the rows and columns for each group."*).
+
 ```python
 def scale_temperature(temp_by_day: pd.DataFrame) -> pd.DataFrame:
     """Min-max normalise temperature within each station-month batch."""
@@ -352,7 +359,62 @@ gsod_map.show(5, False)
 - No `@F.pandas_udf` decorator needed for group map (Spark 3.0+).
 - Schema can use DDL string (as above) or `StructType`.
 - **All columns** you want in the result must be explicitly returned from your function.
-- For whole-DataFrame iteration without a group key, use `DataFrame.mapInPandas(fn, schema)` — the same iterator-of-DataFrames pattern but applied to the full DataFrame.
+### 4.3 Map (`mapInPandas()`) *(not in book)*
+
+Applies a function to the whole DataFrame as an iterator of batches — no grouping key. Each batch arrives as a `pd.DataFrame`; yield a `pd.DataFrame` back. Row count can change (filter, expand), just like group map.
+
+```python
+from typing import Iterable
+
+def filter_func(iterator: Iterable[pd.DataFrame]) -> Iterable[pd.DataFrame]:
+    for pdf in iterator:
+        yield pdf[pdf.id == 1]
+
+df.mapInPandas(filter_func, schema=df.schema).show()
+```
+
+Key differences from `applyInPandas`:
+
+| | `mapInPandas` | `applyInPandas` |
+|---|---|---|
+| Grouping | None — operates on Spark partitions as-is | Shuffles by key first |
+| Input | `Iterator[pd.DataFrame]` | `pd.DataFrame` (one group) |
+| Output | `Iterator[pd.DataFrame]` | `pd.DataFrame` |
+| Use case | Batch transforms, filtering, enrichment without needing group boundaries | Logic that depends on all rows in a group being together |
+
+### 4.4 Co-grouped map UDF (`cogroup().applyInPandas()`) *(not in book)*
+
+Joins two DataFrames by a common key and applies a pandas function to each co-group. Each call receives **two** `pd.DataFrame` arguments — one per source DataFrame — and returns one `pd.DataFrame`.
+
+```python
+df1 = spark.createDataFrame(
+    [(20000101, 1, 1.0), (20000101, 2, 2.0), (20000102, 1, 3.0), (20000102, 2, 4.0)],
+    ("time", "id", "v1"))
+
+df2 = spark.createDataFrame(
+    [(20000101, 1, "x"), (20000101, 2, "y")],
+    ("time", "id", "v2"))
+
+def merge_ordered(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
+    return pd.merge_ordered(left, right)
+
+df1.groupby("id").cogroup(df2.groupby("id")).applyInPandas(
+    merge_ordered,
+    schema="time int, id int, v1 double, v2 string",
+).show()
+# +--------+---+---+----+
+# |    time| id| v1|  v2|
+# +--------+---+---+----+
+# |20000101|  1|1.0|   x|
+# |20000102|  1|3.0|null|   ← row only in df1; v2 = null
+# |20000101|  2|2.0|   y|
+# |20000102|  2|4.0|null|
+# +--------+---+---+----+
+```
+
+Use case: time-series alignment, ordered merge, feature joining where group-level pandas logic is needed rather than a SQL join.
+
+> ⚠️ **Memory warning** — `maxRecordsPerBatch` is **not applied** to co-groups. All data for both sides of a co-group loads into memory at once. No iterator API escape hatch here — size your groups carefully.
 
 ---
 
