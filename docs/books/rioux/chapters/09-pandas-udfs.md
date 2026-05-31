@@ -322,6 +322,19 @@ result.show(5, False)
 
 ### 4.2 Group map UDF (DataFrame → DataFrame)
 
+`groupby(...).applyInPandas(fn, schema)` does three things:
+
+1. **Split** — Spark shuffles the data so every row with the same key lands on the same partition. Each partition holds exactly one group.
+2. **Apply** — Spark converts the group to a pandas DataFrame (all original columns included) and calls your function. Your function returns a pandas DataFrame.
+3. **Combine** — Spark serialises every returned DataFrame back via Arrow using the declared schema and unions them into one Spark DataFrame.
+
+```
+gsod (Spark DataFrame, millions of rows)
+    ├─ group (010250, 2018, 01) → pd.DataFrame → fn() → pd.DataFrame
+    ├─ group (010250, 2018, 02) → pd.DataFrame → fn() → pd.DataFrame
+    └─ ...  →  union all  →  gsod_map (Spark DataFrame)
+```
+
 Receives an entire group as a `pd.DataFrame`, returns a `pd.DataFrame`. The returned schema must match the one declared in `applyInPandas()`. The output row count doesn't have to match the input — your function can return fewer rows (filtering), the same rows (transforming), or more rows (interpolating).
 
 The key contrast with group aggregate:
@@ -359,6 +372,9 @@ gsod_map.show(5, False)
 - No `@F.pandas_udf` decorator needed for group map (Spark 3.0+).
 - Schema can use DDL string (as above) or `StructType`.
 - **All columns** you want in the result must be explicitly returned from your function.
+- **The schema applies to the output, not the input.** The input pandas DataFrame is shaped by the original Spark DataFrame's schema. The declared schema tells Spark what the returned DataFrame will look like — types are cast via Arrow at execution time, not at `.applyInPandas()` call time. Column matching depends on how the schema is declared:
+  - **DDL string** (`"stn string, temp double, ..."`) → matched by **column name**
+  - **`StructType`** → matched by **position**
 ### 4.3 Map (`mapInPandas()`) *(not in book)*
 
 Applies a function to the whole DataFrame as an iterator of batches — no grouping key. Each batch arrives as a `pd.DataFrame`; yield a `pd.DataFrame` back. Row count can change (filter, expand), just like group map.
