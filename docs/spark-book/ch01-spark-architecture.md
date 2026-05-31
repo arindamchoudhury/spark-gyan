@@ -139,7 +139,18 @@ The official definition ([cluster-overview](https://spark.apache.org/docs/latest
 
 > *"The process running the main() function of the application and creating the SparkContext."*
 
-In the word count program, the Driver Program is the Python process launched by `spark-submit intro.py`. It exists before any Spark API is called. The process *is* the driver; `SparkSession.builder.getOrCreate()` does not create the driver — it runs *inside* the already-running driver process.
+The official docs ([submitting-applications](https://spark.apache.org/docs/latest/submitting-applications.html)) define two deploy modes that determine where the driver runs:
+
+| How you run | Deploy mode | Driver Program | Verified |
+|---|---|---|---|
+| `spark-submit --deploy-mode client` | client (default) | the spark-submit process on the submitting machine | ✅ official docs |
+| `spark-submit --deploy-mode cluster` | cluster | a process launched on a worker node | ✅ official docs |
+| Jupyter notebook | client | the Jupyter kernel process | inferred — no explicit official statement found |
+| `pyspark` shell | client | the pyspark shell process | inferred — no explicit official statement found |
+
+The inference for notebook and shell comes from the RDD guide: *"every Spark application has a driver program that runs the user's main function."* In a Jupyter notebook the user's code runs in the kernel process; in the pyspark shell it runs in the shell process — so by the definition those processes are the driver. But this is reasoning from the definition, not a direct official statement.
+
+In all cases, `SparkSession.builder.getOrCreate()` does not create the driver. It runs *inside* the already-running driver process and creates a SparkSession (and SparkContext) within it.
 
 Every call you make — `spark.read.text(...)`, `.select(...)`, `.filter(...)`, `.groupBy(...)` — executes in the driver process. It records the instructions as a logical plan but moves no data. The driver must be network-addressable from worker nodes because executors send results back to it.
 
