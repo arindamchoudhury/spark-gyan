@@ -48,7 +48,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B1 — Spark Architecture & the Execution Model
+### ✅ B1 — Spark Architecture & the Execution Model
 
 **What it is:** The mental model of how Spark distributes work — driver, executors, cluster manager, JVM vs Python process, lazy evaluation, DAG, stages, tasks.
 
@@ -64,7 +64,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B2 — SparkSession and Entry Points
+### ✅ B2 — SparkSession and Entry Points
 
 **What it is:** Creating a `SparkSession`; configuring the application; log levels; local vs cluster mode; the REPL vs script context.
 
@@ -79,7 +79,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B3 — The DataFrame API: Basics
+### ✅ B3 — The DataFrame API: Basics
 
 **What it is:** `select`, `filter`/`where`, `withColumn`, `drop`, `rename`, `distinct`, `show`, `printSchema`, `dtypes`, `describe`.
 
@@ -95,7 +95,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B4 — Reading and Writing Data
+### ✅ B4 — Reading and Writing Data
 
 **What it is:** SparkReader (`spark.read`) and SparkWriter (`df.write`) for CSV, JSON, Parquet, and ORC; options, modes, schema inference vs declaration.
 
@@ -111,7 +111,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B5 — Schema: StructType, DDL Strings, and Type Safety
+### ✅ B5 — Schema: StructType, DDL Strings, and Type Safety
 
 **What it is:** `StructType` / `StructField` schema objects; DDL shorthand strings; `inferSchema` trade-offs; checking schema at runtime.
 
@@ -127,7 +127,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B6 — Basic Aggregations and GroupBy
+### ✅ B6 — Basic Aggregations and GroupBy
 
 **What it is:** `groupBy().agg()`, built-in aggregate functions (`F.count`, `F.sum`, `F.avg`, `F.min`, `F.max`, `F.countDistinct`), `GroupedData`.
 
@@ -142,7 +142,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B7 — Joins: Types and Mechanics
+### ✅ B7 — Joins: Types and Mechanics
 
 **What it is:** Inner, left, right, full outer, semi, anti joins; equi-join shorthand; column disambiguation; broadcast join hint.
 
@@ -158,7 +158,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B8 — Spark SQL
+### ✅ B8 — Spark SQL
 
 **What it is:** `createOrReplaceTempView`, `spark.sql()`, SQL string expressions in `selectExpr`/`F.expr`, the Spark catalog.
 
@@ -174,7 +174,7 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 ---
 
-### B9 — Null Handling
+### ✅ B9 — Null Handling
 
 **What it is:** `dropna`, `fillna`, `coalesce`, null-safe equality (`<=>` / `eqNullSafe`), how nulls propagate through aggregations and joins.
 
@@ -210,7 +210,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I1 — Complex Column Types: Arrays, Maps, Structs
+### ✅ I1 — Complex Column Types: Arrays, Maps, Structs
 
 **What it is:** `ArrayType`, `MapType`, `StructType` as column values; `F.explode`, `F.posexplode`, `F.explode_outer`; array functions (`F.array_contains`, `F.size`, `F.array_distinct`); struct dot notation; `collect_list`/`collect_set`.
 
@@ -226,7 +226,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I2 — Window Functions
+### ✅ I2 — Window Functions
 
 **What it is:** `Window.partitionBy().orderBy()`, aggregate functions over windows, ranking functions (`rank`, `dense_rank`, `percent_rank`, `ntile`, `row_number`), analytic functions (`lag`, `lead`, `cume_dist`), frame boundaries (`rowsBetween`, `rangeBetween`).
 
@@ -242,7 +242,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I3 — User-Defined Functions
+### ✅ I3 — User-Defined Functions
 
 **What it is:** `@F.udf` (row-by-row Python UDF); `@F.pandas_udf` (vectorised Series→Series, Iterator→Iterator); the performance hierarchy; `.func` for local testing.
 
@@ -259,7 +259,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I4 — RDD Fundamentals
+### ✅ I4 — RDD Fundamentals
 
 **What it is:** `SparkContext.parallelize`, `map`, `filter`, `reduce`, `flatMap`, `collect`, `take`; when RDDs are still needed vs DataFrames.
 
@@ -276,7 +276,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I5 — Partitioning: Concepts and Control
+### ✅ I5 — Partitioning: Concepts and Control
 
 **What it is:** Physical partitions vs logical partitions; `repartition(n)`, `coalesce(n)`, `partitionBy(col)` on writes; default shuffle partition count; how partition count affects file output.
 
@@ -292,7 +292,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I6 — Caching and Persistence
+### ⬜ I6 — Caching and Persistence
 
 **What it is:** `df.cache()`, `df.persist(StorageLevel.*)`, `df.unpersist()`; storage levels; when caching helps vs hurts; `MEMORY_AND_DISK_DESER` as the default.
 
@@ -307,7 +307,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I7 — The Spark UI: Reading Plans and Diagnosing Jobs
+### ⬜ I7 — The Spark UI: Reading Plans and Diagnosing Jobs
 
 **What it is:** Jobs, stages, tasks; the SQL tab (parsed → analysed → optimised → physical plan); DAG visualisation; shuffle read/write metrics; spill indicators.
 
@@ -323,7 +323,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I8 — Delta Lake Basics
+### ⬜ I8 — Delta Lake Basics
 
 **What it is:** Writing and reading Delta tables; ACID transactions; the transaction log; `DESCRIBE HISTORY`; time travel (`VERSION AS OF`, `TIMESTAMP AS OF`); `VACUUM`; `OPTIMIZE`.
 
@@ -339,7 +339,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I9 — The Medallion Architecture
+### ⬜ I9 — The Medallion Architecture
 
 **What it is:** Bronze (raw ingest) → Silver (cleaned, typed) → Gold (aggregated, business-ready); schema enforcement at each layer; MERGE INTO for upserts; incremental processing.
 
@@ -355,7 +355,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### I10 — Data Formats: Parquet, Delta, Avro, JSON
+### ⬜ I10 — Data Formats: Parquet, Delta, Avro, JSON
 
 **What it is:** Columnar vs row storage; predicate pushdown; column pruning; Parquet row groups and page footers; when to use each format.
 
@@ -394,7 +394,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A1 — Query Optimisation: Catalyst and the Physical Plan
+### ⬜ A1 — Query Optimisation: Catalyst and the Physical Plan
 
 **What it is:** Logical plan → analysed plan → optimised plan → physical plan; rule-based optimisations (constant folding, predicate pushdown, projection pruning); cost-based optimisation; `EXPLAIN` output.
 
@@ -411,7 +411,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A2 — Adaptive Query Execution (AQE)
+### ⬜ A2 — Adaptive Query Execution (AQE)
 
 **What it is:** Dynamic partition coalescing (reduces post-shuffle partitions automatically); dynamic broadcast join conversion (upgrades sort-merge to broadcast at runtime if a side is small enough); skew join handling (splits skewed partitions).
 
@@ -427,7 +427,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A3 — Join Strategies and Tuning
+### ⬜ A3 — Join Strategies and Tuning
 
 **What it is:** Broadcast hash join (small-large); sort-merge join (large-large); shuffle-hash join (medium tables, no sort); `BROADCAST`, `MERGE`, `SHUFFLE_HASH` hints; `spark.sql.autoBroadcastJoinThreshold`; skew joins.
 
@@ -444,7 +444,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A4 — Data Skew and Shuffle Optimisation
+### ⬜ A4 — Data Skew and Shuffle Optimisation
 
 **What it is:** Why some partitions take 10× longer than others; salting keys; `SKEW HINT`; shuffle partition tuning; `spark.sql.shuffle.partitions`; spill to disk.
 
@@ -460,7 +460,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A5 — Advanced pandas UDFs and UDFs on Windows
+### ⬜ A5 — Advanced pandas UDFs and UDFs on Windows
 
 **What it is:** Group aggregate UDF (Series→scalar) used in `.agg()` and over window specs; group map UDF (`applyInPandas`); Iterator of multiple Series; bounded vs unbounded window UDFs (Spark 3.0+).
 
@@ -476,7 +476,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A6 — Delta Lake Advanced Operations
+### ⬜ A6 — Delta Lake Advanced Operations
 
 **What it is:** Schema evolution (`mergeSchema`, `overwriteSchema`); schema enforcement; `MERGE INTO` for SCD Type 1 and Type 2; Z-ordering; liquid clustering; deletion vectors; Change Data Feed (CDF).
 
@@ -493,7 +493,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A7 — Structured Streaming: Fundamentals
+### ⬜ A7 — Structured Streaming: Fundamentals
 
 **What it is:** The micro-batch execution model; input sources (file, Kafka, socket); output sinks (Delta, memory, console, Kafka); output modes (append, update, complete); triggers; checkpointing; fault tolerance.
 
@@ -509,7 +509,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A8 — Structured Streaming: Stateful Processing
+### ⬜ A8 — Structured Streaming: Stateful Processing
 
 **What it is:** Event time vs processing time; watermarking for late data; tumbling, sliding, and session windows; stateful aggregations; streaming joins; `flatMapGroupsWithState` for arbitrary stateful logic.
 
@@ -526,7 +526,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A9 — ML Pipelines with Spark MLlib
+### ⬜ A9 — ML Pipelines with Spark MLlib
 
 **What it is:** `Transformer` / `Estimator` / `Pipeline` API; feature engineering (imputers, scalers, encoders, vectorisers); `CrossValidator` and `TrainValidationSplit`; model persistence; `PipelineModel`.
 
@@ -543,7 +543,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### A10 — Testing PySpark Pipelines
+### ⬜ A10 — Testing PySpark Pipelines
 
 **What it is:** Unit testing with `pytest` and a local `SparkSession`; testing transformations in isolation; integration testing; `chispa` for DataFrame equality assertions; testing UDFs via `.func`.
 
@@ -582,7 +582,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E1 — Spark Internals: Memory, Execution, and Serialisation
+### ⬜ E1 — Spark Internals: Memory, Execution, and Serialisation
 
 **What it is:** Tungsten memory model (off-heap, binary row format, WSCG — whole-stage code generation); task memory (execution vs storage); serialisation (Kryo vs Java vs Arrow); GC pressure and mitigation.
 
@@ -599,7 +599,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E2 — Production Deployment: Cluster Management and Scaling
+### ⬜ E2 — Production Deployment: Cluster Management and Scaling
 
 **What it is:** Cluster managers (YARN, Kubernetes, Databricks, standalone); driver and executor sizing; dynamic allocation; auto-scaling; `spark-submit` configuration; deploy modes (client vs cluster).
 
@@ -616,7 +616,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E3 — Observability: Monitoring, Alerting, and Logging
+### ⬜ E3 — Observability: Monitoring, Alerting, and Logging
 
 **What it is:** Spark History Server; Spark metrics system; structured logging from drivers and executors; custom listeners; alerting on job duration regressions; Spark UI on completed jobs.
 
@@ -632,7 +632,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E4 — Delta Lake Internals: Transaction Log, MVCC, and Concurrency
+### ⬜ E4 — Delta Lake Internals: Transaction Log, MVCC, and Concurrency
 
 **What it is:** The `_delta_log` JSON commit files; checkpoint files; snapshot isolation; optimistic concurrency control; what happens during concurrent writes; `RESTORE`; `CLONE`.
 
@@ -648,7 +648,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E5 — Data Governance: Unity Catalog, Lineage, and Security
+### ⬜ E5 — Data Governance: Unity Catalog, Lineage, and Security
 
 **What it is:** Unity Catalog three-level namespace (`catalog.schema.table`); column-level access control; row filters; audit logs; data lineage (table-level and column-level); Delta Sharing.
 
@@ -665,7 +665,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E6 — Pipeline Orchestration with Dagster
+### ⬜ E6 — Pipeline Orchestration with Dagster
 
 **What it is:** Software-defined assets, asset dependencies, `Definitions`, `Resources` (passing `SparkSession`), partitioned assets (incremental processing), schedules, sensors (event-driven triggers), backfills.
 
@@ -681,7 +681,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E7 — CI/CD for Data Engineering
+### ⬜ E7 — CI/CD for Data Engineering
 
 **What it is:** Git branching for data pipelines; unit + integration testing in CI; environment promotion (dev → staging → prod); Databricks Asset Bundles (DABs); GitHub Actions for pipeline deployment; parameterised job configurations.
 
@@ -697,7 +697,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E8 — Change Data Capture (CDC) and Slowly Changing Dimensions
+### ⬜ E8 — Change Data Capture (CDC) and Slowly Changing Dimensions
 
 **What it is:** CDC patterns (full snapshot, append-only log, change data feed); `MERGE INTO` for SCD Type 1 (upsert) and Type 2 (full history with effective dates); `AUTO CDC INTO` in Lakeflow Pipelines; Delta CDF.
 
@@ -713,7 +713,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### E9 — Spark Connect and the Modern Client Architecture
+### ⬜ E9 — Spark Connect and the Modern Client Architecture
 
 **What it is:** Spark Connect (Spark 3.4+): a gRPC-based client-server protocol that separates the Python client from the Spark cluster; implications for deployment, security, and local development.
 
@@ -756,7 +756,7 @@ Expert (E1–E9)           → 40–60+ hrs
     ↓  [Certification: Data Engineer Professional]
 ```
 
-**You are currently here:** Beginner complete, Intermediate complete (I1–I10 done through Rioux Chs 1–10). Starting A1 next.
+**You are currently here:** B1–B9 ✅ + I1–I5 ✅ (14/38 topics done). Next: ⬜ I6 — Caching and Persistence.
 
 ---
 
