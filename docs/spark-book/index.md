@@ -4,20 +4,20 @@ Personal book written as I work through the [learning path](../learning-path.md)
 
 | Status | Ch | Topic code | Title | Written |
 |---|---|---|---|---|
-| ⬜ | 01 | B1 | Spark Architecture and the Execution Model | — |
-| ⬜ | 02 | B2 | SparkSession and Entry Points | — |
-| ⬜ | 03 | B3 | The DataFrame API: Basics | — |
-| ⬜ | 04 | B4 | Reading and Writing Data | — |
-| ⬜ | 05 | B5 | Schema: StructType, DDL, and Type Safety | — |
-| ⬜ | 06 | B6 | Aggregations and GroupBy | — |
-| ⬜ | 07 | B7 | Joins: Types and Mechanics | — |
-| ⬜ | 08 | B8 | Spark SQL | — |
-| ⬜ | 09 | B9 | Null Handling | — |
-| ⬜ | 10 | I1 | Complex Types: Arrays, Maps, and Structs | — |
-| ⬜ | 11 | I2 | Window Functions | — |
-| ⬜ | 12 | I3 | User-Defined Functions | — |
-| ⬜ | 13 | I4 | RDD Fundamentals | — |
-| ⬜ | 14 | I5 | Partitioning: Concepts and Control | — |
+| ✅ | 01 | B1 | [Spark Architecture and the Execution Model](ch01-spark-architecture.md) | 2026-05-31 |
+| ✅ | 02 | B2 | [SparkSession and Entry Points](ch02-sparksession.md) | 2026-05-31 |
+| ✅ | 03 | B3 | [The DataFrame API: Basics](ch03-dataframe-basics.md) | 2026-05-31 |
+| ✅ | 04 | B4 | [Reading and Writing Data](ch04-reading-writing-data.md) | 2026-05-31 |
+| ✅ | 05 | B5 | [Schema: StructType, DDL, and Type Safety](ch05-schema-type-safety.md) | 2026-05-31 |
+| ✅ | 06 | B6 | [Aggregations and GroupBy](ch06-aggregations-groupby.md) | 2026-05-31 |
+| ✅ | 07 | B7 | [Joins: Types and Mechanics](ch07-joins.md) | 2026-05-31 |
+| ✅ | 08 | B8 | [Spark SQL](ch08-spark-sql.md) | 2026-05-31 |
+| ✅ | 09 | B9 | [Null Handling](ch09-null-handling.md) | 2026-05-31 |
+| ✅ | 10 | I1 | [Complex Types: Arrays, Maps, and Structs](ch10-complex-types.md) | 2026-05-31 |
+| ✅ | 11 | I2 | [Window Functions](ch11-window-functions.md) | 2026-05-31 |
+| ✅ | 12 | I3 | [User-Defined Functions: Python and pandas UDFs](ch12-udfs.md) | 2026-05-31 |
+| ✅ | 13 | I4 | [RDD Fundamentals](ch13-rdds.md) | 2026-05-31 |
+| ✅ | 14 | I5 | [Partitioning: Concepts and Control](ch14-partitioning.md) | 2026-05-31 |
 | ⬜ | 15 | I6 | Caching and Persistence | — |
 | ⬜ | 16 | I7 | The Spark UI | — |
 | ⬜ | 17 | I8 | Delta Lake Basics | — |
