@@ -66,6 +66,11 @@ nav = [
     ]},
 ]
 
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+]
+
 # NOTE: [project.theme] intentionally omitted. Zensical 0.0.x ships only its
 # default theme; setting name = "modern" or "classic" causes an install error.
 # Add [project.theme] once Zensical 0.1+ ships.
