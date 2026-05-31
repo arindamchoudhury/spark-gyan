@@ -48,9 +48,27 @@ Sources: [AWS — Hadoop vs Spark](https://aws.amazon.com/compare/the-difference
 
 ## Core concept
 
-Think of a Spark cluster as a factory. The **driver** is the floor manager: it receives your Python instructions, translates them into a plan, and assigns work to others. **Executors** are the workers: JVM processes distributed across **worker nodes** that do the actual data processing. The **cluster manager** (Spark Standalone, YARN, Kubernetes) is the factory owner who decides how many workers are assigned.
+The official Spark documentation describes the cluster architecture with this diagram:
 
-When you run a PySpark script, your Python process is the driver. It connects to a cluster manager, which spins up executors. Your data is split into **partitions** — chunks distributed across executor memory. Each partition can be processed independently in parallel.
+[![Spark cluster overview](assets/ch01/cluster-overview.png)](assets/ch01/cluster-overview.png)
+
+*Source: [Apache Spark — Cluster Mode Overview](https://spark.apache.org/docs/latest/cluster-overview.html)*
+
+The components, using the official definitions:
+
+| Component | Official definition |
+|---|---|
+| **Driver Program** | The process running the main() function of the application and creating the SparkContext. Coordinates the application; must be network-addressable from worker nodes. |
+| **SparkContext** | The object in your main program that connects to the cluster manager and coordinates the distributed computation. In PySpark, `spark = SparkSession.builder.getOrCreate()` creates this for you. |
+| **Cluster Manager** | An external service that allocates resources across applications — Spark Standalone, YARN, or Kubernetes. |
+| **Worker Node** | Any node in the cluster that can run application code. |
+| **Executor** | A process launched on a worker node for one application. Runs tasks and keeps data in memory or on disk. Each application has its own isolated executors; they stay up for the lifetime of the application. |
+| **Task** | A unit of work sent to one executor. One task processes one partition. |
+| **Cache** | In-memory or disk storage maintained by executors across tasks — populated when you call `.cache()` or `.persist()`. |
+
+When you run a PySpark script, your Python process is the driver. It connects to the cluster manager, which launches executors on worker nodes. The driver sends your application code to those executors, then schedules tasks — one task per data partition — to run on them. Executors report results back to the driver.
+
+Your data is split into **partitions** — chunks distributed across executor memory. Each partition is processed by exactly one task, independently and in parallel with other tasks. This is the source of Spark's scalability: more executors means more tasks can run at the same time.
 
 The JVM-Python boundary matters here. PySpark's DataFrame API generates JVM instructions — so `F.sum()`, `F.join()`, and `F.filter()` all run at full JVM speed regardless of Python. The Python process only sends the plan; the JVM does the heavy lifting. Python UDFs break this model (covered in Chapter 12), but for the DataFrame API the performance gap between Python and Scala is negligible.
 
