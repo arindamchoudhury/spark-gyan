@@ -135,19 +135,25 @@ Here is what each component in that diagram is doing during the word count progr
 
 ### Driver Program
 
-The **Driver Program** is the Python process that was launched when you ran `spark-submit intro.py` (or `python intro.py` locally). It exists before any Spark code runs — the process is the driver, not the session.
+The official definition ([cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)):
 
-Every call you make once the session is available — `spark.read.text(...)`, `.select(...)`, `.filter(...)`, `.groupBy(...)` — is handled by the driver process. It receives your instructions, translates them into a logical plan, and holds that plan in memory. No data moves. The driver is doing paperwork.
+> *"The process running the main() function of the application and creating the SparkContext."*
 
-The driver must be network-addressable from worker nodes because executors send results back to it.
+In the word count program, the Driver Program is the Python process launched by `spark-submit intro.py`. It exists before any Spark API is called. The process *is* the driver; `SparkSession.builder.getOrCreate()` does not create the driver — it runs *inside* the already-running driver process.
+
+Every call you make — `spark.read.text(...)`, `.select(...)`, `.filter(...)`, `.groupBy(...)` — executes in the driver process. It records the instructions as a logical plan but moves no data. The driver must be network-addressable from worker nodes because executors send results back to it.
 
 ---
 
 ### SparkContext and SparkSession
 
-`SparkSession.builder...getOrCreate()` does not create the driver — the driver process already exists. What it creates is a **SparkContext** *inside* the running driver process: the object that opens a connection to the cluster manager and coordinates the distributed computation. `SparkSession` wraps the SparkContext and adds the SQL and DataFrame APIs on top.
+The official definition of SparkContext ([cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)):
 
-In the word count program, the SparkContext is what gets invoked the moment `.show(10)` fires. It takes the logical plan the driver assembled, optimises it, and hands it to the cluster manager.
+> *"The SparkContext object in your main program (called the driver program). It coordinates independent sets of processes on a cluster and connects to cluster managers to allocate resources."*
+
+`SparkSession.builder.getOrCreate()` creates a **SparkSession** — the entry point for DataFrame and SQL functionality introduced in Spark 2.0. SparkSession is a higher-level abstraction that encapsulates the SparkContext internally. You can access the underlying SparkContext via `spark.sparkContext`, but for DataFrame operations you interact with SparkSession directly.
+
+In the word count program, once `.show(10)` fires, the SparkContext (accessed through SparkSession) takes the logical plan, optimises it, and hands it to the cluster manager to allocate executors.
 
 ---
 
