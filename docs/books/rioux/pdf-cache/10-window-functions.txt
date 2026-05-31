@@ -1,0 +1,1433 @@
+=== PDF page 237 (printed 215) ===
+215
+Your data under
+a different lens:
+Window functions
+When performing data analysis or feature engineering (which is my favorite part of
+machine learning; see chapter 13), nothing makes me quite as happy as window
+functions. On first glance, they look like a watered-down version of the split-apply-
+combine pattern introduced in chapter 9. Then you open the blinds and bam—
+powerful manipulations in a short, expressive body of code.
+ Those who don’t know window functions are bound to reimplement its func-
+tionality poorly. This has been my experience coaching data analysts, scientists, and
+engineers. If you find yourself struggling to
+This chapter covers:
+ Window functions and the kind of data 
+transformation they enable
+ Summarizing, ranking, and analyzing data 
+using the different classes of window 
+functions
+ Building static, growing, and unbounded 
+windows to your functions
+ Apply UDF to windows as custom window 
+functions
+
+=== PDF page 238 (printed 216) ===
+216 CHAPTER 10 Your data under a different lens: Window functions
+ Rank records
+ Identify the top/bottom record according to a set of conditions
+ Get a value from a previous observation in a table (e.g., using our temperature
+data frame from chapter 9 and asking “What was the temperature yesterday?”)
+ Build trended features (i.e., features that summarize past observations, such as
+the average of the observations for the previous week)
+you will find that window functions will multiply your productivity and simplify your code.
+ Window functions fill a niche between group aggregate ( groupBy().agg()) and
+group map UDF (groupBy().apply()) transformations, both seen in chapter 9. Both
+rely on partitioning to split the data frame based on a predicate. A group aggregate
+transformation will yield one record per grouping, while a group map UDF allows for
+any shape of a resulting data frame; a window function always keeps the dimensions of
+the data frame intact. Window functions have a secret weapon in the window frame that
+we define within a partition: it determines which records are included in the applica-
+tion of the function.
+ Window functions are mostly used for creating new columns, so they leverage
+some familiar methods, such as select() and withColumn(). Because we already
+are familiar with the syntax for adding columns, I approach this chapter differently.
+First, we look at how we can emulate a simple window function by relying on con-
+cepts we already know, such as the groupby and join methods. Then we get familiar
+with the two components of a window function: the window spec and the function
+itself. I then apply and dissect the three main types of window functions (summariz-
+ing, ranking, and analytical). Once you are equipped with these building blocks of
+window function application, we break open the window spec by introducing
+ordered and bounded windows and window frames. Finally, we go full circle and
+introduce UDF as window functions.
+ This chapter builds heavily on the content from chapters 5 and 9. Likewise,
+each section builds heavily on the one that precedes it. Window functions are
+themselves not complicated, but there is a lot of new terminology, and the behavior
+of the functions may not be intuitive at first. If you get lost, make sure you work
+carefully through the examples. Because the best way to learn is by doing, try the
+exercises throughout and at the end of the chapter. As always, answers are available
+in appendix A.
+10.1 Growing and using a simple window function
+When learning a new concept, I find that I have a much easier time when I am able to
+build it from basic principles, using what I already know. This is exactly what hap-
+pened when I learned about window functions: I started by reproducing their behav-
+ior using a mess of SQL instructions. After I was done, it was obvious why window
+functions are so useful. Imagine my joy when I found them woven into PySpark, with a
+beautiful Python API to boot.
+
+=== PDF page 239 (printed 217) ===
+217Growing and using a simple window function
+ In this section, we follow the same path: I start by reproducing a simple window
+function using techniques from past chapters. Then I introduce the syntax for window
+functions and how they simplify your data transformation logic. My hope is that you’ll
+get as excited as I did when window functions finally “clicked” for me.
+ For this section, we reuse the temperature data set from chapter 8; the data set
+contains weather observations for a series of stations, summarized by day. Window
+functions especially shine when working with time series-like data (e.g., daily obser-
+vations of temperature) because you can slice the data by day, month, or year and
+get useful statistics. If you want to use the data from BigQuery, use the code from
+chapter 9, keeping as many (or as little) years of data you want. For those who pre-
+fer a local-first approach, the book’s repository contains three years of data in Par-
+quet format (see listing 10.1).
+gsod = spark.read.parquet("./data/window/gsod.parquet")
+Now that we’re equipped with the data, let’s start asking questions! The next sections
+illustrate the thought process behind a window function, before diving right into the
+terminology and the syntax.
+10.1.1 Identifying the coldest day of each year, the long way
+In this section, we emulate a simple window function through functionality we learned
+in previous chapters—most noticeably in chapter 5 using the join() method. The
+idea is to provide an intuitive sense for window functions and remove some of the
+magic surrounding them. To illustrate this, we start with simple questions to ask our
+data frame: when and where were the lowest temperature recorded each year? In other
+words, we want a data frame containing three records, one for each year and showing
+the station, the date (year, month, day), and the temperature of the coldest day
+recorded for that year.
+ Let’s map the thought process. First, we will get a data frame containing the cold-
+est temperature for each year. This will give us two of the columns ( year, and temp)
+and their values. In listing 10.2, we create the coldest_temp data frame, which takes
+our historical data and groups by the year column, and we extract the minimum temp
+through the min() aggregate function applied through the agg(). If the syntax is a lit-
+tle cloudy, head to chapter 5 for a refresher on grouped data.
+coldest_temp = gsod.groupby("year").agg(F.min("temp").alias("temp"))
+coldest_temp.orderBy("temp").show()
+Listing 10.1 Reading the data necessary: GSOD NOAA weather data
+Listing 10.2 Computing the lowest temperature for each year using groupBy()
+
+=== PDF page 240 (printed 218) ===
+218 CHAPTER 10 Your data under a different lens: Window functions
+# +----+------+
+# |year|  temp|
+# +----+------+
+# |2017|-114.7|
+# |2018|-113.5|
+# |2019|-114.7|
+# +----+------+
+People, Earth is cold!
+ This provides the year and the temperature, which are about 40% of the origi-
+nal ask. To get the other three columns ( mo, da, stn), we can use a left-semi join on
+the original table, using the results of coldest_temp to resolve the join. In listing 10.3,
+we join gsod to coldest_temp  using a left-semi equi-join on the year and temp col-
+umns (see chapter 5 for more information on left-semi and equi-joins!). Because
+coldest_temp  only contains the coldest temperature for each year, the left semi-
+join keeps only the records from gsod that correspond to that year-temperature
+pair; this is equivalent to keeping only the records where the temperature was cold-
+est for each year.
+coldest_when = gsod.join(
+    coldest_temp, how="left_semi", on=["year", "temp"]
+).select("stn", "year", "mo", "da", "temp")
+coldest_when.orderBy("year", "mo", "da").show()
+# +------+----+---+---+------+
+# |   stn|year| mo| da|  temp|
+# +------+----+---+---+------+
+# |896250|2017| 06| 20|-114.7|
+# |896060|2018| 08| 27|-113.5|
+# |895770|2019| 06| 15|-114.7|
+# +------+----+---+---+------+
+In listing 10.2 and listing 10.3 we are performing a join between the gsod table and,
+well, something coming from the gsod table. A self-join, which is when you join a table
+with itself, is often considered an anti-pattern for data manipulation. While it’s not
+technically wrong, it can be slow and make the code look more complex than it needs
+to be. It also looks a little odd. Joining tables make sense when you want to link data
+contained into two or more tables. Joining a table with itself feels redundant, as we
+can see in figure 10.1: the data is already in the (one) table!
+ Fortunately, a window function gives you the same result faster, and with less code
+clutter. In the next section, we’ll reproduce the same data transformation using a win-
+dow function, and simplify and speed up our data transformation code.
+Listing 10.3 Using a left semi-join for computing the coldest station/day for each year
+
+=== PDF page 241 (printed 219) ===
+219Growing and using a simple window function
+10.1.2 Creating and using a simple window function 
+to get the coldest days
+This section introduces window functions by replacing the self-join example of the
+previous section. I introduce the Window object and parameterize it to split a data
+frame over column values. We then apply the window over a data frame, using the tra-
+ditional selector approach.
+ At the beginning of the chapter, I drew a parallel between window functions and
+the split-apply-combine pattern I covered when introducing pandas group map UDF
+(chapter 8). To stay consistent with the Window function terminology, which comes
+from SQL (see chapter 7), I use different vocabulary for the three stages of the split-
+apply-combine pattern:
+ Instead of splitting, we’ll partition the data frame.
+ Instead of applying, we’ll select values over the window.
+stn
+896250
+gsod: DataFrame
+year
+2017
+mo
+06
+2018
+2019
+da
+20
+27
+15
+Through an intermediate variable
+(coldest_temp), we end up
+performing a join between a table
+and itself.
+temp
+-114.7
+-113.5
+-114.7
+896060
+895770
+08
+06
+coldest_temp: DataFrame
+year
+2017
+2018
+2019
+temp
+-114.7
+-113.5
+-114.7
+stn
+896250
+gsod: DataFrame
+year
+2017
+mo
+06
+2018
+da
+20
+27
+temp
+-114.7
+-113.5896060 08
+year
+2017
+2018
+temp
+-114.7
+-114.7
+-113.5
+… … …… …
+2019 15 -114.7895770 06 2019
+Figure 10.1 A self-join happens when a table is joined with itself. You can replace most self-joins by 
+window functions.
+
+=== PDF page 242 (printed 220) ===
+220 CHAPTER 10 Your data under a different lens: Window functions
+ The combine/union operation is implicit (i.e., not explicitly coded) in a win-
+dow function.
+NOTE Why use a different vocabulary here? Window functions are concepts
+from the SQL world, where the split-apply-combine pattern comes from the
+data analysis world. Different worlds, different vocabulary!
+Window functions apply over a window of data split according to the values on a col-
+umn. Each split, called a partition, gets the window function applied to each of its
+records as if they were independent data frames. The result then gets unioned back
+into a single data frame. In listing 10.4, I create the window, partitioning according to
+the values in column year. The Window class is a builder class, just like with SparkSes-
+sion.builder: we chain the parameterization by appending methods after the Window
+class identifier. The result is a WindowSpec object that contains the information about
+the parameterization.
+from pyspark.sql.window import Window  
+each_year = Window.partitionBy("year")  
+print(each_year)
+# <pyspark.sql.window.WindowSpec object at 0x7f978fc8e6a0>
+A WindowSpec object is nothing more than a blueprint for an eventual window function.
+In our case, in listing 10.4, we created a window specification called each_year that
+instructs the window application to split the data frame according to the values in the
+year column. The real magic happens when you apply the window function to your data
+frame. For our first window function application, I print the whole code, reproducing
+the self-join approach in section 10.1.1 before going through it line by line. See the dif-
+ference between the window application (listing 10.6) and the left semi-join.
+coldest_when = gsod.join(
+    coldest_temp, how="left_semi", on=["year", "temp"]
+).select("stn", "year", "mo", "da", "temp")
+coldest_when.orderBy("year", "mo", "da").show()
+# +------+----+---+---+------+
+# |   stn|year| mo| da|  temp|
+# +------+----+---+---+------+
+# |896250|2017| 06| 20|-114.7|
+# |896060|2018| 08| 27|-113.5|
+Listing 10.4 Creating a WindowSpec object by using the Window builder class
+Listing 10.5 Using a left semi-join for computing the coldest station/day for each year
+We import Window from pyspark.sql.window. Since
+it’s the only object we’ll use for window functions,
+there’s no need import the whole module. To partition according to the values 
+of one or more columns, we pass the 
+column name (or a Column object) 
+to the partitionBy() method.
+
+=== PDF page 243 (printed 221) ===
+221Growing and using a simple window function
+# |895770|2019| 06| 15|-114.7|
+# +------+----+---+---+------+
+(gsod
+ .withColumn("min_temp", F.min("temp").over(each_year))  
+ .where("temp = min_temp")
+ .select("year", "mo", "da", "stn", "temp")
+ .orderBy("year", "mo", "da")
+ .show())
+# +----+---+---+------+------+
+# |year| mo| da|   stn|  temp|
+# +----+---+---+------+------+
+# |2017| 06| 20|896250|-114.7|
+# |2018| 08| 27|896060|-113.5|
+# |2019| 06| 15|895770|-114.7|
+# +----+---+---+------+------+
+It’s time for some code unpacking. Through the withColumn() method we define a
+column, min_temp, that collects the minimum of the temp column. Now, rather than
+picking the minimum temperature of the whole data frame, the min() is applied over
+the window specification we defined, using the over() method. For each window par-
+tition, Spark computes the minimum and then broadcasts the value over each record.
+This is an important distinction compared to aggregating functions or UDF: in the
+case of a window function, the number of records in the data frame does not change .
+Although min() is an aggregate function, since it’s applied with the over() method,
+every record in the window has the minimum value appended. The same would apply
+for any other aggregate function from pyspark.sql.functions, such as sum(), avg(),
+min(), max(), and count().
+Listing 10.6 Selecting the minimum temperature for each year using a window function
+Window functions are just methods on columns (almost)
+Since a window function is applied though a method on a Column object, you can also
+apply them in a select(). You can also apply more than one window (or different
+ones) within the same select(). Spark won’t allow you to use a window directly in
+a groupby() or where() method, where it’ll spit an AnalysisException. If you want
+to group by or filter according to the result of a window function, “materialize” the
+column using select() or withColumn() before using the desired operation.
+As an example, listing 10.6 could be rewritten, with the window definition put into the
+select. Because the window applies on a column-by-column basis, you can have mul-
+tiple window applications within a select statement.
+gsod.select(
+    "year",
+    "mo",
+We select the minimum 
+temperature over the 
+defined window (for 
+each year).
+Listing 10.7 Using a window function within a select() method
+
+=== PDF page 244 (printed 222) ===
+222 CHAPTER 10 Your data under a different lens: Window functions
+Under the hood, PySpark realizes the window spec when applied to a column. I
+defined a rather simple window spec here: partition the data frame according to the
+values of the year column. Just like with the split-apply-combine pattern, we partition
+the data frame according to the year column values.
+TIP You can partitionBy() by more than one column! Just add more col-
+umn names to the partitionBy() method.
+For each window partition (see the But data frames already have partitions! sidebar at the
+end of the section), we compute the aggregate function (here, min()), before broad-
+casting the result of each record. In plain English, we compute the minimum tem-
+perature for each year and append it as a column for each record of this year. I
+creatively name the new column min_temp.
+ Next, we need to keep only the records where the temperature is actually the min-
+imum for the year. For this, we simply need to filter() (or where()) to keep only the
+records where temp = min_temp. Because the window function application gives each
+record a min_temp field corresponding to the minimum temperature for that year, we
+are back to our regular arsenal of data manipulation tricks.
+ That’s all, folks! We have our very first window function. This was a purposefully
+simple example to teach the concept of a window spec, window function, and window
+partition. In the next section, I compare the application and speed of both approaches
+and explain why window functions are easier, friendlier, and faster.
+continued
+    "da",
+    "stn",
+    "temp",
+    F.min("temp").over(each_year).alias("min_temp"),
+).where(
+    "temp = min_temp"
+).drop(  
+    "min_temp"
+).orderBy(
+    "year", "mo", "da"
+).show()
+Review the end-of-chapter exercises to experiment with multiple windows applications.
+But data frames already have partitions!
+Once again, we’re having a vocabulary problem. Since the beginning of the book, par-
+tition has referred to the physical splits of the data on each executor node. Now we
+are also using partitions with window functions to mean logical splits of the data,
+which may or may not be equal to the Spark physical ones.
+We drop min_temp as it served its 
+purpose during the where clause and is 
+no longer needed (it’ll always be equal 
+to temp in the resulting data frame).
+
+=== PDF page 245 (printed 223) ===
+223Growing and using a simple window function
+ 
+10.1.3 Comparing both approaches
+In this section, I compare both the self-join and window function approaches from a
+code readability perspective. We also touch on performance implications of windows
+versus joins. When performing data transformation and analysis, code clarity and per-
+formance are the two most important considerations for a working body of code;
+since we have two approaches that perform the same work, it makes sense to compare
+them from a clarity and performance perspective.
+ Compared to the self-join approach, using a window function makes your inten-
+tion more clear. With a window named each_year, the code snippet F.min("temp")
+.over(each_year) almost reads like an English sentence. The self-join approach
+accomplishes the same thing, but at the expense of a slightly more cryptic code: why
+am I joining this table to itself?
+ Performance wise, window functions avoid potentially costly self-joins. When work-
+ing with large data sets, the data frame only has to be split into window partitions
+before performing a function over the (smaller) partitions. When you consider that
+Spark’s operating model is splitting large data sets across multiple nodes, it makes a
+lot of sense.
+Unfortunately, most of the literature online will not tell you which partition they refer
+to. But once you’ve internalized both Spark and window function concepts, it’ll be
+easy to know which is which. For this chapter, I’ll use window partitions when talking
+about the logical partitions made by the application of a window spec.
+gsod: DataFrame
+stn
+896250
+year
+2017
+mo
+06
+2018
+2019
+da
+20
+27
+15
+temp
+-114.7
+-113.5
+-114.7
+896060
+895770
+08
+06
+2017 09 60.5719200 10
+2018 21 82.6917350 04
+2018 07 65.0076470 06
+2019 19 16.1041680 02
+2019 23 54.9949110 11
+stn
+896250
+year
+2017
+mo
+06
+2018
+2019
+da
+20
+27
+15
+temp
+-114.7
+-113.5
+-114.7
+896060
+895770
+08
+06
+2017 09 60.5719200 10
+2018 21 82.6917350 04
+2018 07 65.0076470 06
+2019 19 16.1041680 02
+2019 23 54.9949110 11
+We partitioned the data set according to the column.
+Figure 10.2 We partition the gsod data frame according to the year column and compute the minimum 
+temperature for each partition. Each record belonging to the partition gets the minimum temperature appended. 
+The resulting data frame contains the same number of records, but with a new column, min_temp, that 
+contains the coldest temperature for the year.
+
+=== PDF page 246 (printed 224) ===
+224 CHAPTER 10 Your data under a different lens: Window functions
+ Finding which approach works fastest will depend on the size of the data, the
+memory available (see chapter 11 for an overview of how memory is used in Spark),
+and how complex the join/window operation is. I tend to overwhelmingly prefer win-
+dow functions, as they are more clear and express my intent more clearly as well. As I
+repeat to myself when I code, make it work, make it clear, then make it fast!
+ Finally, and this will be the content of the next sections, window functions are
+much more flexible than merely computing aggregated measurements over a given
+window. Next, I introduce ranking and analytical functions, which provide a new win-
+dow (get it?) over your data. The summarize-and-join approach will quickly fall short!
+10.2 Beyond summarizing: Using ranking and 
+analytical functions
+In this section, I cover the two other families of functions that can be applied over a
+window. Both families provide additional functionality to the humble window. Together,
+those families of functions allow performance of a wider range of operations versus
+aggregate functions such as count(), sum(), or min():
+ The ranking family, which provides information about rank (first, second, all
+the way to last), n-tiles, and the ever so useful row number
+ The analytical family, which, despite its namesake, covers a variety of behaviors
+not related to summary or ranking.
+Both provide information over a window that isn’t easy to obtain via other SQL-esque
+functionality (trying to torture the SQL language to reproduce window function behav-
+ior using only basic SQL functionality is left as an exercise if you’re really into useless
+coding puzzles). Because they add new functionality to the window, I also cover how to
+order values in a data frame (which is very useful when you want to rank records).
+ For this section, I use a much smaller data frame—keeping 10 records and only the
+stn, year, mo, da, temp, and count_temp columns—so that we can see it in its entirety
+when show()ing it. I find that this helps tremendously in understanding what’s happen-
+ing. This new data frame is called gsod_light and is available (in Parquet format, a data
+format optimized for rapid retrieval of column data; see https:/ /databricks.com/
+glossary/what-is-parquet) in the book’s repository. All the examples can also be run
+Exercise 10.1
+Using the gsod data frame, which window spec that, once applied, could generate
+the hottest station for each day?
+a Window.partitionBy("da")
+b Window.partitionBy("stn", "da")
+c Window.partitionBy("year", "mo", "da")
+d Window.partitionBy("stn", "year", "mo", "da")
+e None of the above
+
+=== PDF page 247 (printed 225) ===
+225Beyond summarizing: Using ranking and analytical functions
+using the original gsod data frame or even over more years, should you have a more
+powerful cluster readily available.
+gsod_light = spark.read.parquet("./data/window/gsod_light.parquet")
+gsod_light.show()
+# +------+----+---+---+----+----------+
+# |   stn|year| mo| da|temp|count_temp|
+# +------+----+---+---+----+----------+
+# |994979|2017| 12| 11|21.3|        21|
+# |998012|2017| 03| 02|31.4|        24|
+# |719200|2017| 10| 09|60.5|        11|
+# |917350|2018| 04| 21|82.6|         9|
+# |076470|2018| 06| 07|65.0|        24|
+# |996470|2018| 03| 12|55.6|        12|
+# |041680|2019| 02| 19|16.1|        15|
+# |949110|2019| 11| 23|54.9|        14|
+# |998252|2019| 04| 18|44.7|        11|
+# |998166|2019| 03| 20|34.8|        12|
+# +------+----+---+---+----+----------+
+Now that we have a small but easy-to-reason-about data frame, let’s explore ranking
+functions.
+10.2.1 Ranking functions: Quick, who’s first?
+This section covers ranking functions: nonconsecutive ranks with rank(), consecu-
+tive ranks with dense_rank(), percentile ranks with percent_rank(), tiles with
+ntile(), and finally a bare row number with row_number(). Ranking functions are
+used for getting the top (or bottom) record for each window partition, or, more
+generally, for getting an order according to some column’s value. For example, if
+you wanted to get the top three hottest days for each station/month, a ranking func-
+tion would make this a walk in the park. Because ranking functions behave quite
+similarly to one another, they are better introduced in one fell swoop. Have no fear;
+I promise it won’t read like a technical manual.
+ Ranking functions have one sole purpose in life: to rank records based on the
+value of a field. Because of this, we need to order the values within a window. Enter
+the orderBy() method for windows. In listing 10.9, I create a new window,
+temp_per_month_asc , which partitions the data frame according to the mo column,
+ordering each record in the partition according to the count_temp column. Just
+like when ordering a data frame, orderBy() will sort the values in ascending order.
+TIP When naming my windows, I like to give them names, so they read well
+when reading the code. In this case, I can read the code and know that my
+c o l u m n  w i l l  b e  o v e r  e a c h  m o n t h ,  o r d e r i n g  b y  t h e  c o u n t  o f  t e m p e r a t u r e
+recorded. No need to add a _window suffix.
+Listing 10.8 Reading gsod_light from the book’s code repository
+
+=== PDF page 248 (printed 226) ===
+226 CHAPTER 10 Your data under a different lens: Window functions
+temp_per_month_asc = Window.partitionBy("mo").orderBy("count_temp")
+GOLD, SILVER, BRONZE: SIMPLE RANKING USING RANK()
+This section covers the simplest and most intuitive form of ranking, using the rank()
+function. With rank(), each record gets a position based on the value contained in
+one (or more) columns. Identical values have identical ranks—just like medalists in
+the Olympics, where the same score/time yields the same rank (unless you cheat!).
+ rank() takes no parameters since it ranks according to the orderBy() method
+from the window spec; it would not make sense to order according to one column but
+rank according to another.
+gsod_light.withColumn(
+    "rank_tpm", F.rank().over(temp_per_month_asc)  
+).show()
+# +------+----+---+---+----+----------+--------+
+# |   stn|year| mo| da|temp|count_temp|rank_tpm|
+# +------+----+---+---+----+----------+--------+
+# |949110|2019| 11| 23|54.9|        14|       1| 
+# |996470|2018| 03| 12|55.6|        12|       1| 
+# |998166|2019| 03| 20|34.8|        12|       1| 
+# |998012|2017| 03| 02|31.4|        24|       3| 
+# |041680|2019| 02| 19|16.1|        15|       1|
+# |076470|2018| 06| 07|65.0|        24|       1|
+# |719200|2017| 10| 09|60.5|        11|       1|
+# |994979|2017| 12| 11|21.3|        21|       1|
+# |917350|2018| 04| 21|82.6|         9|       1|
+# |998252|2019| 04| 18|44.7|        11|       2|
+# +------+----+---+---+----+----------+--------+
+The function rank() provides nonconsecutive ranks for each record, based on the
+value of the ordered value, or the column(s) provided in the orderBy() method of
+the window spec we call. In listing 10.10, for each window, the lower the count_temp,
+the lower the rank. When two records have the same ordered value, their ranks are
+the same. We say that the rank is nonconsecutive because, when you have multiple
+records that tie for a rank, the next one will be offset by the number of ties. For
+instance, for mo = 03, we have two records with count_temp = 12: both are rank 1. The
+next record (count_temp = 24) has a position of 3 rather than 2, because two records
+tied for the first position. 
+Listing 10.9 An ordered version of the month-partitioned window
+Listing 10.10 The rank() according to the value of the count_temp column
+Our window partitions are 
+ordered by the values in 
+the mo column.
+Within each window, the records will
+be ordered according to the value in
+the count_temp column.
+rank() does not need a column 
+name; everything has been defined 
+as part of the window spec.
+When a window contains a single 
+record, we get a rank of 1.
+When a window has more than 
+one record with the same value 
+for the orderBy() column (here, 
+count_temp = 12), rank() gives 
+the same rank to both records.
+Now, because we have two 
+rank = 1 records within the 
+window, the third record 
+will have a rank of 3.
+
+=== PDF page 249 (printed 227) ===
+227Beyond summarizing: Using ranking and analytical functions
+NO TIES WHEN RANKING: USING DENSE_RANK()
+What if we want, say, a denser ranking that would allocate consecutive ranks for
+records? Enter dense_rank(). The same principle as rank() applies, where ties share
+the same rank, but there won’t be any gap between the ranks: 1, 2, 3, and so on. This is
+practical when you want the second (or third, or any ordinal position) value over a
+window, rather than the record.
+gsod_light.withColumn(
+    "rank_tpm", F.dense_rank().over(temp_per_month_asc)   
+).show()
+# +------+----+---+---+----+----------+--------+
+# |   stn|year| mo| da|temp|count_temp|rank_tpm|
+# +------+----+---+---+----+----------+--------+
+# |949110|2019| 11| 23|54.9|        14|       1|
+# |996470|2018| 03| 12|55.6|        12|       1| 
+# |998166|2019| 03| 20|34.8|        12|       1| 
+# |998012|2017| 03| 02|31.4|        24|       2| 
+# |041680|2019| 02| 19|16.1|        15|       1|
+# |076470|2018| 06| 07|65.0|        24|       1|
+# |719200|2017| 10| 09|60.5|        11|       1|
+# |994979|2017| 12| 11|21.3|        21|       1|
+# |917350|2018| 04| 21|82.6|         9|       1|
+# |998252|2019| 04| 18|44.7|        11|       2|
+# +------+----+---+---+----+----------+--------+
+The three remaining ranking functions, percent_rank(), ntile(), and row_number(),
+are more niche but still useful. I find them better explained visually. 
+RANKING? SCORING? PERCENT_RANK() GIVES YOU BOTH!
+Ranking is usually thought of as an ordinal operation: first, second, third, and so on.
+What if you want something closer to a scope, perhaps even a percentage that would
+reflect where a record stands compared to its peers in the same window partition?
+Enter percent_rank().
+ For every window, percent_rank() will compute the percentage rank (between
+zero and one) based on the ordered value. For those who are mathematically inclined,
+the formula is as follows.
+Listing 10.11 Avoiding gaps in ranking using dense_rank()
+dense_rank() is 
+applied instead 
+of rank().
+When a dense rank ties, 
+both records have the 
+same rank.
+Unlike with rank(), dense 
+ranks are consecutive, 
+regardless of how many 
+ties the previous rank has.
+
+
+=== PDF page 250 (printed 228) ===
+228 CHAPTER 10 Your data under a different lens: Window functions
+temp_each_year = each_year.orderBy("temp")
+gsod_light.withColumn(
+    "rank_tpm", F.percent_rank().over(temp_each_year)
+).show()
+# +------+----+---+---+----+----------+------------------+
+# |   stn|year| mo| da|temp|count_temp|          rank_tpm|
+# +------+----+---+---+----+----------+------------------+
+# |041680|2019| 02| 19|16.1|        15|               0.0|
+# |998166|2019| 03| 20|34.8|        12|0.3333333333333333|
+# |998252|2019| 04| 18|44.7|        11|0.6666666666666666| 
+# |949110|2019| 11| 23|54.9|        14|               1.0|
+# |994979|2017| 12| 11|21.3|        21|               0.0|
+# |998012|2017| 03| 02|31.4|        24|               0.5|
+# |719200|2017| 10| 09|60.5|        11|               1.0|
+# |996470|2018| 03| 12|55.6|        12|               0.0|
+# |076470|2018| 06| 07|65.0|        24|               0.5|
+# |917350|2018| 04| 21|82.6|         9|               1.0|
+# +------+----+---+---+----+----------+------------------+
+CREATING BUCKETS BASED ON RANKS, USING NTILE()
+This section covers a handy function that allows you to create an arbitrary number of
+buckets (called tiles) based on the rank of your data. You might have heard of quar-
+tiles (4 tiles), quintiles (5), deciles (10), or even percentiles (100). The ntile() com-
+putes n-tile for a given parameter n. The code in the next listing is visually depicted in
+figure 10.3. 
+gsod_light.withColumn("rank_tpm", F.ntile(2).over(temp_each_year)).show()
+# +------+----+---+---+----+----------+--------+
+# |   stn|year| mo| da|temp|count_temp|rank_tpm|
+# +------+----+---+---+----+----------+--------+
+# |041680|2019| 02| 19|16.1|        15|       1|
+# |998166|2019| 03| 20|34.8|        12|       1|
+# |998252|2019| 04| 18|44.7|        11|       2|
+# |949110|2019| 11| 23|54.9|        14|       2|
+# |994979|2017| 12| 11|21.3|        21|       1|
+# |998012|2017| 03| 02|31.4|        24|       1|
+# |719200|2017| 10| 09|60.5|        11|       2|
+# |996470|2018| 03| 12|55.6|        12|       1|
+# |076470|2018| 06| 07|65.0|        24|       1|
+# |917350|2018| 04| 21|82.6|         9|       2|
+# +------+----+---+---+----+----------+--------+
+Listing 10.12 Computing percentage rank for every recorded temperature per year
+Listing 10.13 Computing the two-tile value over the window
+You can create a window 
+spec from another window 
+spec by chaining additional 
+methods on it. Here, I 
+create an ordered version 
+of each_year, which 
+partitions the records 
+according to year.
+For example, this 
+record has two 
+records in 2019 
+with a value of 
+less than 44.7 
+and a total of four 
+records in the 
+window: 2 ÷(4 - 1) 
+= 0.666.
+
+=== PDF page 251 (printed 229) ===
+229Beyond summarizing: Using ranking and analytical functions
+PLAIN ROW NUMBERS USING ROW_NUMBER()
+This section covers row_number(), which does exactly that: given an ordered win-
+dow, it’ll give an increasing rank (1, 2, 3, . . .) regardless of the ties (the row number
+of tied records is nondeterministic, so if you need to have reproducible results,
+make sure you order each window so that there are no ties). This is identical to
+indexing each window.
+gsod_light.withColumn(
+    "rank_tpm", F.row_number().over(temp_each_year)
+).show()
+# +------+----+---+---+----+----------+--------+
+# |   stn|year| mo| da|temp|count_temp|rank_tpm|
+# +------+----+---+---+----+----------+--------+
+# |041680|2019| 02| 19|16.1|        15|       1| 
+# |998166|2019| 03| 20|34.8|        12|       2| 
+# |998252|2019| 04| 18|44.7|        11|       3| 
+# |949110|2019| 11| 23|54.9|        14|       4| 
+# |994979|2017| 12| 11|21.3|        21|       1|
+# |998012|2017| 03| 02|31.4|        24|       2|
+# |719200|2017| 10| 09|60.5|        11|       3|
+# |996470|2018| 03| 12|55.6|        12|       1|
+# |076470|2018| 06| 07|65.0|        24|       2|
+# |917350|2018| 04| 21|82.6|         9|       3|
+# +------+----+---+---+----+----------+--------+
+LOSERS FIRST: ORDERING YOUR WINDOWSPEC USING ORDERBY()
+Finally, what if we want to reverse the order of our window? Unlike the orderBy()
+method on the data frame, the orderBy() method on a window does not have an
+ascending parameter we can use. We need to resort to the desc()method on the
+Column object directly. It’s a minor annoyance that’s easily solved for.
+Listing 10.14 Numbering records within each window partition using row_number()
+50% 50%
+16.1 1 34.8 1 44.7 2 54.9 2
+21.3 1 31.4 1 60.5 2
+55.6 1 65.0 1 82.6 2
+If a value overlaps two “tiles,” it
+takes the value of the lowest one.
+Each value takes an identical
+proportion of the total length
+of the interval.
+On top, the two-tile interval is
+represented.
+Figure 10.3 Two-tile for the three window partitions in gsod_light. If we consider each 
+window to be a rectangle, each value takes the same space within that rectangle. With two tiles, 
+the values under the 50% mark (including those overlapping) are in the first tile, whereas the 
+ones fully over are in the second.
+row_number() will give 
+you strictly increasing 
+ranks for every record 
+in your window.
+
+=== PDF page 252 (printed 230) ===
+230 CHAPTER 10 Your data under a different lens: Window functions
+temp_per_month_desc = Window.partitionBy("mo").orderBy(
+    F.col("count_temp").desc()  
+)
+gsod_light.withColumn(
+    "row_number", F.row_number().over(temp_per_month_desc)
+).show()
+# +------+----+---+---+----+----------+----------+
+# |   stn|year| mo| da|temp|count_temp|row_number|
+# +------+----+---+---+----+----------+----------+
+# |949110|2019| 11| 23|54.9|        14|         1|
+# |998012|2017| 03| 02|31.4|        24|         1|
+# |996470|2018| 03| 12|55.6|        12|         2|
+# |998166|2019| 03| 20|34.8|        12|         3|
+# |041680|2019| 02| 19|16.1|        15|         1|
+# |076470|2018| 06| 07|65.0|        24|         1|
+# |719200|2017| 10| 09|60.5|        11|         1|
+# |994979|2017| 12| 11|21.3|        21|         1|
+# |998252|2019| 04| 18|44.7|        11|         1|
+# |917350|2018| 04| 21|82.6|         9|         2|
+# +------+----+---+---+----+----------+----------+
+This section introduced the different types of ranking that PySpark provides in its win-
+dow function API. With nonconsecutive/olympic, consecutive/dense, percent, tiles,
+and strict/row_number, you have a lot of options on the table when it comes to rank
+records. In the next section, I introduce analytic functions, which contain some of the
+coolest functionality of window functions: the ability to look back and ahead. 
+10.2.2 Analytic functions: Looking back and ahead
+This section covers a very useful group of functions that makes it possible for you to
+look at the records around the record at hand. Being able to look at a previous or fol-
+lowing record unlocks a lot of functionality when building a time series feature. For
+instance, when doing modeling on time series data, one of the most important fea-
+tures are the observations in the past. Analytic window functions are by far the easiest
+way to do this.
+ACCESS THE RECORDS BEFORE OR AFTER USING LAG() AND LEAD()
+The two most important functions in the analytic functions family are lag(col, n=1,
+default=None) and lead(col, n=1, default=None), which will give you the value of
+the col column of the n-th record before and after the record you’re over, respec-
+tively. If the record, offset by the lag/lead, falls beyond the boundaries of the window,
+Spark will default to default. To avoid null values, pass a value to the optional param-
+eter default. In the next listing, I create two columns, one with a lag of one record,
+and one with a lag of two records. If we go beyond the window, we get null values
+since I did not provide a default parameter.
+Listing 10.15 Creating a window with a descending-ordered column
+By default, a column will be ordered with 
+ascending values. Passing the desc() method 
+will reverse that order for that column.
+
+=== PDF page 253 (printed 231) ===
+231Beyond summarizing: Using ranking and analytical functions
+gsod_light.withColumn(
+    "previous_temp", F.lag("temp").over(temp_each_year)
+).withColumn(
+    "previous_temp_2", F.lag("temp", 2).over(temp_each_year)
+).show()
+# +------+----+---+---+----+----------+-------------+---------------+
+# |   stn|year| mo| da|temp|count_temp|previous_temp|previous_temp_2|
+# +------+----+---+---+----+----------+-------------+---------------+
+# |041680|2019| 02| 19|16.1|        15|         null|           null|
+# |998166|2019| 03| 20|34.8|        12|         16.1|           null|  
+# |998252|2019| 04| 18|44.7|        11|         34.8|           16.1|  
+# |949110|2019| 11| 23|54.9|        14|         44.7|           34.8|
+# |994979|2017| 12| 11|21.3|        21|         null|           null|
+# |998012|2017| 03| 02|31.4|        24|         21.3|           null|
+# |719200|2017| 10| 09|60.5|        11|         31.4|           21.3|
+# |996470|2018| 03| 12|55.6|        12|         null|           null|
+# |076470|2018| 06| 07|65.0|        24|         55.6|           null|
+# |917350|2018| 04| 21|82.6|         9|         65.0|           55.6|
+# +------+----+---+---+----+----------+-------------+---------------+
+CUMULATIVE DISTRIBUTION OF THE RECORDS USING CUME_DIST()
+The last analytical function we cover is cume_dist(), and it is similar to percent_rank().
+cume_dist(), as its name indicates, provides a cumulative distribution (in the statistical
+sense of the term) rather than a ranking (where percent_rank() shines).
+ Just like with percent_rank(), I find it easier to explain via a formula:
+In practice, I use it when doing an EDA (exploratory data analysis) of the cumulative
+distribution of certain variables.
+gsod_light.withColumn(
+    "percent_rank", F.percent_rank().over(temp_each_year)
+).withColumn("cume_dist", F.cume_dist().over(temp_each_year)).show()
+# +------+----+---+---+----+----------+----------------+----------------+
+# |   stn|year| mo| da|temp|count_temp|    percent_rank|       cume_dist|
+# +------+----+---+---+----+----------+----------------+----------------+
+# |041680|2019| 02| 19|16.1|        15|             0.0|            0.25|
+# |998166|2019| 03| 20|34.8|        12|0.33333333333333|             0.5|
+# |998252|2019| 04| 18|44.7|        11|0.66666666666666|            0.75|
+# |949110|2019| 11| 23|54.9|        14|             1.0|             1.0|
+# |994979|2017| 12| 11|21.3|        21|             0.0|0.33333333333333|
+Listing 10.16 Getting the temperature of the previous two observations using lag()
+Listing 10.17 percent_rank()  and cume_dist() over a window
+The previous
+observation of the
+second record is
+the twice-previous
+observation of the
+third record, and
+so on.
+
+
+=== PDF page 254 (printed 232) ===
+232 CHAPTER 10 Your data under a different lens: Window functions
+# |998012|2017| 03| 02|31.4|        24|             0.5|0.66666666666666|
+# |719200|2017| 10| 09|60.5|        11|             1.0|             1.0|
+# |996470|2018| 03| 12|55.6|        12|             0.0|0.33333333333333|
+# |076470|2018| 06| 07|65.0|        24|             0.5|0.66666666666666|
+# |917350|2018| 04| 21|82.6|         9|             1.0|             1.0|
+# +------+----+---+---+----+----------+----------------+----------------+
+cume_dist() is an analytic function, not a ranking function, as it does not provide a
+rank. Instead, it provides the cumulative density function F(x) (for those statistically
+inclined) for the records in the data frame.
+ This section introduced the cornucopia of window functions. While it reads a little
+like a buffet, window functions are nothing more than functions that operate over a
+window, just like the functions that we saw in chapters 4 and 5 apply over the whole
+data frame at once. Once you see them applied in the wild, it gets easy to recognize
+good use cases for them and reach for your new tool. In the next section, I introduce
+window frames, which are a powerful tool for changing which records are used in the
+computation of a window function.
+10.3 Flex those windows! Using row and range boundaries
+This section goes beyond the uniform window definition for each record. I introduce
+how we can build static, growing, and unbounded windows based on rows and ranges.
+Being able to fine-tune the boundaries of a window augments the capabilities of your
+code by flexing the concept of static window partitions. By the end of this section, you
+will be fully operational with windows in PySpark.
+ I start this section with a seemingly harmless operation: applying an average com-
+putation over two windows identically partitioned. The only difference is that the first
+one is not ordered while the second one is. Surely the order of a window would have
+no impact on the computation of the average, right?
+ Check out the following listing—same window function, almost the same window
+(besides the ordering), different results.
+not_ordered = Window.partitionBy("year")
+ordered = not_ordered.orderBy("temp")
+gsod_light.withColumn(
+    "avg_NO", F.avg("temp").over(not_ordered)
+).withColumn("avg_O", F.avg("temp").over(ordered)).show()
+Exercise 10.2
+If you have a window where all the ordered values are the same, what is the result of
+applying ntile() to the window?
+Listing 10.18 Ordering a window and the computation of the average
+
+=== PDF page 255 (printed 233) ===
+233Flex those windows! Using row and range boundaries
+# +------+----+---+---+----+----------+----------------+------------------+
+# |   stn|year| mo| da|temp|count_temp|          avg_NO|             avg_O|
+# +------+----+---+---+----+----------+----------------+------------------+
+# |041680|2019| 02| 19|16.1|        15|          37.625|              16.1|
+# |998166|2019| 03| 20|34.8|        12|          37.625|             25.45|
+# |998252|2019| 04| 18|44.7|        11|          37.625|31.866666666666664|
+# |949110|2019| 11| 23|54.9|        14|          37.625|            37.625|
+# |994979|2017| 12| 11|21.3|        21|37.7333333333334|              21.3|
+# |998012|2017| 03| 02|31.4|        24|37.7333333333334|             26.35|
+# |719200|2017| 10| 09|60.5|        11|37.7333333333334|37.733333333333334|
+# |996470|2018| 03| 12|55.6|        12| 67.733333333333|              55.6|
+# |076470|2018| 06| 07|65.0|        24| 67.733333333333|              60.3|
+# |917350|2018| 04| 21|82.6|         9| 67.733333333333| 67.73333333333333|
+# +------+----+---+---+----+----------+----------------+------------------+
+                                            
+                                             
+This is fun stuff. Something with the ordering of a window messes up the computa-
+tion. The official Spark API documentation informs us that when ordering is not
+defined, an unbounded window frame (rowFrame, unboundedPreceding, unbounded-
+Following) is used by default. When ordering is defined, a growing window frame
+(rangeFrame, unboundedPreceding, currentRow) is used by default.
+ The secret to deciphering the new, mysterious behavior is to understand the types
+of window frames we can build and how they are used. I start by introducing the dif-
+ferent frame sizes (static versus growing versus unbounded) and how to reason about
+them before adding the second dimension, the frame type (range versus rows). At the
+end of this section, the explanation for the previous code will make perfect sense, and
+you will be able to flex your window skills regardless of the situation.
+10.3.1 Counting, window style: Static, growing, unbounded
+This section covers the boundaries of a window, something we call a window frame. I
+break the traditional catch-all window (where a window is equal to the whole parti-
+tion) to introduce record-based boundaries. This will provide an incredible new layer
+of flexibility when using window functions, as it controls the scope of visibility of a
+record within the window. You’ll be able to create window functions that only look in
+the past and avoid feature leakage when working with time series. This is just one of
+the many use cases for flexible window frames!
+TIP Feature leakage happens when you use future information when build-
+ing a predictive model. An example of this would be to use tomorrow’s rain-
+fall to predict the total rainfall for the upcoming week. See chapters 12 and
+13 for more information on features and feature leakage.
+Before getting started, let’s take a visual of a window: when a function is applied to it,
+a window spec partitions a data frame based on one or more column values and then
+All good: the average is consistent 
+across each window, and the 
+results are logical.
+Some odd stuff is happening. It looks like 
+each window grows, record by record, so 
+the average changes every time.
+
+=== PDF page 256 (printed 234) ===
+234 CHAPTER 10 Your data under a different lens: Window functions
+(potentially) orders them. Spark also provides the rowsBetween() and rangeBetween()
+methods to create window frame boundaries. For this section, I focus on row boundar-
+ies since they are closer to what we would expect. Section 10.3.2 explains the differ-
+ence between ranges versus rows.
+When using an unbounded/unordered window, we do not care about which record is
+which. This changes when we are using ranking or analytical functions. For a rank, a
+lag, or a lead, for instance, Spark will call the record being processed the Window
+.currentRow. (I keep the name of the class. Using the currentRow keyword makes it
+obvious you are working with window functions.) The record before takes a value of
+-1, and so on, until the first record, named Window.unboundedPreceding. The record
+following the current row takes a value of 1, and so on, until the last record, named
+Window.unboundedFollowing.
+WARNING Do not use a numerical value to represent the first or last record in
+a window. It makes your code harder to reason about, and you never know
+when the window will grow beyond that size. Internally, Spark will translate
+Window.unboundedPreceding and Window.unboundedFollowing to appropri-
+ate numerical values, so you don’t have to.
+Let’s go back to listing 10.18; we can “add” boundaries to our window spec. In list-
+ing 10.19, I explicitly add the boundaries that Spark assumes when none are provided.
+This means that not_ordered and ordered will provide the same results whether we
+define the boundaries (listing 10.19) or not (listing 10.18). If I want to be very accu-
+rate, the ordered window spec is bounded by range, not rows, but for our data frame,
+it works just the same. I’ll trade accuracy for ease of understanding for now, but if you
+apply it to the gsod data frame, results will differ slightly (see section 10.3.2).
+year
+2019
+mo
+06
+2019
+2019
+da
+20
+27
+15
+temp
+-114.7
+-113.5
+-114.7
+08
+06
+2019 09 60.510
+2019 21 82.604
+2019 07 65.006
+2019 19 16.102
+2019 23 54.911
+1 (row immediately after)
+Window.currentRow
+-1(row immediately before)
+Window.unboundedPreceding
+Window.unboundedFollowing
+…
+…
+Figure 10.4 The different possible boundaries within a window. Some are 
+numerical; some have reserved keywords. We count forward (up to Window
+.unboundedFollowing) when looking at records ahead, and backward (down 
+to Window.unboundedPreceding) when looking at records behind.
+
+=== PDF page 257 (printed 235) ===
+235Flex those windows! Using row and range boundaries
+not_ordered = Window.partitionBy("year").rowsBetween(
+    Window.unboundedPreceding, Window.unboundedFollowing  
+)
+ordered = not_ordered.orderBy("temp").rangeBetween(
+    Window.unboundedPreceding, Window.currentRow  
+)
+Because the window used in the computation of avg_NO is unbounded , meaning that
+it spans from the first to the last record of the window, the average is consistent
+across the whole window. The one used in the computation of avg_O is growing on
+the left, meaning that the right record is bounded to the currentRow, where the
+left record is set at the first value of the window. As you move from one record to
+the next, the average is over more and more values. The average of the last record
+of the window contains all the values (because currentRow is the last record of the
+window). A static window frame is nothing more than a window where both records
+are bounded relative to the current row; for example, rowsBetween(-1,  1) for a
+window that contains the current row, the record immediately preceding, and the
+record immediately following.
+WARNING If your window spec is not ordered, using a boundary is a nonde-
+terministic operation. Spark will not guarantee that your window will contain
+the same values as we are not ordering within a window before picking the
+boundary. This also applies if you order the data frame in a previous opera-
+tion. If you use a boundary, provide an explicit ordering clause.
+In practice, it is easy to know what kind of window you need. Ranking and analytical
+functions rely on ordered windows, since order matters in their application. Aggre-
+gate functions don’t care about the ordering of values, so you shouldn’t use them with
+an ordered window spec unless you want partial aggregation.
+ This section covered the different types of window boundaries, and partially
+explained the behavior of the growing average when using ordered window specs. In
+the next section, I introduce the last core window concept: range versus rows. 
+10.3.2 What you are vs. where you are: Range vs. rows
+This section covers the subtle yet incredibly important difference between row win-
+dows versus range windows. This notion unlocks the option to build windows that care
+about the content of the ordered column, not just its position. Working with ranges is
+useful when working with dates and time, as you may want to gather windows based on
+time intervals that are different than the primary measure. As an example, the gsod
+data frame collects daily temperature information. What happens if we want to com-
+pare this temperature to the average of the previous month? Months have 28, 29, 30,
+or 31 days. This is where ranges get useful.
+Listing 10.19 Rewriting the window spec with explicit window boundaries
+This window is 
+unbounded: every 
+record, from the first 
+to the last, is in the 
+window.This window is growing to the left:
+every record up to the current row
+value is included in a window.
+
+=== PDF page 258 (printed 236) ===
+236 CHAPTER 10 Your data under a different lens: Window functions
+ To start, I transform the gsod_light data frame slightly in listing 10.20. First, I con-
+vert all the dates in 2019 using F.lit(2019) as a column value so that we have a single
+window when breaking by year; this will give us more data to play with when using
+ranges. I also create a dt column that contains the date of the observation before
+transforming it into an integer value in the dt_num column. Range windows in PySpark
+work only on numerical columns; unix_timestamp() transforms the date in a number
+of seconds since 1970-01-01 00:00:00 UTC (the UNIX epoch). This gives us a service-
+able date-like number we can use for our range windows.
+gsod_light_p = (
+    gsod_light.withColumn("year", F.lit(2019))
+    .withColumn(
+        "dt",
+        F.to_date(
+            F.concat_ws("-", F.col("year"), F.col("mo"), F.col("da"))
+        ),
+    )
+    .withColumn("dt_num", F.unix_timestamp("dt"))
+)
+gsod_light_p.show()
+#                                          
+# +------+----+---+---+----+----------+----------+----------+
+# |   stn|year| mo| da|temp|count_temp|        dt|    dt_num|
+# +------+----+---+---+----+----------+----------+----------+
+# |041680|2019| 02| 19|16.1|        15|2019-02-19|1550552400|
+# |998012|2019| 03| 02|31.4|        24|2019-03-02|1551502800|
+# |996470|2019| 03| 12|55.6|        12|2019-03-12|1552363200|
+# |998166|2019| 03| 20|34.8|        12|2019-03-20|1553054400|
+# |998252|2019| 04| 18|44.7|        11|2019-04-18|1555560000|
+# |917350|2019| 04| 21|82.6|         9|2019-04-21|1555819200|
+# |076470|2019| 06| 07|65.0|        24|2019-06-07|1559880000|
+# |719200|2019| 10| 09|60.5|        11|2019-10-09|1570593600|
+# |949110|2019| 11| 23|54.9|        14|2019-11-23|1574485200|
+# |994979|2019| 12| 11|21.3|        21|2019-12-11|1576040400|
+# +------+----+---+---+----+----------+----------+----------+
+#                                                    
+For a simple range window, let’s compute the average of the temperatures recorded
+one month before and after a given day. Because our numerical date is in seconds, I’ll
+keep things simple and say that 1 month = 30 days = 720 hours = 43,200 minutes =
+2,592,000 seconds.1 Visually, the window for a record would look like figure 10.5: for
+Listing 10.20 Creating a date column to apply range window on
+1 If we want to be very strict on “a month is a month,” check the exercises.
+The new column is of type DateType(), which 
+can be treated (window wise) as a number.
+When using PySpark, windows must be over 
+numerical values. Using unix_timestamp() is the 
+easiest way to convert a date/timestamp to a number.
+
+=== PDF page 259 (printed 237) ===
+237Flex those windows! Using row and range boundaries
+each record, Spark computes the left and right (or lower and upper) window bound-
+aries, and those boundaries are used to determine if a record is in the window.
+ In the next listing, we create a range window over 60 days (30 before, 30 after),
+partitioning by year; our window frame is ordered by dt_num, so we can use the
+rangeBetween over the number of seconds.
+ONE_MONTH_ISH = 30 * 60 * 60 * 24  # or 2_592_000 seconds
+one_month_ish_before_and_after = (
+    Window.partitionBy("year")
+    .orderBy("dt_num")
+    .rangeBetween(-ONE_MONTH_ISH, ONE_MONTH_ISH)  
+)
+gsod_light_p.withColumn(
+    "avg_count", F.avg("count_temp").over(one_month_ish_before_and_after)
+).show()
+# +------+----+---+---+----+----------+----------+----------+-------------+
+# |   stn|year| mo| da|temp|count_temp|        dt|    dt_num|    avg_count|
+# +------+----+---+---+----+----------+----------+----------+-------------+
+# |041680|2019| 02| 19|16.1|        15|2019-02-19|1550552400|        15.75|
+# |998012|2019| 03| 02|31.4|        24|2019-03-02|1551502800|        15.75|
+# |996470|2019| 03| 12|55.6|        12|2019-03-12|1552363200|        15.75|
+# |998166|2019| 03| 20|34.8|        12|2019-03-20|1553054400|         14.8|
+# |998252|2019| 04| 18|44.7|        11|2019-04-18|1555560000|10.6666666666|
+# |917350|2019| 04| 21|82.6|         9|2019-04-21|1555819200|         10.0|
+# |076470|2019| 06| 07|65.0|        24|2019-06-07|1559880000|         24.0|
+# |719200|2019| 10| 09|60.5|        11|2019-10-09|1570593600|         11.0|
+# |949110|2019| 11| 23|54.9|        14|2019-11-23|1574485200|         17.5|
+# |994979|2019| 12| 11|21.3|        21|2019-12-11|1576040400|         17.5|
+# +------+----+---+---+----+----------+----------+----------+-------------+
+Listing 10.21 Computing the average temperature for a 60-day sliding window
+year
+2019
+mo
+04
+2019
+2019
+da
+18
+21
+20
+temp
+44.7
+82.6
+34.8
+04
+03
+2019 07 65.006
+2019 02 31.403
+2019 12 55.603
+2019 19 16.102
+2019 09 60.510
+Window.currentRow
+dt_num
+1 555 560 000
+1 555 819 200
+1 553 054 400
+1 559 880 000
+1 551 502 800
+1 552 363 200
+1 570 593 600
+1 550 552 400
+2019 23 54.911 1 574 485 200
+2019 11 21.312 1 576 040 400
+1 553 054 400
+- 2 592 000
+———————————
+1 550 462 400 (left boundary)
+1 553 054 400
++ 2 592 000
+———————————
+1 555 646 400 (right boundary)
+Figure 10.5 Displaying a window with a range of (-2_592_000, 2_592_000) (or ±30 days, in seconds)
+The range becomes 
+(current_row_value – 
+ONE_MONTH_ISH, 
+current_row_value + 
+ONE_MONTH_ISH).
+
+=== PDF page 260 (printed 238) ===
+238 CHAPTER 10 Your data under a different lens: Window functions
+For each record in the window, Spark computes the range boundaries based on the
+current row value (from the field dt_num) and determines the actual window that it
+will aggregate over. This makes it easy to compute sliding or growing time/date win-
+dows: when working with row ranges, you can say only that “ X records before and
+after.” When using Window.currentRow/unboundedFollowing/unboundedPreceding
+with a range window, Spark will use the value of the record as the range boundary. If
+you have multiple observations for a given time, your row-based window frame will not
+work. Using ranges and looking at the actual values makes your window respect the
+context you’re applying it over.
+This section explained the difference between row- and range-based windows and
+where one is best applied versus the other. This concludes the “standard” portion of
+window functions. With this chapter under your belt, you should be comfortable
+applying window functions as part of data analyses or feature engineering operations.
+Before concluding this chapter, I’ve added an optional, bonus section that covers how
+we can apply UDFs over windows. With this, you’ll be able to break the mold and com-
+pose your own window functions.
+Exercise 10.3
+If you have a data frame with 1,000,001 rows, where the ordered column ord is
+defined by F.lit(10), what is the result of the following window functions?
+1 F.count("ord").over(Window.partitionBy().orderBy("ord").rows-
+Between(-2, 2))
+2 F.count("ord").over(Window.partitionBy().orderBy("ord").range-
+Between(-2, 2))
+range/
+unbounded
+rows/
+unbounded
+range/
+growingrows/growing
+range/
+bounded
+rows/
+bounded
+The window is bounded in one direction. As we move
+records, it grows/shrinks in the direction in which it s’
+not bounded.
+The window stays the same size and moves
+as we move from record to record.
+The window contains the whole partition. It stays the
+same for every record within the partition.
+The window is
+based on the
+value of each
+row. Numerical
+values are
+relative to the
+value of the
+current row.
+The window is
+based on the
+position of each
+row. Numerical
+values are
+relative to the
+position of the
+current row.
+Figure 10.6 A matrix for the window types available in Spark
+
+=== PDF page 261 (printed 239) ===
+239Going full circle: Using UDFs within windows
+10.4 Going full circle: Using UDFs within windows
+This section teaches what I consider the PySpark-iest thing PySpark can do: using
+UDFs within windows. It uses two very Sparky things: UDFs and the split-apply-combine
+p a r a d i g m  w e  l e a r n e d  i n  c h a p t e r  9 .  I t ’ s  a l s o  s o m e t h i n g  t h a t  i s  P y t h o n - s p e c i f i c ,  a s  i t
+relies on pandas UDFs. PySpark all the way down! pandas UDFs in a window definition
+are useful when you need the flexibility of pandas UDFs. For instance, when you need
+functionality not defined in the set of window functions available in PySpark, just
+define UDFs to implement the functionality!
+ This is not a very long section, as we build on existing knowledge. For a complete
+refresher on pandas UDFs, refer to chapter 9. The recipe for applying a pandas UDF
+is very simple:
+1 We need to use a Series to Scalar UDF (or a group aggregate UDF). PySpark will
+apply the UDF to every window (once per record) and put the (scalar) value as
+a result.
+2 A UDF over unbounded window frames is only supported by Spark 2.4 and above.
+3 A UDF over bounded window frames is only supported by Spark 3.0 and above.
+The rest? Business as usual. In listing 10.22, I create a median UDF using the Spark
+3-type hint notation. If you use Spark 2.4, change the decorator to @F.pandas_udf
+("double", PandasUDFType.GROUPED_AGG) and remove the type hints. This simple
+median function computes the median of a pandas Series. I then apply it twice to the
+gsod_light data frame. There is nothing remarkable to see here; it just works.
+WARNING Do not modify the Series you are passing as input. Doing so will
+introduce hard-to-find bugs in your code, and we saw in chapter 9 how nasty
+UDF bugs are.
+import pandas as pd
+# Spark 2.4, use the following
+# @F.pandas_udf("double", PandasUDFType.GROUPED_AGG)
+@F.pandas_udf("double")
+def median(vals: pd.Series) -> float:
+    return vals.median()
+gsod_light.withColumn(
+    "median_temp", median("temp").over(Window.partitionBy("year"))  
+).withColumn(
+    "median_temp_g",
+    median("temp").over(
+        Window.partitionBy("year").orderBy("mo", "da")  
+    ),  
+).show()
+Listing 10.22 Using a pandas UDF over window intervals
+The UDF is applied over an
+unbounded/unordered
+window frame.
+The same UDF is now 
+applied over a bounded/
+ordered window frame.
+
+=== PDF page 262 (printed 240) ===
+240 CHAPTER 10 Your data under a different lens: Window functions
+#                                          
+# +------+----+---+---+----+----------+-----------+-------------+
+# |   stn|year| mo| da|temp|count_temp|median_temp|median_temp_g|
+# +------+----+---+---+----+----------+-----------+-------------+
+# |041680|2019| 02| 19|16.1|        15|      39.75|         16.1|
+# |998166|2019| 03| 20|34.8|        12|      39.75|        25.45|
+# |998252|2019| 04| 18|44.7|        11|      39.75|         34.8|
+# |949110|2019| 11| 23|54.9|        14|      39.75|        39.75|
+# |998012|2017| 03| 02|31.4|        24|       31.4|         31.4|
+# |719200|2017| 10| 09|60.5|        11|       31.4|        45.95|
+# |994979|2017| 12| 11|21.3|        21|       31.4|         31.4|
+# |996470|2018| 03| 12|55.6|        12|       65.0|         55.6|
+# |917350|2018| 04| 21|82.6|         9|       65.0|         69.1|
+# |076470|2018| 06| 07|65.0|        24|       65.0|         65.0|
+# +------+----+---+---+----+----------+-----------+-------------+
+#                                                       
+10.5 Look in the window: The main steps to a successful 
+window function
+This concludes the chapter about window functions. I encourage you to expand your
+data manipulation, analysis, and feature engineering arsenal to incorporate window
+function-based transformation. If you are stumped on how to perform a certain trans-
+formation, always remember the basic parameters of using a window function:
+1 What kind of operation do I want to perform? Summarize, rank, or look
+ahead/behind.
+2 How do I need to construct my window? Should it be bounded or unbounded?
+Do I need every record to have the same window value (unbounded), or should
+the answer depend on where the record fits within the window (bounded)?
+When bounding a window frame, you most often want to order it as well.
+3 For bounded windows, do you want the window frame to be set according to the
+position of the record (row based) or the value of the record (range based)?
+4 Finally, remember that a window function does not make your data frame spe-
+cial. After your function is applied, you can filter, group by, and even apply
+another, completely different, window.
+As a parting gift, it seems like window functions are a favorite of data analysts and sci-
+entists’ interviews. Applying window functions in PySpark will become second nature!
+ 
+ 
+ 
+ 
+Since the window 
+is unbounded, 
+every record 
+within a window 
+has the same 
+median.
+Since the window is bounded to the right, the median 
+changes as we add more records to the window.
+
+=== PDF page 263 (printed 241) ===
+241Additional Exercises
+Summary
+ Window functions are functions that are applied over a portion of a data frame
+called a window frame. They can perform aggregation, ranking, or analytical
+operations. A window function will return the data frame with the same num-
+ber of records, unlike its siblings the groupby-aggregate operation and the
+group map UDF.
+ A window frame is defined through a window spec. A window spec mandates
+how the data frame is split (partitionBy()), how it’s ordered (orderBy()), and
+how it’s portioned (rowsBetween()/rangeBetween()).
+ By default, an unordered window frame will be unbounded, meaning that the
+window frame will be equal to the window partition for every record. An
+ordered window frame will grow to the left, meaning that each record will have
+a window frame ranging from the first record in the window partition to the
+current record.
+ A window can be bounded by row, meaning that the records included in the
+window frame are tied to the row boundaries passed as parameters (with the
+range boundaries added to the row number of the current row), or by range,
+meaning that the records included in the window frame depend on the value of
+the current row (with the range boundaries added to the value).
+Additional Exercises
+Exercise 10.4
+Using the following code, first identify the day with the warmest temperature for each
+year, and then compute the average temperature. What happens when there are more
+than two occurrences?
+each_year = Window.partitionBy("year")
+(gsod
+ .withColumn("min_temp", F.min("temp").over(each_year))
+ .where("temp = min_temp")
+ .select("year", "mo", "da", "stn", "temp")
+ .orderBy("year", "mo", "da")
+ .show())
+Exercise 10.5
+How would you create a rank that is full, meaning that each record within a the
+temp_per_month_asc has a unique rank, using the gsod_light data frame? For
+records with an identical orderBy() value, the order of rank does not matter.
+temp_per_month_asc = Window.partitionBy("mo").orderBy("count_temp")
+gsod_light = spark.read.parquet("./data/window/gsod_light.parquet")
+gsod_light.withColumn(
+
+=== PDF page 264 (printed 242) ===
+242 CHAPTER 10 Your data under a different lens: Window functions
+    "rank_tpm", F.rank().over(temp_per_month_asc)  
+).show()
+# +------+----+---+---+----+----------+--------+
+# |   stn|year| mo| da|temp|count_temp|rank_tpm|
+# +------+----+---+---+----+----------+--------+
+# |949110|2019| 11| 23|54.9|        14|       1|
+# |996470|2018| 03| 12|55.6|        12|       1| 
+# |998166|2019| 03| 20|34.8|        12|       1| 
+# |998012|2017| 03| 02|31.4|        24|       3|
+# |041680|2019| 02| 19|16.1|        15|       1|
+# |076470|2018| 06| 07|65.0|        24|       1|
+# |719200|2017| 10| 09|60.5|        11|       1|
+# |994979|2017| 12| 11|21.3|        21|       1|
+# |917350|2018| 04| 21|82.6|         9|       1|
+# |998252|2019| 04| 18|44.7|        11|       2|
+# +------+----+---+---+----+----------+--------+
+Exercise 10.6
+Take the gsod data frame (not the gsod_light) and create a new column that is True
+if the temperature at a given station is maximum for that station and a time window of
+seven days (before and after), and False otherwise.
+Exercise 10.7
+How would you create a window like the code that follows, but taking into account
+that months have different number of days? For instance, March has 31 days, but April
+has 30 days, so you can’t do a window spec over a set number of days.
+ (Hint: My solution doesn’t use dt_num.)
+ONE_MONTH_ISH = 30 * 60 * 60 * 24  # or 2_592_000 seconds
+one_month_ish_before_and_after = (
+    Window.partitionBy("year")
+    .orderBy("dt_num")
+    .rangeBetween(-ONE_MONTH_ISH, ONE_MONTH_ISH)
+ )
+gsod_light_p = (
+    gsod_light.withColumn("year", F.lit(2019))
+    .withColumn(
+        "dt",
+        F.to_date(
+            F.concat_ws("-", F.col("year"), F.col("mo"), F.col("da"))
+        ),
+    )
+    .withColumn("dt_num", F.unix_timestamp("dt"))
+)
+gsod_light_p.withColumn(
+    "avg_count", F.avg("count_temp").over(one_month_ish_before_and_after)
+).show()
+These records should 
+be 1 and 2.
+
+=== PDF page 265 (printed 243) ===
+243Additional Exercises
+# +------+----+---+---+----+----------+----------+----------+-------------+
+# |   stn|year| mo| da|temp|count_temp|        dt|    dt_num|    avg_count|
+# +------+----+---+---+----+----------+----------+----------+-------------+
+# |041680|2019| 02| 19|16.1|        15|2019-02-19|1550552400|        15.75|
+# |998012|2019| 03| 02|31.4|        24|2019-03-02|1551502800|        15.75|
+# |996470|2019| 03| 12|55.6|        12|2019-03-12|1552363200|        15.75|
+# |998166|2019| 03| 20|34.8|        12|2019-03-20|1553054400|         14.8|
+# |998252|2019| 04| 18|44.7|        11|2019-04-18|1555560000|10.6666666666|
+# |917350|2019| 04| 21|82.6|         9|2019-04-21|1555819200|         10.0|
+# |076470|2019| 06| 07|65.0|        24|2019-06-07|1559880000|         24.0|
+# |719200|2019| 10| 09|60.5|        11|2019-10-09|1570593600|         11.0|
+# |949110|2019| 11| 23|54.9|        14|2019-11-23|1574485200|         17.5|
+# |994979|2019| 12| 11|21.3|        21|2019-12-11|1576040400|         17.5|
+# +------+----+---+---+----+----------+----------+----------+-------------+

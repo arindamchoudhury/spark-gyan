@@ -13,7 +13,7 @@
 | ✅ done | 7. Bilingual PySpark: Blending Python and SQL code | — |
 | ✅ done | 8. Extending PySpark with Python: RDD and UDFs | — |
 | ✅ done | 9. Big data is just a lot of small data: Using pandas UDFs | — |
-| ⬜ todo | 10. Your data under a different lens: Window functions | — |
+| ✅ done | 10. Your data under a different lens: Window functions | — |
 | ⬜ todo | 11. Faster PySpark: Understanding Spark's query planning | — |
 | ⬜ todo | 12. Setting the stage: Preparing features for machine learning | — |
 | ⬜ todo | 13. Robust machine learning with ML Pipelines | — |

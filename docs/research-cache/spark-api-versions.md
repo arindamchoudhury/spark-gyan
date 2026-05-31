@@ -100,3 +100,21 @@ Last verified: **2026-05-20** against Spark 4.1.1 / PySpark 4.1.1.
 | Default Arrow batch size | **10,000 records** | `spark.sql.execution.arrow.maxRecordsPerBatch` |
 
 Sources: [PySpark 4.1.1 pandas_udf docs](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.pandas_udf.html), [Spark 4.1.0 release notes](https://spark.apache.org/releases/spark-release-4.1.0.html), [PySpark upgrade guide](https://spark.apache.org/docs/latest/api/python/migration_guide/pyspark_upgrade.html)
+
+---
+
+## Window functions (pyspark.sql.window)
+
+Last verified: **2026-05-31** against Spark 4.1.1.
+
+| Claim | Verified value | Notes |
+|---|---|---|
+| `Window` import path | `from pyspark.sql.window import Window` | Stable since Spark 1.4.0 |
+| Spark Connect support | Added **3.4.0** | `WindowSpec` works over Spark Connect |
+| API changes in Spark 4.x | None — API stable | No breaking changes to Window/WindowSpec |
+| UDF over unbounded window | Spark **2.4+** | Series → scalar pandas UDF required |
+| UDF over bounded window | Spark **3.0+** | Series → scalar pandas UDF required |
+| `PandasUDFType.GROUPED_AGG` decorator | **Deprecated** (use type hints since 3.0) | Still works but avoid for new code |
+| `F.median()` as window function | **Unverified** — added as aggregate in 3.4 but `.over()` support not confirmed in official docs | Use custom pandas UDF as fallback |
+
+Sources: [PySpark Window API](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.Window.html), [PySpark window module](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/window.html)
