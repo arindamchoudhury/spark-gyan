@@ -157,7 +157,7 @@ The Python client has no embedded JVM at all.
 | | Classic | Spark Connect |
 |---|---|---|
 | Introduced | Spark 1.0 | Spark 3.4 |
-| Client-server | Same process | Decoupled |
+| Client-server | Two OS processes, same machine (Python + JVM) | Decoupled (Python client + remote JVM server) |
 | Python↔JVM | Py4J (local socket) | gRPC + Apache Arrow |
 | RDD support | Yes | No |
 | Direct JVM access (`df._jdf`) | Yes | No |
