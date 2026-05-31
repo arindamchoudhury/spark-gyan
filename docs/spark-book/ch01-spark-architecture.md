@@ -19,13 +19,24 @@ Apache Spark is a distributed analytics engine. Understanding how it distributes
 
 ## The problem this solves
 
-Two facts from the Spark documentation that surprise almost every beginner:
+By 2009, when Spark was created at Berkeley's AMPLab, the dominant large-scale data processing tool was Hadoop MapReduce. MapReduce solved the right problem — distributing computation across many cheap machines — but had a fundamental architectural bottleneck: every step wrote its output to disk before the next step could read it. A multi-step analytical pipeline read and wrote to HDFS at each stage, making iterative algorithms (like machine learning, which needs dozens of passes over the same data) extremely slow. AWS describes it directly: Hadoop "only does so in batches and with substantial delay."
 
-1. **Spark does not cache results automatically.** If you call two actions on the same DataFrame — say `df.count()` to log a row count and then `df.write()` to save the result — Spark re-executes the entire chain twice. The read, every filter, every join — all of it, twice.
+Spark was built to remove that bottleneck. Rather than writing intermediate results to disk after every step, Spark keeps data in RAM across the full computation and writes to storage only once at the end. The difference in speed — the commonly cited "100× faster for in-memory operations, 10× faster on disk" — comes directly from this single architectural decision.
 
-2. **`count()` has dual identity.** `F.count("col")` inside `groupBy().agg(...)` is a transformation — lazy, no data moves. `df.count()` called as a method on a DataFrame is an action — it triggers full computation immediately. They look almost identical but behave completely differently.
+**How other tools approach the same problem:**
 
-If you do not know these two things, Spark jobs produce results that are correct but take far longer than they should, for reasons that are invisible in the code. Understanding the driver-executor model and lazy evaluation turns these from mysteries into predictable, fixable behaviour.
+| Tool | Model | Latency | Best for |
+|---|---|---|---|
+| **Hadoop MapReduce** | Batch, disk-bound between steps | Minutes to hours | Large batch ETL where latency is not a concern |
+| **Apache Spark** | Micro-batch and batch, in-memory | Seconds to minutes | General-purpose: batch, ML, SQL, near-real-time |
+| **Apache Flink** | True event-at-a-time streaming | Sub-second | Real-time fraud detection, event pattern matching, stateful streams requiring precise ordering |
+| **Dask** | Parallel Python (pandas/NumPy) | Depends on hardware | Data science workloads that outgrow a single machine but don't require a full cluster |
+| **Ray** | Distributed Python task graph | Low | Distributed ML training, hyperparameter search, model serving |
+| **Trino/Presto** | Federated interactive SQL | Sub-second for queries | Querying data in-place across multiple sources (S3, databases, Hive) without ingestion |
+
+Spark is the most general-purpose of these. It runs batch jobs, serves SQL queries, trains ML models, and handles near-real-time streaming — all through one engine and one API. The trade-off is that specialised engines outperform it in their target domain: Flink for sub-second streaming, Trino for interactive federated SQL, Ray for fine-grained ML parallelism.
+
+Sources: [AWS — Hadoop vs Spark](https://aws.amazon.com/compare/the-difference-between-hadoop-vs-spark/), [Flexera — Spark vs Flink](https://www.flexera.com/blog/finops/apache-spark-vs-flink/)
 
 ---
 
