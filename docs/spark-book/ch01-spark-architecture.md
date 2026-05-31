@@ -135,9 +135,9 @@ Here is what each component in that diagram is doing during the word count progr
 
 ### Driver Program
 
-The Python process running your script is the **Driver Program**. In the word count program, the driver is the process that runs from `SparkSession.builder...getOrCreate()` all the way to `spark.stop()`.
+The **Driver Program** is the Python process that was launched when you ran `spark-submit intro.py` (or `python intro.py` locally). It exists before any Spark code runs — the process is the driver, not the session.
 
-Every call you make — `spark.read.text(...)`, `.select(...)`, `.filter(...)`, `.groupBy(...)` — is handled by the driver. It receives your instructions, translates them into a logical plan, and holds that plan in memory. No data moves. The driver is doing paperwork.
+Every call you make once the session is available — `spark.read.text(...)`, `.select(...)`, `.filter(...)`, `.groupBy(...)` — is handled by the driver process. It receives your instructions, translates them into a logical plan, and holds that plan in memory. No data moves. The driver is doing paperwork.
 
 The driver must be network-addressable from worker nodes because executors send results back to it.
 
@@ -145,7 +145,7 @@ The driver must be network-addressable from worker nodes because executors send 
 
 ### SparkContext and SparkSession
 
-`SparkSession.builder...getOrCreate()` is what you write. What it creates internally is a **SparkContext** — the object that holds the connection to the cluster manager and coordinates the distributed computation. `SparkSession` wraps it and adds the SQL and DataFrame APIs on top.
+`SparkSession.builder...getOrCreate()` does not create the driver — the driver process already exists. What it creates is a **SparkContext** *inside* the running driver process: the object that opens a connection to the cluster manager and coordinates the distributed computation. `SparkSession` wraps the SparkContext and adds the SQL and DataFrame APIs on top.
 
 In the word count program, the SparkContext is what gets invoked the moment `.show(10)` fires. It takes the logical plan the driver assembled, optimises it, and hands it to the cluster manager.
 
