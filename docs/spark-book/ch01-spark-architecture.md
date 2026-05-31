@@ -129,7 +129,53 @@ Every line between `spark.read.text(...)` and `.show(10)` is a **transformation*
 
 *Source: [Apache Spark — Cluster Mode Overview](https://spark.apache.org/docs/latest/cluster-overview.html)*
 
-Here is what each component in that diagram is doing during the word count program.
+Before walking through the components, there is a foundational choice that shapes how the architecture works: **which execution mode is Spark running in?**
+
+---
+
+### Two execution modes: Classic and Spark Connect
+
+The official Spark Connect overview ([spark.apache.org](https://spark.apache.org/docs/latest/spark-connect-overview.html)) defines two modes:
+
+**Classic mode** — the original architecture. The client (your Python code) and the Spark driver run in the same process. Python communicates with the JVM directly via Py4J.
+
+```
+Python process (your code + Py4J)  ◄──local socket──►  JVM process (Spark engine)
+```
+
+**Spark Connect** — introduced in Spark 3.4, default `pyspark` shell in Spark 4.x. The client and the Spark driver are decoupled. Your Python process sends unresolved logical plans to a remote Spark Connect server over gRPC.
+
+```
+Python process (your code)  ──gRPC (sc://host:15002)──►  Spark Connect Server (JVM, remote)
+```
+
+| | Classic | Spark Connect |
+|---|---|---|
+| Introduced | Spark 1.0 | Spark 3.4 |
+| Client-server | Same process | Decoupled |
+| Python↔JVM | Py4J (local socket) | gRPC + Apache Arrow |
+| RDD support | Yes | No |
+| Direct JVM access (`df._jdf`) | Yes | No |
+| Default for `pyspark` shell | Pre-4.x | Spark 4.x |
+
+**How to choose:**
+
+```python
+# Classic mode — no remote() call
+spark = SparkSession.builder.appName("app").getOrCreate()
+
+# Spark Connect — use remote()
+spark = SparkSession.builder.remote("sc://localhost:15002").getOrCreate()
+```
+
+Or with the environment variable:
+
+```bash
+export SPARK_REMOTE="sc://localhost"
+pyspark   # picks up SPARK_REMOTE automatically
+```
+
+The word count program in this chapter uses classic mode. The components described below apply to classic mode. The key difference in Connect mode: the Driver Program (Python process) has no embedded JVM — it sends plans to the Connect server instead.
 
 ---
 
