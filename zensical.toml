@@ -7,6 +7,9 @@ copyright = "Copyright © 2026 Arindam. Notes are personal study summaries."
 nav = [
     { "Home" = "index.md" },
     { "Learning Path" = "learning-path.md" },
+    { "Spark Book" = [
+        { "Contents" = "spark-book/index.md" },
+    ]},
     { "Topics" = [
         { "Topic index" = "topics/index.md" },
         { "Lazy evaluation & execution model" = "topics/lazy-evaluation.md" },
