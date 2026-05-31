@@ -108,27 +108,78 @@ Every line between `spark.read.text(...)` and `.show(10)` is a **transformation*
 
 ## Core concept
 
-The official Spark documentation describes the cluster architecture with this diagram:
-
 [![Spark cluster overview](assets/ch01/cluster-overview.png)](assets/ch01/cluster-overview.png)
 
 *Source: [Apache Spark — Cluster Mode Overview](https://spark.apache.org/docs/latest/cluster-overview.html)*
 
-The components, using the official definitions:
+Here is what each component in that diagram is doing during the word count program.
 
-| Component | Official definition |
-|---|---|
-| **Driver Program** | The process running the main() function of the application and creating the SparkContext. Coordinates the application; must be network-addressable from worker nodes. |
-| **SparkContext** | The object in your main program that connects to the cluster manager and coordinates the distributed computation. In PySpark, `spark = SparkSession.builder.getOrCreate()` creates this for you. |
-| **Cluster Manager** | An external service that allocates resources across applications — Spark Standalone, YARN, or Kubernetes. |
-| **Worker Node** | Any node in the cluster that can run application code. |
-| **Executor** | A process launched on a worker node for one application. Runs tasks and keeps data in memory or on disk. Each application has its own isolated executors; they stay up for the lifetime of the application. |
-| **Task** | A unit of work sent to one executor. One task processes one partition. |
-| **Cache** | In-memory or disk storage maintained by executors across tasks — populated when you call `.cache()` or `.persist()`. |
+---
 
-When you run a PySpark script, your Python process is the driver. It connects to the cluster manager, which launches executors on worker nodes. The driver sends your application code to those executors, then schedules tasks — one task per data partition — to run on them. Executors report results back to the driver.
+### Driver Program
 
-Your data is split into **partitions** — chunks distributed across executor memory. Each partition is processed by exactly one task, independently and in parallel with other tasks. This is the source of Spark's scalability: more executors means more tasks can run at the same time.
+The Python process running your script is the **Driver Program**. In the word count program, the driver is the process that runs from `SparkSession.builder...getOrCreate()` all the way to `spark.stop()`.
+
+Every call you make — `spark.read.text(...)`, `.select(...)`, `.filter(...)`, `.groupBy(...)` — is handled by the driver. It receives your instructions, translates them into a logical plan, and holds that plan in memory. No data moves. The driver is doing paperwork.
+
+The driver must be network-addressable from worker nodes because executors send results back to it.
+
+---
+
+### SparkContext and SparkSession
+
+`SparkSession.builder...getOrCreate()` is what you write. What it creates internally is a **SparkContext** — the object that holds the connection to the cluster manager and coordinates the distributed computation. `SparkSession` wraps it and adds the SQL and DataFrame APIs on top.
+
+In the word count program, the SparkContext is what gets invoked the moment `.show(10)` fires. It takes the logical plan the driver assembled, optimises it, and hands it to the cluster manager.
+
+---
+
+### Cluster Manager
+
+The **Cluster Manager** is an external service that controls the machines in the cluster. In the local stack (`docker compose up`) it is Spark Standalone, running inside the `spark` container. On cloud deployments it is typically YARN or Kubernetes.
+
+When `.show(10)` triggers the job, the SparkContext asks the cluster manager: "I need executors." The cluster manager decides how many executors to launch, on which machines, and with how much memory — based on what you configured when starting the session.
+
+In the local stack the cluster manager is the same service you connected to at `sc://spark:15002`.
+
+---
+
+### Worker Nodes and Executors
+
+A **Worker Node** is any machine in the cluster that can run application code. The cluster manager launches an **Executor** process on each worker node it allocates to your application.
+
+In the word count program, executors are the processes that actually read `1342-0.txt`, run `split`, `regexp_extract`, `lower`, and `filter` on lines of text, and count words. The driver never touches the file contents directly — it delegates all of that to executors.
+
+Each application gets its own isolated executors. They stay alive for the entire application (from `getOrCreate()` to `spark.stop()`), not just one query.
+
+---
+
+### Partitions and Tasks
+
+`1342-0.txt` is not loaded as a single block. Spark splits it into **partitions** — contiguous chunks of the file, each small enough to fit in executor memory. Each partition is assigned to exactly one **Task**, and each task runs on one executor.
+
+In the word count program:
+- Tasks for `split`, `lower`, `filter` can all run independently on each partition in parallel — no executor needs to see another's data. These are called **narrow transformations**.
+- `groupBy("word").count()` is different: to count "the" across the whole book, every occurrence of "the" from every partition must land on the same executor. Spark triggers a **shuffle** — data moves across the network, regrouped by word. This is the most expensive step in the program.
+
+After the shuffle, each executor holds all occurrences of a distinct set of words, counts them, and sends the top results back to the driver. The driver then calls `.show(10)`.
+
+---
+
+### The full sequence for `.show(10)`
+
+```
+1. driver builds logical plan from all the transformation calls
+2. SparkContext optimises the plan and splits it into stages (shuffle boundaries)
+3. cluster manager launches executors on worker nodes
+4. driver sends application code (the transformations) to executors
+5. executors read their partition of 1342-0.txt and run split → lower → filter  (Stage 1)
+6. shuffle: data moves across executors, regrouped by word                       (stage boundary)
+7. executors count their local word groups                                        (Stage 2)
+8. driver receives top 10 results; show() prints them
+```
+
+Every step before line 5 is the driver doing planning. Every step from line 5 onward is executors doing work.
 
 The JVM-Python boundary matters here. PySpark's DataFrame API generates JVM instructions — so `F.sum()`, `F.join()`, and `F.filter()` all run at full JVM speed regardless of Python. The Python process only sends the plan; the JVM does the heavy lifting. Python UDFs break this model (covered in Chapter 12), but for the DataFrame API the performance gap between Python and Scala is negligible.
 
