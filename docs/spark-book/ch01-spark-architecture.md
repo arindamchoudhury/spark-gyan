@@ -137,17 +137,22 @@ Before walking through the components, there is a foundational choice that shape
 
 The official Spark Connect overview ([spark.apache.org](https://spark.apache.org/docs/latest/spark-connect-overview.html)) defines two modes:
 
-**Classic mode** — the original architecture. The client (your Python code) and the Spark driver run in the same process. Python communicates with the JVM directly via Py4J.
+**Classic mode** — two separate OS processes, both on the same machine, communicating over a local socket via **Py4J** ([steadbytes.com](https://steadbytes.com/blog/pyspark-runtime-architecture/)):
 
 ```
-Python process (your code + Py4J)  ◄──local socket──►  JVM process (Spark engine)
+Python process        ◄──Py4J local socket──►  JVM process
+(your code runs here)                           (Spark engine: Catalyst, scheduler)
 ```
 
-**Spark Connect** — introduced in Spark 3.4, default `pyspark` shell in Spark 4.x. The client and the Spark driver are decoupled. Your Python process sends unresolved logical plans to a remote Spark Connect server over gRPC.
+Data processing logic runs in Python. Data persistence, query planning, and cluster coordination run in the JVM.
+
+**Spark Connect** — introduced in Spark 3.4, default `pyspark` shell in Spark 4.x. The Python client and the Spark engine are fully decoupled and communicate over gRPC — they can be on different machines ([spark.apache.org](https://spark.apache.org/docs/latest/spark-connect-overview.html)):
 
 ```
 Python process (your code)  ──gRPC (sc://host:15002)──►  Spark Connect Server (JVM, remote)
 ```
+
+The Python client has no embedded JVM at all.
 
 | | Classic | Spark Connect |
 |---|---|---|
