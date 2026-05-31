@@ -17,7 +17,7 @@ Apache Spark is a distributed analytics engine. Understanding how it distributes
 
 ---
 
-## The problem this solves
+## Why Spark exists
 
 The motivation for Spark comes directly from Matei Zaharia's 2010 paper *"Spark: Cluster Computing with Working Sets"* (UC Berkeley). Understanding that motivation explains every major design decision in Spark.
 
@@ -495,97 +495,26 @@ Use this for: production workloads where you want managed infrastructure.
 
 ---
 
-## Examples
 
-### Minimal example: transformations are lazy, actions are not
+## Where Spark doesn't shine
 
-```python
-# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
-import pyspark.sql.functions as F
-import pyspark.sql.types as T
-from pyspark.sql import SparkSession
+Spark is a general-purpose distributed engine, not the best tool for every workload. Reaching for Spark when a simpler tool would do is itself a common mistake.
 
-spark = SparkSession.builder.appName("ch01-architecture").getOrCreate()
+| Situation | Why Spark struggles | Better choice |
+|---|---|---|
+| **Data fits on one machine** (up to ~100 GB) | JVM startup, cluster coordination, and shuffle overhead dominate the runtime. A single-node engine avoids all of it. | pandas, Polars, DuckDB |
+| **Sub-second interactive SQL** | Spark executes in stages; stage boundaries and task scheduling add latency. Trino pipelines stages concurrently and skips JVM serialisation overhead. | Trino / Presto |
+| **True real-time streaming** (millisecond latency) | Structured Streaming is micro-batch, not event-by-event. Even the Real-Time Mode (4.0+) targets seconds, not milliseconds. | Apache Flink |
+| **Row-level OLTP** (inserts, point lookups, transactions) | Spark is an analytics engine — it reads large columnar datasets in bulk. It has no row-level index and is not a database. | PostgreSQL, MySQL |
+| **Many small files** (millions of files, KB each) | Each file becomes at least one task. Scheduling overhead dwarfs the actual work. | Consolidate files first, or use a purpose-built tool |
+| **GPU-based deep learning** | Spark MLlib is CPU-oriented and designed for data parallelism over DataFrames. It doesn't natively handle GPU communication or all-reduce patterns. | PyTorch + Ray / Horovod |
 
-df = spark.range(1_000_000)  # creates a DataFrame of 0..999999 — instantly, no data yet
+The pattern: Spark is the right choice when data is large enough that distribution is necessary and the workload is batch, iterative, or near-real-time. When data is small, latency is tight, or the workload is transactional, a specialised tool will be faster, cheaper, and simpler to operate.
 
-# These three lines execute in microseconds — no data moves
-filtered   = df.filter(F.col("id") % 2 == 0)
-with_label = filtered.withColumn("label", F.lit("even"))
-limited    = with_label.limit(5)
-
-# THIS triggers the job — only now does Spark plan, optimise, and execute
-limited.show()
-# +---+-----+
-# | id|label|
-# +---+-----+
-# |  0| even|
-# |  2| even|
-# |  4| even|
-# |  6| even|
-# |  8| even|
-# +---+-----+
-```
-
-### Building up: the plan vs the execution
-
-```python
-# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
-import pyspark.sql.functions as F
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.appName("ch01-plan").getOrCreate()
-
-data = [("Alice", "eng", 95000), ("Bob", "eng", 87000), ("Carol", "mkt", 72000)]
-employees = spark.createDataFrame(data, ["name", "dept", "salary"])
-
-# Chain of transformations — all lazy
-result = (
-    employees
-    .filter(F.col("dept") == "eng")
-    .withColumn("bonus", F.col("salary") * 0.1)
-    .select("name", "salary", "bonus")
-)
-
-# See the plan Catalyst will execute — no data moves
-result.explain()
-# == Physical Plan ==
-# Project [name#0, salary#2, (salary#2 * 0.1) AS bonus#5]
-# +- Filter (dept#1 = eng)
-#    +- Scan ExistingRDD[name#0,dept#1,salary#2]
-
-# Action — now Spark runs the optimised plan
-result.show()
-# +-----+------+-------+
-# | name|salary|  bonus|
-# +-----+------+-------+
-# |Alice| 95000| 9500.0|
-# |  Bob| 87000| 8700.0|
-# +-----+------+-------+
-```
+Sources: [AltexSoft — Spark pros and cons](https://www.altexsoft.com/blog/apache-spark-pros-cons/), [Trino vs Spark](https://snicsolutions.com/compare/trino-vs-spark), [DuckDB vs Spark benchmark](https://blog.dataexpert.io/p/duckdb-can-be-100x-faster-than-spark)
 
 ---
 
-## Common pitfalls
-
-- **Calling `count()` on a DataFrame you didn't intend to materialise** — `df.count()` as a method call is an action that triggers a full scan. `F.count("col")` inside `groupBy().agg()` is a transformation. They look similar but behave very differently.
-- **Expecting `show()` to be free** — every `show()` is a job. In a debugging loop with five `show()` calls, Spark re-executes the entire chain five times (unless the DataFrame is cached).
-- **Caching too eagerly** — `df.cache()` is not always faster. If the DataFrame is consumed only once, caching wastes memory and adds overhead. Cache only DataFrames that feed two or more actions.
-- **Assuming Python overhead is large for DataFrame operations** — it isn't. Python sends a plan to the JVM; the JVM runs it. The bottleneck is almost never the Python-JVM round trip for standard DataFrame operations.
-- **Confusing Spark's logical partitions with Spark Connect's gRPC transport** — Connect is opt-in even in Spark 4.x. Without `SPARK_REMOTE` set, `pyspark` starts in Classic mode. If you set `SPARK_REMOTE` but have no Connect server running, the shell will fail to connect; unset the variable to fall back to Classic.
-
----
-
-## Exercises
-
-1. **Recall** — In a PySpark program that chains five `.filter()` calls followed by one `.show()`, how many jobs does Spark create? How many times does data move?
-   *Hint: count the actions.*
-
-2. **Apply** — Create a DataFrame from `spark.range(100)`. Chain three transformations. Call `.explain()` on the result and identify which step Catalyst pushed earliest in the physical plan.
-
-3. **Extend** — Set up a local SparkSession and use `spark.sparkContext.getConf().getAll()` to list all active configuration. Identify which setting controls the number of shuffle partitions and what the default is. Explain why the default might be too high for a laptop.
-
----
 
 ## Summary
 
