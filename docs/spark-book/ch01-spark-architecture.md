@@ -19,7 +19,13 @@ Apache Spark is a distributed analytics engine. Understanding how it distributes
 
 ## The problem this solves
 
-You run a PySpark job on a 10-node cluster and it finishes in the same time as on your laptop. Or you add a `.show()` in the middle of a chain and the job slows down dramatically. Both problems — and almost every other Spark performance mystery — come from not knowing where work actually happens and when.
+You write a pipeline that reads a Parquet file, applies eight transformations, and writes the result. To debug it, you add `df.show()` calls after steps 2, 4, and 6 to inspect intermediate results. The job now takes four times as long. You remove the `show()` calls and it speeds back up, but you have no idea why.
+
+Or: a colleague writes a loop that calls `df.count()` after each transformation to log progress — "rows after filter: 2.1M, rows after join: 1.8M, ..." — and the pipeline takes 40 minutes when the same transformations without the count calls take 4. She thinks `.count()` is a cheap operation.
+
+Both are the same mistake: not knowing that Spark doesn't execute your code when you write it. Every `show()` and every `count()` re-runs the entire chain from scratch — the read, every filter, every join — because Spark recorded the instructions but never materialised the intermediate results. Three `show()` calls in a chain of ten transformations means the first three steps run four times.
+
+Once you understand the driver-executor model and lazy evaluation, this behaviour is not just explainable — it's predictable. You know exactly when data moves, how many times each step runs, and where to cache to stop the repetition.
 
 ---
 
