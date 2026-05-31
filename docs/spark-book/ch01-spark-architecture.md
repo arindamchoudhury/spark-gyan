@@ -46,6 +46,66 @@ Sources: [AWS — Hadoop vs Spark](https://aws.amazon.com/compare/the-difference
 
 ---
 
+## A first Spark program
+
+Before explaining the architecture, here is a complete word count program — the canonical "hello world" of distributed computing. It reads *Pride and Prejudice* from the Gutenberg corpus in the local stack, counts every word, and shows the top 10. All the behaviour described in the rest of this chapter is visible in this program.
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.14
+# Run from workspace/notebooks/ — requires the local stack running (docker compose up)
+import os
+from pyspark.sql import SparkSession
+import pyspark.sql.functions as F
+
+os.environ["SPARK_LOCAL_IP"] = "127.0.0.1"
+conf_path = os.path.abspath("log4j2.xml")   # silences Spark's INFO noise
+
+spark = (
+    SparkSession.builder
+    .appName("word-count")
+    .config("spark.ui.port", "4041")
+    .config("spark.driver.extraJavaOptions",
+            f"-Dlog4j2.configurationFile={conf_path}")
+    .getOrCreate()
+)
+
+# Everything below this line is lazy — no data moves yet
+book = spark.read.text("../data/gutenberg_books/1342-0.txt")
+
+top_words = (
+    book
+    .select(F.explode(F.split("value", " ")).alias("word"))    # split lines into words
+    .select(F.lower(F.regexp_extract("word", "[a-z]+", 0))     # lowercase, strip punctuation
+             .alias("word"))
+    .filter(F.col("word") != "")                               # drop empties
+    .groupBy("word")
+    .count()
+    .orderBy(F.col("count").desc())
+)
+
+top_words.show(10)   # <-- THIS is the first action; only now does Spark execute the plan
+# +----+-----+
+# |word|count|
+# +----+-----+
+# | the| 4480|
+# |  to| 4218|
+# |  of| 3711|
+# | and| 3504|
+# | her| 2199|
+# |   a| 1982|
+# |  in| 1909|
+# | was| 1838|
+# |   i| 1749|
+# | she| 1668|
+# +----+-----+
+
+spark.stop()
+```
+
+Every line between `spark.read.text(...)` and `.show(10)` is a **transformation** — an instruction recorded but not executed. `.show(10)` is the first **action** — the moment Spark takes all the recorded instructions, builds an optimised physical plan, distributes the work across executors, and returns a result. The rest of this chapter explains exactly what happens during those few milliseconds.
+
+---
+
 ## Core concept
 
 The official Spark documentation describes the cluster architecture with this diagram:
