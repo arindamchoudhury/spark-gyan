@@ -139,18 +139,37 @@ The official definition ([cluster-overview](https://spark.apache.org/docs/latest
 
 > *"The process running the main() function of the application and creating the SparkContext."*
 
-The official docs ([submitting-applications](https://spark.apache.org/docs/latest/submitting-applications.html)) define two deploy modes that determine where the driver runs:
+In PySpark classic mode the driver is **not a single process** — it is two processes working together ([source: steadbytes.com](https://dev.to/steadbytes/python-spark-and-the-jvm-an-overview-of-the-pyspark-runtime-architecture-21gg)):
 
-| How you run | Deploy mode | Driver Program | Verified |
+```
+┌────────────────────────┐        Py4J (local socket)       ┌───────────────────────────┐
+│  Python process         │ ◄──────────────────────────────► │  JVM process               │
+│  runs your script       │                                   │  runs Spark's core engine  │
+│  (the "driver program") │                                   │  planning, optimisation    │
+└────────────────────────┘                                   └───────────────────────────┘
+```
+
+- The **Python process** runs your code — `top_words = book.select(...)...` — and is what Spark officially calls the driver program. It holds the logical plan.
+- The **JVM process** runs Spark's engine (Catalyst optimiser, scheduler, cluster coordination). The Python process talks to it via **Py4J**, a gateway library that lets Python call JVM methods over a local socket.
+
+In **Spark Connect mode** (default in the `pyspark` shell in Spark 4.x), the JVM is fully remote on the Connect server. The Python client has no embedded JVM at all:
+
+```
+┌────────────────────────┐       gRPC (sc://host:15002)      ┌───────────────────────────┐
+│  Python process         │ ──────────────────────────────►  │  Spark Connect Server       │
+│  your script / notebook │                                   │  JVM, remote               │
+└────────────────────────┘                                   └───────────────────────────┘
+```
+
+**Where the driver runs** — from the official submitting-applications docs:
+
+| How you run | Deploy mode | Driver location | Verified |
 |---|---|---|---|
-| `spark-submit --deploy-mode client` | client (default) | the spark-submit process on the submitting machine | ✅ official docs |
-| `spark-submit --deploy-mode cluster` | cluster | a process launched on a worker node | ✅ official docs |
-| Jupyter notebook | client | the Jupyter kernel process | inferred — no explicit official statement found |
-| `pyspark` shell | client | the pyspark shell process | inferred — no explicit official statement found |
+| `spark-submit --deploy-mode client` | client (default) | Python process on the submitting machine | ✅ official docs |
+| `spark-submit --deploy-mode cluster` | cluster | process launched on a worker node | ✅ official docs |
+| Jupyter notebook / `pyspark` shell | client | the kernel / shell Python process | inferred from definition — no explicit official statement |
 
-The inference for notebook and shell comes from the RDD guide: *"every Spark application has a driver program that runs the user's main function."* In a Jupyter notebook the user's code runs in the kernel process; in the pyspark shell it runs in the shell process — so by the definition those processes are the driver. But this is reasoning from the definition, not a direct official statement.
-
-In all cases, `SparkSession.builder.getOrCreate()` does not create the driver. It runs *inside* the already-running driver process and creates a SparkSession (and SparkContext) within it.
+`SparkSession.builder.getOrCreate()` does not create the driver process. It runs inside the already-running Python process and creates a SparkSession (which internally starts the JVM via Py4J, or connects to the remote Spark Connect server).
 
 Every call you make — `spark.read.text(...)`, `.select(...)`, `.filter(...)`, `.groupBy(...)` — executes in the driver process. It records the instructions as a logical plan but moves no data. The driver must be network-addressable from worker nodes because executors send results back to it.
 
