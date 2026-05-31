@@ -19,7 +19,13 @@ Apache Spark is a distributed analytics engine. Understanding how it distributes
 
 ## The problem this solves
 
-By 2009, when Spark was created at Berkeley's AMPLab, the dominant large-scale data processing tool was Hadoop MapReduce. MapReduce solved the right problem — distributing computation across many cheap machines — but had a fundamental architectural bottleneck: every step wrote its output to disk before the next step could read it. A multi-step analytical pipeline read and wrote to HDFS at each stage, making iterative algorithms (like machine learning, which needs dozens of passes over the same data) extremely slow. AWS describes it directly: Hadoop "only does so in batches and with substantial delay."
+By 2009, when Spark was created at Berkeley's AMPLab, the dominant large-scale data processing tool was Hadoop MapReduce. MapReduce solved the right problem — distributing computation across many cheap machines — but had two sources of disk I/O that made complex pipelines slow.
+
+First, the shuffle between the Map and Reduce phases: map output is written to local disk on each mapper node, then reducers fetch it from disk over the network. This happens inside every single MapReduce job.
+
+Second, chained jobs: a real analytical pipeline requires multiple MapReduce jobs in sequence (filter → join → aggregate → …). Each job writes its full output to HDFS, and the next job reads it back from HDFS. AWS describes the consequence directly: Hadoop "only does so in batches and with substantial delay."
+
+Iterative algorithms — machine learning trains by making dozens of passes over the same data — pay both costs on every iteration. A logistic regression that needs 50 iterations triggers 50 HDFS writes and 50 HDFS reads of the full dataset.
 
 Spark was built to remove that bottleneck. Rather than writing intermediate results to disk after every step, Spark keeps data in RAM across the full computation and writes to storage only once at the end. The difference in speed — the commonly cited "100× faster for in-memory operations, 10× faster on disk" — comes directly from this single architectural decision.
 
