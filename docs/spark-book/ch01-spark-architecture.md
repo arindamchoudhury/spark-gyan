@@ -19,13 +19,13 @@ Apache Spark is a distributed analytics engine. Understanding how it distributes
 
 ## The problem this solves
 
-You write a pipeline that reads a Parquet file, applies eight transformations, and writes the result. To debug it, you add `df.show()` calls after steps 2, 4, and 6 to inspect intermediate results. The job now takes four times as long. You remove the `show()` calls and it speeds back up, but you have no idea why.
+You write a pipeline with eight transformation steps. During development you add a `df.show()` after step 3 to inspect an intermediate result. The job now takes three times as long. You assume `show()` is expensive because it renders output — so you move it to the very end, just before the write. The job is still three times slower. You remove it entirely and the speed comes back. Now you are stuck: you cannot inspect the intermediate result without paying a massive time penalty, and you do not know why.
 
-Or: a colleague writes a loop that calls `df.count()` after each transformation to log progress — "rows after filter: 2.1M, rows after join: 1.8M, ..." — and the pipeline takes 40 minutes when the same transformations without the count calls take 4. She thinks `.count()` is a cheap operation.
+Or: a colleague adds `df.count()` after each transformation to log progress — "rows after filter: 2.1M, rows after join: 1.8M, ..." Ten log lines. The pipeline takes 40 minutes. Without the count calls it takes 4. She removes them to hit her deadline, but the mystery remains.
 
-Both are the same mistake: not knowing that Spark doesn't execute your code when you write it. Every `show()` and every `count()` re-runs the entire chain from scratch — the read, every filter, every join — because Spark recorded the instructions but never materialised the intermediate results. Three `show()` calls in a chain of ten transformations means the first three steps run four times.
+The real cause in both cases: Spark does not execute your transformations when you write them. It records the instructions and waits. Only a `show()`, `count()`, or `write()` triggers actual computation — and it re-runs the entire chain from scratch every time, because no intermediate result was ever stored. Three `show()` calls in a ten-step chain means the first three steps execute four separate times.
 
-Once you understand the driver-executor model and lazy evaluation, this behaviour is not just explainable — it's predictable. You know exactly when data moves, how many times each step runs, and where to cache to stop the repetition.
+Once you understand this model you can reason about it: where to place a single `cache()` to pay the computation cost once and inspect freely afterwards; why a final `count()` before a `write()` doubles your job time; why the Spark UI shows five jobs when your code only has one `write()`.
 
 ---
 
