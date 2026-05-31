@@ -19,13 +19,13 @@ Apache Spark is a distributed analytics engine. Understanding how it distributes
 
 ## The problem this solves
 
-You write a pipeline with eight transformation steps. During development you add a `df.show()` after step 3 to inspect an intermediate result. The job now takes three times as long. You assume `show()` is expensive because it renders output — so you move it to the very end, just before the write. The job is still three times slower. You remove it entirely and the speed comes back. Now you are stuck: you cannot inspect the intermediate result without paying a massive time penalty, and you do not know why.
+Two facts from the Spark documentation that surprise almost every beginner:
 
-Or: a colleague adds `df.count()` after each transformation to log progress — "rows after filter: 2.1M, rows after join: 1.8M, ..." Ten log lines. The pipeline takes 40 minutes. Without the count calls it takes 4. She removes them to hit her deadline, but the mystery remains.
+1. **Spark does not cache results automatically.** If you call two actions on the same DataFrame — say `df.count()` to log a row count and then `df.write()` to save the result — Spark re-executes the entire chain twice. The read, every filter, every join — all of it, twice.
 
-The real cause in both cases: Spark does not execute your transformations when you write them. It records the instructions and waits. Only a `show()`, `count()`, or `write()` triggers actual computation — and it re-runs the entire chain from scratch every time, because no intermediate result was ever stored. Three `show()` calls in a ten-step chain means the first three steps execute four separate times.
+2. **`count()` has dual identity.** `F.count("col")` inside `groupBy().agg(...)` is a transformation — lazy, no data moves. `df.count()` called as a method on a DataFrame is an action — it triggers full computation immediately. They look almost identical but behave completely differently.
 
-Once you understand this model you can reason about it: where to place a single `cache()` to pay the computation cost once and inspect freely afterwards; why a final `count()` before a `write()` doubles your job time; why the Spark UI shows five jobs when your code only has one `write()`.
+If you do not know these two things, Spark jobs produce results that are correct but take far longer than they should, for reasons that are invisible in the code. Understanding the driver-executor model and lazy evaluation turns these from mysteries into predictable, fixable behaviour.
 
 ---
 
