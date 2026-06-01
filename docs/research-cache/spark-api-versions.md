@@ -118,3 +118,20 @@ Last verified: **2026-05-31** against Spark 4.1.1.
 | `F.median()` as window function | **Unverified** — added as aggregate in 3.4 but `.over()` support not confirmed in official docs | Use custom pandas UDF as fallback |
 
 Sources: [PySpark Window API](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.Window.html), [PySpark window module](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/window.html)
+
+---
+
+## RDD origin papers
+
+Last verified: **2026-06-01**
+
+| Paper | Year | Venue | Key contribution |
+|---|---|---|---|
+| *Spark: Cluster Computing with Working Sets* — Zaharia et al. | **2010** | HotCloud (USENIX) | Introduced Spark and the in-memory working-set concept; motivation from MapReduce's disk-bound iterative workloads |
+| *Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing* — Zaharia et al. | **2012** | NSDI (USENIX) — **Best Paper Award** | Formalised the RDD abstraction, lineage-based fault tolerance, and the transformation/action API |
+
+- Ch01 references the **2010** paper (Spark architecture and motivation).
+- Ch03 references the **2012** paper (RDD abstraction specifically).
+- Both are by Matei Zaharia et al. at UC Berkeley.
+
+Sources: [NSDI 2012 paper (USENIX)](https://www.usenix.org/conference/nsdi12/technical-sessions/presentation/zaharia), [Full PDF](https://people.eecs.berkeley.edu/~matei/papers/2012/nsdi_spark.pdf)

@@ -306,6 +306,38 @@ A **job** is triggered by one action. Each job is broken into **stages** — gro
 
 ---
 
+### Fault tolerance: lineage, not replication
+
+Hadoop HDFS achieves durability through **replication** — every data block is copied to 3 nodes by default. If a node fails, another replica serves the data immediately with no recomputation.
+
+Spark takes a fundamentally different approach: **lineage**. Every RDD and DataFrame records the full chain of transformations that produced it — from the original source through every `filter`, `join`, and `groupBy`. If a partition is lost (executor crash, node failure), Spark does not need a backup copy. It replays the lineage for that partition from the source and recomputes only what was lost.
+
+```mermaid
+flowchart LR
+    SRC["Source\n(HDFS / S3 — durable)"]
+    T1["filter"]
+    T2["groupBy"]
+    T3["Partition 3\n(lost)"]
+    T3R["Partition 3\n(recomputed)"]
+
+    SRC --> T1 --> T2 --> T3
+    SRC -.->|"lineage replay\n(only partition 3)"| T3R
+```
+
+**The key principle:** Spark delegates *storage durability* to the underlying filesystem (HDFS, S3, GCS). It never tries to own that problem. Spark only manages *compute-level* fault tolerance — rerunning tasks, not replicating bytes.
+
+Three mechanisms cover different failure scenarios:
+
+| Failure | Mechanism | What happens |
+|---|---|---|
+| Partition lost in executor memory | **Lineage recomputation** | Spark replays the transformation chain from source for that partition only |
+| Executor that wrote shuffle output dies | **ShuffleMapStage resubmission** | DAGScheduler resubmits the entire stage that produced the lost shuffle files |
+| Lineage is very long (e.g. 100 ML iterations) | **Checkpointing** | User explicitly saves the RDD/DataFrame to HDFS, cutting the lineage; recovery reads the checkpoint instead of replaying 100 steps |
+
+The trade-off versus HDFS replication: recovery requires CPU time (recomputation) rather than just reading a replica. For very long lineage chains this can be slow — which is when checkpointing pays for itself.
+
+---
+
 ### The full sequence for `.show(10)`
 
 ```
