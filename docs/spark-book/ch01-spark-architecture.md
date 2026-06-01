@@ -502,6 +502,76 @@ The DAGScheduler and TaskScheduler handle failures at different levels:
 
 ---
 
+### Shuffle storage: local, external, and remote
+
+By default, Spark executors write shuffle output to **local disk** on the worker node. This creates two problems:
+
+1. **Executor lifecycle coupling** — if an executor dies before Stage 1 reads its shuffle files, the DAGScheduler must resubmit the entire ShuffleMapStage to regenerate the lost data.
+2. **Random small-file I/O** — each reducer fetches many small files from many executors across the network, resulting in scattered random reads.
+
+Three progressively decoupled solutions exist:
+
+---
+
+**External Shuffle Service (ESS)** — a long-running JVM process deployed on every worker node, separate from executor processes. Executors write shuffle files and register them with the local ESS. If an executor is killed, the ESS continues serving its shuffle files to reducers. ESS is required for dynamic allocation on YARN and Standalone (so executors can be removed without losing their shuffle data).
+
+```
+Worker node
+├── Executor A (may be killed)    ──writes──▶  External Shuffle Service
+└── Executor B (may be killed)    ──writes──▶  (stays alive; serves files to reducers)
+```
+
+Enable with: `spark.shuffle.service.enabled = true` (default: `false`)
+
+Limitation: ESS still ties shuffle data to the physical worker node. If the node fails, the data is gone.
+
+---
+
+**Push-based shuffle** — built into Spark (YARN + ESS only). Instead of waiting for reducers to pull data, map tasks actively **push** shuffle blocks to the ESS as they complete. The ESS merges blocks from multiple mappers into larger merged files per output partition. Reducers then read one large sequential merged file instead of many small random files.
+
+```mermaid
+flowchart LR
+    subgraph Mappers
+        M1["map task 1"] & M2["map task 2"] & M3["map task 3"]
+    end
+    subgraph ESS["External Shuffle Service"]
+        MF["merged partition file\n(per output partition)"]
+    end
+    M1 & M2 & M3 -->|"push blocks"| MF
+    MF -->|"one sequential read"| R["reducer"]
+```
+
+Enable with: `spark.shuffle.push.enabled = true` (default: `false`; YARN + ESS only)
+
+---
+
+**Remote Shuffle Service (RSS)** — a dedicated cluster of shuffle servers, completely separate from the Spark cluster. Executors write shuffle data over the network to the RSS cluster instead of local disk. No shuffle data touches the worker node's disk at all. This is the architecture required for **compute-storage separation** — common in cloud-native Kubernetes deployments where mounting hostPath volumes on every node is impractical.
+
+```mermaid
+flowchart LR
+    subgraph Spark["Spark Cluster"]
+        E1["Executor"] & E2["Executor"] & E3["Executor"]
+    end
+    subgraph RSS["Remote Shuffle Service Cluster"]
+        S1["Shuffle server 1"]
+        S2["Shuffle server 2"]
+        S3["Shuffle server 3"]
+    end
+    E1 & E2 & E3 -->|"push over network"| S1 & S2 & S3
+    S1 & S2 & S3 -->|"serve to reducers"| E1 & E2 & E3
+```
+
+Two production-grade Apache-incubated RSS implementations:
+
+| Project | Apache status | Storage tiers | Notes |
+|---|---|---|---|
+| **Apache Celeborn** | Apache TLP | Memory → local disk → HDFS / object store | Supports Spark 2.4–4.x; LifecycleManager runs inside the driver |
+| **Apache Uniffle** | Apache TLP | Memory → local disk → HDFS | Coordinator cluster assigns shuffle servers per job |
+
+Both implement Spark's shuffle plugin API (`spark.shuffle.manager`). The Spark application sets the plugin class and the shuffle plugin intercepts all shuffle write/read calls, redirecting them to the RSS cluster instead of local disk.
+
+---
+
 ### The full component map
 
 ```mermaid
