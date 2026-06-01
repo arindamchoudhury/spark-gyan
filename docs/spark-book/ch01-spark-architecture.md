@@ -354,8 +354,8 @@ flowchart TD
     C["Analyzed Logical Plan — cache-aware\n(cached subtrees replaced)"]
     D["Optimized Logical Plan\n(predicate pushdown, column pruning,\nconstant folding, join reordering)"]
     E["Physical Plan — sparkPlan\n(candidates generated, best selected via cost model)"]
-    F["executedPlan\n(preparation rules applied:\nCollapseCodegenStages → Tungsten codegen,\nEnsureRequirements, ReuseExchange, ...)"]
-    G["RDD[InternalRow]\n◀ boundary: DataFrame world ends, RDD world begins"]
+    F["executedPlan\n(13 preparation rules applied in order:\nCoalesceBucketsInJoin, PlanDynamicPruningFilters,\nPlanSubqueries, RemoveRedundantProjects,\nEnsureRequirements, InsertSortForLimitAndOffset,\nReplaceHashWithSortAgg, RemoveRedundantSorts,\nRemoveRedundantWindowGroupLimits,\nDisableUnnecessaryBucketedScan,\nApplyColumnarRulesAndInsertTransitions,\nCollapseCodegenStages → Tungsten codegen,\nReuseExchangeAndSubquery)"]
+    G["SQLExecutionRDD wrapping RDD[InternalRow]\n◀ boundary: DataFrame world ends, RDD world begins"]
     H["SparkContext.runJob(RDD[InternalRow])"]
     I["DAGScheduler.handleJobSubmitted()"]
 
@@ -364,11 +364,13 @@ flowchart TD
     C -->|"Catalyst Optimizer"| D
     D -->|"SparkPlanner"| E
     E -->|"prepareForExecution"| F
-    F -->|"QueryExecution.toRdd\ncalls SparkPlan.execute()"| G
+    F -->|"QueryExecution.toRdd\nreturns SQLExecutionRDD(executedPlan.execute())"| G
     G --> H --> I
 ```
 
-`QueryExecution.toRdd` is the boundary between Spark SQL and Spark Core. Only after this step does `SparkContext.runJob` get called.
+`QueryExecution.toRdd` is the boundary between Spark SQL and Spark Core. In Spark 4.1.2 it returns `SQLExecutionRDD(executedPlan.execute(), conf)` — a thin wrapper around `RDD[InternalRow]` that carries SQL execution metadata. Only after this step does `SparkContext.runJob` get called.
+
+Spark 4.x added internal phases (`commandExecuted`, `tableVersionsRefreshed`, `normalized`) to `QueryExecution` for the new SQL scripting and Declarative Pipelines features. For standard DataFrame queries these phases pass through unchanged — the six-phase pipeline above is what matters for DataFrame execution.
 
 At this point no data has moved. The DAGScheduler receives the compiled `RDD[InternalRow]` — every transformation the user wrote, from `spark.read.text(...)` to `.orderBy(...)`, now expressed as RDD operations.
 
@@ -430,6 +432,7 @@ When an executor signals it has a free slot, the TaskScheduler picks the best ta
 |---|---|
 | `PROCESS_LOCAL` | Data is in the executor's own memory (cached partition) |
 | `NODE_LOCAL` | Data is on the same physical machine as the executor |
+| `NO_PREF` | No locality preference — data is equally accessible from anywhere (e.g. off-heap or external storage) |
 | `RACK_LOCAL` | Data is on a different machine but same network rack |
 | `ANY` | Data must be fetched over the network |
 
