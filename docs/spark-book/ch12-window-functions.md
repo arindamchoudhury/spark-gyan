@@ -1,4 +1,4 @@
-# Chapter 11 — Window Functions
+# Chapter 12 — Window Functions
 
 > *Learning-path topic: I2 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -198,7 +198,7 @@ df.withColumns({
 - Unordered window: whole partition is the frame. Ordered window: growing frame (start to current row) by default.
 - Three families: aggregate (`min/max/avg/sum`), ranking (`rank/dense_rank/row_number/ntile`), analytic (`lag/lead/cume_dist`).
 - Use `rowsBetween` for position-based sliding windows; `rangeBetween` for value-based (time/date) windows.
-- Chapter 12 covers UDFs — how to apply custom Python logic as a column transformation.
+- Chapter 13 covers UDFs — how to apply custom Python logic as a column transformation.
 
 ---
 

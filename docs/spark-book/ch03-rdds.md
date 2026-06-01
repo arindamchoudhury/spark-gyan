@@ -1,4 +1,4 @@
-# Chapter 13 — RDD Fundamentals
+# Chapter 03 — RDD Fundamentals
 
 > *Learning-path topic: I4 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*

@@ -1,4 +1,4 @@
-# Chapter 10 — Complex Types: Arrays, Maps, and Structs
+# Chapter 11 — Complex Types: Arrays, Maps, and Structs
 
 > *Learning-path topic: I1 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -185,7 +185,7 @@ df.select("user_id", F.explode("metadata").alias("key", "value")).show()
 - `explode()` turns one row-with-array into N rows — one per element; `explode_outer()` preserves null-array rows.
 - Higher-order functions (`F.transform`, `F.filter`, `F.aggregate`, `F.exists`) operate on arrays in place without row explosion.
 - `collect_list()` / `collect_set()` are the inverse of `explode()` — aggregate rows back into an array.
-- Chapter 11 covers window functions — a technique that lets you compute across groups while keeping every row.
+- Chapter 12 covers window functions — a technique that lets you compute across groups while keeping every row.
 
 ---
 

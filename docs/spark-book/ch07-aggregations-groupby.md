@@ -1,4 +1,4 @@
-# Chapter 06 — Aggregations and GroupBy
+# Chapter 07 — Aggregations and GroupBy
 
 > *Learning-path topic: B6 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -160,7 +160,7 @@ df = spark.createDataFrame(
 - Always `.alias()` aggregate results — auto-generated names are fragile.
 - `count("*")` counts all rows; `count("col")` counts non-null values — different answers for sparse columns.
 - Conditional aggregation with `F.when()` inside `F.sum()` or `F.count()` replaces SQL `COUNT(CASE WHEN ...)`.
-- Chapter 7 covers joins — the other half of the data transformation toolkit.
+- Chapter 8 covers joins — the other half of the data transformation toolkit.
 
 ---
 

@@ -1,4 +1,4 @@
-# Chapter 07 — Joins: Types and Mechanics
+# Chapter 08 — Joins: Types and Mechanics
 
 > *Learning-path topic: B7 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -204,7 +204,7 @@ result.explain()
 - Inner join drops unmatched rows; left join preserves all left rows with nulls for missing right data.
 - Semi/anti joins return only left columns and don't duplicate rows — use them for existence checks.
 - Broadcast small lookup tables to avoid shuffle: `events.join(F.broadcast(lookup), ...)`.
-- Chapter 8 covers Spark SQL — a declarative alternative for the same join and aggregation operations.
+- Chapter 9 covers Spark SQL — a declarative alternative for the same join and aggregation operations.
 
 ---
 

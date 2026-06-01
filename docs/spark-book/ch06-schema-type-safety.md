@@ -1,4 +1,4 @@
-# Chapter 05 — Schema: StructType, DDL, and Type Safety
+# Chapter 06 — Schema: StructType, DDL, and Type Safety
 
 > *Learning-path topic: B5 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -162,7 +162,7 @@ df.printSchema()
 - Spark 4.x has ANSI mode on by default: `cast()` raises on invalid input; use `try_cast()` for null-on-failure.
 - `nullable=False` is an optimizer hint, not an enforcement — use explicit filters if nulls must be excluded.
 - Nested schemas use `StructType` inside `StructField` for structs and `ArrayType(elementType)` for arrays.
-- Chapter 6 builds on schema by covering aggregations where types determine aggregate function behaviour.
+- Chapter 7 builds on schema by covering aggregations where types determine aggregate function behaviour.
 
 ---
 

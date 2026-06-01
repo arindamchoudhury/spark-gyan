@@ -6,17 +6,17 @@ Personal book written as I work through the [learning path](../learning-path.md)
 |---|---|---|---|---|
 | ✅ | 01 | B1 | [Spark Architecture and the Execution Model](ch01-spark-architecture.md) | 2026-05-31 |
 | ✅ | 02 | B2 | [SparkSession and Entry Points](ch02-sparksession.md) | 2026-05-31 |
-| ✅ | 03 | B3 | [The DataFrame API: Basics](ch03-dataframe-basics.md) | 2026-05-31 |
-| ✅ | 04 | B4 | [Reading and Writing Data](ch04-reading-writing-data.md) | 2026-05-31 |
-| ✅ | 05 | B5 | [Schema: StructType, DDL, and Type Safety](ch05-schema-type-safety.md) | 2026-05-31 |
-| ✅ | 06 | B6 | [Aggregations and GroupBy](ch06-aggregations-groupby.md) | 2026-05-31 |
-| ✅ | 07 | B7 | [Joins: Types and Mechanics](ch07-joins.md) | 2026-05-31 |
-| ✅ | 08 | B8 | [Spark SQL](ch08-spark-sql.md) | 2026-05-31 |
-| ✅ | 09 | B9 | [Null Handling](ch09-null-handling.md) | 2026-05-31 |
-| ✅ | 10 | I1 | [Complex Types: Arrays, Maps, and Structs](ch10-complex-types.md) | 2026-05-31 |
-| ✅ | 11 | I2 | [Window Functions](ch11-window-functions.md) | 2026-05-31 |
-| ✅ | 12 | I3 | [User-Defined Functions: Python and pandas UDFs](ch12-udfs.md) | 2026-05-31 |
-| ✅ | 13 | I4 | [RDD Fundamentals](ch13-rdds.md) | 2026-05-31 |
+| ✅ | 03 | I4 | [RDD Fundamentals](ch03-rdds.md) | 2026-05-31 |
+| ✅ | 04 | B3 | [The DataFrame API: Basics](ch04-dataframe-basics.md) | 2026-05-31 |
+| ✅ | 05 | B4 | [Reading and Writing Data](ch05-reading-writing-data.md) | 2026-05-31 |
+| ✅ | 06 | B5 | [Schema: StructType, DDL, and Type Safety](ch06-schema-type-safety.md) | 2026-05-31 |
+| ✅ | 07 | B6 | [Aggregations and GroupBy](ch07-aggregations-groupby.md) | 2026-05-31 |
+| ✅ | 08 | B7 | [Joins: Types and Mechanics](ch08-joins.md) | 2026-05-31 |
+| ✅ | 09 | B8 | [Spark SQL](ch09-spark-sql.md) | 2026-05-31 |
+| ✅ | 10 | B9 | [Null Handling](ch10-null-handling.md) | 2026-05-31 |
+| ✅ | 11 | I1 | [Complex Types: Arrays, Maps, and Structs](ch11-complex-types.md) | 2026-05-31 |
+| ✅ | 12 | I2 | [Window Functions](ch12-window-functions.md) | 2026-05-31 |
+| ✅ | 13 | I3 | [User-Defined Functions: Python and pandas UDFs](ch13-udfs.md) | 2026-05-31 |
 | ✅ | 14 | I5 | [Partitioning: Concepts and Control](ch14-partitioning.md) | 2026-05-31 |
 | ⬜ | 15 | I6 | Caching and Persistence | — |
 | ⬜ | 16 | I7 | The Spark UI | — |

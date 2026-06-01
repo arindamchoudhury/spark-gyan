@@ -1,4 +1,4 @@
-# Chapter 09 — Null Handling
+# Chapter 10 — Null Handling
 
 > *Learning-path topic: B9 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -194,7 +194,7 @@ left.join(right, left["key"].eqNullSafe(right["key"]), how="inner").show()
 - Aggregate functions (`sum`, `avg`, `count("col")`) ignore nulls; `count("*")` does not.
 - `dropna()` removes rows with nulls; `fillna()` replaces them with constants; `coalesce()` picks the first non-null across columns.
 - Null join keys never match in standard joins; use `.eqNullSafe()` when null-null matching is needed.
-- Chapter 10 moves to intermediate territory: complex column types — arrays, maps, and structs.
+- Chapter 11 moves to intermediate territory: complex column types — arrays, maps, and structs.
 
 ---
 

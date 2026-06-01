@@ -1,4 +1,4 @@
-# Chapter 08 — Spark SQL
+# Chapter 09 — Spark SQL
 
 > *Learning-path topic: B8 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -186,7 +186,7 @@ spark.sql("""
 - `selectExpr(*sql_strings)` and `F.expr(sql_string)` embed SQL expressions in DataFrame chains.
 - DataFrame API and SQL produce identical physical plans — choose whichever is more readable.
 - Never build `spark.sql()` strings from user input — use the DataFrame API for user-controlled filters.
-- Chapter 9 covers null handling — the one topic where SQL semantics regularly surprise Python developers.
+- Chapter 10 covers null handling — the one topic where SQL semantics regularly surprise Python developers.
 
 ---
 

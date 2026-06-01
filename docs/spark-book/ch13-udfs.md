@@ -1,4 +1,4 @@
-# Chapter 12 — User-Defined Functions: Python and pandas UDFs
+# Chapter 13 — User-Defined Functions: Python and pandas UDFs
 
 > *Learning-path topic: I3 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -151,7 +151,7 @@ print(result.tolist())  # [0.0, 100.0, 37.0]
 - Use Iterator pandas UDFs when initialisation is expensive (model loading, regex compilation) — code outside the loop runs once per task.
 - Test UDFs with `.func()` on a local `pd.Series` — no SparkSession needed for unit tests.
 - Never use `PandasUDFType.SCALAR/GROUPED_AGG` — use Python type hints instead (Spark 3.0+ style).
-- Chapter 13 covers RDDs — the lower-level alternative when DataFrames are genuinely restrictive.
+- Chapter 3 covers RDDs — the lower-level alternative when DataFrames are genuinely restrictive.
 
 ---
 

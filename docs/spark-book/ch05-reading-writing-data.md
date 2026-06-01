@@ -1,4 +1,4 @@
-# Chapter 04 — Reading and Writing Data
+# Chapter 05 — Reading and Writing Data
 
 > *Learning-path topic: B4 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -166,7 +166,7 @@ df.coalesce(1).write.mode("overwrite").parquet("out/single/")
 - Parquet enables column pruning and predicate pushdown automatically — use it for repeated reads.
 - `df.write` creates one file per partition; use `coalesce(N)` to reduce file count without a shuffle.
 - Write modes: `overwrite`, `append`, `ignore`, `error` (default).
-- Chapter 5 builds on reading by introducing schema definition with `StructType`.
+- Chapter 6 builds on reading by introducing schema definition with `StructType`.
 
 ---
 
