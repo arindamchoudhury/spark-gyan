@@ -65,7 +65,7 @@ RDDs were Spark's original API. The DataFrame API (Spark 1.3+) is built on top o
 | **3.2** | Oct 2021 | **pandas API on Spark** (Koalas merged); AQE on by default |
 | **3.4** | Apr 2023 | **Spark Connect** — decoupled gRPC client-server architecture |
 | **3.5** | Sep 2023 | Spark Connect GA (Scala + Go clients); LTS release |
-| **4.0** | May 2025 | **ANSI mode on by default**; `pyspark-client` (Connect-only, no JVM); `spark.api.mode`; Python 3.10+ / JDK 17+ required |
+| **4.0** | May 2025 | **ANSI mode on by default**; `pyspark-client` (Connect-only, no JVM); `spark.api.mode`; Python 3.10+ / JDK 17 or 21 required |
 | **4.1** | Dec 2025 | **Spark Declarative Pipelines**; `spark-submit` improvements; current stable line |
 
 The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 13; everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
@@ -337,7 +337,7 @@ Four internal components coordinate every Spark job:
 
 **TaskScheduler** — lives in the driver JVM. Receives stages (as TaskSets) from the DAGScheduler and converts them into individual tasks assigned to specific executor slots. It knows nothing about DAGs; it only knows about available CPU slots and data locality.
 
-**SchedulerBackend** — the bridge between the TaskScheduler and the cluster manager. It handles executor registration, resource offers, and task launch RPCs. There is a different SchedulerBackend implementation for each cluster manager (StandaloneSchedulerBackend, YarnSchedulerBackend, KubernetesSchedulerBackend).
+**SchedulerBackend** — the bridge between the TaskScheduler and the cluster manager. It handles executor registration, resource offers, and task launch RPCs. There is a different SchedulerBackend implementation for each cluster manager (StandaloneSchedulerBackend, YarnSchedulerBackend, KubernetesClusterSchedulerBackend).
 
 **BlockManager** — lives in every executor (and a smaller one in the driver). It manages all data storage: cached partitions, shuffle write files, and broadcast variables. When an executor writes shuffle output, it goes through the BlockManager.
 
@@ -571,7 +571,7 @@ Two production-grade Apache-incubated RSS implementations:
 | Project | Apache status | Storage tiers | Notes |
 |---|---|---|---|
 | **Apache Celeborn** | Apache TLP | Memory → local disk → HDFS / object store | Supports Spark 2.4–4.x; LifecycleManager runs inside the driver |
-| **Apache Uniffle** | Apache TLP | Memory → local disk → HDFS | Coordinator cluster assigns shuffle servers per job |
+| **Apache Uniffle** | Apache TLP | Memory → local disk → HDFS | Coordinator cluster assigns shuffle servers per job; official docs cover Spark 2/3 — verify Spark 4 JAR availability |
 
 Both implement Spark's shuffle plugin API (`spark.shuffle.manager`). The Spark application sets the plugin class and the shuffle plugin intercepts all shuffle write/read calls, redirecting them to the RSS cluster instead of local disk.
 
@@ -579,7 +579,8 @@ Both implement Spark's shuffle plugin API (`spark.shuffle.manager`). The Spark a
 
 ```bash
 # 1. Copy the Celeborn client JAR to the Spark classpath
-cp celeborn-client-spark-3-shaded_*.jar $SPARK_HOME/jars/
+# Use the spark-4 variant for Spark 4.x (spark-3 for Spark 3.x)
+cp celeborn-client-spark-4-shaded_*.jar $SPARK_HOME/jars/
 ```
 
 ```properties
@@ -594,10 +595,11 @@ spark.celeborn.client.push.replicate.enabled  true   # server-side replication f
 spark.sql.adaptive.localShuffleReader.enabled false  # must disable for Celeborn compatibility
 ```
 
-**Configuring Apache Uniffle (Spark 3.5+ / 4.x):**
+**Configuring Apache Uniffle (Spark 3.x):**
 
 ```bash
 # 1. Copy the Uniffle client JAR to the Spark classpath
+# Uniffle ships separate JARs per Spark major version under <RSS_HOME>/jars/client/spark3/
 cp rss-client-spark3-shaded-*.jar $SPARK_HOME/jars/
 ```
 
@@ -609,6 +611,8 @@ spark.shuffle.sort.io.plugin.class org.apache.spark.shuffle.RssShuffleDataIo
 ```
 
 Coordinator dynamic configuration is enabled by default — the coordinator pushes optimal client settings to each job at startup, so only the quorum address is required beyond the manager class.
+
+❓ As of Spark 4.1.2, Uniffle's official client guide documents Spark 2 and Spark 3 JARs only. Check the [Uniffle releases page](https://github.com/apache/uniffle/releases) for a Spark 4 client JAR before deploying with Spark 4.x.
 
 ---
 
