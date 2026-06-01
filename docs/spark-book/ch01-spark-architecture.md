@@ -325,6 +325,208 @@ The JVM-Python boundary matters here. PySpark's DataFrame API generates JVM inst
 
 ---
 
+## How Spark runs an application: from action to result
+
+The eight-step sequence above describes *what* happens. This section explains *how* — the internal components that manage the process and the decisions each one makes.
+
+### The components involved
+
+Four internal components coordinate every Spark job:
+
+**DAGScheduler** — lives in the driver JVM. Its job is to construct a **DAG of stages** for each job — a directed acyclic graph where each node is a stage and each edge is a dependency (a stage cannot start until all its parent stages have completed and written their shuffle output). To build this DAG, the DAGScheduler walks the RDD lineage, identifies wide dependencies (shuffles), and groups all narrow transformations between two shuffles into a single stage. It does not think about machines or threads — it only thinks about the logical structure of the computation. When you use the DataFrame API, you never write RDDs yourself — but Catalyst (Spark's query optimiser) compiles your DataFrame logical plan into a physical plan represented as RDD operations before handing it to the DAGScheduler. The DAGScheduler always works at the RDD level; DataFrames are the user-facing abstraction above it.
+
+**TaskScheduler** — lives in the driver JVM. Receives stages (as TaskSets) from the DAGScheduler and converts them into individual tasks assigned to specific executor slots. It knows nothing about DAGs; it only knows about available CPU slots and data locality.
+
+**SchedulerBackend** — the bridge between the TaskScheduler and the cluster manager. It handles executor registration, resource offers, and task launch RPCs. There is a different SchedulerBackend implementation for each cluster manager (StandaloneSchedulerBackend, YarnSchedulerBackend, KubernetesSchedulerBackend).
+
+**BlockManager** — lives in every executor (and a smaller one in the driver). It manages all data storage: cached partitions, shuffle write files, and broadcast variables. When an executor writes shuffle output, it goes through the BlockManager.
+
+---
+
+### Stage 1: action triggers a job — and DataFrame becomes RDD
+
+When `.show(10)` is called, the Python process sends the unresolved logical plan across Py4J to the driver JVM. Before `SparkContext.runJob` is called, **`QueryExecution`** — Spark SQL's execution pipeline — compiles the DataFrame plan through the following phases entirely inside the driver JVM:
+
+```mermaid
+flowchart TD
+    A["Unresolved Logical Plan\n(DataFrame calls as written by the user)"]
+    B["Analyzed Logical Plan\n(column names and types resolved against catalog)"]
+    C["Analyzed Logical Plan — cache-aware\n(cached subtrees replaced)"]
+    D["Optimized Logical Plan\n(predicate pushdown, column pruning,\nconstant folding, join reordering)"]
+    E["Physical Plan — sparkPlan\n(candidates generated, best selected via cost model)"]
+    F["executedPlan\n(preparation rules applied:\nCollapseCodegenStages → Tungsten codegen,\nEnsureRequirements, ReuseExchange, ...)"]
+    G["RDD[InternalRow]\n◀ boundary: DataFrame world ends, RDD world begins"]
+    H["SparkContext.runJob(RDD[InternalRow])"]
+    I["DAGScheduler.handleJobSubmitted()"]
+
+    A -->|"Analyzer"| B
+    B -->|"withCachedData"| C
+    C -->|"Catalyst Optimizer"| D
+    D -->|"SparkPlanner"| E
+    E -->|"prepareForExecution"| F
+    F -->|"QueryExecution.toRdd\ncalls SparkPlan.execute()"| G
+    G --> H --> I
+```
+
+`QueryExecution.toRdd` is the boundary between Spark SQL and Spark Core. Only after this step does `SparkContext.runJob` get called.
+
+At this point no data has moved. The DAGScheduler receives the compiled `RDD[InternalRow]` — every transformation the user wrote, from `spark.read.text(...)` to `.orderBy(...)`, now expressed as RDD operations.
+
+---
+
+### Stage 2: DAGScheduler builds the stage DAG
+
+The DAGScheduler walks the RDD lineage backwards from the final operation, identifying two types of dependency:
+
+- **Narrow dependency** — each partition of the child depends on at most one partition of the parent (e.g. `filter`, `select`, `map`). These can be pipelined: one executor processes the full chain on its partition without any data movement. All consecutive narrow transformations are collapsed into a single stage.
+- **Wide dependency** — each partition of the child depends on multiple partitions of the parent (e.g. `groupBy`, `join`, `repartition`). This requires a shuffle: data must move across executors before the next operation can proceed. Wide dependencies become **stage boundaries**.
+
+The result is a DAG of stages: each node is a stage, each edge is a shuffle dependency. A stage cannot start until all its parent stages have completed and written their shuffle output to disk.
+
+There are two types of stage:
+
+- **ShuffleMapStage** — a stage whose output is written to shuffle files on disk, to be consumed by the next stage. Tasks in a ShuffleMapStage write partitioned output; they do not return results to the driver.
+- **ResultStage** — the final stage in a job. Its tasks produce the output that goes back to the driver (the rows that `.show(10)` prints).
+
+For the word count program:
+
+```mermaid
+flowchart LR
+    subgraph S0["ShuffleMapStage 0"]
+        A["read"] --> B["split"] --> C["lower"] --> D["filter"]
+    end
+    D -->|"shuffle\ngroupBy(word)"| S1
+    subgraph S1["ResultStage 1"]
+        E["count"] --> F["orderBy"] --> G["show"]
+    end
+```
+
+`groupBy("word")` is a wide dependency — every partition must send its words to the executor responsible for that word. That is the shuffle boundary. Everything before it is Stage 0; everything after is Stage 1.
+
+The DAGScheduler does not schedule all stages at once. It schedules Stage 0 first, waits for it to complete, then schedules Stage 1. If a new shuffle boundary is discovered mid-execution (e.g. with AQE), it can insert additional stages dynamically.
+
+---
+
+### Stage 3: TaskSet creation — one task per partition
+
+For each stage, the DAGScheduler creates a **TaskSet**: a collection of tasks, one per input partition of that stage.
+
+If `1342-0.txt` is split into 4 partitions, Stage 0 gets a TaskSet of 4 tasks. Each task is a serialised closure — the transformation code plus enough metadata to read exactly one partition. The TaskSet is handed to the TaskScheduler.
+
+```mermaid
+flowchart LR
+    D["DAGScheduler"] -->|"submitTasks(TaskSet\n[task0, task1, task2, task3])"| T["TaskScheduler"]
+```
+
+---
+
+### Stage 4: TaskScheduler assigns tasks to executors
+
+The TaskScheduler wraps each TaskSet in a **TaskSetManager**, which tracks the state of every task (pending, running, succeeded, failed) and implements retry logic.
+
+When an executor signals it has a free slot, the TaskScheduler picks the best task for that slot using **data locality** — it prefers to run a task on the executor that already holds the data partition in memory or on the same node as the data file. Locality levels, from best to worst:
+
+| Level | Meaning |
+|---|---|
+| `PROCESS_LOCAL` | Data is in the executor's own memory (cached partition) |
+| `NODE_LOCAL` | Data is on the same physical machine as the executor |
+| `RACK_LOCAL` | Data is on a different machine but same network rack |
+| `ANY` | Data must be fetched over the network |
+
+If no executor with better locality is available, the TaskScheduler will wait briefly before falling back to a worse locality level rather than leave a slot idle.
+
+The SchedulerBackend serialises the task and launches it on the chosen executor via RPC.
+
+---
+
+### Stage 5: executor runs the task
+
+The executor deserialises the task closure and runs it against its assigned partition. For Stage 0 (ShuffleMapStage) in the word count:
+
+1. Reads lines from its partition of `1342-0.txt` via the BlockManager
+2. Runs `split → lower → filter` on each line
+3. Hash-partitions the resulting `(word, 1)` pairs by key — each word is deterministically assigned to one of the output partitions
+4. Writes the partitioned output to shuffle files on local disk via the BlockManager
+5. Reports completion to the driver (including shuffle file locations)
+
+The driver's DAGScheduler receives the completion event for each task. Once all 4 tasks in Stage 0 are done, it schedules Stage 1.
+
+---
+
+### Stage 6: shuffle — data moves between stages
+
+Before Stage 1 can start, executors running Stage 1 tasks must fetch the shuffle data written by Stage 0. Each Stage 1 task reads its partition of the shuffle output from every Stage 0 executor — this is the **shuffle read**. The data crosses the network here.
+
+```mermaid
+flowchart LR
+    subgraph S0["Stage 0 executors (shuffle write)"]
+        P0["partition 0"]
+        P1["partition 1"]
+        P2["partition 2"]
+        P3["partition 3"]
+    end
+    subgraph S1["Stage 1 executors (shuffle read)"]
+        A["executor A\n(all words → partition 0)"]
+        B["executor B\n(all words → partition 1)"]
+        C["executor C\n(all words → partition 2)"]
+        D["executor D\n(all words → partition 3)"]
+    end
+    P0 --> A & B & C & D
+    P1 --> A & B & C & D
+    P2 --> A & B & C & D
+    P3 --> A & B & C & D
+```
+
+This is why shuffles are expensive: every Stage 1 executor must fetch data from every Stage 0 executor. Network I/O, disk I/O, and serialisation all happen here.
+
+---
+
+### Stage 7: ResultStage — results return to the driver
+
+Stage 1 tasks run `count → orderBy` on their local word groups. The final `orderBy` requires another partial sort on each executor. The top-N results from each executor are sent back to the driver via the SchedulerBackend.
+
+The driver merges the partial results, selects the top 10 overall, and `show()` prints them.
+
+---
+
+### Failure handling
+
+The DAGScheduler and TaskScheduler handle failures at different levels:
+
+- **Task failure** (executor crash, out-of-memory): the TaskScheduler retries the task on a different executor, up to `spark.task.maxFailures` times (default 4). The task is re-serialised and sent to a new slot.
+- **Shuffle file lost** (executor that wrote Stage 0 output is gone before Stage 1 reads it): the DAGScheduler resubmits the entire ShuffleMapStage that produced the lost output. This is lineage-based recomputation — only the affected stage re-runs, not the whole job.
+- **Stage failure** (all retries exhausted): the job fails and the exception surfaces to the driver.
+
+---
+
+### The full component map
+
+```mermaid
+flowchart TD
+    A["Action called\n(.show, .write, .count)"]
+    B["SparkContext.runJob()"]
+    C["DAGScheduler\nBuilds DAG, finds shuffle\nboundaries, creates stages"]
+    D["TaskScheduler\nReceives TaskSets,\nassigns tasks to slots"]
+    E["SchedulerBackend\nRPC to executors,\nexecutor lifecycle"]
+    F["Cluster Manager\n(YARN / K8s / Standalone)"]
+    G["Executor\nDeserialises + runs task\nBlockManager handles data"]
+    H["Results / shuffle files"]
+
+    A --> B --> C
+    C -->|"TaskSet per stage"| D
+    D --> E
+    E <-->|"resource offers\ntask launches"| F
+    F -->|"allocates"| G
+    E -->|"serialised task"| G
+    G -->|"task completion\n+ shuffle locations"| D
+    G --> H
+    H -->|"ResultStage output"| B
+```
+
+Every component in the driver (SparkContext, DAGScheduler, TaskScheduler, SchedulerBackend) runs in the driver JVM. Executors are separate JVM processes on worker nodes. The cluster manager is an external service that neither the driver nor the executors run inside.
+
+---
+
 ## Submitting applications: `--master` and `--deploy-mode`
 
 Now that the architecture is clear — driver, executor, cluster manager — the `spark-submit` flags become concrete.
