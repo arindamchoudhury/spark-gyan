@@ -246,15 +246,21 @@ The word count program uses classic mode. The components described below apply t
 
 ---
 
-### SparkContext and SparkSession
+### SparkSession and SparkContext
 
-The official definition of SparkContext ([cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)):
+**SparkSession** is the entry point you create in every PySpark program (introduced in Spark 2.0):
 
-> *"The SparkContext object in your main program (called the driver program). It coordinates independent sets of processes on a cluster and connects to cluster managers to allocate resources."*
+```python
+spark = SparkSession.builder.appName("my-app").getOrCreate()
+```
 
-`SparkSession.builder.getOrCreate()` creates a **SparkSession** — the entry point for DataFrame and SQL functionality introduced in Spark 2.0. SparkSession is a higher-level abstraction that encapsulates SparkContext internally. You can access the underlying context via `spark.sparkContext`, but for DataFrame operations you interact with SparkSession directly.
+It is the single object through which you read data, run SQL, and build DataFrames. You rarely need anything else.
 
-In the word count program, once `.show(10)` fires, the SparkContext takes the logical plan, optimises it, and hands it to the cluster manager to allocate executors.
+**SparkContext** is the internal component that SparkSession wraps. It is what the official architecture docs refer to when they define the driver:
+
+> *"The SparkContext object in your main program. It coordinates independent sets of processes on a cluster and connects to cluster managers to allocate resources."* — [cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)
+
+You don't create or interact with SparkContext directly in normal work — SparkSession creates and owns it. It surfaces in architecture discussions because it is the actual coordinator: when `.show(10)` triggers a job, it is SparkContext that hands the optimised plan to the cluster manager to allocate executors. You can reach it via `spark.sparkContext` if you need low-level RDD operations or configuration inspection, but for all DataFrame and SQL work SparkSession is sufficient.
 
 ---
 
@@ -492,6 +498,25 @@ Use this for: cloud-native deployments, containerised data platforms.
 Databricks, Amazon EMR, GCP **Managed Service for Apache Spark** (formerly Dataproc), Microsoft **Fabric** (formerly Azure HDInsight, which retired in 2025). Spark is pre-installed and the platform manages the cluster. You don't write `spark-submit` directly — you use the platform's job submission UI or API. `--deploy-mode` is abstracted away.
 
 Use this for: production workloads where you want managed infrastructure.
+
+### Wiring PySpark from the tarball into a venv (Options 3–5)
+
+When Spark is installed via tarball, `$SPARK_HOME/python/` already contains `pyspark` and `$SPARK_HOME/python/lib/` contains the matching `py4j-*.zip`. On a cluster, the daemon and workers load from these files. If you also `pip install pyspark` into your venv, you now have two copies — and version drift between them is a common source of hard-to-diagnose errors.
+
+The clean solution is a `.pth` file: Python processes every `.pth` file found in `site-packages` at startup and adds the listed paths to `sys.path`. No duplication, no separate install.
+
+```bash
+# find the py4j zip bundled with the tarball
+PY4J=$(ls $SPARK_HOME/python/lib/py4j-*.zip)
+
+# write the .pth file into your active venv
+cat > $(python -c "import site; print(site.getsitepackages()[0])")/spark_tarball.pth <<EOF
+$SPARK_HOME/python
+$PY4J
+EOF
+```
+
+After this, `import pyspark` and `import py4j` resolve to the tarball's copies — identical to what the daemons and executors use. No `pip install pyspark` needed, and `PYTHONPATH` does not need to be set manually.
 
 ---
 
