@@ -9,10 +9,13 @@ The RDD (Resilient Distributed Dataset) is Spark's original data model — a sch
 
 ## What you'll learn
 
-- What an RDD is and how it differs from a DataFrame
-- How to create an RDD and apply `map`, `filter`, and `reduce`
-- Why RDDs are slower for structured data (and when they aren't)
-- The Python-JVM cost model for RDD operations
+- What an RDD is, what problem it solved, and where it sits in Spark today
+- All the ways to create an RDD manually
+- The programming model: transformations vs actions, lazy evaluation, narrow vs wide
+- Why higher-order functions (`map`, `flatMap`, `filter`) are the core RDD API
+- How data moves between disk, executor memory, and the driver during execution
+- How RDD partitions are stored — `MEMORY_ONLY`, `MEMORY_AND_DISK`, `OFF_HEAP`
+- The Python-JVM serialisation cost and why it matters
 - How to convert between RDDs and DataFrames
 
 ---
@@ -152,7 +155,7 @@ print(row_rdd.collect())
 
 RDD operations fall into exactly two categories: **transformations** and **actions**. Understanding the difference is the foundation of everything else.
 
-Most RDD transformations — `map`, `flatMap`, `filter`, `reduce` — are **higher-order functions**: they take another function as their argument and apply it to the data. The function you pass (a lambda or a named function) defines *what* to do; the RDD operation defines *how* to distribute that work across partitions. This is the same pattern as Python's built-in `map()` and `filter()`, extended to run across a cluster.
+Most RDD transformations — `map`, `flatMap`, `filter` — are **higher-order functions**: they take another function as their argument and apply it to the data. The function you pass (a lambda or a named function) defines *what* to do; the RDD operation defines *how* to distribute that work across partitions. This is the same pattern as Python's built-in `map()` and `filter()`, extended to run across a cluster.
 
 ```python
 # Python built-in map — single machine
@@ -380,11 +383,9 @@ Failing to unpersist after a large cached RDD is one of the most common causes o
 
 ---
 
-## Core concept
+### The Python-JVM serialisation cost
 
-An RDD is a distributed, immutable collection of Python objects. There is no schema, no column types, and no SQL optimiser. Each element can be any picklable Python object: a string, a tuple, a dict, a numpy array.
-
-The critical cost: every RDD operation in PySpark crosses the JVM-Python boundary. Data is serialised from the JVM (where Spark's storage lives) into Python worker processes, the function runs, then results are serialised back. This happens per partition per operation.
+Every RDD operation in PySpark crosses the JVM-Python boundary. Data is serialised from the JVM (where Spark's storage lives) into Python worker processes via cloudpickle, the function runs, then results are cloudpickled back. This happens **per partition per operation**.
 
 ```mermaid
 flowchart LR
@@ -395,21 +396,7 @@ flowchart LR
     PW -->|"cloudpickle\n(expensive)"| J2
 ```
 
-For structured data, DataFrames keep everything in the JVM via Tungsten's binary row format — the Python process only sends the plan, not the data. This is why DataFrames are typically 3–8× faster than RDDs for tabular operations.
-
-**Use RDDs when:**
-
-- Data is genuinely unstructured (no fixed schema)
-- You need arbitrary Python objects (not tables)
-- You're implementing custom algorithms with no relational equivalent
-
-**The three core higher-order operations:**
-
-| Operation | Input | Output | Analogous to |
-|---|---|---|---|
-| `map(f)` | Each element | New element | `[f(x) for x in rdd]` |
-| `filter(f)` | Each element | Keep if `f(x)` is truthy | `[x for x in rdd if f(x)]` |
-| `reduce(f)` | Pairs of elements | Single value | `functools.reduce(f, rdd)` |
+For structured data, DataFrames avoid this entirely — the Python process sends only the logical plan to the JVM; data never crosses the boundary. This is why DataFrames are typically 3–8× faster than RDDs for tabular operations.
 
 ---
 
@@ -421,7 +408,7 @@ For structured data, DataFrames keep everything in the JVM via Tungsten's binary
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.appName("ch13").master("local[*]").getOrCreate()
+spark = SparkSession.builder.appName("ch03").master("local[*]").getOrCreate()
 sc = spark.sparkContext
 
 # Create an RDD from a Python list
@@ -447,7 +434,7 @@ print(even_squared.take(3))   # [4, 16, 36]
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.appName("ch13-kv").master("local[*]").getOrCreate()
+spark = SparkSession.builder.appName("ch03-kv").master("local[*]").getOrCreate()
 sc = spark.sparkContext
 
 # Key-value pairs — (word, 1) for word counting
@@ -479,7 +466,7 @@ print(words_flat.collect())   # ['hello', 'world', 'foo', 'bar', 'baz']
 import pyspark.sql.types as T
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.appName("ch13-convert").master("local[*]").getOrCreate()
+spark = SparkSession.builder.appName("ch03-convert").master("local[*]").getOrCreate()
 sc = spark.sparkContext
 
 # RDD of tuples → DataFrame
