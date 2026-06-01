@@ -515,10 +515,15 @@ Three progressively decoupled solutions exist:
 
 **External Shuffle Service (ESS)** — a long-running JVM process deployed on every worker node, separate from executor processes. Executors write shuffle files and register them with the local ESS. If an executor is killed, the ESS continues serving its shuffle files to reducers. ESS is required for dynamic allocation on YARN and Standalone (so executors can be removed without losing their shuffle data).
 
-```
-Worker node
-├── Executor A (may be killed)    ──writes──▶  External Shuffle Service
-└── Executor B (may be killed)    ──writes──▶  (stays alive; serves files to reducers)
+```mermaid
+flowchart LR
+    subgraph WN["Worker node"]
+        EA["Executor A\n(may be killed)"]
+        EB["Executor B\n(may be killed)"]
+        ESS["External Shuffle Service\n(stays alive; serves files to reducers)"]
+    end
+    EA -->|writes| ESS
+    EB -->|writes| ESS
 ```
 
 Enable with: `spark.shuffle.service.enabled = true` (default: `false`)
@@ -569,6 +574,41 @@ Two production-grade Apache-incubated RSS implementations:
 | **Apache Uniffle** | Apache TLP | Memory → local disk → HDFS | Coordinator cluster assigns shuffle servers per job |
 
 Both implement Spark's shuffle plugin API (`spark.shuffle.manager`). The Spark application sets the plugin class and the shuffle plugin intercepts all shuffle write/read calls, redirecting them to the RSS cluster instead of local disk.
+
+**Configuring Apache Celeborn:**
+
+```bash
+# 1. Copy the Celeborn client JAR to the Spark classpath
+cp celeborn-client-spark-3-shaded_*.jar $SPARK_HOME/jars/
+```
+
+```properties
+# Required
+spark.shuffle.manager               org.apache.spark.shuffle.celeborn.SparkShuffleManager
+spark.serializer                    org.apache.spark.serializer.KryoSerializer
+spark.celeborn.master.endpoints     clb-1:9097,clb-2:9097,clb-3:9097
+spark.shuffle.service.enabled       false
+
+# Recommended
+spark.celeborn.client.push.replicate.enabled  true   # server-side replication for fault tolerance
+spark.sql.adaptive.localShuffleReader.enabled false  # must disable for Celeborn compatibility
+```
+
+**Configuring Apache Uniffle (Spark 3.5+ / 4.x):**
+
+```bash
+# 1. Copy the Uniffle client JAR to the Spark classpath
+cp rss-client-spark3-shaded-*.jar $SPARK_HOME/jars/
+```
+
+```properties
+# Required
+spark.shuffle.manager              org.apache.spark.shuffle.RssShuffleManager
+spark.rss.coordinator.quorum       coord-1:19999,coord-2:19999
+spark.shuffle.sort.io.plugin.class org.apache.spark.shuffle.RssShuffleDataIo
+```
+
+Coordinator dynamic configuration is enabled by default — the coordinator pushes optimal client settings to each job at startup, so only the quorum address is required beyond the manager class.
 
 ---
 
