@@ -238,7 +238,6 @@ By default Spark assigns partitions arbitrarily. For key-value RDDs that are joi
 ```python
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
 from pyspark.sql import SparkSession
-from pyspark import HashPartitioner
 
 sc = spark.sparkContext
 
@@ -250,9 +249,11 @@ ranks = sc.parallelize([("a", 1.0), ("b", 1.0), ("c", 1.0)])
 joined = links.join(ranks)   # wide, data moves
 
 # With partitionBy — co-partition both RDDs once, then all joins are narrow
+# PySpark partitionBy takes (numPartitions, partitionFunc=portable_hash)
+# — NOT a Java HashPartitioner object; just pass the number of partitions
 n = 4
-links_p = links.partitionBy(HashPartitioner(n)).cache()   # partition once, reuse
-ranks_p = ranks.partitionBy(HashPartitioner(n))
+links_p = links.partitionBy(n).cache()   # partition once, reuse
+ranks_p = ranks.partitionBy(n)           # same n → same hash boundaries
 
 # join is now narrow — keys guaranteed to be on the same partition
 joined_p = links_p.join(ranks_p)   # no shuffle
@@ -461,7 +462,8 @@ for i in range(100):
 Key rules:
 
 - Call `checkpoint()` **before** the first action that materialises the RDD — it takes effect on the next computation.
-- Always follow `checkpoint()` with an action (`count()`, `cache()` + action) to ensure the data is actually written before the lineage reference is dropped.
+- **Persist the RDD before checkpointing** (`rdd.cache()` then `rdd.checkpoint()`). Without this, Spark must recompute the RDD from scratch to write the checkpoint, which wastes the work you just did.
+- Always follow `checkpoint()` with an action (`count()`) to ensure the checkpoint is written before the lineage reference is dropped.
 - `cache()` and `checkpoint()` are complementary: `cache()` avoids recomputation on the *happy path*; `checkpoint()` shortens the recovery path on *failure*.
 
 ---
