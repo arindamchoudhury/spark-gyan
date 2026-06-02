@@ -24,6 +24,7 @@ nav = [
         { "Ch 13. User-Defined Functions" = "spark-book/ch13-udfs.md" },
         { "Ch 14. Partitioning" = "spark-book/ch14-partitioning.md" },
         { "Ch 15. Caching and Persistence" = "spark-book/ch15-caching-persistence.md" },
+        { "Ch 20. Catalyst and Physical Plan" = "spark-book/ch20-catalyst-physical-plan.md" },
         { "Ch 22. Join Strategies and Tuning" = "spark-book/ch22-join-strategies.md" },
         { "Ch 30. Spark Internals" = "spark-book/ch30-spark-internals.md" },
         { "Ch 31. Production Deployment" = "spark-book/ch31-cluster-management.md" },

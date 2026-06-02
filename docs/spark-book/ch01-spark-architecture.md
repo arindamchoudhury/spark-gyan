@@ -268,7 +268,15 @@ flowchart TD
     U --> UP --> RP --> OP --> PP --> CG --> RDD
 ```
 
-This pipeline runs entirely in the driver before a single byte of user data is read. The physical plan handed to the DAGScheduler at the bottom is already optimized, reordered, and compiled to bytecode. By the time executors receive their tasks, the work is expressed as tight compiled loops over binary row data (UnsafeRow format), not as chains of interpreted Python or JVM method calls. The three internal row representations — `InternalRow` (logical), `UnsafeRow` (off-heap binary), and Apache Arrow (cross-process columnar transfer for pandas UDFs) — and why each exists, including how serialization cost applies to shuffle data (not just task closures), are covered in **Chapter 30 (E1 — Spark Internals)**.
+This pipeline runs entirely in the driver before a single byte of user data is read. The physical plan handed to the DAGScheduler at the bottom is already optimized, reordered, and compiled to bytecode. By the time executors receive their tasks, the work is expressed as tight compiled loops over binary row data (UnsafeRow format), not as chains of interpreted Python or JVM method calls.
+
+Spark maintains three internal row representations because different phases have different requirements:
+
+- **`InternalRow`** — abstract base class for all internal rows; concrete implementations like `GenericInternalRow` use a plain `Array[Any]` of JVM objects. Flexible for logical planning but creates GC-eligible objects.
+- **`UnsafeRow`** — compact binary format backed by a raw byte array (accessed via `sun.misc.Unsafe`). Three contiguous regions: a null bit-set, fixed-length fields (8-byte aligned), and variable-length data. No Java objects, no GC pressure. Tungsten whole-stage codegen operates entirely on `UnsafeRow`; this is the format data lives in during execution, shuffles, and sorting.
+- **Apache Arrow** — columnar batch format used when crossing the JVM↔Python process boundary for pandas UDFs. A single Arrow RecordBatch transfers an entire column-at-a-time instead of row-by-row, eliminating per-row serialization overhead.
+
+The full memory layout details and serialization cost in the shuffle path are covered in **Chapter 30 (E1 — Spark Internals)**.
 
 **The Adaptive Query Execution (AQE) feedback loop.** Spark 4.x enables AQE by default (`spark.sql.adaptive.execution.enabled = true`). AQE re-enters the optimization pipeline at shuffle boundaries using *actual* partition statistics collected at runtime — not the pre-execution estimates that Catalyst used for the initial plan. This allows Spark to:
 
@@ -532,7 +540,14 @@ flowchart TD
     M --> E
 ```
 
-**Execution memory** is used during shuffle, sort, join, and aggregation operations. When a task needs more execution memory than is available it **spills** intermediate data to local disk — the task continues but at disk I/O speed instead of RAM speed.
+**Execution memory** is used during shuffle, sort, join, and aggregation operations. When a task needs more execution memory than is available it **spills** intermediate data to local disk — the task continues but at disk I/O speed instead of RAM speed. Four operation types can spill:
+
+- **Sort** — sorted runs are written to disk and later merged
+- **Hash aggregation** — the in-memory hash map is flushed to disk when full, then merged in a second pass
+- **SortMergeJoin** — one or both sides spill sorted runs when the partition doesn't fit
+- **GroupBy (hash-based)** — same as hash aggregation
+
+The trigger is simply exhausting the task's execution memory allocation. Spilling does not fail the task but can make it 10–100× slower depending on disk speed. The fix is usually more partitions (smaller per-task working set) or more executor memory.
 
 **Storage memory** (the floor, R) holds cached partitions (`df.cache()`). Execution can evict storage above the floor; storage **cannot** evict execution — this asymmetry exists because evicting in-progress execution data would corrupt a running task.
 
@@ -697,6 +712,14 @@ flowchart TD
 
 Spark 4.x added internal phases (`commandExecuted`, `tableVersionsRefreshed`, `normalized`) to `QueryExecution` for the new SQL scripting and Declarative Pipelines features. For standard DataFrame queries these phases pass through unchanged — the six-phase pipeline above is what matters for DataFrame execution.
 
+The following Catalyst/planner topics are introduced here and covered in depth in **Chapter 20 (A1 — Query Optimisation: Catalyst and the Physical Plan)**:
+
+- **Why phases are separated** — why the Analyzer must resolve before the Optimizer transforms, and why the Planner is distinct from the Optimizer
+- **Catalyst rule categories and execution order** — Catalyst is a rule-based rewriting system; rules are grouped into batches and applied in fixed-point iteration until no more rules fire; ordering matters (predicate pushdown must precede projection pruning)
+- **QueryPlan tree structure** — logical and physical plans are trees of operator nodes; Catalyst rewrites the tree by pattern-matching and replacing subtrees; this is why algebraic equivalences translate directly into optimization rules
+- **Column resolution in the Analyzer** — how `AttributeReference` nodes are resolved against parent outputs; why `AnalysisException` is raised before any action fires
+- **Cost-based planner and join strategy selection** — how the planner estimates row counts and sizes to choose between `SortMergeJoin`, `BroadcastHashJoin`, and `ShuffledHashJoin`; when it falls back to heuristics (also covered in **Chapter 22 (A3 — Join Strategies and Tuning)**)
+
 At this point no data has moved. The DAGScheduler receives the compiled `RDD[InternalRow]` — every transformation the user wrote, from `spark.read.text(...)` to `.orderBy(...)`, now expressed as RDD operations.
 
 ---
@@ -740,7 +763,7 @@ The DAGScheduler does not schedule all stages at once. It schedules Stage 0 firs
 
 For each stage, the DAGScheduler creates a **TaskSet**: a collection of tasks, one per input partition of that stage.
 
-If `1342-0.txt` is split into 4 partitions, Stage 0 gets a TaskSet of 4 tasks. Each task is a serialized closure — the transformation code plus enough metadata to read exactly one partition. The TaskSet is handed to the TaskScheduler.
+If `1342-0.txt` is split into 4 partitions, Stage 0 gets a TaskSet of 4 tasks. Each task is a serialized closure — the transformation code plus enough metadata to read exactly one partition. The TaskSet is handed to the TaskScheduler. A TaskSet is immutable: every task in it runs the exact same transformation code against a different input partition. This immutability is what makes retries and speculative execution safe — re-running the same code on the same partition always produces the same output. The internal TaskSet representation and how it interacts with the event loop are covered in **Chapter 30 (E1 — Spark Internals)**.
 
 ```mermaid
 flowchart LR
@@ -763,7 +786,7 @@ When an executor signals it has a free slot, the TaskScheduler picks the best ta
 | `RACK_LOCAL` | Data is on a different machine but same network rack |
 | `ANY` | Data must be fetched over the network |
 
-If no executor with better locality is available, the TaskScheduler will wait briefly before falling back to a worse locality level rather than leave a slot idle. The precise wait-time logic (`spark.locality.wait` and its per-level overrides) and how the TaskScheduler decides when to give up on a locality level are covered in **Chapter 30 (E1 — Spark Internals)**.
+If no executor with better locality is available, the TaskScheduler waits up to `spark.locality.wait` (default **3s**) before falling back to the next-worse locality level. Each level gets its own wait budget: `spark.locality.wait.process`, `spark.locality.wait.node`, and `spark.locality.wait.rack` all default to the same `spark.locality.wait` value. Set a level to `0` to skip it entirely. The full wait-time logic and how the TaskScheduler decides when to give up are covered in **Chapter 30 (E1 — Spark Internals)**.
 
 The SchedulerBackend serializes the task and launches it on the chosen executor via RPC. The driver **pushes** tasks to executors — executors do not poll for work. The driver is therefore a coordination bottleneck for result collection (all task results flow back to the driver), while executors communicate directly with each other only during shuffle reads. The driver/executor network topology and communication patterns are covered in **Chapter 31 (E2 — Production Deployment)**.
 
@@ -782,7 +805,7 @@ The executor deserializes the task closure and runs it against its assigned part
 1. Reads lines from its partition of `1342-0.txt` via the BlockManager
 2. Runs `split → lower → filter` on each line
 3. Hash-partitions the resulting `(word, 1)` pairs by key — each word is deterministically assigned to one of the output partitions
-4. Writes the partitioned output to shuffle files on local disk via the BlockManager
+4. Writes the partitioned output to shuffle files on local disk via the BlockManager — each file's name encodes `(shuffleId, mapTaskId, attemptId)` so a retried attempt writes to a different file and cannot overwrite a successful attempt's output
 5. Reports completion to the driver — including a **`MapStatus`** for each output partition: the executor's `BlockManagerId` (host + port) and the byte size of each shuffle block it wrote
 
 **What "pipelined execution" means.** Step 2 above — `split → lower → filter` — is not three separate passes over the partition data. It is a single iterator-based pass: each row flows through all three operations before the next row is processed. There is no intermediate materialization between operators within a stage. When Tungsten whole-stage codegen is active, all operators in a stage are fused into a single compiled Java function — the entire chain runs as a tight loop with no virtual method calls between operators. This is the operational meaning of "pipelined": one pass, one loop, no intermediate buffers.
