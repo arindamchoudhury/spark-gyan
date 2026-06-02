@@ -90,6 +90,214 @@ Sources: [Zaharia et al. — Spark: Cluster Computing with Working Sets (2010)](
 
 ---
 
+## Spark vs MapReduce: the execution model in full
+
+### The Hadoop MapReduce execution model
+
+Hadoop MapReduce constrains every computation to exactly two phases. The framework owns the execution contract and the user is only allowed to supply two functions — `map` and `reduce`:
+
+```mermaid
+flowchart LR
+    I["Input splits\n(HDFS blocks)"]
+    M["Map tasks\n(one per input split,\nrun in parallel)"]
+    SS["Shuffle + Sort\n(framework-managed:\nsends map output\nto reducers by key)"]
+    R["Reduce tasks\n(one per output key group)"]
+    O["Output\n(written to HDFS)"]
+    I --> M --> SS --> R --> O
+```
+
+The rules of the model are strict:
+
+- The **map function** sees one record at a time. It emits zero or more `(key, value)` pairs.
+- The **shuffle + sort** phase is entirely framework-managed. Every map output is sorted by key and routed to the reducer responsible for that key. The user has no control over this.
+- The **reduce function** sees one key at a time, together with an iterator over all values for that key. It emits output records.
+- The output of the reduce phase is written to HDFS before the next job can start.
+
+**The chaining problem.** To express a multi-step computation — say, ETL cleaning followed by a join followed by an aggregation — you must write three separate MapReduce jobs. Job 2 cannot start until Job 1 has finished writing its complete output to HDFS. Job 3 cannot start until Job 2 has written to HDFS. Every logical step adds a full HDFS read and write round-trip:
+
+```mermaid
+flowchart LR
+    A["Input\n(HDFS)"]
+    J1["Job 1\nMap → Reduce"]
+    D1["HDFS write\n(full dataset)"]
+    J2["Job 2\nMap → Reduce"]
+    D2["HDFS write\n(full dataset)"]
+    J3["Job 3\nMap → Reduce"]
+    O["Output\n(HDFS)"]
+    A --> J1 --> D1 --> J2 --> D2 --> J3 --> O
+```
+
+A machine learning algorithm with 100 iterations triggers 100 separate MapReduce jobs — 100 full reads of the training dataset from disk and 100 writes of intermediate results back to HDFS. This is the precise inefficiency Zaharia measured: 127 seconds per iteration on Hadoop vs 6 seconds in Spark after the first load.
+
+**What MapReduce cannot express without multiple jobs:**
+
+- A join followed by a second aggregation
+- An iterative algorithm (ML training, graph algorithms like PageRank)
+- A windowed operation over groups
+- Any computation that requires two separate passes over the same data
+
+Each of these requires chaining separate jobs, each with its own disk round-trip.
+
+---
+
+### Spark's DAG model: what replaces map + reduce
+
+Spark replaces the rigid two-phase contract with a **Directed Acyclic Graph (DAG)** of arbitrary transformations. There is no "map phase" and "reduce phase" — there are **transformations** (lazy, produce a new RDD or DataFrame describing the computation to be done) and **actions** (trigger execution, return a result or write output).
+
+```mermaid
+flowchart LR
+    A["read CSV"] --> B["filter"]
+    B --> C["withColumn"]
+    C --> D["groupBy / agg"]
+    D --> E["join"]
+    E --> F["write Parquet"]
+```
+
+The user builds this graph by writing transformation calls. At no point does executing a transformation perform any computation or move any data. The graph exists only as a description in the driver until an action is called.
+
+When an action fires, the **DAGScheduler** receives the full graph and compiles it into a physical execution plan. It does not process one step at a time the way Hadoop processes one job at a time — it sees the whole picture before execution begins.
+
+**The key consequence:** intermediate results between consecutive narrow transformations are never written anywhere. They flow directly from one operation to the next inside the same executor, in the same CPU pass, without touching memory as a materialized object. This is why a chain of ten `filter` and `select` calls costs no more than one.
+
+---
+
+### Narrow and wide dependencies: the stage boundary rule
+
+Not all edges in the DAG are equal. The DAGScheduler classifies every dependency between two RDDs as either narrow or wide, and this classification determines where stage boundaries are drawn.
+
+| Type | Definition | Examples | Cost |
+|---|---|---|---|
+| **Narrow** | Each output partition depends on at most **one** input partition | `map`, `filter`, `select`, `withColumn`, `flatMap`, `union`, `coalesce` (without shuffle) | Zero network I/O; all operations pipelined inside one task in one CPU pass |
+| **Wide** | Each output partition depends on **multiple** input partitions | `groupBy`, `join` (without co-partitioning), `repartition`, `distinct`, `sortBy`, `reduceByKey` | Requires a **shuffle**: data moves across the network; marks a stage boundary |
+
+The DAGScheduler walks the RDD lineage backwards from the final operation. Every time it encounters a wide dependency, it draws a stage boundary. All narrow transformations between two boundaries are collapsed into a single **stage**.
+
+```mermaid
+flowchart TD
+    subgraph Stage0["ShuffleMapStage 0"]
+        direction LR
+        R["read"] --> F1["filter"] --> W["withColumn"] --> F2["select"]
+    end
+    subgraph Stage1["ShuffleMapStage 1"]
+        direction LR
+        PA["partial agg\n(per partition)"]
+    end
+    subgraph Stage2["ResultStage 2"]
+        direction LR
+        MA["merge agg results"] --> J["join"] --> Out["write"]
+    end
+
+    F2 -->|"wide dep\n(groupBy — shuffle)"| PA
+    PA -->|"wide dep\n(join — shuffle)"| MA
+```
+
+Within a stage, all operations are **pipelined**: each task processes its partition in a single pass, applying every narrow transformation in sequence without materialising any intermediate result. One executor reads its chunk of data and runs `filter → withColumn → select` as a single loop over the rows.
+
+Stage boundaries are the only points at which data is serialized and written to disk (shuffle files). Between two stage boundaries, no data hits disk unless you explicitly call `.cache()` or `.checkpoint()`.
+
+**Contrast with Hadoop:** in Hadoop, every `groupBy` is an entire separate MapReduce job with a mandatory disk write of the full dataset. In Spark, a `groupBy` is a shuffle boundary between two in-memory stages — the only disk I/O is the shuffle files themselves, not the full dataset before and after.
+
+**Two types of stage:**
+
+- **ShuffleMapStage** — its tasks write partitioned output to shuffle files on local disk, to be consumed by the downstream stage. Tasks do not return results to the driver.
+- **ResultStage** — the final stage. Its tasks produce the output that flows back to the driver (or is written directly to storage).
+
+---
+
+### What lazy evaluation enables: the Catalyst optimizer
+
+Because Spark does not execute any transformation immediately, the driver accumulates the full logical plan before acting on it. This is not merely a design convenience — it unlocks a class of optimizations that are impossible in an eager execution model.
+
+When an action is called, the logical plan passes through **Catalyst**, Spark's query optimizer. Catalyst applies over 60 optimization rules, including:
+
+**Predicate pushdown.** A `filter` that appears late in the user's chain can be pushed down to the earliest possible point — ideally into the file scan itself. If the data is in Parquet format, the filter is pushed all the way into the Parquet reader, which skips entire row groups that cannot satisfy the predicate without reading them.
+
+```python
+# User writes this:
+df.read.parquet("events/").join(users, "user_id").filter(F.col("country") == "DE")
+
+# Catalyst rewrites it to effectively:
+df.read.parquet("events/", filters=[("country", "==", "DE")]).join(...)
+# The filter is applied at read time — unneeded rows never enter the join
+```
+
+**Projection pushdown.** If the user's downstream operations only need 3 columns from a 50-column table, Catalyst tells the file reader to skip the other 47 columns entirely. For Parquet (columnar format) this eliminates the I/O cost of reading unused columns.
+
+**Operator fusion / pipelining.** Multiple consecutive narrow operations — `filter`, `withColumn`, `select` — are fused into a single stage. No intermediate DataFrame is materialized.
+
+**Constant folding.** Expressions like `F.lit(2) * F.lit(3)` are evaluated at plan time and replaced with `F.lit(6)`. No executor work is wasted on arithmetic over constants.
+
+**Join reordering.** Catalyst uses estimated row counts to reorder joins so smaller tables are joined first, reducing the amount of data flowing into subsequent joins.
+
+**Broadcast join selection.** If one side of a join is small enough (below `spark.sql.autoBroadcastJoinThreshold`, default 10 MB), Catalyst rewrites the join as a broadcast join — the small table is sent to every executor once and joined locally, eliminating the shuffle entirely.
+
+None of these optimizations are available in Hadoop MapReduce, because the framework sees only one job at a time. A MapReduce job that reads 50 columns and uses 3 is a programmer mistake that the framework cannot correct. In Spark, writing `df.select("a", "b", "c")` at the end of a chain and having the reader skip the other 47 columns automatically is the normal, expected behaviour.
+
+---
+
+### The full compilation pipeline: from DataFrame to bytecode
+
+Every Spark 4.x query passes through a five-stage compilation pipeline before any computation begins:
+
+```mermaid
+flowchart TD
+    U["User code\n(DataFrame API or SQL string)"]
+    UP["Unresolved logical plan\n(parser — column names not yet validated)"]
+    RP["Resolved logical plan\n(Analyzer — column names resolved against Catalog;\ntypes checked)"]
+    OP["Optimized logical plan\n(Catalyst optimizer — 60+ rules:\npredicate pushdown, projection pushdown,\nconstant folding, join reordering,\nbroadcast join selection…)"]
+    PP["Physical plan\n(Planner — selects execution strategies:\nSortMergeJoin vs BroadcastHashJoin,\ncost-based join ordering;\nmay produce multiple candidates)"]
+    CG["Codegen — Tungsten\n(CollapseCodegenStages:\nfuses physical operators into a single\ncompiled Java function per stage;\neliminates virtual dispatch and\nper-row object allocation)"]
+    RDD["RDD execution\n(DAGScheduler → stages → tasks\non executors)"]
+    U --> UP --> RP --> OP --> PP --> CG --> RDD
+```
+
+This pipeline runs entirely in the driver before a single byte of user data is read. The physical plan handed to the DAGScheduler at the bottom is already optimized, reordered, and compiled to bytecode. By the time executors receive their tasks, the work is expressed as tight compiled loops over binary row data (UnsafeRow format), not as chains of interpreted Python or JVM method calls.
+
+**The Adaptive Query Execution (AQE) feedback loop.** Spark 4.x enables AQE by default (`spark.sql.adaptive.execution.enabled = true`). AQE re-enters the optimization pipeline at shuffle boundaries using *actual* partition statistics collected at runtime — not the pre-execution estimates that Catalyst used for the initial plan. This allows Spark to:
+
+- Coalesce many small shuffle partitions into fewer larger ones (avoids the 200-tiny-tasks problem)
+- Switch a SortMergeJoin to a BroadcastHashJoin mid-execution if the actual build-side size turns out to be small
+- Detect and handle skewed partitions by splitting them
+
+AQE is a feedback loop that Hadoop has no equivalent of: the execution plan changes dynamically based on what the data actually looks like, not just what the optimizer predicted.
+
+---
+
+### Where Spark still resembles MapReduce
+
+Despite all the differences, Spark's shuffle mechanism is directly descended from Hadoop's shuffle and retains the same fundamental structure:
+
+1. Map tasks (the ShuffleMapStage) write their output to **local files on disk**, partitioned and sorted by the target partition key.
+2. Reduce tasks (the downstream stage) fetch the relevant blocks from every map task's local disk.
+3. Spark implements a **barrier at every shuffle boundary**: all map tasks in a ShuffleMapStage must complete and confirm their shuffle files are written before any reduce task in the next stage starts.
+
+This barrier is identical in purpose to Hadoop's shuffle barrier. The CACM 2016 paper explicitly acknowledges this: *"In Spark, the map tasks in each shuffle operation save their output to local files on the machine where they ran, so reduce tasks can re-fetch it later. In addition, Spark implements a barrier at shuffle stages."*
+
+The barrier exists to simplify fault recovery: if a reduce task fails, it can re-fetch its input from the already-completed map task files without requiring the map tasks to re-run. If a map task's file is lost (node failure), only that map task needs to re-run — not the whole stage. Removing the barrier would require a more complex pipelined recovery scheme.
+
+The practical implication: shuffle operations (wide dependencies) are the expensive step in Spark jobs, exactly as they were in Hadoop. Minimizing the number of wide dependencies, and reducing the data volume that crosses shuffle boundaries, is the primary tuning lever in Spark performance work.
+
+---
+
+### Summary: MapReduce vs Spark
+
+| | Hadoop MapReduce | Spark (RDD layer) | Spark (DataFrame/SQL layer) |
+|---|---|---|---|
+| **Execution model** | Fixed map → shuffle → reduce, one job at a time | DAG of arbitrary transformations, compiled to stages | Relational algebra compiled by Catalyst into DAG |
+| **Intermediate storage** | Full HDFS write between every job | In-memory within a stage; shuffle files between stages; no full dataset to disk | Same as RDD layer |
+| **Optimization scope** | Single job — no cross-job optimization | Full DAG visible before execution | Full logical plan; 60+ optimizer rules; AQE re-optimizes at runtime |
+| **Data reuse across iterations** | Not possible — every job rereads from HDFS | `.cache()` keeps RDD in memory across jobs | Same as RDD layer |
+| **Fault tolerance** | Re-run the entire job | Recompute lost partitions via lineage | Same as RDD layer |
+| **Shuffle mechanism** | Framework-managed sort-based shuffle | Same fundamental design (map writes files, reduce fetches, barrier enforced) | Same as RDD layer |
+| **Straggler handling** | Speculative task re-execution | Same (`spark.speculation = true`) | Same as RDD layer |
+| **Latency between steps** | Minutes (HDFS write + read per job) | ~100ms per stage boundary (shuffle files only) | Same as RDD layer |
+| **Operator expressiveness** | Only map and reduce | Any transformation expressible as RDD operations | Full SQL92 + extensions; window functions, UDFs, etc. |
+| **Code generation** | None | None at RDD level | Tungsten whole-stage codegen — fuses operators into compiled Java bytecode |
+
+Sources: [Mastering Spark DAGs (Dev Genius)](https://blog.devgenius.io/mastering-spark-dags-the-ultimate-guide-to-understanding-execution-ce6683ae785b), [Wide vs Narrow Transformations (Big Data Performance)](https://bigdataperformance.substack.com/p/understanding-wide-vs-narrow-transformations), [Lazy Evaluation in Spark (DataFlair)](https://data-flair.training/blogs/apache-spark-lazy-evaluation/), CACM 2016 paper (cached)
+
+---
+
 ## A first Spark program
 
 Before explaining the architecture, here is a complete word count program — the canonical "hello world" of distributed computing. It reads *Pride and Prejudice* from the Gutenberg corpus in the [local stack](https://github.com/arindamchoudhury/spark-delta-unitycatalog), counts every word, and shows the top 10. All the behaviour described in the rest of this chapter is visible in this program.
@@ -305,7 +513,7 @@ After the shuffle, each executor holds all occurrences of a distinct set of word
 
 Every transformation you write — `select`, `filter`, `groupBy`, `join` — does nothing immediately. Spark records the instruction and returns instantly. Only an **action** — `show()`, `write()`, `count()` — triggers actual computation. At that point the driver takes the full instruction list, optimises it into a physical plan, and dispatches work to executors.
 
-Laziness enables three things: Catalyst can reorder and prune operations across the whole chain; intermediate DataFrames never need to be materialised in memory; failed partitions can be recomputed from source without manual recovery.
+Laziness enables three things: Catalyst can reorder and prune operations across the whole chain; intermediate DataFrames never need to be materialized in memory; failed partitions can be recomputed from source without manual recovery.
 
 A **job** is triggered by one action. Each job is broken into **stages** — groups of operations that can run without shuffling data across the network. Within a stage, each partition becomes a **task**. Understanding this hierarchy (job → stage → task) is what makes the Spark UI readable.
 
@@ -454,7 +662,7 @@ The DAGScheduler does not schedule all stages at once. It schedules Stage 0 firs
 
 For each stage, the DAGScheduler creates a **TaskSet**: a collection of tasks, one per input partition of that stage.
 
-If `1342-0.txt` is split into 4 partitions, Stage 0 gets a TaskSet of 4 tasks. Each task is a serialised closure — the transformation code plus enough metadata to read exactly one partition. The TaskSet is handed to the TaskScheduler.
+If `1342-0.txt` is split into 4 partitions, Stage 0 gets a TaskSet of 4 tasks. Each task is a serialized closure — the transformation code plus enough metadata to read exactly one partition. The TaskSet is handed to the TaskScheduler.
 
 ```mermaid
 flowchart LR
@@ -537,7 +745,7 @@ The driver merges the partial results, selects the top 10 overall, and `show()` 
 
 The DAGScheduler and TaskScheduler handle failures at different levels:
 
-- **Task failure** (executor crash, out-of-memory): the TaskScheduler retries the task on a different executor, up to `spark.task.maxFailures` times (default 4). The task is re-serialised and sent to a new slot.
+- **Task failure** (executor crash, out-of-memory): the TaskScheduler retries the task on a different executor, up to `spark.task.maxFailures` times (default 4). The task is re-serialized and sent to a new slot.
 - **Shuffle file lost** (executor that wrote Stage 0 output is gone before Stage 1 reads it): the DAGScheduler resubmits the entire ShuffleMapStage that produced the lost output. This is lineage-based recomputation — only the affected stage re-runs, not the whole job.
 - **Stage failure** (all retries exhausted): the job fails and the exception surfaces to the driver.
 
@@ -667,7 +875,7 @@ flowchart TD
     D["TaskScheduler\nReceives TaskSets,\nassigns tasks to slots"]
     E["SchedulerBackend\nRPC to executors,\nexecutor lifecycle"]
     F["Cluster Manager\n(YARN / K8s / Standalone)"]
-    G["Executor\nDeserialises + runs task\nBlockManager handles data"]
+    G["Executor\nDeserializes + runs task\nBlockManager handles data"]
     H["Results / shuffle files"]
 
     A --> B --> C
@@ -675,7 +883,7 @@ flowchart TD
     D --> E
     E <-->|"resource offers\ntask launches"| F
     F -->|"allocates"| G
-    E -->|"serialised task"| G
+    E -->|"serialized task"| G
     G -->|"task completion\n+ shuffle locations"| D
     G --> H
     H -->|"ResultStage output"| B
