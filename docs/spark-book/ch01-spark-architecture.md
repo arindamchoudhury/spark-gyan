@@ -7,16 +7,6 @@ Apache Spark is a distributed analytics engine. Understanding how it distributes
 
 ---
 
-## What you'll learn
-
-- How a Spark cluster is organised: driver, executors, worker nodes, cluster manager
-- Why Python code can be fast despite running in a separate process from the JVM
-- What lazy evaluation is and why it exists
-- The difference between a transformation and an action
-- How to install and run Spark, and what `--master` and `--deploy-mode` mean
-
----
-
 ## Why Spark exists
 
 The motivation for Spark comes directly from Matei Zaharia's 2010 paper *"Spark: Cluster Computing with Working Sets"* (UC Berkeley). Understanding that motivation explains every major design decision in Spark.
@@ -51,8 +41,7 @@ RDDs were Spark's original API. The DataFrame API (Spark 1.3+) is built on top o
 
 | Version | Date | Key addition |
 |---|---|---|
-| Research paper | 2010 | RDDs, lineage-based fault tolerance, in-memory caching (Zaharia et al., UC Berkeley) |
-| Open sourced | 2010 | Public release; Scala API only |
+| Project started | 2009 | UC Berkeley (Zaharia et al.); HotCloud paper + open source release: 2010 |
 | Apache incubator | 2013 | Moved to Apache Software Foundation |
 | **1.0** | May 2014 | First stable release; Spark SQL; Java + Python APIs |
 | **1.3** | Mar 2015 | **DataFrame API** — schema + Catalyst optimiser on top of RDDs |
@@ -69,6 +58,20 @@ RDDs were Spark's original API. The DataFrame API (Spark 1.3+) is built on top o
 | **4.1** | Dec 2025 | **Spark Declarative Pipelines**; `spark-submit` improvements; current stable line |
 
 The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 13; everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
+
+### Spark as a unified engine
+
+SQL, Streaming, ML, and graph processing all run as libraries over the same core — sharing the same execution engine, fault tolerance, and memory model.
+
+```mermaid
+flowchart TD
+    L["Spark SQL · MLlib · Structured Streaming · GraphX · Declarative Pipelines"]
+    C["Spark Core  (RDD engine — DAGScheduler, TaskScheduler, BlockManager)"]
+    S["Cluster managers  (YARN / Kubernetes / Standalone)"]
+    L --> C --> S
+```
+
+Because every library operates on RDDs, Spark can optimize *across* library boundaries — fusing a SQL map into a downstream MLlib pipeline without serializing data between engines. This is why Spark is called unified rather than a collection of separate tools.
 
 **How other tools approach the same problem:**
 
@@ -280,6 +283,8 @@ In the word count program, executors are the processes that actually read `1342-
 
 Each application gets its own isolated executors. They stay alive for the entire application (from `getOrCreate()` to `spark.stop()`), not just one query.
 
+Alongside RDDs, Spark's programming model provides two shared variable types: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters or sums that workers increment and only the driver reads. Both are covered in Chapter 3.
+
 ---
 
 ### Partitions and Tasks
@@ -332,9 +337,11 @@ Three mechanisms cover different failure scenarios:
 |---|---|---|
 | Partition lost in executor memory | **Lineage recomputation** | Spark replays the transformation chain from source for that partition only |
 | Executor that wrote shuffle output dies | **ShuffleMapStage resubmission** | DAGScheduler resubmits the entire stage that produced the lost shuffle files |
-| Lineage is very long (e.g. 100 ML iterations) | **Checkpointing** | User explicitly saves the RDD/DataFrame to HDFS, cutting the lineage; recovery reads the checkpoint instead of replaying 100 steps |
+| Lineage is very long **with wide dependencies** (e.g. PageRank's rank RDD — node failure loses a partition from every ancestor stage) | **Checkpointing** | Save to HDFS, cutting the lineage. Don't checkpoint narrow-dep chains on stable storage (e.g. logistic regression's input points) — lost partitions recompute cheaply in parallel from source. |
 
 The trade-off versus HDFS replication: recovery requires CPU time (recomputation) rather than just reading a replica. For very long lineage chains this can be slow — which is when checkpointing pays for itself.
+
+A fourth mechanism handles *slowness* rather than failure: **speculative execution**. Because RDD partitions are immutable, Spark can launch a duplicate of a slow (straggler) task on a second executor and use whichever finishes first — the two copies cannot interfere. Enable with `spark.speculation = true`.
 
 ---
 
@@ -401,6 +408,8 @@ flowchart TD
 ```
 
 `QueryExecution.toRdd` is the boundary between Spark SQL and Spark Core. In Spark 4.1.2 it returns `SQLExecutionRDD(executedPlan.execute(), conf)` — a thin wrapper around `RDD[InternalRow]` that carries SQL execution metadata. Only after this step does `SparkContext.runJob` get called.
+
+**Tungsten** (the `CollapseCodegenStages` preparation step) fuses multiple physical operators into a single compiled Java function, eliminating virtual dispatch and per-row object allocation that the JVM would otherwise impose. Controlled by `spark.sql.codegen.wholeStage` (default: `true`). It is the primary reason the DataFrame API runs at near-native speed regardless of the Python layer above it.
 
 Spark 4.x added internal phases (`commandExecuted`, `tableVersionsRefreshed`, `normalized`) to `QueryExecution` for the new SQL scripting and Declarative Pipelines features. For standard DataFrame queries these phases pass through unchanged — the six-phase pipeline above is what matters for DataFrame execution.
 
