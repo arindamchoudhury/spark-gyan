@@ -55,7 +55,19 @@ flowchart LR
 
 ### Where RDDs sit today
 
-RDDs are still fully present in Spark 4.1.x — they have not been deprecated. But for structured (tabular) data, the **DataFrame API** (Spark 1.3+) is almost always the right choice: it adds a schema, the Catalyst query optimiser, and Tungsten's off-heap binary storage, giving 3–8× better performance for typical ETL workloads.
+RDDs are still fully present in Spark 4.1.x — they have not been deprecated. But for structured (tabular) data, the **DataFrame API** (Spark 1.3+) is almost always the right choice: it adds a schema, the Catalyst query optimiser, and Tungsten's off-heap binary storage, giving significantly better performance for typical ETL workloads.
+
+**Paper benchmarks (Zaharia et al., NSDI 2012)** — these numbers are what motivated the design:
+
+| Workload | Spark vs Hadoop | Notes |
+|---|---|---|
+| Logistic regression (100 GB, 100 nodes) | **25.3× faster** than Hadoop | Avoids disk I/O + deserialization on every iteration |
+| Logistic regression vs HadoopBinMem | **20.7× faster** | Even beating Hadoop with in-memory binary format |
+| PageRank without co-partitioning | **2.4× faster** than Hadoop | Shuffles links + ranks on every iteration |
+| PageRank with co-partitioning | **7.4× faster** than Hadoop | Join becomes narrow — no shuffle per iteration |
+| Interactive query on 1 TB | **1.7–7 seconds** | vs 170 seconds from disk — 150× faster |
+
+The PageRank row shows the impact of `partitionBy()` directly: the difference between 2.4× and 7.4× is one call to co-partition the links and ranks RDDs before the iteration loop.
 
 Use the RDD API when:
 
@@ -212,10 +224,51 @@ The most important property of a transformation is whether it is **narrow** or *
 
 | Type | Definition | Examples | Shuffle? |
 |---|---|---|---|
-| **Narrow** | Each output partition depends on exactly one input partition | `map`, `filter`, `flatMap`, `mapPartitions` | No — fast, pipelined |
-| **Wide** | Each output partition depends on multiple input partitions | `groupByKey`, `reduceByKey`, `sortBy`, `distinct` | Yes — expensive, stage boundary |
+| **Narrow** | Each parent partition is used by **at most one** child partition | `map`, `filter`, `flatMap`, `mapPartitions`, `union` | No — fast, pipelined |
+| **Wide** | Multiple child partitions may depend on the **same** parent partition | `groupByKey`, `reduceByKey`, `sortBy`, `distinct`, `join` (if not co-partitioned) | Yes — expensive, stage boundary |
 
 Wide transformations trigger a **shuffle** — data must move across executors, regrouped by key. This is the most expensive operation in Spark. Prefer `reduceByKey` over `groupByKey` whenever possible: `reduceByKey` pre-aggregates locally per partition before shuffling; `groupByKey` shuffles all values first.
+
+### Custom partitioning with `partitionBy()`
+
+By default Spark assigns partitions arbitrarily. For key-value RDDs that are joined repeatedly, explicitly controlling partitioning eliminates the shuffle entirely — the most impactful single optimisation available in the RDD API.
+
+**The rule:** if two RDDs are partitioned the same way (same partitioner, same number of partitions), a `join()` between them requires **no data movement** — each key's values are already co-located on the same executor.
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+from pyspark.sql import SparkSession
+from pyspark import HashPartitioner
+
+sc = spark.sparkContext
+
+# Without partitionBy — every join shuffles both RDDs
+links = sc.parallelize([("a", ["b", "c"]), ("b", ["a"]), ("c", ["a", "b"])])
+ranks = sc.parallelize([("a", 1.0), ("b", 1.0), ("c", 1.0)])
+
+# join triggers a shuffle — links and ranks have no matching partitioner
+joined = links.join(ranks)   # wide, data moves
+
+# With partitionBy — co-partition both RDDs once, then all joins are narrow
+n = 4
+links_p = links.partitionBy(HashPartitioner(n)).cache()   # partition once, reuse
+ranks_p = ranks.partitionBy(HashPartitioner(n))
+
+# join is now narrow — keys guaranteed to be on the same partition
+joined_p = links_p.join(ranks_p)   # no shuffle
+```
+
+The Zaharia et al. (2012) PageRank experiment measured this directly: with co-partitioning, PageRank ran **7.4× faster** than Hadoop; without it, only **2.4×**. The difference is entirely the eliminated shuffle.
+
+**`mapValues()` preserves the partitioner; `map()` does not.** When you apply `map()` to a partitioned `(K, V)` RDD, Spark cannot guarantee the keys are unchanged, so it drops the partitioner. `mapValues(f)` — which only transforms the values — keeps it:
+
+```python
+# map() — partitioner lost, next join will shuffle
+ranks_wrong = ranks_p.map(lambda kv: (kv[0], kv[1] * 0.85))
+
+# mapValues() — partitioner preserved, next join stays narrow
+ranks_ok = ranks_p.mapValues(lambda v: v * 0.85)
+```
 
 ### Core transformations
 
@@ -229,6 +282,9 @@ Wide transformations trigger a **shuffle** — data must move across executors, 
 | `union(other)` | Concatenate two RDDs | Narrow |
 | `reduceByKey(f)` | For `(K, V)` pairs — aggregate values per key; pre-aggregates locally first | Wide (shuffle) |
 | `groupByKey()` | For `(K, V)` pairs — group all values per key; **shuffles everything** | Wide (shuffle) |
+| `mapValues(f)` | For `(K, V)` pairs — apply `f` to values only; **preserves partitioner** | Narrow |
+| `join(other)` | For `(K,V)` + `(K,W)` — inner join → `(K,(V,W))`; narrow if co-partitioned | Wide (unless co-partitioned) |
+| `cogroup(other)` | For `(K,V)` + `(K,W)` — group all values per key → `(K,(Seq[V],Seq[W]))` | Wide (shuffle) |
 | `sortBy(f)` | Sort elements by key function | Wide (shuffle) |
 
 ### Core actions
@@ -242,6 +298,7 @@ Wide transformations trigger a **shuffle** — data must move across executors, 
 | `reduce(f)` | Single value — folds all elements using `f`; `f` must be commutative and associative | |
 | `saveAsTextFile(path)` | None — writes RDD as text files to path | |
 | `foreach(f)` | None — runs `f` on each element for side effects | `f` runs on executors, not the driver |
+| `lookup(key)` | List of values for `key` — only works on hash/range partitioned RDDs | Efficient random access — reads only the relevant partition |
 
 ### A complete example — data in memory and on disk
 
@@ -347,6 +404,8 @@ from pyspark import StorageLevel
 word_counts.persist(StorageLevel.MEMORY_AND_DISK)
 ```
 
+**LRU eviction policy.** When a new partition is computed but no space remains, Spark evicts the partition from the **least recently used RDD**. One important exception: it never evicts a partition from the *same* RDD currently being computed. Without this rule, a full scan over a large RDD would repeatedly evict and re-fetch its own earlier partitions — thrashing. The exception ensures each partition of the active RDD is computed exactly once before any of them can be evicted. Users can override the default policy with an explicit persistence priority per RDD (higher priority partitions are kept longer).
+
 ### What "deserialized" means for PySpark
 
 In Scala/Java, `deserialized=True` means objects are stored as native JVM objects (no serialization). In PySpark, the situation is different: Python objects are *always* cloudpickled before crossing into the JVM. "Deserialized" in the PySpark context means the byte arrays representing each partition are kept in deserialized form on the JVM heap — they are not further compressed or encoded. The cloudpickle round-trip still happened; `deserialized` only controls what happens after that inside the JVM.
@@ -381,6 +440,30 @@ word_counts.unpersist()   # frees all cached partitions immediately
 
 Failing to unpersist after a large cached RDD is one of the most common causes of OOM errors in long-running Spark applications.
 
+### `rdd.checkpoint()` — cutting long lineage chains
+
+`cache()` keeps partitions in memory for reuse. `checkpoint()` solves a different problem: when lineage grows very long — after 100 iterations of an ML algorithm, or many rounds of a graph computation — recomputing from source on failure becomes too expensive even with caching.
+
+`checkpoint()` saves the RDD to a reliable distributed store (HDFS) and **cuts the lineage**. After checkpointing, if a partition is lost, Spark reads from the checkpoint instead of replaying the full transformation history.
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+sc.setCheckpointDir("hdfs:///spark-checkpoints/")   # must be set first
+
+# Iterative algorithm — checkpoint every 10 iterations to limit lineage length
+for i in range(100):
+    ranks = ranks.join(links).mapValues(lambda v: 0.15 + 0.85 * v)
+    if i % 10 == 0:
+        ranks.checkpoint()   # truncates lineage here
+        ranks.count()        # materialise before moving on (checkpoint needs an action)
+```
+
+Key rules:
+
+- Call `checkpoint()` **before** the first action that materialises the RDD — it takes effect on the next computation.
+- Always follow `checkpoint()` with an action (`count()`, `cache()` + action) to ensure the data is actually written before the lineage reference is dropped.
+- `cache()` and `checkpoint()` are complementary: `cache()` avoids recomputation on the *happy path*; `checkpoint()` shortens the recovery path on *failure*.
+
 ---
 
 ### The Python-JVM serialisation cost
@@ -397,6 +480,61 @@ flowchart LR
 ```
 
 For structured data, DataFrames avoid this entirely — the Python process sends only the logical plan to the JVM; data never crosses the boundary. This is why DataFrames are typically 3–8× faster than RDDs for tabular operations.
+
+---
+
+## Shared variables: broadcast and accumulators
+
+Normal RDD operations pass variables to executors by capturing them in closures — the variable is cloudpickled and sent with every task. For large objects this is wasteful. Spark provides two special variable types that avoid this.
+
+### Broadcast variables — one copy per executor
+
+A broadcast variable ships a value to each executor **once** and caches it there. Every task on that executor reads the local copy instead of receiving its own cloudpickled copy.
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+sc = spark.sparkContext
+
+# Without broadcast: large_dict is cloudpickled into EVERY task
+# With 1000 tasks and a 10 MB dict → 10 GB of network traffic
+large_dict = {"key1": "val1", "key2": "val2"}   # imagine this is 10 MB
+result = sc.parallelize(["key1", "key2", "key1"]).map(lambda k: large_dict[k])
+
+# With broadcast: dict sent once per executor (e.g. 10 executors → 100 MB)
+bc = sc.broadcast(large_dict)
+result = sc.parallelize(["key1", "key2", "key1"]).map(lambda k: bc.value[k])
+bc.unpersist()   # release when no longer needed
+```
+
+Use broadcast variables for any large read-only lookup table — country codes, model weights, feature dictionaries. The `.value` attribute accesses the broadcasted data on the executor.
+
+### Accumulators — write-only counters from executors
+
+An accumulator is a variable that tasks can **add to** but only the driver can **read**. It is used for side-channel metrics — counting errors, skipped rows, or debug events — without collecting data back to the driver.
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+sc = spark.sparkContext
+
+error_count   = sc.accumulator(0)
+blank_count   = sc.accumulator(0)
+
+def parse(line):
+    if line.startswith("ERROR"):
+        error_count.add(1)
+    if len(line.strip()) == 0:
+        blank_count.add(1)
+    return line
+
+sc.textFile("../data/gutenberg_books/1342-0.txt").foreach(parse)
+
+print(f"Errors: {error_count.value}")   # only valid here, on the driver
+print(f"Blanks: {blank_count.value}")
+```
+
+**Key constraint:** accumulators are **write-only from executor code**. Reading `.value` inside a task produces undefined results — the partial value from that executor only. The correct value is available on the driver after an action completes.
+
+**Caution with re-execution:** if a task is re-run due to failure or speculative execution, its accumulator updates are applied again. Accumulators inside `foreach` (actions) are guaranteed to be applied exactly once; accumulators inside transformations (`map`, `filter`) may be applied more than once if tasks are retried.
 
 ---
 
