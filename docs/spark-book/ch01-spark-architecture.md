@@ -430,6 +430,8 @@ flowchart LR
 
 The two processes together constitute what Spark calls "the driver." Neither alone is the full picture.
 
+**The driver is a single point of failure.** If the driver JVM runs out of memory, the entire application fails and all pending stages are cancelled. The driver never reads partition data during transformations — that is handled by executors — but certain actions pull data back to the driver. `.collect()` transfers every row of the result DataFrame to driver memory; `.show(n)` only transfers `n` rows and is safe; `.toPandas()` collects everything. Calling `.collect()` on a large DataFrame will crash the driver. Size the driver with `spark.driver.memory` (default: 1g) and prefer `.write` over `.collect()` for large results.
+
 In **Spark Connect mode** (opt-in; activate with `export SPARK_REMOTE="sc://localhost"` before launching `pyspark`), the Python process is a **client only** — it serializes your DataFrame operations as protobuf and sends them over gRPC. It has no JVM at all. The Spark engine runs on the Connect server:
 
 ```mermaid
@@ -518,6 +520,8 @@ Each application gets its own isolated executors. They stay alive for the entire
 
 Alongside RDDs, Spark's programming model provides two shared variable types: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters or sums that workers increment and only the driver reads. Both are covered in Chapter 3.
 
+Accumulators are intentionally **write-only for executors**. This is an architectural choice: if executors could read an accumulator mid-execution, the value would be inconsistent across tasks running in parallel, requiring distributed locking. Instead, executor tasks add their updates locally; Spark merges each task's update into the driver-side accumulator exactly once when the task completes (in actions only — accumulator updates in transformations may be applied more than once if stages are re-executed). A failed task's partial accumulator update is discarded; the retry starts from zero.
+
 ---
 
 ### Executor memory layout
@@ -553,6 +557,8 @@ The trigger is simply exhausting the task's execution memory allocation. Spillin
 
 The 300 MB reserved region is hardcoded. It protects Spark's own internal data structures from being crowded out by user workloads.
 
+**What causes GC pressure.** `UnsafeRow` binary data in the managed memory pool does not create JVM objects and generates no GC pressure. GC pressure comes from the **user memory pool** — any JVM objects your code creates: Python UDF result objects converted back to JVM types, intermediate Scala/Java collections in user functions, large driver-side variables accidentally captured in closures and shipped to executors. A full JVM GC pause stalls all tasks on the executor simultaneously and, if long enough, causes the executor to miss heartbeats and be marked dead by the driver. Monitoring GC time in the Spark UI (covered in Chapter 16 — I7) is the first step in diagnosing executor performance problems.
+
 | Config | Default | What it controls |
 |---|---|---|
 | `spark.executor.memory` | `1g` | Total JVM heap per executor |
@@ -567,7 +573,9 @@ The 300 MB reserved region is hardcoded. It protects Spark's own internal data s
 
 ### Partitions and Tasks
 
-`1342-0.txt` is not loaded as a single block. Spark splits it into **partitions** — subdivisions of the dataset, each processed by exactly one task on one executor. During execution a partition lives in executor memory; if it exceeds available memory Spark spills it to disk. Each partition is assigned to exactly one **Task**, and each task runs on one executor. This is a **hard invariant** in Spark's execution model: one task processes exactly one partition, and one partition is processed by exactly one task. A partition cannot be split across tasks; a task cannot span multiple partitions. Calling `.cache()` on a DataFrame persists its partitions in the storage memory region after they are first computed, cutting the lineage so that re-use does not re-read from source — the architectural reason caching exists is covered in **Chapter 15 (I6 — Caching and Persistence)**. The tradeoff between partition count, parallelism, and scheduling overhead — including `spark.sql.shuffle.partitions` — is covered in **Chapter 14 (I5 — Partitioning)**.
+`1342-0.txt` is not loaded as a single block. Spark splits it into **partitions** — subdivisions of the dataset, each processed by exactly one task on one executor. During execution a partition lives in executor memory; if it exceeds available memory Spark spills it to disk. Each partition is assigned to exactly one **Task**, and each task runs on one executor. This is a **hard invariant** in Spark's execution model: one task processes exactly one partition, and one partition is processed by exactly one task. A partition cannot be split across tasks; a task cannot span multiple partitions. Calling `.cache()` on a DataFrame persists its partitions in the storage memory region after they are first computed, cutting the lineage so that re-use does not re-read from source — the architectural reason caching exists is covered in **Chapter 15 (I6 — Caching and Persistence)**. By default, cached partitions are **not replicated** — each partition lives on exactly one executor. If that executor crashes, the partition is lost; Spark falls back to lineage recomputation from the original source. Storage levels with replication (`MEMORY_AND_DISK_2`) exist but double the memory cost. The tradeoff between partition count, parallelism, and scheduling overhead — including `spark.sql.shuffle.partitions` — is covered in **Chapter 14 (I5 — Partitioning)**.
+
+**Executor task slots.** The number of tasks an executor can run simultaneously equals `spark.executor.cores` (default: 1 on YARN, all available cores on Standalone) divided by `spark.task.cpus` (default: 1). With `spark.executor.cores = 4`, an executor has 4 task slots and runs 4 tasks concurrently. If a job has 200 tasks and the cluster has 10 executors × 4 cores = 40 slots, Spark runs 40 tasks at a time and queues the remaining 160. Tasks never run more concurrently than the slot count — there is no over-subscription.
 
 In the word count program:
 
@@ -796,6 +804,8 @@ The SchedulerBackend serializes the task and launches it on the chosen executor 
 
 Spark uses **Java serialization** (Java `ObjectOutputStream`) by default for task closures. **Kryo** serialization is available and approximately 10× faster and more compact — recommended for jobs with heavy shuffle traffic. Enable it with `spark.serializer = org.apache.spark.serializer.KryoSerializer`. In Python, closures are serialized with **Pickle**. Since Spark 2.0, internal shuffle data for simple types (primitives, strings, arrays of primitives) uses Kryo automatically regardless of the configured default.
 
+**DataFrame expressions vs Python UDFs — a critical serialization difference.** A DataFrame column expression like `F.col("x") > 0` is a Catalyst expression tree node — it is compiled to JVM bytecode by Tungsten at plan-time, before any task is sent to an executor. The closure for such a task contains only a reference to the pre-compiled bytecode. A Python UDF (decorated with `@F.udf`) is pickled using Python's pickle library at definition time and stored on the driver; every task closure that uses that UDF carries the pickled Python function, and the executor must unpickle it in a Python subprocess, converting each row from `UnsafeRow` to Python objects and back. This is the root cause of Python UDF overhead — it is not the Python language but the per-row serialization cost. This distinction is covered in depth in **Chapter 13 (I3 — User-Defined Functions)**.
+
 ---
 
 ### Stage 5: executor runs the task
@@ -840,7 +850,7 @@ flowchart LR
 
 This is why shuffles are expensive: every Stage 1 executor must fetch data from every Stage 0 executor. Network I/O, disk I/O, and serialization all happen here. The map-side write mechanics — how map tasks sort and partition output before writing, and how reducer-side merge works — are covered in **Chapter 30 (E1 — Spark Internals)**.
 
-**The shuffle barrier.** No Stage 1 task starts until *all* Stage 0 tasks have completed and registered their shuffle output with MapOutputTracker. The DAGScheduler enforces this hard barrier — it only submits Stage 1's TaskSet after receiving `CompletionEvent` for every task in Stage 0. The reason: if a Stage 1 task started fetching while Stage 0 was still running, some map output would not exist yet, causing a fetch failure. The barrier trades latency (Stage 1 waits for the slowest Stage 0 task) for correctness and simple fault recovery (any lost shuffle file can be identified and its stage resubmitted cleanly).
+**The shuffle barrier.** No Stage 1 task starts until *all* Stage 0 tasks have completed and registered their shuffle output with MapOutputTracker. The DAGScheduler enforces this hard barrier — it only submits Stage 1's TaskSet after receiving `CompletionEvent` for every task in Stage 0. The invariant this maintains: **every map output partition is guaranteed to exist before any reducer tries to fetch it**. Without this guarantee, a reducer could not distinguish "output not yet written" from "task failed and output will never arrive" — it would have to poll indefinitely or guess. The barrier eliminates that ambiguity entirely. The reason: if a Stage 1 task started fetching while Stage 0 was still running, some map output would not exist yet, causing a fetch failure. The barrier trades latency (Stage 1 waits for the slowest Stage 0 task) for correctness and simple fault recovery (any lost shuffle file can be identified and its stage resubmitted cleanly).
 
 ---
 
