@@ -75,6 +75,27 @@ Use the RDD API when:
 - You need a custom algorithm with no relational equivalent (graph traversal, iterative ML from scratch)
 - You are reading a pipeline that was written before Spark 1.3
 
+### The RDD internal interface
+
+Every RDD — whether created by `sc.textFile()`, `sc.parallelize()`, or any transformation — exposes five pieces of information through a common interface. This is what the DAGScheduler reads to build stages, assign tasks, and recover from failures.
+
+| Interface method | What it returns | Example (word count) |
+|---|---|---|
+| `partitions()` | List of `Partition` objects — the atomic dataset pieces | `textFile("1342-0.txt")` returns 4 partitions (one per 128 MB HDFS block) |
+| `preferredLocations(p)` | DataNode addresses where partition `p` can be read without network transfer | HDFS block replica locations for partition `p` |
+| `dependencies()` | List of dependencies on parent RDDs — each is either `NarrowDependency` or `ShuffleDependency` | `map` → `NarrowDependency`; `reduceByKey` → `ShuffleDependency` |
+| `iterator(p, parentIters)` | Computes the elements of partition `p` given iterators over parent partitions | Applies `flatMap(line.split())` to each element yielded by the parent iterator |
+| `partitioner()` | `None` for most RDDs; `HashPartitioner(n)` after `partitionBy(n)` | `None` on raw `textFile`; `HashPartitioner(4)` after `partitionBy(4)` |
+
+**Why this matters:**
+
+- `dependencies()` is what tells the scheduler whether a stage boundary (shuffle) is needed. A `NarrowDependency` means the child can pipeline; a `ShuffleDependency` means a new stage must start.
+- `preferredLocations(p)` is how Spark implements data locality — the scheduler tries to assign each task to the node that holds its partition, avoiding network reads.
+- `iterator(p, parentIters)` is the computation itself — it is called lazily, one element at a time, enabling pipelining. No intermediate RDD is ever fully materialised in memory.
+- `partitioner()` is what makes `join()` between co-partitioned RDDs narrow: both RDDs return the same `HashPartitioner`, so the scheduler knows keys are already co-located.
+
+This interface is also what makes RDDs composable: any user-defined transformation only needs to implement these five methods to integrate seamlessly with the scheduler, storage system, and fault recovery mechanism.
+
 ---
 
 ## Creating an RDD
@@ -286,7 +307,32 @@ ranks_ok = ranks_p.mapValues(lambda v: v * 0.85)
 | `mapValues(f)` | For `(K, V)` pairs — apply `f` to values only; **preserves partitioner** | Narrow |
 | `join(other)` | For `(K,V)` + `(K,W)` — inner join → `(K,(V,W))`; narrow if co-partitioned | Wide (unless co-partitioned) |
 | `cogroup(other)` | For `(K,V)` + `(K,W)` — group all values per key → `(K,(Seq[V],Seq[W]))` | Wide (shuffle) |
-| `sortBy(f)` | Sort elements by key function | Wide (shuffle) |
+| `sortBy(f)` | Sort elements by arbitrary key function | Wide (shuffle) |
+| `sortByKey(ascending=True)` | Sort a `(K, V)` RDD by key — equivalent to the paper's `sort(c: Comparator[K])`; differs from `sortBy(f)` which sorts by any function | Wide (shuffle) |
+| `sample(withReplacement, fraction, seed)` | Random sample; `seed` makes sampling deterministic and reproducible | Narrow |
+| `cartesian(other)` | Cartesian product of two RDDs → `(T, U)` pairs; result has `M × N` rows — **use with care** | Wide (very expensive) |
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+sc = spark.sparkContext
+
+# sortByKey — sort a (K, V) RDD by key
+pairs = sc.parallelize([("banana", 3), ("apple", 1), ("cherry", 2)])
+pairs.sortByKey().collect()            # [('apple', 1), ('banana', 3), ('cherry', 2)]
+pairs.sortByKey(ascending=False).collect()  # [('cherry', 2), ('banana', 3), ('apple', 1)]
+
+# sample — reproducible with seed
+rdd = sc.range(100)
+rdd.sample(withReplacement=False, fraction=0.1, seed=42).collect()
+# Returns same ~10 elements every time seed=42 is used
+
+# cartesian — all combinations of two small RDDs
+colors = sc.parallelize(["red", "blue"])
+sizes  = sc.parallelize(["S", "M", "L"])
+colors.cartesian(sizes).collect()
+# [('red','S'), ('red','M'), ('red','L'), ('blue','S'), ('blue','M'), ('blue','L')]
+# Result: 2 × 3 = 6 elements — grows as M×N, avoid on large RDDs
+```
 
 ### Core actions
 
