@@ -3,6 +3,11 @@
 > *Learning-path topic: B1 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+> **Source:** *"Spark: The Definitive Guide"* — Bill Chambers & Matei Zaharia (O'Reilly, 2018) · Chapters 1–3, 15–16
+
+!!! note "📌 Spark version note"
+    The Chambers & Zaharia book targets Spark 2.x. This chapter is written against **Spark 4.1.x / Python 3.10+**. Key differences: `SparkSession` replaces `SQLContext` (since 2.0); Structured Streaming replaces the DStream API (removed in 4.0); ANSI mode is on by default (since 4.0); Spark Connect is available as a client-only mode (GA in 4.0); `pyspark-client` ships without a JVM (4.0+).
+
 Apache Spark is a distributed analytics engine. Understanding how it distributes work — and why — is the foundation every debugging and tuning decision rests on. Get this mental model right and most Spark surprises become predictable.
 
 ---
@@ -35,7 +40,19 @@ Fault tolerance comes not from replication but from **lineage**: each RDD knows 
 
 ### Why this matters for the DataFrame API
 
-RDDs were Spark's original API. The DataFrame API (Spark 1.3+) is built on top of RDDs, adding a schema and a query optimiser (Catalyst). When you write `df.filter(...).groupBy(...).count()`, Spark builds an RDD lineage graph underneath. The in-memory caching and lineage-based fault tolerance from the 2010 paper are still the foundation.
+RDDs were Spark's original API. The DataFrame API (Spark 1.3+) is built on top of RDDs, adding a schema and a query optimizer (Catalyst). When you write `df.filter(...).groupBy(...).count()`, Spark builds an RDD lineage graph underneath. The in-memory caching and lineage-based fault tolerance from the 2010 paper are still the foundation.
+
+The DataFrame API is grounded in **relational algebra** — the same mathematical foundation that underlies every relational database. Each DataFrame operation maps directly to a relational algebra operator:
+
+| DataFrame operation | Relational algebra operator | What it does |
+|---|---|---|
+| `.filter()` / `.where()` | σ (selection) | Restricts rows by a predicate |
+| `.select()` | π (projection) | Restricts to a subset of columns |
+| `.join()` | ⨝ (join) | Combines two relations on a condition |
+| `.groupBy().agg()` | γ (aggregation) | Groups rows and applies aggregate functions |
+| `.union()` | ∪ (union) | Combines two row sets |
+
+This is why Catalyst can apply 60+ optimization rules safely: relational algebra has well-defined mathematical equivalence laws — filters can always be pushed past projections, certain joins are commutative, constants can be folded — that guarantee rewrites preserve correctness. The optimizer manipulates a tree of algebraic expressions, not opaque user code. It is also why `df.filter(F.col("country") == "DE")` and `spark.sql("WHERE country = 'DE'")` compile to the same logical plan — both are expressions in the same algebra.
 
 ### Spark version milestones
 
@@ -57,7 +74,7 @@ RDDs were Spark's original API. The DataFrame API (Spark 1.3+) is built on top o
 | **4.0** | May 2025 | **ANSI mode on by default**; `pyspark-client` (Connect-only, no JVM); `spark.api.mode`; Python 3.10+ / JDK 17 or 21 required |
 | **4.1** | Dec 2025 | **Spark Declarative Pipelines**; `spark-submit` improvements; current stable line |
 
-The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 13; everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
+The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 3; everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
 
 ### Spark as a unified engine
 
@@ -153,7 +170,10 @@ flowchart LR
     E --> F["write Parquet"]
 ```
 
-The user builds this graph by writing transformation calls. At no point does executing a transformation perform any computation or move any data. The graph exists only as a description in the driver until an action is called.
+The user builds this graph by writing transformation calls. The graph exists only as a description in the driver until an action is called — no executor computation (tasks on workers) occurs until then. Two things happen eagerly, before any action:
+
+- **Schema inference** — `spark.read.csv()` without an explicit `.schema(...)` runs a data scan in the driver to determine column types. Always pass a schema explicitly to keep reads fully lazy.
+- **Driver-side analysis** — Spark resolves column names against the catalog and validates types in the driver as soon as something forces plan inspection (accessing `.schema`, `.dtypes`, or calling an action). This is why `AnalysisException` can surface before an action fires — the analysis step already ran.
 
 When an action fires, the **DAGScheduler** receives the full graph and compiles it into a physical execution plan. It does not process one step at a time the way Hadoop processes one job at a time — it sees the whole picture before execution begins.
 
@@ -237,7 +257,7 @@ None of these optimizations are available in Hadoop MapReduce, because the frame
 
 ### The full compilation pipeline: from DataFrame to bytecode
 
-Every Spark 4.x query passes through a five-stage compilation pipeline before any computation begins:
+Every Spark 4.x query passes through a five-stage compilation pipeline before any computation begins. The Unresolved and Resolved logical plans are **relational algebra expression trees** — structured representations of σ, π, ⨝, and γ operators (introduced in [§ Why this matters for the DataFrame API](#why-this-matters-for-the-dataframe-api)). Because the plan is algebraic rather than arbitrary code, Catalyst can rewrite it freely using mathematical equivalence laws:
 
 ```mermaid
 flowchart TD
@@ -511,9 +531,9 @@ After the shuffle, each executor holds all occurrences of a distinct set of word
 
 ### Lazy evaluation
 
-Every transformation you write — `select`, `filter`, `groupBy`, `join` — does nothing immediately. Spark records the instruction and returns instantly. Only an **action** — `show()`, `write()`, `count()` — triggers actual computation. At that point the driver takes the full instruction list, optimises it into a physical plan, and dispatches work to executors.
+Every transformation you write — `select`, `filter`, `groupBy`, `join` — does nothing immediately. Spark records the instruction and returns instantly. Only an **action** — `show()`, `write()`, `count()` — triggers actual computation. At that point the driver takes the full instruction list, optimizes it into a physical plan, and dispatches work to executors.
 
-Laziness enables three things: Catalyst can reorder and prune operations across the whole chain; intermediate DataFrames never need to be materialized in memory; failed partitions can be recomputed from source without manual recovery.
+Laziness enables three things: Catalyst can reorder and prune operations across the whole chain; intermediate DataFrames never need to be materialized in memory; failed partitions can be recomputed from source without manual recovery. The full set of Catalyst optimizations — predicate pushdown, projection pushdown, join reordering, broadcast join selection, and more — is covered in [§ What lazy evaluation enables](#what-lazy-evaluation-enables-the-catalyst-optimizer) above.
 
 A **job** is triggered by one action. Each job is broken into **stages** — groups of operations that can run without shuffling data across the network. Within a stage, each partition becomes a **task**. Understanding this hierarchy (job → stage → task) is what makes the Spark UI readable.
 
@@ -557,7 +577,7 @@ A fourth mechanism handles *slowness* rather than failure: **speculative executi
 
 ```
 1. driver builds logical plan from all the transformation calls
-2. SparkContext optimises the plan and splits it into stages (shuffle boundaries)
+2. SparkContext optimizes the plan and splits it into stages (shuffle boundaries)
 3. cluster manager launches executors on worker nodes
 4. driver sends application code (the transformations) to executors
 5. executors read their partition of 1342-0.txt and run split → lower → filter  (Stage 1)
@@ -568,7 +588,7 @@ A fourth mechanism handles *slowness* rather than failure: **speculative executi
 
 Every step before line 5 is the driver doing planning. Every step from line 5 onward is executors doing work.
 
-The JVM-Python boundary matters here. PySpark's DataFrame API generates JVM instructions — so `F.sum()`, `F.join()`, and `F.filter()` all run at full JVM speed regardless of Python. The Python process only sends the plan; the JVM does the heavy lifting. Python UDFs break this model (covered in Chapter 12), but for the DataFrame API the performance gap between Python and Scala is negligible.
+The JVM-Python boundary matters here. PySpark's DataFrame API generates JVM instructions — so `F.sum()`, `F.join()`, and `F.filter()` all run at full JVM speed regardless of Python. The Python process only sends the plan; the JVM does the heavy lifting. Python UDFs break this model (covered in Chapter 13), but for the DataFrame API the performance gap between Python and Scala is negligible.
 
 ---
 
@@ -580,11 +600,25 @@ The eight-step sequence above describes *what* happens. This section explains *h
 
 Four internal components coordinate every Spark job:
 
-**DAGScheduler** — lives in the driver JVM. Its job is to construct a **DAG of stages** for each job — a directed acyclic graph where each node is a stage and each edge is a dependency (a stage cannot start until all its parent stages have completed and written their shuffle output). To build this DAG, the DAGScheduler walks the RDD lineage, identifies wide dependencies (shuffles), and groups all narrow transformations between two shuffles into a single stage. It does not think about machines or threads — it only thinks about the logical structure of the computation. When you use the DataFrame API, you never write RDDs yourself — but Catalyst (Spark's query optimiser) compiles your DataFrame logical plan into a physical plan represented as RDD operations before handing it to the DAGScheduler. The DAGScheduler always works at the RDD level; DataFrames are the user-facing abstraction above it.
+**DAGScheduler** — lives in the driver JVM. Its job is to construct a **DAG of stages** for each job — a directed acyclic graph where each node is a stage and each edge is a dependency (a stage cannot start until all its parent stages have completed and written their shuffle output). To build this DAG, the DAGScheduler walks the RDD lineage, identifies wide dependencies (shuffles), and groups all narrow transformations between two shuffles into a single stage. It does not think about machines or threads — it only thinks about the logical structure of the computation. When you use the DataFrame API, you never write RDDs yourself — but Catalyst (Spark's query optimizer) compiles your DataFrame logical plan into a physical plan represented as RDD operations before handing it to the DAGScheduler. The DAGScheduler always works at the RDD level; DataFrames are the user-facing abstraction above it.
+
+All DAGScheduler decisions are processed on a **single-threaded event loop** (`DAGSchedulerEventProcessLoop`). Job submissions, task completions, executor failures, and AQE re-planning events all arrive as messages serialized on this loop. Because all state mutations happen on one thread, the DAGScheduler needs no locks and its logic is safe to reason about sequentially.
+
+The DAGScheduler itself behaves identically whether the job originated from raw RDD code or a DataFrame query — it always works at the RDD level. What differs is the path *to* the DAGScheduler:
+
+| | Raw RDD | DataFrame / SQL |
+|---|---|---|
+| **Entry point** | `SparkContext.runJob(rdd)` directly | `QueryExecution.toRdd` → `SparkContext.runJob` |
+| **Optimization before DAGScheduler** | None — code runs as written | Catalyst: 60+ rules (predicate pushdown, join reordering, projection pruning…) |
+| **Code generation** | None — standard JVM closures | Tungsten whole-stage codegen — compiled Java bytecode per stage |
+| **Row format** | `RDD[T]` — standard JVM objects | `RDD[InternalRow]` — compact binary `UnsafeRow` |
+| **AQE** | ❌ Stage DAG fixed at job submission | ✅ Stage DAG can change mid-execution at shuffle boundaries |
 
 **TaskScheduler** — lives in the driver JVM. Receives stages (as TaskSets) from the DAGScheduler and converts them into individual tasks assigned to specific executor slots. It knows nothing about DAGs; it only knows about available CPU slots and data locality.
 
 **SchedulerBackend** — the bridge between the TaskScheduler and the cluster manager. It handles executor registration, resource offers, and task launch RPCs. There is a different SchedulerBackend implementation for each cluster manager (StandaloneSchedulerBackend, YarnSchedulerBackend, KubernetesClusterSchedulerBackend).
+
+**MapOutputTracker** — lives in the driver JVM (with a stub on each executor). After every ShuffleMapStage task completes, it registers the shuffle block locations: `(shuffleId, mapTaskId) → MapStatus (executor BlockManagerId + per-partition byte sizes)`. When a downstream stage starts, its tasks query MapOutputTracker to discover exactly which executor holds each input partition before opening fetch connections. Without MapOutputTracker, the shuffle read step would have no way to locate its data.
 
 **BlockManager** — lives in every executor (and a smaller one in the driver). It manages all data storage: cached partitions, shuffle write files, and broadcast variables. When an executor writes shuffle output, it goes through the BlockManager.
 
@@ -654,7 +688,9 @@ flowchart LR
 
 `groupBy("word")` is a wide dependency — every partition must send its words to the executor responsible for that word. That is the shuffle boundary. Everything before it is Stage 0; everything after is Stage 1.
 
-The DAGScheduler does not schedule all stages at once. It schedules Stage 0 first, waits for it to complete, then schedules Stage 1. If a new shuffle boundary is discovered mid-execution (e.g. with AQE), it can insert additional stages dynamically.
+The DAGScheduler does not schedule all stages at once. It schedules Stage 0 first, waits for it to complete, then schedules Stage 1.
+
+**Static vs dynamic stage DAG.** For raw RDD jobs the stage DAG is fully determined at `handleJobSubmitted` time and never changes. For DataFrame/SQL jobs with AQE enabled (`spark.sql.adaptive.execution.enabled = true`, default since Spark 3.2), the physical plan contains an `AdaptiveSparkPlanExec` operator that communicates back to the planner after each shuffle stage completes — using actual partition statistics rather than pre-execution estimates. This can cause the DAGScheduler to receive entirely new stage submissions mid-job: coalescing many small shuffle partitions into fewer large ones, swapping a `SortMergeJoin` for a `BroadcastHashJoin` if the build side turns out small, or splitting a skewed partition into sub-tasks. Raw RDD jobs are unaffected by AQE — the stage DAG is immutable once submitted.
 
 ---
 
@@ -699,15 +735,15 @@ The executor deserialises the task closure and runs it against its assigned part
 2. Runs `split → lower → filter` on each line
 3. Hash-partitions the resulting `(word, 1)` pairs by key — each word is deterministically assigned to one of the output partitions
 4. Writes the partitioned output to shuffle files on local disk via the BlockManager
-5. Reports completion to the driver (including shuffle file locations)
+5. Reports completion to the driver — including a **`MapStatus`** for each output partition: the executor's `BlockManagerId` (host + port) and the byte size of each shuffle block it wrote
 
-The driver's DAGScheduler receives the completion event for each task. Once all 4 tasks in Stage 0 are done, it schedules Stage 1.
+The DAGScheduler's event loop receives this `CompletionEvent` and registers the shuffle block locations in the **MapOutputTracker** — a driver-side registry that maps `(shuffleId, mapTaskId) → (executor host, port, block locations)`. Once all 4 tasks in Stage 0 are done and their locations are registered, the DAGScheduler submits Stage 1.
 
 ---
 
 ### Stage 6: shuffle — data moves between stages
 
-Before Stage 1 can start, executors running Stage 1 tasks must fetch the shuffle data written by Stage 0. Each Stage 1 task reads its partition of the shuffle output from every Stage 0 executor — this is the **shuffle read**. The data crosses the network here.
+Before Stage 1 can start, executors running Stage 1 tasks must fetch the shuffle data written by Stage 0. Each Stage 1 task first queries the **MapOutputTracker** on the driver to discover which executor holds each block of its input — the exact host and port for every map output partition it needs. Only then does it open fetch connections to those executors and pull the data. This is the **shuffle read**; the data crosses the network here.
 
 ```mermaid
 flowchart LR
@@ -750,6 +786,15 @@ The DAGScheduler and TaskScheduler handle failures at different levels:
 - **Stage failure** (all retries exhausted): the job fails and the exception surfaces to the driver.
 
 ---
+
+!!! note "Going deeper — DAGScheduler internals (Chapter 30)"
+    The sections above explain what the DAGScheduler decides. Chapter 30 (E1 — Spark Internals) covers how it is implemented:
+
+    - **`handleJobSubmitted → createResultStage → submitStage → submitMissingTasks`** — the full call chain from job submission to task launch
+    - **State machine** — `activeJobs`, `waitingStages`, `runningStages`, `failedStages` and how transitions between them are driven by `CompletionEvent` and `TaskSetFailed`
+    - **Stage deduplication** — `getOrCreateParentStages` ensures a shared RDD ancestor becomes one stage, not one per downstream branch
+    - **Barrier execution mode** — all tasks in a barrier stage must launch simultaneously; used for distributed ML frameworks that need a global synchronisation point
+    - **Stage and job cancellation** — how `cancelJob`, `cancelStage`, and `killTaskAttempt` propagate through the event loop and interrupt running tasks
 
 ### Shuffle storage: local, external, and remote
 

@@ -23,6 +23,7 @@ nav = [
         { "Ch 12. Window Functions" = "spark-book/ch12-window-functions.md" },
         { "Ch 13. User-Defined Functions" = "spark-book/ch13-udfs.md" },
         { "Ch 14. Partitioning" = "spark-book/ch14-partitioning.md" },
+        { "Ch 30. Spark Internals" = "spark-book/ch30-spark-internals.md" },
     ]},
     { "Topics" = [
         { "Topic index" = "topics/index.md" },
