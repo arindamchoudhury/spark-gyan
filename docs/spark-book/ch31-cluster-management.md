@@ -10,6 +10,7 @@
     - **Dynamic allocation** — `spark.dynamicAllocation.enabled`; Spark requests additional executors from the cluster manager when tasks are queued and releases idle executors after `spark.dynamicAllocation.executorIdleTimeout`; requires External Shuffle Service (ESS) so idle executor shuffle files remain accessible after the executor is removed
     - **External Shuffle Service requirement** — why dynamic allocation cannot work without ESS on YARN/Standalone: removing an executor without ESS loses its shuffle files, forcing stage resubmission; ESS decouples executor lifecycle from shuffle file availability
     - **Resource profiles** — Spark 3.1+; requesting different memory/CPU configurations for different stages within one application
+    - **Driver/executor network topology** — driver pushes tasks to executors via RPC (executors do not poll); executors communicate directly with each other only during shuffle reads; driver is the bottleneck for result collection; implications for network partition and failure scenarios
     - **YARN, Kubernetes, and Standalone** — cluster-manager-specific executor launch mechanics, scheduling queue interaction, and recommended configurations
 
 *This chapter is not yet written. The above topics will form its core.*

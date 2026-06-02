@@ -16,5 +16,10 @@
     - **Internal row formats** — `InternalRow` (logical row abstraction), `UnsafeRow` (off-heap binary row used by Tungsten; avoids GC), and Apache Arrow (columnar format used for cross-process transfer in pandas UDFs); why three formats exist and when each is used
     - **Speculative execution detection mechanism** — executor heartbeat protocol, `spark.speculation.quantile = 0.9` (fraction of stage tasks that must complete before speculation begins), `spark.speculation.multiplier = 3` (how many times slower than median before a task is flagged), `spark.speculation.efficiency.enabled = true` (Spark 3.4+)
     - **Data locality decision logic** — `spark.locality.wait` (default 3s) and per-level overrides (`spark.locality.wait.process`, `.node`, `.rack`); how the TaskScheduler iterates through locality levels and falls back when no slot at the preferred level is available within the wait window
+    - **DAGScheduler event loop backpressure** — how `DAGSchedulerEventProcessLoop` handles high event arrival rates; what happens when task completion events queue up faster than they can be processed; whether this can become a bottleneck at large cluster scale
+    - **Shuffle write/read mechanics** — how map tasks sort and partition output before writing; how reducer-side merge works; why reducers may need to re-sort fetched data if order matters
+    - **MapOutputTracker operational semantics** — whether it is consulted once per stage or once per task; how stale entries are invalidated when an executor dies and its shuffle blocks are re-registered after ShuffleMapStage resubmission
+    - **BlockManager block types** — `BlockId` addressing scheme (`RDDBlockId`, `ShuffleBlockId`, `BroadcastBlockId`); block ownership and eviction lifetime differences between cached partitions, shuffle files, and broadcast copies; how TCP fetch streams blocks
+    - **Serialization in the shuffle data path** — how `UnsafeRow` binary format avoids extra serialization during shuffle for SQL/DataFrame operations; when Java vs Kryo serialization applies to shuffle data for raw RDD operations
 
 *This chapter is not yet written. The above topics will form its core.*
