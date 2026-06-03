@@ -374,13 +374,7 @@ This pipeline runs entirely in the driver before a single byte of user data is r
 
 Spark uses three internal row representations across different phases — `InternalRow` (trait/interface), `UnsafeRow` (Tungsten binary execution format), and Apache Arrow (pandas UDF boundary). The full breakdown — including why `GenericInternalRow` exists, how `sun.misc.Unsafe` relates to on-heap vs off-heap allocation, and how Arrow eliminates per-row serialization — is covered in **Chapter 4**. Memory layout details and shuffle serialization cost are in **Chapter 30 (E1 — Spark Internals)**.
 
-**The Adaptive Query Execution (AQE) feedback loop.** Spark 4.x enables AQE by default (`spark.sql.adaptive.execution.enabled = true`). AQE re-enters the optimization pipeline at shuffle boundaries using *actual* partition statistics collected at runtime — not the pre-execution estimates that Catalyst used for the initial plan. This allows Spark to:
-
-- Coalesce many small shuffle partitions into fewer larger ones (avoids the 200-tiny-tasks problem)
-- Switch a SortMergeJoin to a BroadcastHashJoin mid-execution if the actual build-side size turns out to be small
-- Detect and handle skewed partitions by splitting them
-
-AQE is a feedback loop that Hadoop has no equivalent of: the execution plan changes dynamically based on what the data actually looks like, not just what the optimizer predicted.
+**Adaptive Query Execution (AQE).** Spark 4.x enables AQE by default. Where Catalyst optimizes before execution using estimated statistics, AQE re-enters the optimization pipeline at shuffle boundaries using *actual* collected statistics — coalescing small partitions, switching join strategies, and splitting skewed partitions at runtime. The full detail is in **Chapter 4**.
 
 ---
 
@@ -388,7 +382,7 @@ AQE is a feedback loop that Hadoop has no equivalent of: the execution plan chan
 
 Despite all the differences, Spark's shuffle mechanism is directly descended from Hadoop's shuffle and retains the same fundamental structure:
 
-1. Map tasks (the ShuffleMapStage) write their output to **local files on disk**, partitioned and sorted by the target partition key.
+1. Map tasks (the ShuffleMapStage) write their output to **local files on disk** (by default — RSS like Celeborn changes the destination), **partitioned** by the target key (hash-routed to partition buckets) and written in **partition-ID order** so the output file can be efficiently split. Keys are **not sorted within a partition** unless map-side combine is enabled (e.g. `reduceByKey`) — confirmed in `SortShuffleWriter.scala` v4.1.2: *"we don't care whether the keys get sorted in each partition; that will be done on the reduce side if the operation being run is sortByKey."*
 2. Reduce tasks (the downstream stage) fetch the relevant blocks from every map task's local disk.
 3. Spark implements a **barrier at every shuffle boundary**: all map tasks in a ShuffleMapStage must complete and confirm their shuffle files are written before any reduce task in the next stage starts.
 
@@ -508,31 +502,31 @@ A Spark application has three kinds of processes: a **driver**, one or more **ex
 
 ### Driver Program
 
-The official definition ([cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)):
+Spark's official definition ([cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)):
 
 > *"The process running the main() function of the application and creating the SparkContext."*
 
-In PySpark **classic mode** the driver *side* is two OS processes working together ([source: steadbytes.com](https://dev.to/steadbytes/python-spark-and-the-jvm-an-overview-of-the-pyspark-runtime-architecture-21gg)):
+That definition fits a JVM language perfectly — one process, one main(). In PySpark **classic mode** it becomes ambiguous, because the runtime splits across two OS processes:
 
 ```mermaid
 flowchart LR
-    P["Python process\n(driver program —\nyour application code)"]
-    J["JVM process\n(Spark engine — SparkContext,\nCatalyst, DAGScheduler)"]
+    P["Python process\n(your application code —\nruns main(), builds DataFrame plans)"]
+    J["JVM process\n(Spark engine — SparkContext,\nCatalyst, DAGScheduler, TaskScheduler)"]
     P <-->|"Py4J (local socket)"| J
 ```
 
-- The **Python process** is the *driver program* — it runs your application code and builds a logical plan from your DataFrame calls. This is what Spark's official docs mean by "the process running the main() function."
-- The **JVM process** is the *Spark engine* — it hosts SparkContext, the Catalyst query optimizer, DAGScheduler, and TaskScheduler. It is a separate OS process from Python, running on the same machine. Executors (covered below) are different processes again, running on worker nodes — they receive tasks but do no planning or scheduling.
+- The **Python process** runs your application code — this is what Spark's official docs call "the process running main()."
+- The **JVM process** is the Spark engine — it hosts SparkContext, Catalyst, DAGScheduler, and TaskScheduler. It is a separate OS process from Python, running on the same machine.
 
-The two processes together constitute what Spark calls "the driver." Neither alone is the full picture.
+**"The driver" means both processes together.** When Spark's UI, logs, or error messages say "driver" they usually mean the JVM side (where scheduling happens), but the Python process is equally part of the driver — it is the one building the plan and issuing calls. Neither process alone is the full driver. Executors are entirely separate JVM processes on worker nodes; they receive tasks but do no planning or scheduling.
 
-**The driver is a single point of failure.** If the driver JVM runs out of memory, the entire application fails and all pending stages are cancelled. The driver never reads partition data during transformations — that is handled by executors — but certain actions pull data back to the driver. `.collect()` transfers every row of the result DataFrame to driver memory; `.show(n)` only transfers `n` rows and is safe; `.toPandas()` collects everything. Calling `.collect()` on a large DataFrame will crash the driver. Size the driver with `spark.driver.memory` (default: 1g) and prefer `.write` over `.collect()` for large results.
+**The driver is a single point of failure.** If the driver JVM runs out of memory, the entire application fails and all pending stages are cancelled. This surprises people because during transformations the driver never reads partition data — that work is handled entirely by executors. The driver only holds the logical plan, scheduling state, and shuffle metadata. The danger comes from certain **actions** that pull data back to the driver: `.collect()` transfers every row of the result DataFrame into driver memory; `.toPandas()` does the same. Both will crash the driver on a large DataFrame. `.show(n)` is safe — it transfers only `n` rows. Prefer `.write` over `.collect()` for large results, and size the driver with `spark.driver.memory` (default: 1g) when it must handle significant result sets.
 
 In **Spark Connect mode** (opt-in; activate with `export SPARK_REMOTE="sc://localhost"` before launching `pyspark`), the Python process is a **client only** — it serializes your DataFrame operations as protobuf and sends them over gRPC. It has no JVM at all. The Spark engine runs on the Connect server:
 
 ```mermaid
 flowchart LR
-    P["Python process\n(client — your application code,\nNOT the driver)"]
+    P["Python process\n(client — your application code,\nNOT part of the driver)"]
     S["Spark Connect Server\n(the driver — SparkContext,\nCatalyst, DAGScheduler)"]
     P <-->|"gRPC (sc://host:15002)"| S
 ```
@@ -540,7 +534,7 @@ flowchart LR
 | | Classic | Spark Connect |
 |---|---|---|
 | Introduced | Spark 1.0 | Spark 3.4 |
-| Python process role | Driver program (user code) | Client only — serializes plans, receives results |
+| Python process role | Runs user code and builds plans; paired with the JVM process, both together form the driver | Client only — serializes plans, receives results; no JVM involved |
 | Spark engine (SparkContext, Catalyst, DAGScheduler) | Driver-side JVM process (co-located with Python) | Connect Server JVM (remote) |
 | Python↔JVM transport | Py4J local socket | gRPC + Apache Arrow |
 | RDD support | Yes | No |
@@ -550,27 +544,37 @@ flowchart LR
 **How to activate each mode:**
 
 ```python
-# Classic mode (default) — Python process is the driver program
+# Classic mode (default) — Python + JVM together form the driver
 spark = SparkSession.builder.appName("app").getOrCreate()
 
 # Spark Connect via .remote() — Python is a client, connects to an existing server
 spark = SparkSession.builder.remote("sc://localhost:15002").getOrCreate()
 ```
 
-**`.remote(url)`** takes a Spark Connect URL of the form `sc://host:port`. It tells the Python process to skip the JVM entirely and connect to a running Connect server at that address. `--master` and `--deploy-mode` are not used — they are meaningless to a client that has no cluster manager and no driver to place.
+**`.remote(url)`** accepts either `sc://host:port` (connect to an existing Connect server) or `local[N]` / `local[*]` (start a local Connect server inline). It tells the Python process to skip the JVM entirely — `RemoteSparkSession` uses gRPC instead of Py4J, so no `SparkContext` is created in the client process. `--master` and `--deploy-mode` **cannot** be combined with `.remote()` — setting both `spark.master` and `spark.remote` raises `CANNOT_CONFIGURE_SPARK_CONNECT_MASTER` at session creation time.
 
 There are three distinct ways to run in Connect mode, each with a different relationship to `--master`:
 
 | How | `--master` | `--deploy-mode` | What happens |
 |---|---|---|---|
-| `.remote("sc://host:port")` | Not used | Not used | Client connects to an already-running Connect server |
-| `spark.remote = "local[4]"` | Not used | Not used | Spark starts a local Connect server inline (testing only) |
-| `spark.api.mode=connect` + `--master yarn` | Used | Used | Spark submits via classic cluster manager but runs in Connect mode |
+| `.remote("sc://host:port")` | Blocked — raises error if combined with `spark.remote` | Not used | Client connects to an already-running Connect server |
+| `.remote("local[4]")` / `spark.remote = "local[4]"` | Blocked — raises error if combined | Not used | Spark starts a local Connect server inline (testing only) |
+| `spark.api.mode=connect` + `--master yarn` | Used | Used | **Hybrid mode** — classic cluster management allocates resources; a local Connect server starts alongside the driver; Python connects to `sc://localhost` |
 
-The first two paths decouple the client completely from cluster management. The third path (`spark.api.mode=connect`) is the bridge for production clusters: you keep the familiar `--master`/`--deploy-mode` mechanics but gain Connect's client-server isolation. The official docs note that `spark.remote` is **limited to `local[*]`** values — for real cluster URLs (`yarn`, `spark://`, `k8s://`) you must use `spark.api.mode=connect`.
+The first two paths decouple the client completely from cluster management. The third path (`spark.api.mode=connect`) is a **hybrid mode**, not pure Spark Connect. The Spark source (`config/package.scala` v4.1.2) describes it as: *"For Spark Classic applications, specify whether to automatically use Spark Connect by running a **local** Spark Connect server dedicated to the application. The server is terminated when the application is terminated."* In other words: `--master yarn` still handles resource allocation the classic way, but a Connect server starts collocated with the driver so the Python code uses the Connect API instead of Py4J.
+
+`spark.remote` accepts two kinds of URL — verified against `session.py` v4.1.2:
+
+| `spark.remote` value | What happens |
+|---|---|
+| `local[N]` / `local[*]` | Starts a local Connect server inline — `getOrCreate()` routes it to `sc://localhost` |
+| `sc://host:port` | Connects directly to an existing remote Connect server |
+| `yarn`, `spark://…`, `k8s://…` | **Blocked** — setting both `spark.master` and `spark.remote` raises `CANNOT_CONFIGURE_SPARK_CONNECT_MASTER`; use `spark.api.mode=connect` with `--master` instead |
+
+`spark.remote` and `spark.master` cannot be combined — they represent incompatible execution models. `spark.master` means "I am starting Spark infrastructure; negotiate with this cluster manager." `spark.remote` means "I am a thin client; connect me to an already-running server." Setting both raises `CANNOT_CONFIGURE_SPARK_CONNECT_MASTER` at session creation. If a Spark Connect server is already deployed on a real cluster, `spark.remote = "sc://cluster-host:15002"` works fine without `spark.master` — the client has no cluster management role. If you want Spark to manage cluster resources itself and also use the Connect API, use `spark.api.mode=connect` with `--master`.
 
 ```bash
-# Connect mode on a real YARN cluster
+# Hybrid mode: YARN manages resources, local Connect server starts with the driver
 spark-submit --master yarn --deploy-mode cluster \
   --conf spark.api.mode=connect \
   myapp.py
@@ -594,15 +598,24 @@ It is the single object through which you read data, run SQL, and build DataFram
 
 > *"The SparkContext object in your main program. It coordinates independent sets of processes on a cluster and connects to cluster managers to allocate resources."* — [cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)
 
-You don't create or interact with SparkContext directly in normal work — SparkSession creates and owns it. It surfaces in architecture discussions because it is the actual coordinator: when `.show(10)` triggers a job, it is SparkContext that hands the optimized plan to the cluster manager to allocate executors. You can reach it via `spark.sparkContext` if you need low-level RDD operations or configuration inspection, but for all DataFrame and SQL work SparkSession is sufficient.
+You don't create or interact with SparkContext directly in normal work — SparkSession creates and owns it (`self._sc = sparkContext` in `session.py`). It surfaces in architecture discussions because it is the actual coordinator: when `.show(10)` triggers a job, SparkContext receives the job and passes it to the DAGScheduler, which breaks it into stages and tasks. The TaskScheduler then dispatches tasks to executors via the SchedulerBackend. The cluster manager is involved only for **resource allocation** (executor count, CPU, memory) — it never sees the plan. Executors are allocated at application startup, not per-job. In classic mode you can reach SparkContext via `spark.sparkContext` for low-level RDD operations or configuration inspection; this property does not exist in Connect mode (`pyspark-client`), where `RemoteSparkSession` has no underlying SparkContext. For all DataFrame and SQL work SparkSession is sufficient.
 
 ---
 
 ### Cluster Manager
 
-The **Cluster Manager** is an external service that controls the machines in the cluster. In the local stack (`docker compose up`) it is Spark Standalone, running inside the `spark` container. On cloud deployments it is typically YARN or Kubernetes.
+The **Cluster Manager** is an external service that allocates resources (machines, CPU, memory) for the application. Spark 4.x supports four cluster manager modes:
 
-When `.show(10)` triggers the job, the SparkContext asks the cluster manager: "I need executors." The cluster manager decides how many to launch, on which machines, and with how much memory — based on what you configured when starting the session.
+| Mode | When to use |
+|---|---|
+| `local[N]` | Development — runs driver and executors in the same JVM process |
+| Spark Standalone (`spark://host:port`) | Dedicated Spark cluster; no YARN/k8s required |
+| YARN | Hadoop ecosystem; multi-tenant clusters |
+| Kubernetes (`k8s://https://host:port`) | Container-native deployments |
+
+In the local stack (`docker compose up`) it is Spark Standalone, running inside the `spark` container. On cloud deployments it is typically YARN or Kubernetes.
+
+Executors are allocated at **application startup** — when `SparkSession.builder.getOrCreate()` initialises `SparkContext`, it registers with the cluster manager which then launches executor processes on worker nodes. When `.show(10)` fires a job later, the executors are already running and waiting for tasks. The cluster manager is not contacted again per-job. With **dynamic allocation** (`spark.dynamicAllocation.enabled=true`), the `ExecutorAllocationManager` inside the driver can request additional executors or release idle ones during the application lifetime — but this is driven by scheduler backpressure (pending tasks), not by individual job triggers.
 
 ---
 
@@ -614,7 +627,7 @@ In the word count program, executors are the processes that actually read `1342-
 
 Each application gets its own isolated executors. They stay alive for the entire application (from `getOrCreate()` to `spark.stop()`), not just one query. The executor lifecycle — when they are launched, when they shut down, and how dynamic allocation (`spark.dynamicAllocation.enabled`) adjusts the executor count at runtime while requiring the External Shuffle Service — is covered in **Chapter 31 (E2 — Production Deployment: Cluster Management)**.
 
-Alongside RDDs, Spark's programming model provides two shared variable types: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters or sums that workers increment and only the driver reads. Both are covered in Chapter 3.
+Spark's programming model provides two shared variable types available to both the RDD and DataFrame APIs: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters that executors increment and only the driver reads. The mechanism and usage pattern differ between the two APIs: RDD usage (explicit `sc.broadcast()` and `sc.accumulator()`) is covered in **Chapter 3**; DataFrame-specific usage (`F.broadcast()` for join hints, accumulators inside UDFs) is covered in **Chapter 4**.
 
 Accumulators are intentionally **write-only for executors**. This is an architectural choice: if executors could read an accumulator mid-execution, the value would be inconsistent across tasks running in parallel, requiring distributed locking. Instead, executor tasks add their updates locally; Spark merges each task's update into the driver-side accumulator exactly once when the task completes (in actions only — accumulator updates in transformations may be applied more than once if stages are re-executed). A failed task's partial accumulator update is discarded; the retry starts from zero.
 
@@ -628,8 +641,8 @@ Each executor JVM heap is divided into three fixed regions by the **unified memo
 flowchart TD
     H["Executor JVM heap\n(configured via spark.executor.memory, e.g. 4 GB)"]
     R["Reserved memory — 300 MB hardcoded\nInternal Spark structures; always off-limits"]
-    U["User memory — 40% of (heap − 300 MB)\nUser data structures, internal metadata, UDF state"]
-    M["Spark managed memory — 60% of (heap − 300 MB)\nspark.memory.fraction = 0.6\nShared pool for execution + storage"]
+    U["User memory — (1 − spark.memory.fraction) × (heap − 300 MB)\n= 40% by default\nUser data structures, internal metadata, UDF state"]
+    M["Spark managed memory — spark.memory.fraction × (heap − 300 MB)\n= 60% by default\nShared pool for execution + storage"]
     S["Storage memory floor — 50% of managed\nspark.memory.storageFraction = 0.5\nCached partitions; immune to eviction by execution"]
     E["Execution memory — remainder of managed pool\nExpands into unused storage above the floor\nShuffles, sorts, joins, aggregations"]
 
@@ -647,9 +660,46 @@ flowchart TD
 - **SortMergeJoin** — one or both sides spill sorted runs when the partition doesn't fit
 - **GroupBy (hash-based)** — same as hash aggregation
 
-The trigger is simply exhausting the task's execution memory allocation. Spilling does not fail the task but can make it 10–100× slower depending on disk speed. The fix is usually more partitions (smaller per-task working set) or more executor memory.
+The trigger is exhausting the task's execution memory allocation. Spilling does not fail the task but can make it 10–100× slower depending on disk speed. The fix is usually more partitions (smaller per-task working set) or more executor memory.
 
-**Storage memory** (the floor, R) holds cached partitions (`df.cache()`). Execution can evict storage above the floor; storage **cannot** evict execution — this asymmetry exists because evicting in-progress execution data would corrupt a running task.
+**What format is written to disk?** It depends on which layer is spilling — verified against `ExternalSorter.scala` and `HashAggregateExec.scala` v4.1.2:
+
+| Layer | Spill format | Cost |
+|---|---|---|
+| **DataFrame / SQL** (`HashAggregateExec`, `SortMergeJoin`) | Binary **`UnsafeRow`** — the same compact format already in memory, written via `UnsafeKVExternalSorter`. No serialization conversion. | Low — just writing bytes |
+| **RDD operations** (`ExternalSorter`) | Serialized key-value pairs using the configured `Serializer` (Kryo or Java, `spark.serializer`), written in fixed-size batches via `DiskBlockObjectWriter`. Each batch has its own serialization stream to reduce reference-tracking overhead on read. Sorted by partition ID first, then optionally by key. | Higher — requires serialization per object |
+
+DataFrame spills are cheaper than RDD-layer spills precisely because `UnsafeRow` is already binary — no conversion is needed to write it to disk. Compression of spill files is controlled by `spark.shuffle.compress` (default `true`).
+
+**Per-task fairness before spill.** When N tasks run concurrently on one executor, `ExecutionMemoryPool` enforces two per-task memory bounds — verified in actual code at v4.1.2:
+
+- **Floor (1/2N)** — `minMemoryPerTask = poolSize / (2 * numActiveTasks)`. A task that has not yet reached this minimum is **blocked** (not spilled) until enough memory frees up. It never spills before getting a fair start.
+- **Ceiling (1/N)** — `maxMemoryPerTask = maxPoolSize / numActiveTasks`. A task cannot hold more than this, keeping the pool shared fairly.
+
+Concrete example with default config (`spark.executor.memory = 1g`, `spark.memory.fraction = 0.6`), 4 active tasks:
+
+```
+managed pool = (1024 MB − 300 MB) × 0.6 = 724 × 0.6 = 434 MB
+floor per task = 434 / (2 × 4) = 54 MB   ← blocked until it reaches this
+ceiling per task = 434 / 4       = 108 MB  ← cannot exceed this
+```
+
+A task that has only acquired 30 MB so far and needs 80 MB would **wait**, not spill — it has not yet reached its 54 MB floor. Spark logs this: *"TID X waiting for at least 1/2N of execution pool to be free."*
+
+**Storage memory** (the storage floor in the diagram above) holds cached partitions (`df.cache()`). The borrowing relationship between execution and storage is bidirectional but asymmetric — confirmed in the source Scaladoc:
+
+- **Storage borrows from execution** when execution memory is idle — cached blocks expand into free execution space at no cost.
+- **Execution reclaims borrowed memory** by evicting cached blocks above the floor when it needs space for a running task.
+- **Execution is never evicted by storage** — even if execution has borrowed storage's memory, storage cannot force it back. The source notes this is due to "the complexities involved in implementing this"; practically, evicting in-progress execution data would corrupt a running task. The implication: if execution fills the managed pool, new `.cache()` calls will fail and the block will be evicted immediately per its storage level.
+
+**What if nothing is cached?** The storage floor is **not a static reservation** — the source confirms: *"This region is not statically reserved; execution can borrow from it if necessary."* If no data is cached, the storage pool is empty and execution is free to use the entire managed pool. With the default 1g executor, that is the full 434 MB. The floor only becomes meaningful once you cache something: it is the minimum footprint that cached data is allowed to hold before execution starts evicting it.
+
+| Scenario | Execution can use |
+|---|---|
+| Nothing cached | All 434 MB (execution region + empty storage floor) |
+| Cached data below the floor | Whatever is free — data under the floor is eviction-protected |
+| Cached data above the floor | Overflow above the floor is evictable; execution reclaims it as needed |
+| Execution fills the managed pool | New `.cache()` calls fail — block evicted immediately per storage level |
 
 The 300 MB reserved region is hardcoded. It protects Spark's own internal data structures from being crowded out by user workloads.
 
@@ -658,12 +708,50 @@ The 300 MB reserved region is hardcoded. It protects Spark's own internal data s
 | Config | Default | What it controls |
 |---|---|---|
 | `spark.executor.memory` | `1g` | Total JVM heap per executor |
-| `spark.memory.fraction` | `0.6` | Fraction of (heap − 300 MB) given to the shared managed pool |
+| `spark.memory.fraction` | `0.6` | Fraction of (heap − 300 MB) given to the shared managed pool; the remainder `(1 − fraction)` becomes user memory — raising this shrinks user memory and vice versa |
 | `spark.memory.storageFraction` | `0.5` | Fraction of managed pool reserved as the storage floor |
 | `spark.memory.offHeap.enabled` | `false` | Enable off-heap memory (bypasses JVM GC entirely) |
-| `spark.memory.offHeap.size` | `0` | Absolute bytes available for off-heap allocation; must be positive when off-heap is enabled |
+| `spark.memory.offHeap.size` | `0` | Absolute bytes for off-heap allocation; must be positive when enabled; counts toward container RSS — account for it by shrinking `spark.executor.memory` or increasing `spark.executor.memoryOverhead` |
+| `spark.executor.memoryOverhead` | optional (see below) | Non-heap memory budget per executor; if not set, computed from the two configs below |
+| `spark.executor.memoryOverheadFactor` | `0.1` (JVM); **`0.4` for Kubernetes non-JVM jobs including PySpark** | Fraction of executor memory allocated as non-heap overhead |
+| `spark.executor.minMemoryOverhead` | `384m` (new in Spark 4.0.0) | Minimum overhead floor — effective overhead = `max(executor_memory × factor, minOverhead)` |
 
-**Off-heap memory** is allocated outside the JVM heap using native memory. It is completely separate from the unified memory manager's calculation — off-heap does not reduce the heap pool. When enabled, Spark uses it for storage and execution buffers, reducing GC pressure for large objects. Because off-heap memory is invisible to the JVM garbage collector, it must be accounted for explicitly when sizing executors: total container memory = `spark.executor.memory` (heap) + `spark.executor.memoryOverhead` + `spark.memory.offHeap.size`.
+**Off-heap memory** is allocated outside the JVM heap using native memory. It is completely separate from the unified memory manager's calculation — off-heap does not reduce the heap pool. When enabled, Spark uses it for storage and execution buffers, reducing GC pressure for large objects.
+
+**`spark.memory.offHeap.size` and `spark.executor.memoryOverhead` — the critical relationship.**
+
+YARN and Kubernetes manage containers by watching **RSS (resident set size)** — the total process memory including JVM heap, JVM overhead, Python worker processes, and any native/off-heap allocations. They have no visibility into how much is JVM heap versus off-heap. `spark.executor.memoryOverhead` is the budget you give the cluster manager for all non-heap memory per executor. Its default is `max(executor_memory × 0.1, 384 MB)`.
+
+The problem: `spark.memory.offHeap.size` is allocated from native memory, which counts toward RSS. If you enable off-heap but don't increase `spark.executor.memoryOverhead` to cover it, the container's RSS quietly exceeds its limit and YARN/Kubernetes kills it — with no Java stack trace, just a vague "container exceeded memory limits" error.
+
+**Correct sizing formula:**
+
+```
+total container memory = spark.executor.memory        (JVM heap)
+                       + spark.executor.memoryOverhead (JVM internals + Python workers + overhead)
+                       + spark.memory.offHeap.size     (off-heap execution/storage)
+```
+
+Set `spark.executor.memoryOverhead` to at least cover `spark.memory.offHeap.size` plus the original overhead budget.
+
+**Performance cost and production guidance:**
+
+The access overhead of `sun.misc.Unsafe` reads is negligible — the cost is operational, not computational. Guidance from current Spark production practice:
+
+| Scenario | Recommendation |
+|---|---|
+| Small-medium heaps (<4 GB), short batch jobs | **Off by default is correct** — on-heap GC is manageable; off-heap adds operational risk |
+| Large heaps (>4-8 GB), GC pauses >10% of task time in Spark UI | **Consider enabling** — GC storms become a real throughput bottleneck |
+| Long-running Structured Streaming jobs | **Often beneficial** — GC accumulates over hours of uptime |
+
+**Always check GC time in the Spark UI (Chapter 16) before enabling off-heap.** If GC is <5% of task time, off-heap adds complexity with no measurable gain. If GC is high, first try using more executors with smaller heaps (smaller heap = smaller GC scan scope) — that often resolves GC pressure without the off-heap sizing risk.
+
+**Unmanaged memory (Spark 4.x).** `UnifiedMemoryManager.scala` v4.1.2 introduced a new tracking category — **unmanaged memory**: memory consumed by components that manage their own allocations outside of Spark's unified memory system. The source lists two examples:
+
+- **RocksDB state stores** — used by Structured Streaming stateful operations; manages its own block cache and write buffers entirely outside the unified pool
+- **Native libraries** — any JNI or off-heap allocation not routed through `spark.memory.offHeap`
+
+Spark periodically polls `unmanagedOnHeapUsed` and `unmanagedOffHeapUsed` and factors them into memory allocation decisions. If your job uses Structured Streaming with RocksDB state stores (`spark.sql.streaming.stateStore.providerClass = RocksDBStateStoreProvider`), account for RocksDB's memory separately — it does not appear in the unified memory manager's budget and can cause container OOM if ignored.
 
 ---
 

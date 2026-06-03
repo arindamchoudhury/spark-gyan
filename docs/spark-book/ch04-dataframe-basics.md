@@ -488,6 +488,18 @@ A DataFrame is a **distributed table**. Understanding its physical internals exp
 When you call `df.rdd`, Spark converts `RDD[InternalRow]` → `RDD[Row]` by wrapping each `UnsafeRow` in a public `Row` object. The Spark source warns: *"end users are discouraged to use `QueryExecution.toRdd`: please use `Dataset.rdd` instead where conversion will be applied."* The conversion adds overhead — avoid `df.rdd` on hot paths.
 
 
+**Adaptive Query Execution (AQE).** Catalyst optimizes the plan before execution using *estimated* statistics — row counts and data sizes predicted from metadata and table samples. AQE adds a second optimization pass that fires at each shuffle boundary using *actual* statistics collected from the completed map tasks:
+
+| AQE capability | What triggers it | Effect |
+|---|---|---|
+| **Partition coalescing** | Many small shuffle partitions after a groupBy / join | Merges them into fewer, larger partitions — avoids the 200-tiny-tasks problem when data is small |
+| **Join strategy switching** | Build side of a SortMergeJoin turns out smaller than estimated | Converts to BroadcastHashJoin mid-execution, eliminating the sort phase on both sides |
+| **Skew join handling** | One reducer partition is much larger than others | Splits the skewed partition and joins its fragments in parallel |
+
+**AQE is a DataFrame / SQL feature only — it does not apply to raw RDD code.** It lives inside `QueryExecution` as the first preparation rule (`InsertAdaptiveSparkPlan`, from `sql.execution.adaptive`). Raw RDD operations go through `SparkContext.runJob` directly, bypassing `QueryExecution` entirely. When AQE is enabled, `InsertAdaptiveSparkPlan` wraps the entire physical plan in `AdaptiveSparkPlanExec` — the Spark source notes that all subsequent preparation rules become no-ops because the original plan is hidden inside that wrapper node.
+
+Enabled by default in Spark 4.x (`spark.sql.adaptive.execution.enabled = true`; default since Spark 3.2). AQE operates entirely within the driver — at each shuffle boundary it recomputes the physical plan for the next stage using real partition sizes, then dispatches the revised TaskSet. Executors receive corrected work without knowing a plan change occurred.
+
 **What "columnar" actually means in core Spark 4.1.x:**
 
 Core Spark has not gone columnar. Every built-in SQL operator (filter, join, agg, sort) runs on `UnsafeRow`. The only place `ColumnarBatch` appears is during Parquet/ORC I/O — and it is immediately converted back to `UnsafeRow` before the first operator runs (`ColumnarToRowExec`). That I/O optimisation is the full extent of columnar support in unmodified Spark.
@@ -726,6 +738,80 @@ df.withColumns({
 # |  Bob| 87000| 8700.0|     BOB|   mid|
 # +-----+------+-------+--------+------+
 ```
+
+---
+
+## Shared variables with DataFrames
+
+Broadcast variables and accumulators work with both the RDD and DataFrame APIs, but the mechanism differs. See **Chapter 3** for the RDD-specific `sc.broadcast()` and `sc.accumulator()` patterns.
+
+### Broadcast variables — DataFrame usage
+
+With DataFrames, broadcast is a **join hint** rather than a manual variable. `F.broadcast(df)` tells Catalyst to broadcast the wrapped DataFrame to every executor before the join, avoiding a shuffle:
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+import pyspark.sql.functions as F
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.appName("ch04-broadcast").getOrCreate()
+
+orders = spark.read.parquet("orders/")
+countries = spark.read.parquet("countries/")   # small lookup table
+
+# Without hint: Catalyst may choose SortMergeJoin (shuffle both sides)
+# With hint: Catalyst broadcasts countries to every executor — no shuffle
+result = orders.join(F.broadcast(countries), on="country_code")
+```
+
+Catalyst also broadcasts automatically when a DataFrame is smaller than `spark.sql.autoBroadcastJoinThreshold` (default 10 MB). The `F.broadcast()` hint overrides this threshold — useful when you know the table is small but stats are unavailable.
+
+**`F.broadcast(df)` vs `sc.broadcast(value)`:**
+
+| | `F.broadcast(df)` | `sc.broadcast(value)` |
+|---|---|---|
+| What is broadcast | A whole DataFrame | Any Python object (dict, list, model) |
+| Who decides | Catalyst — rewrites join to BroadcastHashJoin | You — accessed via `.value` in closures |
+| Used for | Broadcast joins | Lookup tables, model weights inside UDFs |
+| Works with | DataFrame join only | RDD closures and Python UDFs |
+
+### Accumulators — DataFrame usage
+
+Accumulators are available in DataFrames via Python UDFs. The same write-only rule applies: executors can only `add()`, the driver can only read after an action completes.
+
+```python
+import pyspark.sql.functions as F
+import pyspark.sql.types as T
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.appName("ch04-accumulators").getOrCreate()
+
+# Create accumulators on the driver
+null_count   = spark.sparkContext.longAccumulator("null_count")
+reject_count = spark.sparkContext.longAccumulator("reject_count")
+
+@F.udf(T.StringType())
+def clean_email(email):
+    if email is None:
+        null_count.add(1)       # executor writes; driver reads after action
+        return None
+    if "@" not in email:
+        reject_count.add(1)
+        return None
+    return email.strip().lower()
+
+df = spark.read.parquet("users/")
+cleaned = df.withColumn("email", clean_email(F.col("email")))
+cleaned.write.parquet("users_clean/")   # action — accumulators now readable
+
+print(f"Null emails:     {null_count.value}")
+print(f"Rejected emails: {reject_count.value}")
+```
+
+**Caveats apply equally to DataFrames:**
+- Do not read an accumulator value mid-chain — the action has not fired yet, the value is zero.
+- UDFs in transformations may run more than once if stages are re-executed. Use accumulators for approximate monitoring, not exact business logic.
+- `spark.sparkContext` is only available in classic mode — accumulators cannot be used in Spark Connect (`pyspark-client`).
 
 ---
 
