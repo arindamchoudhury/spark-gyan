@@ -364,6 +364,12 @@ Partitions in flight (flowing between stages, during shuffles) are stored in Tun
 
 This is why DataFrame code is significantly faster than equivalent RDD code — RDDs store actual Java objects, which carry GC overhead and hide structure from the optimizer.
 
+**Three internal row representations.** Spark uses a different row type at each phase of execution because different phases have different requirements:
+
+- **`InternalRow`** — a Scala **trait** (interface), not a concrete class. It defines the row API: `getInt(i)`, `getString(i)`, `isNullAt(i)`, etc. `InternalRow` is the static type parameter in `RDD[InternalRow]` — the actual runtime objects are `UnsafeRow` instances. The fallback concrete implementation `GenericInternalRow` uses a plain `Array[Any]` of JVM objects and appears when whole-stage codegen is disabled (`spark.sql.codegen.wholeStage=false`), during Catalyst analysis and planning (before execution begins), or when codegen compilation fails at runtime (`spark.sql.codegen.fallback=true`, the default) — never during normal Tungsten execution.
+- **`UnsafeRow`** — a concrete implementation of `InternalRow` backed by a raw byte array. Three contiguous regions: a null bit-set, fixed-length fields (8-byte aligned), and variable-length data. No per-field Java objects. **By default the byte array is allocated on the JVM heap**; `sun.misc.Unsafe` is used to write into it with unaligned memory access — the "Unsafe" name refers to the write API, not off-heap allocation. True off-heap storage requires `spark.memory.offHeap.enabled=true`. This is the format data lives in during execution, shuffles, and sorting.
+- **Apache Arrow** — columnar batch format used when crossing the JVM↔Python boundary for pandas UDFs. A single Arrow `RecordBatch` transfers an entire column at a time instead of row-by-row, eliminating per-row serialization overhead. Spark converts `UnsafeRow` partitions to Arrow batches at the boundary and back on return.
+
 ### Why Tungsten chose row-oriented storage
 
 Tungsten was designed to fix **CPU and memory bottlenecks** for Spark's dominant workload — ETL: whole-row transforms (filter, join, project). Columnar shines for OLAP (aggregating 2 columns from a 100-column table); row-oriented wins for mixed whole-row work:
