@@ -85,7 +85,7 @@ The DataFrame API is grounded in **relational algebra** — the same mathematica
 | `.groupBy().agg()` | γ (aggregation) | Groups rows and applies aggregate functions |
 | `.union()` | ∪ (union) | Combines two row sets |
 
-This is why Catalyst can apply 60+ optimization rules safely: relational algebra has well-defined mathematical equivalence laws — filters can always be pushed past projections, certain joins are commutative, constants can be folded — that guarantee rewrites preserve correctness. The optimizer manipulates a tree of algebraic expressions, not opaque user code. It is also why `df.filter(F.col("country") == "DE")` and `spark.sql("WHERE country = 'DE'")` compile to the same logical plan — both are expressions in the same algebra.
+This is why Catalyst can apply 100+ optimization rules safely (54 in `operatorOptimizationRuleSet` alone in Spark 4.1.2): relational algebra has well-defined mathematical equivalence laws — filters can always be pushed past projections, certain joins are commutative, constants can be folded — that guarantee rewrites preserve correctness. The optimizer manipulates a tree of algebraic expressions, not opaque user code. It is also why `df.filter(F.col("country") == "DE")` and `spark.sql("WHERE country = 'DE'")` compile to the same logical plan — both are expressions in the same algebra.
 
 ---
 

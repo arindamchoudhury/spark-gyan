@@ -4,7 +4,7 @@
 > *Status: ⬜ Not yet written*
 
 !!! note "📌 Topics deferred here from Chapter 1"
-    Chapter 1 introduces the QueryExecution pipeline (Unresolved → Analyzed → Optimized → Physical → Codegen → RDD) and explains that Catalyst applies 60+ optimization rules. The following are covered in full here:
+    Chapter 1 introduces the QueryExecution pipeline (Unresolved → Analyzed → Optimized → Physical → Codegen → RDD) and explains that Catalyst applies 100+ optimization rules (source-verified against Optimizer.scala v4.1.2). The following are covered in full here:
 
     - **Why QueryExecution phases are separated** — the Analyzer must resolve column references and validate types before the Optimizer can safely rewrite the plan; the Planner is separate from the Optimizer because physical planning involves cost estimation, not algebraic equivalence
     - **Catalyst rule categories and execution order** — rules are grouped into named batches (`Substitution`, `Analysis`, `Operator Optimizations`, `Join Reorder`, etc.) and applied in fixed-point iteration until no batch fires any rule; ordering matters (predicate pushdown must precede projection pruning to avoid pushing down on a wider schema)

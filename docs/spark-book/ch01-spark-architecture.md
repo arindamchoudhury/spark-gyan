@@ -231,6 +231,21 @@ The user builds this graph by writing transformation calls. The graph exists onl
 - **Schema inference** — `spark.read.csv()` without an explicit `.schema(...)` runs a data scan in the driver to determine column types. Always pass a schema explicitly to keep reads fully lazy.
 - **Driver-side analysis** — Spark resolves column names against the catalog and validates types in the driver as soon as something forces plan inspection (accessing `.schema`, `.dtypes`, or calling an action). This is why `AnalysisException` can surface before an action fires — the analysis step already ran.
 
+**How to control driver-side analysis.** Analysis is a required Catalyst step — it cannot be skipped. What you control is when it is triggered:
+
+| What triggers analysis eagerly | What keeps analysis deferred |
+|---|---|
+| Accessing `.schema` or `.dtypes` on a DataFrame | Chaining transformations without inspecting schema |
+| Calling `.explain()` | Passing explicit schemas — nothing to infer, resolution is instant |
+| Calling any action (`.show()`, `.count()`, `.write`) | — |
+
+Practical rules:
+
+- **Do not access `.schema` or `.dtypes` mid-pipeline** unless you genuinely need the result at that point. If you chain `filter → join → select` without inspecting schema, analysis stays deferred to the action.
+- **Always provide an explicit schema** (`spark.read.csv(..., schema=my_schema)`) so the Analyzer has nothing to infer and resolves column names instantly against a known structure.
+- **Treat `AnalysisException` as a compile error, not a runtime error.** It fires because a column name or type is wrong at definition time — the same way a type error in a compiled language is caught before the program runs. The right response is to fix the schema or column reference, not to catch the exception and retry.
+- **In Spark Connect** (opt-in in 4.x), the client sends an unresolved logical plan to the server; analysis runs server-side when an action fires. `AnalysisException` always arrives with the action result — never before it. Classic mode (the default) analyzes in the driver, which is why eager triggers exist.
+
 When an action fires, the **DAGScheduler** receives the full graph and compiles it into a physical execution plan. It does not process one step at a time the way Hadoop processes one job at a time — it sees the whole picture before execution begins.
 
 **The key consequence:** intermediate results between consecutive narrow transformations are never written anywhere. They flow directly from one operation to the next inside the same executor, in the same CPU pass, without touching memory as a materialized object. This is why a chain of ten `filter` and `select` calls costs no more than one.
@@ -272,8 +287,8 @@ Stage boundaries are the only points at which data is serialized and written to 
 
 **Two types of stage:**
 
-- **ShuffleMapStage** — its tasks write partitioned output to shuffle files on local disk, to be consumed by the downstream stage. Tasks do not return results to the driver.
-- **ResultStage** — the final stage. Its tasks produce the output that flows back to the driver (or is written directly to storage).
+- **ShuffleMapStage** — its tasks write partitioned output to shuffle files on local disk, to be consumed by the downstream stage. Tasks return a `MapStatus` to the driver — a small metadata object recording which executor's BlockManager holds each output partition. This is how `MapOutputTrackerMaster` knows where reducers must fetch data. User data never flows back to the driver; only the location metadata does.
+- **ResultStage** — the final stage. Its tasks apply the user function to their partition and send the result back to the driver (or write directly to storage). A ResultStage may run on only a **subset** of partitions — `first()` runs on one partition, `lookup(key)` runs on the single partition that owns the key — and stops as soon as enough results are collected.
 
 ---
 
@@ -281,9 +296,9 @@ Stage boundaries are the only points at which data is serialized and written to 
 
 Because Spark does not execute any transformation immediately, the driver accumulates the full logical plan before acting on it. This is not merely a design convenience — it unlocks a class of optimizations that are impossible in an eager execution model.
 
-When an action is called, the logical plan passes through **Catalyst**, Spark's query optimizer. Catalyst applies over 60 optimization rules, including:
+When an action is called, the logical plan passes through **Catalyst**, Spark's query optimizer. Catalyst applies over 100 optimization rules (54 in `operatorOptimizationRuleSet` alone, verified against `Optimizer.scala` v4.1.2), including:
 
-**Predicate pushdown.** A `filter` that appears late in the user's chain can be pushed down to the earliest possible point — ideally into the file scan itself. If the data is in Parquet format, the filter is pushed all the way into the Parquet reader, which skips entire row groups that cannot satisfy the predicate without reading them.
+**Predicate pushdown.** A `filter` that appears late in the user's chain can be pushed down to the earliest possible point — ideally into the file scan itself. Parquet and ORC store min/max statistics per row group / stripe; Spark reads the statistics, evaluates the predicate, and skips chunks that cannot possibly match without decompressing or reading any row data. CSV, JSON, Avro, Text, and XML have no internal statistics — predicate pushdown does not apply to them.
 
 ```python
 # User writes this:
@@ -294,7 +309,13 @@ df.read.parquet("events/", filters=[("country", "==", "DE")]).join(...)
 # The filter is applied at read time — unneeded rows never enter the join
 ```
 
-**Projection pushdown.** If the user's downstream operations only need 3 columns from a 50-column table, Catalyst tells the file reader to skip the other 47 columns entirely. For Parquet (columnar format) this eliminates the I/O cost of reading unused columns.
+**Partition pruning.** All file-based sources (Parquet, ORC, CSV, JSON, Avro, Text, XML) participate in partition pruning — a separate mechanism from predicate pushdown. When data is stored in a Hive-style partitioned directory structure (e.g. `events/year=2024/month=06/`), Catalyst skips entire directories whose partition values cannot satisfy the filter, without opening any file. Partition pruning fires regardless of whether row-level predicate pushdown is supported.
+
+**Projection pushdown.** If the user's downstream operations only need 3 columns from a 50-column table, Catalyst tells the file reader to skip the other 47 columns entirely. For Parquet (columnar format) this eliminates the I/O cost of reading unused columns entirely. All file-based sources implement `SupportsPushDownRequiredColumns` — they all receive a reduced column list from the planner.
+
+**Aggregate pushdown.** For Parquet and ORC, Catalyst can push `COUNT`, `SUM`, `MIN`, `MAX` aggregations into the file reader itself — the reader computes aggregates from stored column statistics without scanning individual rows. For JDBC, the entire `GROUP BY` and aggregation is shipped to the remote database as SQL — Spark may receive only a single aggregated row per group, not individual records.
+
+**JDBC full query pushdown.** JDBC goes furthest: `JDBCScanBuilder` implements `SupportsPushDownV2Filters` (WHERE), `SupportsPushDownLimit` (LIMIT), `SupportsPushDownOffset` (OFFSET), `SupportsPushDownTopN` (ORDER BY + LIMIT), `SupportsPushDownTableSample`, and `SupportsPushDownJoin` — a join between two tables in the same database can be pushed entirely to the database engine, with Spark receiving only the join result.
 
 **Operator fusion / pipelining.** Multiple consecutive narrow operations — `filter`, `withColumn`, `select` — are fused into a single stage. No intermediate DataFrame is materialized.
 
@@ -304,24 +325,49 @@ df.read.parquet("events/", filters=[("country", "==", "DE")]).join(...)
 
 **Broadcast join selection.** If one side of a join is small enough (below `spark.sql.autoBroadcastJoinThreshold`, default 10 MB), Catalyst rewrites the join as a broadcast join — the small table is sent to every executor once and joined locally, eliminating the shuffle entirely. How `BroadcastHashJoin` differs from `SortMergeJoin` at the execution level — the hash table build phase, probe side, and why it avoids a shuffle stage — is covered in **Chapter 22 (A3 — Join Strategies and Tuning)**.
 
+**Outer join elimination.** If a filter on the nullable side of a `LEFT` or `RIGHT OUTER JOIN` cannot be satisfied by NULL (e.g. `WHERE right.col > 0`), Catalyst converts the outer join to an `INNER JOIN` automatically. Inner joins are cheaper — no null-padding, no extra null-handling in downstream operators. Users often don't realise the conversion happened; `df.explain()` reveals it.
+
+**Filter inference from join keys.** After a join on `a.id = b.id` combined with a filter `WHERE a.id > 5`, Catalyst derives `WHERE b.id > 5` automatically and pushes that new filter down to the `b` scan — preventing a full scan of `b` even though the user never wrote the filter explicitly. This rule (`InferFiltersFromConstraints`) fires once, in a dedicated batch between two operator-optimisation passes.
+
+**Limit pushdown.** A `LIMIT` or `.limit(N)` call above a `UNION ALL` or a window operator does not wait for both sides to be fully computed. Catalyst pushes the limit through the operator so each branch produces at most N rows before being unioned, reducing intermediate data substantially.
+
+**Null propagation.** `null + x`, `null * x`, `null == x` all evaluate to `null` — Catalyst folds this at plan time and short-circuits expressions that can only ever produce null. Related: `NullDownPropagation` infers that certain columns cannot be null from the schema or join type and eliminates null checks on them.
+
+**Boolean simplification.** `x AND true → x`, `x OR false → x`, `NOT (NOT x) → x`, `x AND false → false`. Catalyst eliminates these at plan time so executors never evaluate trivial sub-expressions.
+
+**LIKE simplification.** `LIKE 'prefix%'` is rewritten to `startsWith("prefix")`, `LIKE '%suffix'` to `endsWith`, `LIKE '%contains%'` to `contains`. These native string operations are faster than full regex evaluation.
+
+**Project collapsing.** Consecutive `.select()` calls are merged into a single projection evaluated in one pass. `df.select("a","b","c").select("a","b")` becomes one scan of two columns, not two sequential evaluations.
+
+**Repartition collapsing.** Consecutive `.repartition()` calls where the outer one dominates are collapsed into one shuffle. `df.repartition(100).repartition(200)` becomes a single `repartition(200)`.
+
 None of these optimizations are available in Hadoop MapReduce, because the framework sees only one job at a time. A MapReduce job that reads 50 columns and uses 3 is a programmer mistake that the framework cannot correct. In Spark, writing `df.select("a", "b", "c")` at the end of a chain and having the reader skip the other 47 columns automatically is the normal, expected behavior.
 
 ---
 
 ### The full compilation pipeline: from DataFrame to bytecode
 
-Every Spark 4.x query passes through a five-stage compilation pipeline before any computation begins. The Unresolved and Resolved logical plans are **relational algebra expression trees** — structured representations of σ, π, ⨝, and γ operators (introduced in [§ Why this matters for the DataFrame API](#why-this-matters-for-the-dataframe-api)). Because the plan is algebraic rather than arbitrary code, Catalyst can rewrite it freely using mathematical equivalence laws:
+Every Spark 4.x query passes through a six-stage compilation pipeline before any computation begins. The Unresolved and Resolved logical plans are **relational algebra expression trees** — structured representations of σ, π, ⨝, and γ operators (introduced in [§ Why this matters for the DataFrame API](#why-this-matters-for-the-dataframe-api)). Because the plan is algebraic rather than arbitrary code, Catalyst can rewrite it freely using mathematical equivalence laws:
 
 ```mermaid
 flowchart TD
-    U["User code\n(DataFrame API or SQL string)"]
-    UP["Unresolved logical plan\n(parser — column names not yet validated)"]
-    RP["Resolved logical plan\n(Analyzer — column names resolved against Catalog;\ntypes checked)"]
-    OP["Optimized logical plan\n(Catalyst optimizer — 60+ rules:\npredicate pushdown, projection pushdown,\nconstant folding, join reordering,\nbroadcast join selection…)"]
-    PP["Physical plan\n(Planner — selects execution strategies:\nSortMergeJoin vs BroadcastHashJoin,\ncost-based join ordering;\nmay produce multiple candidates)"]
-    CG["Codegen — Tungsten\n(CollapseCodegenStages:\nfuses physical operators into a single\ncompiled Java function per stage;\neliminates virtual dispatch and\nper-row object allocation)"]
-    RDD["RDD execution\n(DAGScheduler → stages → tasks\non executors)"]
-    U --> UP --> RP --> OP --> PP --> CG --> RDD
+    U["User code\n(DataFrame API or SQL)"]
+
+    subgraph logical["Logical planning  —  driver only, no data movement"]
+        UP["Unresolved LogicalPlan\nparser"]
+        RP["Resolved LogicalPlan\nAnalyzer — resolves columns, checks types"]
+        CD["withCachedData\nInMemoryRelation substituted for cached DataFrames"]
+        OP["Optimized LogicalPlan\nCatalyst — 100+ rules"]
+    end
+
+    subgraph physical["Physical planning  —  driver only, no data movement"]
+        PP["Physical Plan\nPlanner — SortMergeJoin vs BroadcastHashJoin"]
+        CG["executedPlan\nTungsten — codegen, 13 prep rules"]
+    end
+
+    RDD["RDD execution\nDAGScheduler → stages → tasks on executors"]
+
+    U --> UP --> RP --> CD --> OP --> PP --> CG --> RDD
 ```
 
 This pipeline runs entirely in the driver before a single byte of user data is read. The physical plan handed to the DAGScheduler at the bottom is already optimized, reordered, and compiled to bytecode. By the time executors receive their tasks, the work is expressed as tight compiled loops over binary row data (UnsafeRow format), not as chains of interpreted Python or JVM method calls.
@@ -799,8 +845,8 @@ The result is a DAG of stages: each node is a stage, each edge is a shuffle depe
 
 There are two types of stage:
 
-- **ShuffleMapStage** — a stage whose output is written to shuffle files on disk, to be consumed by the next stage. Tasks in a ShuffleMapStage write partitioned output; they do not return results to the driver.
-- **ResultStage** — the final stage in a job. Its tasks produce the output that goes back to the driver (the rows that `.show(10)` prints).
+- **ShuffleMapStage** — a stage whose output is written to shuffle files on disk, to be consumed by the next stage. Tasks write partitioned user data to local disk and return a `MapStatus` to the driver — metadata recording which BlockManager holds each output partition, used by `MapOutputTrackerMaster` so downstream reducers know where to fetch.
+- **ResultStage** — the final stage in a job. Its tasks apply the user function to their partition and send the result back to the driver (the rows that `.show(10)` prints). May run on a subset of partitions — `first()` runs on one partition only and stops early.
 
 For the word count program:
 
