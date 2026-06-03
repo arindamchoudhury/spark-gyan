@@ -104,7 +104,7 @@ spark = (
     SparkSession.builder
     .appName("configured-app")
     .master("local[*]")
-    .config("spark.sql.shuffle.partitions", "8")      # reduce from default 200 for local work
+    .config("spark.sql.shuffle.partitions", "8")      # default 200 (for large clusters); reduce for local work
     .config("spark.ui.port", "4041")                   # avoid port 4040 conflict with Docker
     .getOrCreate()
 )
@@ -213,10 +213,10 @@ spark-submit \
   my_job.py
 ```
 
-**Set `spark.sql.shuffle.partitions` based on environment and whether AQE is enabled.** The default is 200, designed for large clusters. There are two correct approaches depending on your setup:
+**Set `spark.sql.shuffle.partitions` based on environment and whether AQE is enabled.** Shuffle partitions control how many tasks Spark uses to redistribute data after `groupBy`, `join`, and `repartition` operations. The default is 200, designed for large clusters with hundreds of cores. There are two correct approaches depending on your setup:
 
-- **Local development (no AQE):** Set to `2 × CPU cores` (e.g. 8–16). 200 shuffle tasks on a laptop processing a small dataset is pure overhead.
-- **Production with AQE enabled:** Set high (e.g. 2000) and let AQE automatically coalesce small partitions after the shuffle. This handles both small and large datasets gracefully without manual tuning.
+- **Local development (no AQE):** Set to `2 × CPU cores` (e.g. 8–16). 200 shuffle tasks on a laptop processing a small dataset creates 200 tiny files and pure scheduling overhead.
+- **Production with AQE enabled:** Set high (e.g. 2000) and let AQE (Adaptive Query Execution — see below) automatically coalesce small partitions after the shuffle. This handles both small and large datasets gracefully without manual tuning.
 
 ```python
 # Local dev
@@ -262,7 +262,7 @@ spark = (
 )
 ```
 
-Dynamic allocation requires the external shuffle service (`spark.shuffle.service.enabled = true`) on YARN and Standalone clusters so executors can be removed without losing shuffle data. On Kubernetes, use shuffle tracking (`spark.dynamicAllocation.shuffleTracking.enabled = true`) instead.
+Dynamic allocation requires the external shuffle service on YARN and Standalone clusters so executors can be removed without losing shuffle data. The external shuffle service is **not enabled by default** — set `spark.shuffle.service.enabled = true` explicitly on each worker node. On Kubernetes, use shuffle tracking (`spark.dynamicAllocation.shuffleTracking.enabled = true`) instead, which requires no separate service.
 
 ---
 

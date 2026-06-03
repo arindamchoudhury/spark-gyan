@@ -32,7 +32,7 @@ Spark launched in 2010 with a single abstraction: the **RDD** (Resilient Distrib
 DataFrames were introduced in **Spark 1.3 (2015)** to address all of these at once. A DataFrame is a distributed table with named, typed columns — the same mental model as a SQL table or a pandas DataFrame, but running across a cluster. Because Spark can now *see the structure* of the data, two major optimizations become possible:
 
 - **Catalyst optimizer** — Spark's query planner rewrites your logical plan before execution: it pushes filters down (scan less data), reorders joins (process smaller tables first), and prunes unused columns
-- **Tungsten execution engine** — off-heap binary row format (`UnsafeRow`) and JVM bytecode generation; rows never cross the Python/JVM boundary unless you explicitly call a Python UDF
+- **Tungsten execution engine** — compact binary row format (`UnsafeRow`, on-heap by default; off-heap opt-in via `spark.memory.offHeap.enabled=true`) and JVM bytecode generation; rows never cross the Python/JVM boundary unless you explicitly call a Python UDF
 
 The result: the same operation written as a DataFrame transform is typically **2–10× faster** than the equivalent RDD code, and the gap widens at scale.
 
@@ -72,6 +72,20 @@ The result: the same operation written as a DataFrame transform is typically **2
 > Reach for the RDD only when the DataFrame is genuinely restrictive.
 
 In Python, `DataFrame` is effectively the only API — there is no separate `Dataset` (Datasets are type-safe JVM constructs; Python has no equivalent static typing). Everything in PySpark goes through `pyspark.sql.DataFrame`.
+
+### The relational algebra foundation
+
+The DataFrame API is grounded in **relational algebra** — the same mathematical foundation that underlies every relational database. Each DataFrame operation maps directly to a relational algebra operator:
+
+| DataFrame operation | Relational algebra operator | What it does |
+|---|---|---|
+| `.filter()` / `.where()` | σ (selection) | Restricts rows by a predicate |
+| `.select()` | π (projection) | Restricts to a subset of columns |
+| `.join()` | ⨝ (join) | Combines two relations on a condition |
+| `.groupBy().agg()` | γ (aggregation) | Groups rows and applies aggregate functions |
+| `.union()` | ∪ (union) | Combines two row sets |
+
+This is why Catalyst can apply 60+ optimization rules safely: relational algebra has well-defined mathematical equivalence laws — filters can always be pushed past projections, certain joins are commutative, constants can be folded — that guarantee rewrites preserve correctness. The optimizer manipulates a tree of algebraic expressions, not opaque user code. It is also why `df.filter(F.col("country") == "DE")` and `spark.sql("WHERE country = 'DE'")` compile to the same logical plan — both are expressions in the same algebra.
 
 ---
 
@@ -340,10 +354,10 @@ Each partition is processed independently and in parallel. The number of partiti
 
 ### In-memory format: Tungsten UnsafeRow
 
-Partitions in flight (flowing between stages, during shuffles) are stored in Tungsten's **UnsafeRow** format — a compact, **row-based** binary layout. Each row is a single contiguous block of raw bytes managed directly in JVM memory via `sun.misc.Unsafe`, with no Java object wrapper:
+Partitions in flight (flowing between stages, during shuffles) are stored in Tungsten's **UnsafeRow** format — a compact, **row-based** binary layout. Each row is a single contiguous block of raw bytes written via `sun.misc.Unsafe`, with no Java object wrapper per field:
 
 - no Java object header overhead per row
-- no garbage collection pressure (memory is managed explicitly, not by the JVM GC)
+- reduced GC pressure — one byte array per row instead of one JVM object per field (**on-heap by default**; fully GC-free only when `spark.memory.offHeap.enabled=true`)
 - CPU-cache-friendly sequential access within a row
 
 > **Row-based vs. columnar.** `UnsafeRow` (execution format) is row-based — all fields of one row sit together in memory. When a DataFrame is **cached** (`.cache()` / `.persist()`), Spark stores partitions as `CachedBatch` — a **columnar** in-memory format where all values for one column are packed together, enabling better compression and vectorized reads. File formats like Parquet and ORC are also columnar on disk. The rule of thumb: execution is row-based (`UnsafeRow`); cache storage and file I/O are columnar.
@@ -359,7 +373,7 @@ Tungsten was designed to fix **CPU and memory bottlenecks** for Spark's dominant
 | **CPU register fit** | 8-byte aligned fields map to 64-bit registers — comparisons in one instruction | Good for aggregations over few columns |
 | **Row-level ops** | Natural for filter / join / project — all touch whole rows | Must reassemble rows from column buffers |
 | **Write performance** | Append one row directly | Must update N separate column buffers |
-| **JVM GC** | Off-heap binary eliminates GC | Same benefit possible but harder to implement |
+| **JVM GC** | One byte array per row — far less GC than one object per field; fully GC-free with off-heap enabled | Same benefit possible but harder to implement |
 
 ### By default, data is not kept
 
@@ -382,7 +396,7 @@ df_expensive.count()          # second action: reads from cache, no recomputatio
 | Storage level | Where | Serialized | Notes |
 |---|---|---|---|
 | `MEMORY_ONLY` | JVM heap | No | Default for `cache()`. Fast, but partitions that don't fit are recomputed. |
-| `MEMORY_AND_DISK` | JVM heap, spills to local disk | Yes (disk) | Safer for large DataFrames — nothing is ever recomputed. |
+| `MEMORY_AND_DISK` | JVM heap, spills to local disk | Serialized on disk only; heap copy is deserialized | Safer for large DataFrames — nothing is ever recomputed. |
 | `DISK_ONLY` | Local disk only | Yes | Slowest, but frees all executor memory. |
 | `OFF_HEAP` | Off-heap memory | Yes | Reduces GC pressure; requires `spark.memory.offHeap.enabled=true`. |
 
@@ -398,12 +412,14 @@ Release a cached DataFrame when you no longer need it — cached partitions occu
 df_expensive.unpersist()
 ```
 
+**How caching works internally.** `df.cache()` does not immediately store any data — it inserts an `InMemoryRelation` node into the DataFrame's logical plan tree. When the first action fires, Catalyst sees `InMemoryRelation`, the physical planner emits an `InMemoryTableScan` operator, and after execution the computed `RDD[InternalRow]` partitions are stored as `CachedBatch` columnar blocks in executor block manager memory. Every subsequent action on that DataFrame hits `InMemoryRelation` again — the physical planner emits `InMemoryTableScan` which reads directly from the block manager, bypassing source I/O and recomputation entirely. If a cached partition is evicted (block manager ran out of space), Spark falls back to lineage recomputation for that partition only — replaying the Catalyst plan from the original source without failing the job.
+
 ### How RDDs and DataFrames are stored in memory
 
 | | RDD | DataFrame |
 |---|---|---|
-| **Storage location** | JVM heap — each element is a GC-managed object | `UnsafeRow` binary, written to **off-heap** memory via `sun.misc.Unsafe` |
-| **GC pressure** | High — every element adds GC overhead; large RDDs cause long GC pauses | None — off-heap is invisible to the JVM garbage collector |
+| **Storage location** | JVM heap — each element is a GC-managed object | `UnsafeRow` binary byte arrays, **on-heap by default**; true off-heap requires `spark.memory.offHeap.enabled=true` |
+| **GC pressure** | High — every element adds GC overhead; large RDDs cause long GC pauses | Minimal — one byte array per row instead of one JVM object per field; fully GC-free only with off-heap enabled |
 | **Memory overhead** | PySpark: ~28 bytes/element (Python `int` object — object header + ref count + size field). Scala/Java: ~16 bytes/element (boxed `Integer` — 8-byte JVM header + 4-byte value + 4-byte padding). 1M integers: **~28 MB** (PySpark) or **~16 MB** (Scala/Java) | ~16 bytes/row for a single-column `IntType`: 8-byte null bitmap + 8-byte field slot (all types padded to 8 bytes). 1M single-column integers: **~16 MB**. No JVM object headers; GC-free off-heap. |
 | **PySpark extra cost** | Python object → cloudpickle → JVM → back for every operation | Stays in JVM/off-heap throughout execution. Python touches data only at action boundaries (`collect()`, `take()`, `first()`, `show()`, `toPandas()`) or when a Python UDF runs (row-by-row serialization) or a pandas UDF runs (Arrow batch). |
 | **Cache format** | Deserialized Java objects or serialized byte arrays | `CachedBatch` — a **columnar** in-memory format (values for each column packed together); enables compression and vectorized reads. Different from the execution format (`UnsafeRow`). |
@@ -439,13 +455,34 @@ A DataFrame is a **distributed table**. Understanding its physical internals exp
 | Layer | What it does |
 |---|---|
 | **Schema** (`StructType`) | Named, typed columns — enforced at the boundary, not at runtime |
-| **Tungsten** (`UnsafeRow`) | Compact, off-heap binary row format. Physically row-oriented, like a database heap file. Not columnar. |
 | **Catalyst** | Relational query optimizer — rewrites and fuses operations before execution |
-| **WSCG** | Whole-stage code generation — compiles chains of operators to a single JVM bytecode loop |
+| **WSCG** (`WholeStageCodegenExec`) | Compiles chains of physical operators into a single JVM bytecode function per stage |
+| **Tungsten** (`UnsafeRow`) | Compact binary row format, on-heap by default (off-heap opt-in). The generated bytecode reads and produces `UnsafeRow` objects. |
+| **RDD[InternalRow]** | Scheduling shell — `FileScanRDD` (leaf) and `WholeStageCodegenExec` output are real RDDs; DAGScheduler uses them for partitions, stages, and fault recovery |
 | **Vectorized reader** | Reads Parquet/ORC in Arrow column batches for I/O efficiency (this is where "columnar" applies — on disk, not in memory) |
 
+**How execution evolved: Spark 1.3 → 1.4.** In Spark 1.3 (when DataFrames launched), the execution engine was still purely RDD-based — a DataFrame compiled down to an `RDD[Row]` of standard JVM objects. From Spark 1.4 onwards, Project Tungsten replaced this with `UnsafeRow` compact binary rows and whole-stage code generation, making the RDD an internal scheduling shell rather than the computation mechanism.
 
-**What "columnar" actually means in core Spark 4.1.1:**
+**The two-layer execution model.** When a DataFrame action fires, execution splits into two distinct responsibilities:
+
+- **RDD layer — scheduling.** `QueryExecution.toRdd` produces `SQLExecutionRDD(executedPlan.execute())`. The leaf data source becomes a `FileScanRDD extends RDD[InternalRow]`. DAGScheduler walks this RDD lineage to build the stage DAG, dispatch tasks, and handle fault recovery. The RDD layer is not bypassed — it is the scheduling backbone.
+- **Tungsten layer — computation.** `WholeStageCodegenExec.doExecute()` wraps the leaf RDD's partitions with `mapPartitionsWithIndex`, injecting a Tungsten-compiled evaluator. Inside each task, the generated JVM bytecode reads the input iterator and emits `UnsafeRow` objects. The RDD is the container; Tungsten is the engine running inside it.
+
+**Type erasure.** The static type `RDD[InternalRow]` hides the fact that the actual runtime objects are `UnsafeRow` (and in columnar paths, may even be `ColumnarBatch`). Spark's own source acknowledges this: `FileScanRDD.scala` (v4.1.2) ends its `compute()` method with `iterator.asInstanceOf[Iterator[InternalRow]] // This is an erasure hack.` The JVM erases the `[InternalRow]` type parameter at runtime — the cast is unchecked and exists purely to satisfy the static type system.
+
+**`RDD[InternalRow]` vs `RDD[Row]` vs user RDDs.** These are all the same `RDD[T]` class — the difference is the element type:
+
+| | `RDD[InternalRow]` | `RDD[Row]` | `RDD[String]` / user RDDs |
+|---|---|---|---|
+| **Element type** | `InternalRow` trait — runtime objects are `UnsafeRow` (binary) | `Row` — public JVM object | Any Python/Scala/Java type |
+| **Who uses it** | Spark SQL internals only — physical operators, `QueryExecution.toRdd` | Public API — what `df.rdd` returns | User code |
+| **Catalyst / Tungsten aware** | Yes — schema known; Tungsten operates on it | No — opaque to the optimizer | No |
+| **Memory** | Compact binary, no per-field JVM objects | Boxed JVM objects, GC overhead | Boxed JVM objects, GC overhead |
+
+When you call `df.rdd`, Spark converts `RDD[InternalRow]` → `RDD[Row]` by wrapping each `UnsafeRow` in a public `Row` object. The Spark source warns: *"end users are discouraged to use `QueryExecution.toRdd`: please use `Dataset.rdd` instead where conversion will be applied."* The conversion adds overhead — avoid `df.rdd` on hot paths.
+
+
+**What "columnar" actually means in core Spark 4.1.x:**
 
 Core Spark has not gone columnar. Every built-in SQL operator (filter, join, agg, sort) runs on `UnsafeRow`. The only place `ColumnarBatch` appears is during Parquet/ORC I/O — and it is immediately converted back to `UnsafeRow` before the first operator runs (`ColumnarToRowExec`). That I/O optimisation is the full extent of columnar support in unmodified Spark.
 
@@ -457,7 +494,7 @@ Core Spark has not gone columnar. Every built-in SQL operator (filter, join, agg
 
 **True end-to-end columnar execution requires leaving core Spark:**
 
-- **Apache Gluten + Velox** — open-source plugin that replaces JVM operators with a C++ Velox engine. Used by Microsoft Fabric. Spark 4.1 support exists but is not GA as of May 2026 (ANSI mode must be off; RSS not supported).
+- **Apache Gluten + Velox** — open-source plugin that replaces JVM operators with a C++ Velox engine. Used by Microsoft Fabric. Spark 4.1 support exists but is not GA as of publication (ANSI mode — Spark 4.x's default strict SQL type-casting and overflow-checking mode — must be disabled; RSS not supported).
 
     **RSS = Remote Shuffle Service.** In standard Spark, shuffle data (intermediate results between map and reduce stages) is written to local executor disk. A Remote Shuffle Service moves that data to a *separate dedicated server cluster* (e.g. Apache Celeborn, Apache Uniffle), fully decoupling compute from shuffle storage — better fault tolerance and no executor disk pressure. Gluten+Velox cannot plug into these external RSS frameworks.
 
@@ -465,9 +502,9 @@ Core Spark has not gone columnar. Every built-in SQL operator (filter, join, agg
 
     Databricks avoids the RSS problem differently: it uses the standard Spark **external shuffle service** (enabled by default), which keeps shuffle files alive on the worker's local disk after an executor exits. Photon adds an optimised columnar shuffle for better throughput. Neither is a true RSS — shuffle data stays on local disk attached to the worker node, not a dedicated remote cluster. Photon's shuffle is tightly integrated and proprietary, so it does not need to plug into Celeborn/Uniffle.
 
-Neither is part of the Apache Spark 4.1.1 release.
+Neither is part of the Apache Spark 4.1.x release.
 
-### What format does Spark 4.1.1 actually use?
+### What format does Spark 4.1.x actually use?
 
 `UnsafeRow` is the default for all SQL operators. `ColumnarBatch` appears only during Parquet/ORC I/O and is converted back to rows before the rest of the query runs:
 
@@ -487,7 +524,7 @@ flowchart TD
     ROW --> OPS
 ```
 
-| Stage | Format in Spark 4.1.1 |
+| Stage | Format in Spark 4.1.x |
 |---|---|
 | Parquet/ORC scan (I/O) | `ColumnarBatch` |
 | Filter, join, agg, sort | `UnsafeRow` |
@@ -555,7 +592,7 @@ Prefer UDFs over dropping to the RDD API — UDFs stay inside the DataFrame exec
 Sources:
 - [In-Memory Storage Evolution in Apache Spark — Databricks](https://databricks.com/session/in-memory-storage-evolution-in-apache-spark)
 - [Spark Storage Levels — SparkCodeHub](https://www.sparkcodehub.com/spark-storage-levels)
-- [PySpark StorageLevel API — Apache Spark 4.1.1 docs](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.StorageLevel.html)
+- [PySpark StorageLevel API — Apache Spark 4.1.x docs](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.StorageLevel.html)
 
 ---
 

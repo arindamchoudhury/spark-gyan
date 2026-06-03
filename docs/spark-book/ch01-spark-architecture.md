@@ -18,7 +18,15 @@ The motivation for Spark comes directly from Matei Zaharia's 2010 paper *"Spark:
 
 ### MapReduce's constraint: acyclic data flows
 
-By 2010, Hadoop MapReduce was the dominant large-scale data processing framework. It solved distribution, fault tolerance, and load balancing on commodity clusters — but it enforced a strict constraint: all computation had to be expressed as **acyclic data flow graphs**. Each MapReduce job reads from disk, applies map and reduce functions, and writes results back to HDFS. There is no way to carry data in memory from one job to the next.
+By 2010, Hadoop MapReduce was the dominant large-scale data processing framework. It solved distribution, fault tolerance, and load balancing on commodity clusters — but it enforced a strict constraint: all computation had to be expressed as **acyclic data flow graphs** — sequences of jobs where each job is a full Map → Reduce cycle. Spark's execution model is also a DAG; acyclicity itself is not what Zaharia was criticising. The difference is grain size:
+
+| | MapReduce | Spark |
+|---|---|---|
+| DAG node | One full job (Map phase + Reduce phase) | One operator (`filter`, `groupBy`, `join`, …) |
+| Data between nodes | Mandatory HDFS write + read | In-memory pipeline within a stage; disk only at shuffle boundaries |
+| Working-set reuse | Impossible — every job rereads from disk | `.cache()` keeps partitions in executor memory across actions |
+
+Each MapReduce job reads from disk, applies map and reduce functions, and writes results back to HDFS. There is no way to carry data in memory from one job to the next.
 
 This constraint is fine for single-pass batch jobs. It breaks down for two classes of applications that Hadoop users were struggling with:
 
@@ -32,7 +40,7 @@ Zaharia demonstrated this too: a 39 GB Wikipedia dump queried interactively — 
 
 ### The insight: working sets
 
-Both problems have the same root cause. MapReduce cannot express computations that **reuse a working set of data across multiple parallel operations**. The acyclic data flow model forces everything through disk.
+Both problems — iterative ML and interactive analytics — share the same root cause. MapReduce cannot express computations that **reuse a working set of data across multiple parallel operations**. A *working set* is the dataset a job needs to access repeatedly — the training corpus read on every ML iteration, or the table a user queries interactively. The term comes from OS virtual memory theory (Denning, 1968), where it denotes the pages a process actively uses in a given time window; Zaharia applied it to distributed data that should stay in memory across operations. The acyclic data flow model forces everything through disk.
 
 Spark's solution was a new abstraction: the **Resilient Distributed Dataset (RDD)** — a read-only, partitioned collection of objects that can be cached in memory across operations. Users can explicitly cache an RDD after the first computation and reuse it in subsequent operations without re-reading from disk.
 
@@ -40,19 +48,12 @@ Fault tolerance comes not from replication but from **lineage**: each RDD knows 
 
 ### Why this matters for the DataFrame API
 
-RDDs were Spark's original API. The DataFrame API (Spark 1.3+) is built on top of RDDs, adding a schema and a query optimizer (Catalyst). When you write `df.filter(...).groupBy(...).count()`, Spark builds an RDD lineage graph underneath. The in-memory caching and lineage-based fault tolerance from the 2010 paper are still the foundation.
+RDDs were Spark's original API. The DataFrame API (Spark 1.3) unified Spark SQL's `SchemaRDD` under a new name, bringing the Catalyst optimizer — which had shipped with Spark SQL since Spark 1.0 — to the wider API surface. When you write `df.filter(...).groupBy(...).count()`, Spark builds a **Catalyst logical plan** lazily — no data moves, no computation starts. When an action fires, Catalyst optimizes the plan, selects a physical execution strategy, and Tungsten compiles it to JVM bytecode that runs on partitioned data across executors. The full mechanics of this pipeline — how `WholeStageCodegenExec` wraps `FileScanRDD`, how `RDD[InternalRow]` relates to `RDD[Row]`, and the two-layer scheduling/computation model — are covered in **Chapter 4**. The two working-set properties from the 2010 paper survive intact — but they operate through the `InMemoryRelation` bridge:
 
-The DataFrame API is grounded in **relational algebra** — the same mathematical foundation that underlies every relational database. Each DataFrame operation maps directly to a relational algebra operator:
+- **Working-set reuse.** `df.cache()` marks a DataFrame so its partitions are kept in executor memory after the first action — subsequent actions read from memory instead of recomputing from source. The full caching mechanics (`InMemoryRelation`, `InMemoryTableScan`, block manager) are covered in **Chapter 4**.
+- **Lineage-based fault recovery.** If a cached partition is evicted, Spark replays the Catalyst logical plan lineage for that partition from the original source — no checkpoint needed.
 
-| DataFrame operation | Relational algebra operator | What it does |
-|---|---|---|
-| `.filter()` / `.where()` | σ (selection) | Restricts rows by a predicate |
-| `.select()` | π (projection) | Restricts to a subset of columns |
-| `.join()` | ⨝ (join) | Combines two relations on a condition |
-| `.groupBy().agg()` | γ (aggregation) | Groups rows and applies aggregate functions |
-| `.union()` | ∪ (union) | Combines two row sets |
-
-This is why Catalyst can apply 60+ optimization rules safely: relational algebra has well-defined mathematical equivalence laws — filters can always be pushed past projections, certain joins are commutative, constants can be folded — that guarantee rewrites preserve correctness. The optimizer manipulates a tree of algebraic expressions, not opaque user code. It is also why `df.filter(F.col("country") == "DE")` and `spark.sql("WHERE country = 'DE'")` compile to the same logical plan — both are expressions in the same algebra.
+The DataFrame API is grounded in relational algebra — each operation maps to a formal algebraic operator (σ, π, ⨝, γ), which is why Catalyst can apply 60+ rewrite rules and why `df.filter(...)` and `spark.sql("WHERE ...")` compile to the same plan. The full mapping and its implications are covered in **Chapter 4**.
 
 ### Spark version milestones
 
@@ -61,7 +62,7 @@ This is why Catalyst can apply 60+ optimization rules safely: relational algebra
 | Project started | 2009 | UC Berkeley (Zaharia et al.); HotCloud paper + open source release: 2010 |
 | Apache incubator | 2013 | Moved to Apache Software Foundation |
 | **1.0** | May 2014 | First stable release; Spark SQL; Java + Python APIs |
-| **1.3** | Mar 2015 | **DataFrame API** — schema + Catalyst optimizer on top of RDDs |
+| **1.3** | Mar 2015 | **DataFrame API** — `SchemaRDD` renamed to `DataFrame`; Catalyst (from Spark SQL 1.0) now the optimizer for the wider API surface |
 | **1.6** | Jan 2016 | **Dataset API** — typed DataFrames (Scala/Java) |
 | **2.0** | Jul 2016 | **SparkSession** replaces SQLContext/HiveContext; **Structured Streaming** replaces DStreams; Dataset API recommended |
 | **2.1** | Dec 2016 | `pip install pyspark` — JARs bundled in wheel ([PR #15659](https://github.com/apache/spark/pull/15659)) |
@@ -81,11 +82,28 @@ The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appe
 SQL, Streaming, ML, and graph processing all run as libraries over the same core — sharing the same execution engine, fault tolerance, and memory model.
 
 ```mermaid
-flowchart TD
-    L["Spark SQL · MLlib · Structured Streaming · GraphX · Declarative Pipelines"]
-    C["Spark Core  (RDD engine — DAGScheduler, TaskScheduler, BlockManager)"]
-    S["Cluster managers  (YARN / Kubernetes / Standalone)"]
-    L --> C --> S
+flowchart LR
+    subgraph libs["High-level libraries"]
+        SQL["Spark SQL\n& DataFrames"]
+        STREAM["Structured\nStreaming"]
+        ML["MLlib\nML Pipelines"]
+        GRAPH["GraphX"]
+        DP["Declarative\nPipelines"]
+    end
+
+    subgraph core["Spark Core  —  shared by all libraries"]
+        DAG["DAGScheduler\nstage DAG"]
+        TASK["TaskScheduler\ntask dispatch"]
+        BLOCK["BlockManager\nmemory & storage"]
+    end
+
+    subgraph cm["Cluster managers"]
+        YARN["YARN"]
+        K8S["Kubernetes"]
+        SA["Standalone"]
+    end
+
+    libs --> core --> cm
 ```
 
 Because every library operates on RDDs, Spark can optimize *across* library boundaries — fusing a SQL map into a downstream MLlib pipeline without serializing data between engines. This is why Spark is called unified rather than a collection of separate tools.
@@ -130,7 +148,45 @@ The rules of the model are strict:
 - The **reduce function** sees one key at a time, together with an iterator over all values for that key. It emits output records.
 - The output of the reduce phase is written to HDFS before the next job can start.
 
-**The chaining problem.** To express a multi-step computation — say, ETL cleaning followed by a join followed by an aggregation — you must write three separate MapReduce jobs. Job 2 cannot start until Job 1 has finished writing its complete output to HDFS. Job 3 cannot start until Job 2 has written to HDFS. Every logical step adds a full HDFS read and write round-trip:
+**Word count in MapReduce** — the canonical example that shows exactly what the user must supply vs what the framework owns:
+
+```java
+// Mapper: one record in (a line of text), many (word, 1) pairs out
+public class TokenizerMapper
+    extends Mapper<Object, Text, Text, IntWritable> {
+
+  private final IntWritable one = new IntWritable(1);
+  private final Text word = new Text();
+
+  public void map(Object key, Text value, Context context)
+      throws IOException, InterruptedException {
+    StringTokenizer itr = new StringTokenizer(value.toString());
+    while (itr.hasMoreTokens()) {
+      word.set(itr.nextToken());
+      context.write(word, one);   // emit ("word", 1) for every token
+    }
+  }
+}
+
+// Reducer: one key + all its values in, one (word, total) out
+public class IntSumReducer
+    extends Reducer<Text, IntWritable, Text, IntWritable> {
+
+  private final IntWritable result = new IntWritable();
+
+  public void reduce(Text key, Iterable<IntWritable> values, Context context)
+      throws IOException, InterruptedException {
+    int sum = 0;
+    for (IntWritable val : values) sum += val.get();
+    result.set(sum);
+    context.write(key, result);   // emit ("word", total_count)
+  }
+}
+```
+
+The framework handles everything between: partitioning map output by key, sorting within each partition, and routing each key's values to exactly one reducer. The user supplies only `map` and `reduce`.
+
+**The chaining problem.** Consider a realistic pipeline: (1) filter out log lines with a malformed timestamp, (2) join the cleaned logs against a users table to enrich each row with a country code, (3) count events per country. In MapReduce each step is a separate job — Job 1 writes the filtered logs to HDFS, Job 2 reads them back to do the join and writes the enriched rows to HDFS, Job 3 reads those back to count. Job 2 cannot start until Job 1 has finished writing its complete output to HDFS. Job 3 cannot start until Job 2 has written to HDFS. Every logical step adds a full HDFS read and write round-trip:
 
 ```mermaid
 flowchart LR
@@ -272,8 +328,8 @@ This pipeline runs entirely in the driver before a single byte of user data is r
 
 Spark maintains three internal row representations because different phases have different requirements:
 
-- **`InternalRow`** — abstract base class for all internal rows; concrete implementations like `GenericInternalRow` use a plain `Array[Any]` of JVM objects. Flexible for logical planning but creates GC-eligible objects.
-- **`UnsafeRow`** — compact binary format backed by a raw byte array (accessed via `sun.misc.Unsafe`). Three contiguous regions: a null bit-set, fixed-length fields (8-byte aligned), and variable-length data. No Java objects, no GC pressure. Tungsten whole-stage codegen operates entirely on `UnsafeRow`; this is the format data lives in during execution, shuffles, and sorting.
+- **`InternalRow`** — a Scala **trait** (interface), not a concrete class. It defines the row API: `getInt(i)`, `getString(i)`, `isNullAt(i)`, etc. When the chapter says "DataFrame becomes `RDD[InternalRow]`", `InternalRow` is the static type parameter — the actual runtime objects inside the RDD are `UnsafeRow` instances (see below). There is no contradiction with off-heap binary storage: `UnsafeRow` is an `InternalRow`. The fallback concrete implementation `GenericInternalRow` uses a plain `Array[Any]` of JVM objects and appears when whole-stage codegen is disabled (`spark.sql.codegen.wholeStage=false`), during Catalyst analysis and planning (before execution begins), and in certain test paths — never during normal Tungsten execution.
+- **`UnsafeRow`** — a concrete implementation of `InternalRow` backed by a raw byte array. Three contiguous regions: a null bit-set, fixed-length fields (8-byte aligned), and variable-length data. No per-field Java objects. **By default the byte array is allocated on the JVM heap**; `sun.misc.Unsafe` is used to write into it with unaligned access — the "Unsafe" name refers to the write API, not automatic off-heap allocation. True off-heap storage (invisible to the GC) requires `spark.memory.offHeap.enabled=true`. If codegen compilation fails at runtime, Spark silently falls back to interpreted execution using `GenericInternalRow` when `spark.sql.codegen.fallback=true` (the default). Tungsten whole-stage codegen operates entirely on `UnsafeRow`; this is the format data lives in during normal execution, shuffles, and sorting.
 - **Apache Arrow** — columnar batch format used when crossing the JVM↔Python process boundary for pandas UDFs. A single Arrow RecordBatch transfers an entire column-at-a-time instead of row-by-row, eliminating per-row serialization overhead.
 
 The full memory layout details and serialization cost in the shuffle path are covered in **Chapter 30 (E1 — Spark Internals)**.
@@ -978,24 +1034,20 @@ spark.celeborn.client.push.replicate.enabled  true   # server-side replication f
 spark.sql.adaptive.localShuffleReader.enabled false  # must disable for Celeborn compatibility
 ```
 
-**Configuring Apache Uniffle (Spark 3.x):**
+**Apache Uniffle — Spark 3.x only (not verified for Spark 4.x):**
+
+As of Spark 4.1.2, Uniffle's official client guide documents Spark 2 and Spark 3 JARs only. The JAR path below (`spark3/`) is for Spark 3.x. Do not use this configuration with Spark 4.x until a verified Spark 4 client JAR is available on the [Uniffle releases page](https://github.com/apache/uniffle/releases). For Spark 4.x, use Celeborn (config above) instead.
 
 ```bash
-# 1. Copy the Uniffle client JAR to the Spark classpath
-# Uniffle ships separate JARs per Spark major version under <RSS_HOME>/jars/client/spark3/
+# Spark 3.x only — Spark 4.x unverified
 cp rss-client-spark3-shaded-*.jar $SPARK_HOME/jars/
 ```
 
 ```properties
-# Required
 spark.shuffle.manager              org.apache.spark.shuffle.RssShuffleManager
 spark.rss.coordinator.quorum       coord-1:19999,coord-2:19999
 spark.shuffle.sort.io.plugin.class org.apache.spark.shuffle.RssShuffleDataIo
 ```
-
-Coordinator dynamic configuration is enabled by default — the coordinator pushes optimal client settings to each job at startup, so only the quorum address is required beyond the manager class.
-
-❓ As of Spark 4.1.2, Uniffle's official client guide documents Spark 2 and Spark 3 JARs only. Check the [Uniffle releases page](https://github.com/apache/uniffle/releases) for a Spark 4 client JAR before deploying with Spark 4.x.
 
 ---
 

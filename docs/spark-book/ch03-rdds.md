@@ -694,7 +694,7 @@ print(back_to_rdd.first())   # Row(id=1, name='Alice', salary=95000)
 
 2. **Apply** — Use an RDD to count word frequencies in a list of sentences. Use `flatMap()` to tokenise, `map()` to create `(word, 1)` pairs, and `reduceByKey()` to count. Then convert the result to a DataFrame with an explicit schema.
 
-3. **Extend** — Compare the performance of the word-count pipeline using: (1) RDD `map` + `reduceByKey`, (2) `spark.createDataFrame()` + `F.explode(F.split(...))` + `groupBy().count()`. Measure wall-clock time for a 10 MB text file. What does this reveal about when RDDs are justified?
+3. **Extend** — Compare the performance of the word-count pipeline using: (1) RDD `map` + `reduceByKey`, (2) `spark.createDataFrame()` + `F.explode(F.split(...))` + `groupBy().count()` (where `F` is `import pyspark.sql.functions as F`). Measure wall-clock time for a 10 MB text file. What does this reveal about when RDDs are justified?
 
 ---
 
