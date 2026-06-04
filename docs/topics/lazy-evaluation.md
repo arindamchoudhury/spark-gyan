@@ -98,7 +98,7 @@ The gap between logical plan and physical execution is where Spark's two main in
 
 **Catalyst** — the query optimiser. Applies rule-based rewrites (predicate pushdown, column pruning, constant folding) and cost-based join reordering to the logical plan before converting it to a physical plan.
 
-**Tungsten** — the memory and execution engine. Uses **UnsafeRow** — a binary, off-heap row format — to avoid Java object overhead and GC pressure.
+**Tungsten** — the memory and execution engine. Uses **UnsafeRow** — a compact binary row format (on-heap by default; off-heap opt-in via `spark.memory.offHeap.enabled=true`) — to reduce Java object overhead and GC pressure.
 
 **Whole-stage code generation (WSCG)** — Catalyst emits a single fused JVM bytecode class per pipeline stage, collapsing the per-row virtual-dispatch cost of the iterator model. A single stage processes rows top-to-bottom in one generated loop rather than calling into each operator separately.
 

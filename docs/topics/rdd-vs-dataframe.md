@@ -44,7 +44,7 @@ A DataFrame is internally an RDD of `UnsafeRow` objects — but that RDD is neve
 
 ## Ch 8 — Performance deep dive
 
-**UnsafeRow memory layout.** Tungsten stores each DataFrame row as a binary blob in off-heap memory, bypassing JVM object overhead and GC. A single-column `IntegerType` DataFrame with 1M rows occupies approximately 16 MB — roughly 4 bytes per value plus a small fixed header.
+**UnsafeRow memory layout.** Tungsten stores each DataFrame row as a compact binary byte array (`UnsafeRow`), reducing JVM object overhead and GC pressure. The byte array is **on-heap by default**; off-heap requires `spark.memory.offHeap.enabled=true`. A single-column `IntegerType` DataFrame with 1M rows occupies approximately 16 MB — 8-byte null bitmap + 8-byte field slot per row.
 
 Contrast with a Python RDD of the same 1M integers: each Python `int` is a 28-byte heap object, plus the JVM overhead of the wrapper object. Memory usage is 5–10× higher, and GC pauses can stall execution.
 

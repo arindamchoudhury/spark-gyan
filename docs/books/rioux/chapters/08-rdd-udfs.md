@@ -111,10 +111,10 @@ rdd.glom().collect()            # list-of-lists: one inner list per partition
 
 | | RDD | DataFrame |
 |---|---|---|
-| **Storage location** | JVM heap — each element is a GC-managed object | `UnsafeRow` binary, written to **off-heap** memory via `sun.misc.Unsafe` |
-| **GC pressure** | High — every element adds GC overhead; large RDDs cause long GC pauses | None — off-heap is invisible to the JVM garbage collector |
-| **Memory overhead** | PySpark: ~28 bytes/element (Python `int` object — object header + ref count + size field). Scala/Java: ~16 bytes/element (boxed `Integer` — 8-byte JVM header + 4-byte value + 4-byte padding). 1M integers: **~28 MB** (PySpark) or **~16 MB** (Scala/Java) | ~16 bytes/row for a single-column `IntType`: 8-byte null bitmap + 8-byte field slot (all types padded to 8 bytes). 1M single-column integers: **~16 MB**. No JVM object headers; GC-free off-heap. |
-| **PySpark extra cost** | Python object → cloudpickle → JVM → back for every operation | Stays in JVM/off-heap throughout execution. Python touches data only at action boundaries (`collect()`, `take()`, `first()`, `show()`, `toPandas()`) or when a Python UDF runs (row-by-row serialization) or a pandas UDF runs (Arrow batch). |
+| **Storage location** | JVM heap — each element is a GC-managed object | `UnsafeRow` binary byte array, **on-heap by default**; `sun.misc.Unsafe` is the write API, not an off-heap allocator. True off-heap requires `spark.memory.offHeap.enabled=true`. |
+| **GC pressure** | High — every element adds GC overhead; large RDDs cause long GC pauses | Reduced — one byte array per row instead of one JVM object per field. Fully GC-free only with off-heap enabled. |
+| **Memory overhead** | PySpark: ~28 bytes/element (Python `int` object — object header + ref count + size field). Scala/Java: ~16 bytes/element (boxed `Integer` — 8-byte JVM header + 4-byte value + 4-byte padding). 1M integers: **~28 MB** (PySpark) or **~16 MB** (Scala/Java) | ~16 bytes/row for a single-column `IntType`: 8-byte null bitmap + 8-byte field slot (all types padded to 8 bytes). 1M single-column integers: **~16 MB**. No JVM object headers; GC pressure reduced (eliminated with off-heap enabled). |
+| **PySpark extra cost** | Python object → cloudpickle → JVM → back for every operation | Stays in JVM throughout execution. Python touches data only at action boundaries (`collect()`, `take()`, `first()`, `show()`, `toPandas()`) or when a Python UDF runs (row-by-row serialization) or a pandas UDF runs (Arrow batch). |
 | **Cache format** | Deserialized Java objects or serialized byte arrays | Compact `UnsafeRow` blocks — much smaller and faster to reconstruct |
 
 **Why "exactly 4 MB for 1M integers" is wrong — UnsafeRow actual layout:**
@@ -130,11 +130,11 @@ Single-column IntType row layout:
 
 The null bitmap is `ceil(numFields / 64) * 8` bytes — 8 bytes covers up to 64 columns. For wide tables the null bitmap cost is amortized; for single-column tables it doubles the per-row size.
 
-DataFrame still wins over Scala/Java RDD (also ~16 MB for 1M boxed `Integer`) because: no per-object JVM headers, no GC, contiguous off-heap memory (cache-friendly), and the null bitmap cost shrinks as column count grows.
+DataFrame still wins over Scala/Java RDD (also ~16 MB for 1M boxed `Integer`) because: no per-object JVM headers, reduced GC, contiguous byte array layout (cache-friendly), and the null bitmap cost shrinks as column count grows.
 
-**Off-heap for execution vs off-heap for caching:**
-- Tungsten uses off-heap for **execution** by default (no config needed).
-- Off-heap for **caching** (`df.cache()`) is opt-in: `spark.memory.offHeap.enabled=true` + `spark.memory.offHeap.size=Xg`.
+**Off-heap for execution and caching — both are opt-in:**
+- Tungsten's `UnsafeRow` byte arrays are **on-heap by default**. `sun.misc.Unsafe` is the write API used to write unaligned data into those arrays — the "Unsafe" in the name refers to bypassing Java's type safety, not to off-heap allocation.
+- Off-heap for both **execution and caching** is opt-in: `spark.memory.offHeap.enabled=true` + `spark.memory.offHeap.size=Xg`.
 
 **Why this matters for PySpark specifically:**
 In PySpark, RDD elements live in the Python worker process as Python objects, then get cloudpickled across the py4j bridge to the JVM — two copies and two serializations per operation. DataFrame data stays in the JVM/off-heap world; Python only touches it when you explicitly call `collect()` or trigger a Python UDF.

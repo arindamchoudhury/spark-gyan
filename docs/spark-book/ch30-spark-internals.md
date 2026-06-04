@@ -13,7 +13,7 @@
     - **Stage and job cancellation** — how `cancelJob`, `cancelStage`, and `killTaskAttempt` propagate through the event loop and interrupt running tasks on executors
 
 !!! note "📌 Additional topics deferred here from Chapter 1"
-    - **Internal row formats** — `InternalRow` (logical row abstraction), `UnsafeRow` (off-heap binary row used by Tungsten; avoids GC), and Apache Arrow (columnar format used for cross-process transfer in pandas UDFs); why three formats exist and when each is used
+    - **Internal row formats** — `InternalRow` (logical row abstraction), `UnsafeRow` (compact binary row used by Tungsten; on-heap by default, off-heap opt-in; reduces GC), and Apache Arrow (columnar format used for cross-process transfer in pandas UDFs); why three formats exist and when each is used
     - **Speculative execution detection mechanism** — executor heartbeat protocol, `spark.speculation.quantile = 0.9` (fraction of stage tasks that must complete before speculation begins), `spark.speculation.multiplier = 3` (how many times slower than median before a task is flagged), `spark.speculation.efficiency.enabled = true` (Spark 3.4+)
     - **Data locality decision logic** — `spark.locality.wait` (default 3s) and per-level overrides (`spark.locality.wait.process`, `.node`, `.rack`); how the TaskScheduler iterates through locality levels and falls back when no slot at the preferred level is available within the wait window
     - **TaskSet internal representation** — `TaskSet` as an immutable collection; how it interacts with `TaskSetManager`; how the event loop processes task completion events and updates TaskSet state
