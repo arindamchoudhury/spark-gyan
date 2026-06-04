@@ -1210,10 +1210,10 @@ Spark uses **Java serialization** (Java `ObjectOutputStream`) by default for tas
 
 The executor deserializes the task closure and runs it against its assigned partition. For Stage 0 (ShuffleMapStage) in the word count:
 
-1. Reads lines from its partition of `1342-0.txt` via the BlockManager
+1. Reads lines from its partition of `1342-0.txt` directly from the file system — file source reads bypass BlockManager entirely
 2. Runs `split → lower → filter` on each line
 3. Hash-partitions the resulting `(word, 1)` pairs by key — each word is deterministically assigned to one of the output partitions
-4. Writes the partitioned output to shuffle files on local disk via the BlockManager — each file's name encodes `(shuffleId, mapTaskId, attemptId)` so a retried attempt writes to a different file and cannot overwrite a successful attempt's output
+4. Writes the partitioned output to shuffle files on local disk directly — the shuffle writer bypasses BlockManager's storage layer; each file's name encodes `(shuffleId, mapTaskId, attemptId)` so a retried attempt writes to a different file and cannot overwrite a successful attempt's output
 5. Reports completion to the driver — including a **`MapStatus`** for each output partition: the executor's `BlockManagerId` (host + port) and the byte size of each shuffle block it wrote
 
 **What "pipelined execution" means.** Step 2 above — `split → lower → filter` — is not three separate passes over the partition data. It is a single iterator-based pass: each row flows through all three operations before the next row is processed. There is no intermediate materialization between operators within a stage. When Tungsten whole-stage codegen is active, all operators in a stage are fused into a single compiled Java function — the entire chain runs as a tight loop with no virtual method calls between operators. This is the operational meaning of "pipelined": one pass, one loop, no intermediate buffers.
