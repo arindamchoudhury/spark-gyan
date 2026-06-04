@@ -1101,6 +1101,8 @@ At this point no data has moved. The DAGScheduler receives the compiled `RDD[Int
 
 ### Stage 2: DAGScheduler builds the stage DAG
 
+**Why this is not redundant with `CollapseCodegenStages`.** `CollapseCodegenStages` operates on the **SparkPlan tree** and asks: *which adjacent operators can be compiled into a single JVM function?* It fuses them for performance — the result is tighter bytecode within a stage. The DAGScheduler operates on the **RDD lineage** and asks: *which stages must wait for which?* It discovers `ShuffleDependency` objects to determine scheduling order. Both use shuffle boundaries as the dividing line, but they serve completely different purposes: Tungsten cares about how fast a stage executes; the DAGScheduler cares about when a stage is allowed to start.
+
 The DAGScheduler walks the RDD lineage backwards from the final operation, identifying two types of dependency:
 
 - **Narrow dependency** — each partition of the child depends on at most one partition of the parent (e.g. `filter`, `select`, `map`). These can be pipelined: one executor processes the full chain on its partition without any data movement. All consecutive narrow transformations are collapsed into a single stage.
