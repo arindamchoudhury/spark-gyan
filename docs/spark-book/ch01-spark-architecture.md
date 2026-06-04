@@ -1278,15 +1278,6 @@ The key reason executor death is handled differently from task failure: the shuf
 
 ---
 
-!!! note "Going deeper — DAGScheduler internals (Chapter 30)"
-    The sections above explain what the DAGScheduler decides. Chapter 30 (E1 — Spark Internals) covers how it is implemented:
-
-    - **`handleJobSubmitted → createResultStage → submitStage → submitMissingTasks`** — the full call chain from job submission to task launch
-    - **State machine** — `activeJobs`, `waitingStages`, `runningStages`, `failedStages` and how transitions between them are driven by `CompletionEvent` and `TaskSetFailed`
-    - **Stage deduplication** — `getOrCreateParentStages` ensures a shared RDD ancestor becomes one stage, not one per downstream branch
-    - **Barrier execution mode** — all tasks in a barrier stage must launch simultaneously; used for distributed ML frameworks that need a global synchronization point
-    - **Stage and job cancellation** — how `cancelJob`, `cancelStage`, and `killTaskAttempt` propagate through the event loop and interrupt running tasks
-
 ### Shuffle storage: local, external, and remote
 
 By default, Spark executors write shuffle output to **local disk** on the worker node. This creates two problems:
