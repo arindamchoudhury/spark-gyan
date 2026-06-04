@@ -1003,7 +1003,7 @@ The compilation runs in four phases entirely inside the driver JVM — no data m
 | **SparkPlanner** | Selects concrete physical operators: `SortMergeJoin` vs `BroadcastHashJoin`, `HashAggregate` vs `SortAggregate`, scan strategies |
 | **PrepareForExecution** | Applies 13 preparation rules in order: inserts `ShuffleExchangeExec` at every wide-dependency boundary, wraps stages with `WholeStageCodegenExec` (Tungsten codegen), `PlanSubqueries`, `EnsureRequirements`, etc. |
 
-After `PrepareForExecution` completes, the `executedPlan` is final. Spark then walks the operator tree to produce an `RDD[InternalRow]` — the entire query expressed as a chain of RDD operations. Wide operators such as `groupBy` and `join` embed shuffle boundaries into this chain; the DAGScheduler detects them when it walks the lineage to build the stage graph. This RDD is then handed to `SparkContext.runJob()`. The internal mechanics of this translation are covered in **Chapter 30 (E1 — Spark Internals)**.
+The four phases run in sequence when `withAction()` accesses `executedPlan` — the output of each becomes the input of the next. When `PrepareForExecution` completes, the `executedPlan` is final. Spark then walks the operator tree to produce an `RDD[InternalRow]` — the entire query expressed as a chain of RDD operations. Wide operators such as `groupBy` and `join` embed shuffle boundaries into this chain; the DAGScheduler detects them when it walks the lineage to build the stage graph. This RDD is then handed to `SparkContext.runJob()`. The internal mechanics of this translation are covered in **Chapter 30 (E1 — Spark Internals)**.
 
 ```mermaid
 flowchart TD
