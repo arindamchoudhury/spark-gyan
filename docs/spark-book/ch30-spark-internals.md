@@ -35,6 +35,9 @@
     - **Executor exclusions (`HealthTracker`)** — when an executor accumulates too many task failures (`MAX_FAILURES_PER_EXEC`), `HealthTracker` marks it excluded and `TaskSchedulerImpl` skips it during slot assignment (`isExecutorExcluded`); exclusion expires after `EXCLUDE_ON_FAILURE_TIMEOUT_MILLIS`; whole nodes can also be excluded via `MAX_FAILED_EXEC_PER_NODE`; `EXCLUDE_ON_FAILURE_KILL_ENABLED` can decommission the executor immediately
     - **Serialization in the shuffle data path** — how `UnsafeRow` binary format avoids extra serialization during shuffle for SQL/DataFrame operations; when Java vs Kryo serialization applies to shuffle data for raw RDD operations
 
+!!! note "✍️ Writing reminder — DAGScheduler internals"
+    Chapter 1 covered DAGScheduler behaviour (what it decides and why). This chapter must cover the full implementation: the `handleJobSubmitted → createResultStage → submitStage → submitMissingTasks` call chain; the `activeJobs` / `waitingStages` / `runningStages` / `failedStages` state machine and how `CompletionEvent` drives it; stage deduplication via `getOrCreateParentStages`; barrier execution mode; and stage/job cancellation propagation. See the first deferred-topics note above for the full list.
+
 !!! note "✍️ Writing reminder — DataFrame → RDD translation"
     Chapter 1 introduces `QueryExecution` conceptually. This chapter must cover the full implementation: `Dataset.withAction()`, the recursive `execute()` / `doExecute()` tree, how `ShuffleExchangeExec` embeds `ShuffleDependency` into the RDD lineage via `ShuffledRowRDD`, `FileScanRDD` as the leaf, and `QueryExecution.toRdd` as the bridge to `SparkContext.runJob()`. See the deferred-topics note above for the source-verified detail.
 
