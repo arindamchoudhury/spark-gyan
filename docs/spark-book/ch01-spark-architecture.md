@@ -1130,7 +1130,16 @@ flowchart LR
     end
 ```
 
-`groupBy("word")` does not map to a single stage — it is split across two. The physical plan contains two `HashAggregate` operators separated by an `Exchange`: **partial aggregation** runs in Stage 0 (one partial count per partition, before the shuffle writes), and **final aggregation** runs in Stage 1 (combining all partial counts for each word, after the shuffle read). The `orderBy` introduces a second shuffle — a `rangepartitioning` exchange that distributes rows by count range so each executor can sort its slice independently — creating Stage 2. Stage 1 is therefore a `ShuffleMapStage`, not the final stage; Stage 2 (`ResultStage`) only sorts and collects.
+Every shuffle has two sides — a **write side** (map tasks partition and write output to local disk) and a **read side** (reduce tasks fetch that output from across the cluster). The two sides cannot run simultaneously, so every shuffle boundary produces two stages.
+
+`groupBy("word").count()` therefore produces two stages, not one:
+
+- **Stage 0 (ShuffleMapStage):** each executor reads its input partition, counts the words it already has locally (*partial count*), then writes the results to shuffle files partitioned by word. One task per input partition.
+- **Stage 1 (ShuffleMapStage):** each executor fetches all shuffle files for its assigned words from every Stage 0 executor and combines the partial counts into a final total (*final count*). One task per shuffle output partition.
+
+`.orderBy(F.col("count").desc())` adds a third stage for the same reason — a global sort requires another shuffle (`rangepartitioning`) so each executor receives a non-overlapping range of counts and can sort its slice locally:
+
+- **Stage 2 (ResultStage):** each executor sorts its range of counts and the driver collects the top 10.
 
 The DAGScheduler does not schedule all stages at once. It submits Stage 0, waits for all map tasks to report `MapStatus`, then submits Stage 1, and finally Stage 2.
 
