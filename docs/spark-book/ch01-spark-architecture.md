@@ -1037,9 +1037,9 @@ The DAGScheduler itself behaves identically whether the job originated from raw 
 
 **SchedulerBackend** — the two-way RPC bridge between the driver's `TaskScheduler` and the executors. Its job has three directions:
 
-- **Inbound from executors → driver**: executors connect to the `DriverEndpoint` (an RPC endpoint inside `CoarseGrainedSchedulerBackend`) and send `RegisterExecutor` on startup and `StatusUpdate` (task completed / failed) as tasks finish.
-- **Upward to TaskScheduler**: when an executor registers or a task slot frees up, `DriverEndpoint` calls `makeOffers()` → `TaskScheduler.resourceOffers(offers)` to get task assignments.
-- **Outbound from driver → executors**: `launchTasks()` serializes each `TaskDescription` and sends it to the assigned executor via RPC. `killTask()` sends kill signals the same way.
+- **Inbound from executors → driver**: executors announce themselves when they start and report task completions and failures as they run.
+- **Upward to TaskScheduler**: when a slot becomes available, the SchedulerBackend offers it to the TaskScheduler, which decides which task to place there.
+- **Outbound from driver → executors**: the SchedulerBackend serialises each assigned task and sends it to the executor; it also sends task-kill signals when needed.
 
 A `reviveThread` fires `ReviveOffers` periodically so delay scheduling can re-evaluate locality preferences without waiting for a new status update.
 
