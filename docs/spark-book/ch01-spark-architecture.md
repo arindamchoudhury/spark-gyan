@@ -1132,6 +1132,10 @@ flowchart LR
 
 Every shuffle has two sides — a **write side** (each map task hashes every output row by key to determine which reducer owns it, then writes all output into a single sorted file on local disk — one file per map task, with a separate index file recording the byte offset for each reducer's slice) and a **read side** (each reduce task fetches its slice from every map task's file using that index). The two sides cannot run simultaneously, so every shuffle boundary produces two stages.
 
+> **Why one file per map task, not one file per reducer?** The original Spark shuffle (Hash Shuffle Writer, removed in Spark 2.0) did write one file per reducer. With M map tasks and R reducers that produced M × R files — 200,000 files at 1,000 maps and 200 reducers — which stressed the OS and distributed file system and became the primary scaling bottleneck. Each map task also had to hold R file handles open simultaneously and write to all of them as rows arrived, producing interleaved random I/O.
+>
+> `SortShuffleWriter` (the default since Spark 1.2) pays an explicit sort cost — sorting all output rows by `(partition_id, key)` before writing — to earn two things: one sequential write per map task (rows already in partition order), and only 2M total files regardless of R. The sort cost (O(n log n) per map task) is small compared to the I/O savings at scale. When there is no map-side aggregation and R ≤ `spark.shuffle.sort.bypassMergeThreshold` (default 200), Spark uses `BypassMergeSortShuffleWriter` instead, which skips the sort and writes per-reducer intermediates that are merged into one file + index at the end.
+
 `groupBy("word").count()` therefore produces two stages, not one:
 
 - **Stage 0 (ShuffleMapStage):** each executor reads its input partition, counts the words it already has locally (*partial count*), then writes the results to shuffle files partitioned by word. One task per input partition.
