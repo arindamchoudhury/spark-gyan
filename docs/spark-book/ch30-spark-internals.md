@@ -32,4 +32,7 @@
     - **BlockManager block types** — `BlockId` addressing scheme (`RDDBlockId`, `ShuffleBlockId`, `BroadcastBlockId`); block ownership and eviction lifetime differences between cached partitions, shuffle files, and broadcast copies; how TCP fetch streams blocks
     - **Serialization in the shuffle data path** — how `UnsafeRow` binary format avoids extra serialization during shuffle for SQL/DataFrame operations; when Java vs Kryo serialization applies to shuffle data for raw RDD operations
 
+!!! note "✍️ Writing reminder — DataFrame → RDD translation"
+    Chapter 1 introduces `QueryExecution` conceptually. This chapter must cover the full implementation: `Dataset.withAction()`, the recursive `execute()` / `doExecute()` tree, how `ShuffleExchangeExec` embeds `ShuffleDependency` into the RDD lineage via `ShuffledRowRDD`, `FileScanRDD` as the leaf, and `QueryExecution.toRdd` as the bridge to `SparkContext.runJob()`. See the deferred-topics note above for the source-verified detail.
+
 *This chapter is not yet written. The above topics will form its core.*
