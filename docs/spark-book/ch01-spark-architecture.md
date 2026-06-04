@@ -990,9 +990,46 @@ The eight-step sequence above describes *what* happens. This section explains *h
 
 ### The components involved
 
-Five internal components coordinate every Spark job:
+Six components coordinate every Spark job — `QueryExecution` translates the DataFrame into RDD lineage first; the five runtime components execute it:
 
-**DAGScheduler** — lives in the driver JVM. Its job is to construct a **DAG of stages** for each job — a directed acyclic graph where each node is a stage and each edge is a dependency (a stage cannot start until all its parent stages have completed and written their shuffle output). To build this DAG, the DAGScheduler walks the RDD lineage, identifies wide dependencies (shuffles), and groups all narrow transformations between two shuffles into a single stage. It does not think about machines or threads — it only thinks about the logical structure of the computation. When you use the DataFrame API, you never write RDDs yourself — Spark SQL's compilation pipeline converts your DataFrame into an RDD lineage before the DAGScheduler sees it. `QueryExecution` is the per-query coordinator object that sequences the steps: Catalyst Analyzer resolves names/types; Catalyst Optimizer applies 100+ rules; SparkPlanner selects physical operators (`SparkPlan` tree); PrepareForExecution inserts shuffle and codegen nodes. When an action fires, `Dataset.withAction()` passes `qe.executedPlan` to `collectFromPlan`, which calls `plan.executeCollect()` → `getByteArrayRdd()` → `execute()` — a self-call on the root `SparkPlan` that recursively calls `doExecute()` on each operator, building the RDD lineage bottom-up. Only then does `SparkContext.runJob(rdd)` hand the RDD to the DAGScheduler. The DAGScheduler always works at the RDD level — `handleJobSubmitted(finalRDD: RDD[_])` — it has no knowledge of DataFrames or physical plans.
+**QueryExecution (driver JVM)** — the compilation bridge between the DataFrame/SQL world and the RDD world. Every action on a `Dataset` calls `Dataset.withAction()`, which triggers `QueryExecution` to compile the logical plan into a physical `executedPlan` and then into an `RDD[InternalRow]` that `SparkContext.runJob()` can work with.
+
+The compilation runs in four phases entirely inside the driver JVM — no data moves, no executor work starts:
+
+| Phase | What it does |
+|---|---|
+| **Analyzer** | Resolves column names and types against the Catalog; raises `AnalysisException` on unknown columns or type mismatches |
+| **Optimizer** | Applies 100+ Catalyst rules: predicate pushdown, projection pruning, constant folding, join reordering, outer-join elimination |
+| **SparkPlanner** | Selects concrete physical operators: `SortMergeJoin` vs `BroadcastHashJoin`, `HashAggregate` vs `SortAggregate`, scan strategies |
+| **PrepareForExecution** | Applies 13 preparation rules in order: inserts `ShuffleExchangeExec` at every wide-dependency boundary, wraps stages with `WholeStageCodegenExec` (Tungsten codegen), `PlanSubqueries`, `EnsureRequirements`, etc. |
+
+The `executedPlan` is a tree of `SparkPlan` nodes. Calling `executedPlan.execute()` walks this tree recursively from root to leaf — each node calls `doExecute()`, which calls `execute()` on its children and wraps their output RDDs:
+
+```
+root.execute()
+  └── root.doExecute()
+        └── child.execute()
+              └── child.doExecute()       ← e.g. ShuffleExchangeExec: wraps child's RDD in ShuffleDependency
+                    └── leaf.doExecute()  ← FileScanRDD: one partition per input file split
+```
+
+Each `ShuffleExchangeExec` node introduces a `ShuffleDependency` into the RDD lineage — **this is how the DAGScheduler later discovers shuffle boundaries**. It walks the RDD graph looking for `ShuffleDependency` objects and cuts stage boundaries there. At the leaves, `FileScanRDD` creates one partition per file split. The result of `executedPlan.execute()` is `RDD[InternalRow]` — the full execution plan expressed as RDD operations — wrapped by `QueryExecution.toRdd` as `new SQLExecutionRDD(executedPlan.execute(), conf)` (verified against `QueryExecution.scala` v4.1.2). Only then does `SparkContext.runJob(rdd)` hand it to the DAGScheduler.
+
+```mermaid
+flowchart TD
+    DS["Dataset[Row]\n.show() / .count() / .write"]
+    WA["Dataset.withAction()"]
+    AN["Analyzed Plan\nAnalyzer — resolves columns and types"]
+    OP["Optimized Plan\nCatalyst — 100+ rewrite rules"]
+    PP["Physical Plan  (SparkPlan tree)\nSparkPlanner — chooses operators"]
+    EP["executedPlan\nPrepareForExecution — inserts\nShuffleExchangeExec + WholeStageCodegenExec"]
+    RDD["RDD[InternalRow]\nexecutedPlan.execute() — recursive doExecute()\nShuffleDependency at every wide boundary"]
+    SC["SparkContext.runJob(rdd)\n→ DAGScheduler"]
+
+    DS --> WA --> AN --> OP --> PP --> EP --> RDD --> SC
+```
+
+**DAGScheduler** — lives in the driver JVM. Its job is to construct a **DAG of stages** for each job — a directed acyclic graph where each node is a stage and each edge is a dependency (a stage cannot start until all its parent stages have completed and written their shuffle output). To build this DAG, the DAGScheduler walks the RDD lineage, identifies wide dependencies (shuffles), and groups all narrow transformations between two shuffles into a single stage. It does not think about machines or threads — it only thinks about the logical structure of the computation. The DAGScheduler always works at the RDD level — `handleJobSubmitted(finalRDD: RDD[_])` — it has no knowledge of DataFrames or physical plans; all optimization decisions are already encoded in the RDD lineage it receives.
 
 All DAGScheduler decisions are processed on a **single-threaded event loop** (`DAGSchedulerEventProcessLoop`). Job submissions, task completions, executor failures, and stage cancellations all arrive as `DAGSchedulerEvent` messages serialized on this loop — one daemon thread named `"dag-scheduler-event-loop"` drains a `LinkedBlockingDeque`. Most core state mutations are therefore single-threaded, but some shared structures (notably `cacheLocs`) are accessed from outside the loop and require explicit `synchronized` guards — the source even has a "avoid deadlocks" comment covering the ordering of `rdd.stateLock` vs `cacheLocs`. AQE re-planning is not a DAGScheduler event: re-planning runs in `AdaptiveSparkPlanExec`'s own execution context and then submits new query stages as normal `JobSubmitted` events to the loop. How the loop handles backpressure when events arrive faster than they can be processed is covered in **Chapter 30 (E1 — Spark Internals)**.
 
