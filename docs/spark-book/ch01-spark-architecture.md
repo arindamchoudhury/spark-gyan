@@ -1522,7 +1522,7 @@ What pip does **not** include: cluster setup scripts, Scala/R bindings. For a re
 | Era | What `pip install pyspark` contained | JAR source |
 |---|---|---|
 | PySpark ≤ 2.0.x | Python wrapper scripts only | Required manual tarball download + `SPARK_HOME` |
-| **PySpark 2.1.0 (Nov 2016)** | **Full Spark JARs bundled into the wheel** | Self-contained — no tarball needed |
+| **PySpark 2.1.0 (Dec 2016)** | **Full Spark JARs bundled into the wheel** | Self-contained — no tarball needed |
 | PySpark 4.0.0 (May 2025) | Same + new `pyspark-client` sibling package | `pyspark-client` is pure Python, zero JARs, Connect-only |
 
 The shift happened in [PR #15659](https://github.com/apache/spark/pull/15659), merged into branch-2.1 in November 2016: *"copy the jars over and package them with the Python code."* This is why older books still instruct you to download the tarball and set `SPARK_HOME` — they were written before or without awareness of the bundled-JAR approach, or assumed an enterprise context where executor nodes need the tarball anyway.
