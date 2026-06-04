@@ -1248,15 +1248,19 @@ flowchart LR
 
 This is why shuffles are expensive: every Stage 1 executor must fetch data from every Stage 0 executor. Network I/O, disk I/O, and serialization all happen here. The map-side write mechanics — how map tasks sort and partition output before writing, and how reducer-side merge works — are covered in **Chapter 30 (E1 — Spark Internals)**.
 
+The word count example has **two** shuffles: Stage 0 → Stage 1 (`hashpartitioning` by word for the `groupBy`) and Stage 1 → Stage 2 (`rangepartitioning` by count for the `orderBy`). The same fetch mechanism — MapOutputTracker lookup, then direct BlockManager-to-BlockManager pulls — applies to both.
+
 **The shuffle barrier.** No Stage 1 task starts until *all* Stage 0 tasks have completed and registered their shuffle output with MapOutputTracker. The DAGScheduler enforces this hard barrier — it only submits Stage 1's TaskSet after receiving `CompletionEvent` for every task in Stage 0. The invariant this maintains: **every map output partition is guaranteed to exist before any reducer tries to fetch it**. Without this guarantee, a reducer could not distinguish "output not yet written" from "task failed and output will never arrive" — it would have to poll indefinitely or guess. The barrier eliminates that ambiguity entirely. The reason: if a Stage 1 task started fetching while Stage 0 was still running, some map output would not exist yet, causing a fetch failure. The barrier trades latency (Stage 1 waits for the slowest Stage 0 task) for correctness and simple fault recovery (any lost shuffle file can be identified and its stage resubmitted cleanly).
 
 ---
 
 ### Stage 7: ResultStage — results return to the driver
 
-Stage 1 tasks run `count → orderBy` on their local word groups. The final `orderBy` requires another partial sort on each executor. The top-N results from each executor are sent back to the driver via the SchedulerBackend.
+**DAGScheduler Stage 1** (ShuffleMapStage 1) tasks read the hash-partitioned shuffle from Stage 0, run the final `HashAggregate (count)` to produce `(word, total_count)` pairs, then write a second shuffle file with `rangepartitioning(count DESC, 200)` — splitting the data into count-ordered buckets so the global sort can be completed partition-locally.
 
-The driver merges the partial results, selects the top 10 overall, and `show()` prints them.
+**DAGScheduler Stage 2** (ResultStage 2) tasks read the range-partitioned shuffle from Stage 1. Because the data is already globally bucketed by count, each task only needs to `Sort [count DESC]` within its own partition to produce a globally correct ordered slice. The sorted rows from each partition are sent back to the driver via the SchedulerBackend.
+
+The driver assembles the partition results in order. `show(10)` prints the first 10 rows of the globally sorted result.
 
 ---
 
