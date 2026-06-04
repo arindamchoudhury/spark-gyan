@@ -1033,7 +1033,7 @@ The DAGScheduler itself behaves identically whether the job originated from raw 
 | **Row format** | `RDD[T]` — standard JVM objects | `RDD[InternalRow]` — compact binary `UnsafeRow` |
 | **AQE** | ❌ Stage DAG fixed at job submission | ✅ Stage DAG can change mid-execution at shuffle boundaries |
 
-**TaskScheduler** — lives in the driver JVM. Receives `TaskSet` objects from the DAGScheduler and assigns each task to an available executor slot. It does not reason about DAG structure — that is the DAGScheduler's concern. Its responsibilities are: task-to-executor assignment (using data locality to prefer executors co-located with the data), multi-job scheduling order (FIFO or FAIR), task retries on failure, speculative execution of straggler tasks, and executor exclusions. It reports task completions and failures back to the DAGScheduler so stage state can be updated.
+**TaskScheduler** — lives in the driver JVM. Receives `TaskSet` objects from the DAGScheduler and assigns each task to an available executor slot. It does not reason about DAG structure — that is the DAGScheduler's concern. Its responsibilities are: task-to-executor assignment (using data locality to prefer executors co-located with the data), multi-job scheduling order (FIFO or FAIR), task retries on failure, speculative execution of straggler tasks, and avoiding executors that have accumulated too many failures. It reports task completions and failures back to the DAGScheduler so stage state can be updated.
 
 **SchedulerBackend** — the two-way RPC bridge between the driver's `TaskScheduler` and the executors. Its job has three directions:
 
