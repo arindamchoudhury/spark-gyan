@@ -30,6 +30,7 @@
     - **Shuffle write/read mechanics** — how map tasks sort and partition output before writing; how reducer-side merge works; why reducers may need to re-sort fetched data if order matters
     - **MapOutputTracker operational semantics** — whether it is consulted once per stage or once per task; how stale entries are invalidated when an executor dies and its shuffle blocks are re-registered after ShuffleMapStage resubmission
     - **BlockManager block types** — `BlockId` addressing scheme (`RDDBlockId`, `ShuffleBlockId`, `BroadcastBlockId`); block ownership and eviction lifetime differences between cached partitions, shuffle files, and broadcast copies; how TCP fetch streams blocks
+    - **Executor exclusions (`HealthTracker`)** — when an executor accumulates too many task failures (`MAX_FAILURES_PER_EXEC`), `HealthTracker` marks it excluded and `TaskSchedulerImpl` skips it during slot assignment (`isExecutorExcluded`); exclusion expires after `EXCLUDE_ON_FAILURE_TIMEOUT_MILLIS`; whole nodes can also be excluded via `MAX_FAILED_EXEC_PER_NODE`; `EXCLUDE_ON_FAILURE_KILL_ENABLED` can decommission the executor immediately
     - **Serialization in the shuffle data path** — how `UnsafeRow` binary format avoids extra serialization during shuffle for SQL/DataFrame operations; when Java vs Kryo serialization applies to shuffle data for raw RDD operations
 
 !!! note "✍️ Writing reminder — DataFrame → RDD translation"
