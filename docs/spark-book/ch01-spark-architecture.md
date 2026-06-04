@@ -302,10 +302,10 @@ When an action is called, the logical plan passes through **Catalyst**, Spark's 
 
 ```python
 # User writes this:
-df.read.parquet("events/").join(users, "user_id").filter(F.col("country") == "DE")
+spark.read.parquet("events/").join(users, "user_id").filter(F.col("country") == "DE")
 
 # Catalyst rewrites it to effectively:
-df.read.parquet("events/", filters=[("country", "==", "DE")]).join(...)
+spark.read.parquet("events/", filters=[("country", "==", "DE")]).join(...)
 # The filter is applied at read time — unneeded rows never enter the join
 ```
 
@@ -471,16 +471,16 @@ top_words.show(10)   # <-- THIS is the first action; only now does Spark execute
 # +----+-----+
 # |word|count|
 # +----+-----+
-# | the| 4480|
-# |  to| 4218|
-# |  of| 3711|
-# | and| 3504|
-# | her| 2199|
-# |   a| 1982|
-# |  in| 1909|
-# | was| 1838|
-# |   i| 1749|
-# | she| 1668|
+# | the| 4207|
+# |  to| 4179|
+# |  of| 3696|
+# | and| 3445|
+# | her| 2136|
+# |   a| 1950|
+# | was| 1841|
+# |  in| 1833|
+# |  he| 1709|
+# |that| 1528|
 # +----+-----+
 
 spark.stop()
