@@ -1191,7 +1191,7 @@ If no executor with better locality is available, the TaskScheduler waits up to 
 > - **Partition pruning** — skipping S3 key prefixes based on partition column filters avoids HTTP requests entirely; the savings are large
 > - **Parallelism** — more concurrent S3 GET requests mean higher throughput; tune `spark.sql.files.maxPartitionBytes` to control how much each task reads
 > - **Pushdown** — column pruning and filter pushdown (e.g. S3 Select for CSV/JSON, Parquet metadata for column skipping) reduce bytes transferred over the network
-> - **Local caching** — Alluxio, Databricks Delta Cache, or EMR instance storage cache S3 objects on executor local disks, restoring some locality for repeated reads on the same data
+> - **Local caching** — Alluxio and Databricks Disk Cache (formerly Delta Cache) transparently cache S3 objects on executor-local NVMe/SSD, restoring `NODE_LOCAL` locality for repeated reads; Databricks Disk Cache is automatic for Parquet and Delta files on Databricks Runtime 14.2+
 > - **Region colocation** — run compute in the same AWS region as the S3 bucket; cross-region reads add latency and egress cost
 
 The SchedulerBackend serializes the task and launches it on the chosen executor via RPC. The driver **pushes** tasks to executors — executors do not poll for work. The driver is therefore a coordination bottleneck for result collection (all task results flow back to the driver), while executors communicate directly with each other only during shuffle reads. The driver/executor network topology and communication patterns are covered in **Chapter 31 (E2 — Production Deployment)**.
