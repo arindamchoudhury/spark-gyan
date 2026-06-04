@@ -174,6 +174,18 @@ The chapter claim *"AnalysisException always arrives with the action result — 
 
 ---
 
+## SortShuffleWriter and BlockManager
+
+| Fact | Source location | Detail |
+|---|---|---|
+| `blockManager` reference in `SortShuffleWriter` | `core/.../shuffle/sort/SortShuffleWriter.scala:39,88` | Used **only** to get `blockManager.shuffleServerId` for constructing the `MapStatus` return value — NOT for writing shuffle data |
+| Shuffle data write path | `SortShuffleWriter.scala:83` | `shuffleExecutorComponents.createMapOutputWriter(...)` — writes via `IndexShuffleBlockResolver`, bypasses BlockManager storage API |
+| `IndexShuffleBlockResolver` BlockManager usage | `core/.../shuffle/IndexShuffleBlockResolver.scala:137,154` | Uses `blockManager.diskBlockManager.getFile(blockId)` — **path resolution only** (gets the local file path); does NOT call `putBytes`, `putBlock`, `MemoryStore`, or `DiskStore` |
+| Shuffle data storage layer | — | Shuffle files are written directly to local disk paths returned by `DiskBlockManager`; they are **not tracked** in BlockManager's memory budget or eviction policy |
+| "Bypasses BlockManager's storage layer" | Source-verified | **Correct** — shuffle writes bypass MemoryStore/DiskStore; `DiskBlockManager` (a sub-component) is used only for file path resolution |
+
+---
+
 ## Implications for chapter content
 
 - **"Tasks do not return results to the driver" for ShuffleMapStage is wrong** — they return `MapStatus` (metadata, not user data)
