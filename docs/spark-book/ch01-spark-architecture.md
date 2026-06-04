@@ -1122,11 +1122,15 @@ For the word count program:
 ```mermaid
 flowchart LR
     subgraph S0["ShuffleMapStage 0"]
-        A["read"] --> B["split"] --> C["lower"] --> D["filter"]
+        A["read"] --> B["split / lower / filter"] --> C["partial count"]
     end
-    D -->|"shuffle\ngroupBy(word)"| S1
-    subgraph S1["ResultStage 1"]
-        E["count"] --> F["orderBy"] --> G["show"]
+    C -->|"shuffle write\nhashpartitioning(word)"| S1
+    subgraph S1["ShuffleMapStage 1"]
+        D["final count"]
+    end
+    D -->|"shuffle write\nrangepartitioning(count DESC)"| S2
+    subgraph S2["ResultStage 2"]
+        E["sort"] --> F["show(10)"]
     end
 ```
 
