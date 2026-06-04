@@ -75,7 +75,7 @@ The DataFrame API is grounded in relational algebra — each operation maps to a
 | **4.0** | May 2025 | **ANSI mode on by default**; `pyspark-client` (Connect-only, no JVM); `spark.api.mode`; Python 3.10+ / JDK 17 or 21 required |
 | **4.1** | Dec 2025 | **Spark Declarative Pipelines**; `spark-submit` improvements; current stable line |
 
-The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 13 (I4 — RDD Fundamentals); everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
+The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 3 (RDD Fundamentals); everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
 
 ### Spark as a unified engine
 
@@ -627,7 +627,7 @@ In the word count program, executors are the processes that actually read `1342-
 
 Each application gets its own isolated executors. They stay alive for the entire application (from `getOrCreate()` to `spark.stop()`), not just one query. The executor lifecycle — when they are launched, when they shut down, and how dynamic allocation (`spark.dynamicAllocation.enabled`) adjusts the executor count at runtime while requiring the External Shuffle Service — is covered in **Chapter 31 (E2 — Production Deployment: Cluster Management)**.
 
-Spark's programming model provides two shared variable types available to both the RDD and DataFrame APIs: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters that executors increment and only the driver reads. The mechanism and usage pattern differ between the two APIs: RDD usage (explicit `sc.broadcast()` and `sc.accumulator()`) is covered in **Chapter 13 (I4 — RDD Fundamentals)**; DataFrame-specific usage (`F.broadcast()` for join hints, accumulators inside UDFs) is covered in **Chapter 20 (A1 — Query Optimisation: Catalyst and the Physical Plan)**.
+Spark's programming model provides two shared variable types available to both the RDD and DataFrame APIs: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters that executors increment and only the driver reads. The mechanism and usage pattern differ between the two APIs: RDD usage (explicit `sc.broadcast()` and `sc.accumulator()`) is covered in **Chapter 3 (RDD Fundamentals)**; DataFrame-specific usage (`F.broadcast()` for join hints, accumulators inside UDFs) is covered in **Chapter 22 (Join Strategies and Tuning)**.
 
 Accumulators are intentionally **write-only for executors**. This is an architectural choice: if executors could read an accumulator mid-execution, the value would be inconsistent across tasks running in parallel, requiring distributed locking. Instead, executor tasks add their updates locally; Spark merges each task's update into the driver-side accumulator exactly once when the task completes (in actions only — accumulator updates in transformations may be applied more than once if stages are re-executed). A failed task's partial accumulator update is discarded; the retry starts from zero.
 
