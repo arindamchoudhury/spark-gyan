@@ -25,6 +25,9 @@ You need to apply a custom scoring model to every row in a 100-million-row DataF
 
 ## Core concept
 
+!!! note "Why the JVM-Python boundary exists"
+    As covered in **Chapter 1**, PySpark's `DataFrame` in classic mode is a two-layer object. The Python `DataFrame` is a thin proxy; the real object is a `Dataset[Row]` in the driver JVM. DataFrame column expressions like `F.col("x") > 0` are Catalyst expression tree nodes that live entirely in that JVM object — they are compiled to bytecode before any task runs and never touch Python at execution time. A Python UDF (`@F.udf`) is different: it is a function that only exists in the Python process. To execute it, every row must be serialised out of the JVM, sent to a Python worker subprocess, and the result serialised back — which is why the per-row cost is high regardless of what the UDF actually does.
+
 When Spark executes Python code on data, it must cross the JVM-Python boundary. The cost depends on how much data crosses:
 
 | UDF type | Data boundary crossing | Use when |
