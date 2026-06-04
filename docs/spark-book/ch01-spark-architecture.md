@@ -48,12 +48,12 @@ Fault tolerance comes not from replication but from **lineage**: each RDD knows 
 
 ### Why this matters for the DataFrame API
 
-RDDs were Spark's original API. The DataFrame API (Spark 1.3) unified Spark SQL's `SchemaRDD` under a new name, bringing the Catalyst optimizer — which had shipped with Spark SQL since Spark 1.0 — to the wider API surface. When you write `df.filter(...).groupBy(...).count()`, Spark builds a **Catalyst logical plan** lazily — no data moves, no computation starts. When an action fires, Catalyst optimizes the plan, selects a physical execution strategy, and Tungsten compiles it to JVM bytecode that runs on partitioned data across executors. The full mechanics of this pipeline — how `WholeStageCodegenExec` wraps `FileScanRDD`, how `RDD[InternalRow]` relates to `RDD[Row]`, and the two-layer scheduling/computation model — are covered in **Chapter 4**. The two working-set properties from the 2010 paper survive intact — but they operate through the `InMemoryRelation` bridge:
+RDDs were Spark's original API. The DataFrame API (Spark 1.3) unified Spark SQL's `SchemaRDD` under a new name, bringing the Catalyst optimizer — which had shipped with Spark SQL since Spark 1.0 — to the wider API surface. When you write `df.filter(...).groupBy(...).count()`, Spark builds a **Catalyst logical plan** lazily — no data moves, no computation starts. When an action fires, Catalyst optimizes the plan, selects a physical execution strategy, and Tungsten compiles it to JVM bytecode that runs on partitioned data across executors. The full mechanics of this pipeline — how `WholeStageCodegenExec` wraps `FileScanRDD`, how `RDD[InternalRow]` relates to `RDD[Row]`, and the two-layer scheduling/computation model — are covered in **Chapter 30 (E1 — Spark Internals)**. The two working-set properties from the 2010 paper survive intact — but they operate through the `InMemoryRelation` bridge:
 
-- **Working-set reuse.** `df.cache()` marks a DataFrame so its partitions are kept in executor memory after the first action — subsequent actions read from memory instead of recomputing from source. The full caching mechanics (`InMemoryRelation`, `InMemoryTableScan`, block manager) are covered in **Chapter 4**.
+- **Working-set reuse.** `df.cache()` marks a DataFrame so its partitions are kept in executor memory after the first action — subsequent actions read from memory instead of recomputing from source. The full caching mechanics (`InMemoryRelation`, `InMemoryTableScan`, block manager) are covered in **Chapter 15 (I6 — Caching and Persistence)**.
 - **Lineage-based fault recovery.** If a cached partition is evicted, Spark replays the Catalyst logical plan lineage for that partition from the original source — no checkpoint needed.
 
-The DataFrame API is grounded in relational algebra — each operation maps to a formal algebraic operator (σ, π, ⨝, γ), which is why Catalyst can apply 60+ rewrite rules and why `df.filter(...)` and `spark.sql("WHERE ...")` compile to the same plan. The full mapping and its implications are covered in **Chapter 4**.
+The DataFrame API is grounded in relational algebra — each operation maps to a formal algebraic operator (σ, π, ⨝, γ), which is why Catalyst can apply 100+ rewrite rules and why `df.filter(...)` and `spark.sql("WHERE ...")` compile to the same plan. The full mapping and its implications are covered in **Chapter 20 (A1 — Query Optimisation: Catalyst and the Physical Plan)**.
 
 ### Spark version milestones
 
@@ -75,7 +75,7 @@ The DataFrame API is grounded in relational algebra — each operation maps to a
 | **4.0** | May 2025 | **ANSI mode on by default**; `pyspark-client` (Connect-only, no JVM); `spark.api.mode`; Python 3.10+ / JDK 17 or 21 required |
 | **4.1** | Dec 2025 | **Spark Declarative Pipelines**; `spark-submit` improvements; current stable line |
 
-The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 3; everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
+The chapters in this book map to the modern API surface (Spark 4.1.x). RDDs appear only in Chapter 13 (I4 — RDD Fundamentals); everything else uses the DataFrame/SparkSession API that arrived in 1.3–2.0.
 
 ### Spark as a unified engine
 
@@ -372,9 +372,9 @@ flowchart TD
 
 This pipeline runs entirely in the driver before a single byte of user data is read. The physical plan handed to the DAGScheduler at the bottom is already optimized, reordered, and compiled to bytecode. By the time executors receive their tasks, the work is expressed as tight compiled loops over binary row data (UnsafeRow format), not as chains of interpreted Python or JVM method calls.
 
-Spark uses three internal row representations across different phases — `InternalRow` (trait/interface), `UnsafeRow` (Tungsten binary execution format), and Apache Arrow (pandas UDF boundary). The full breakdown — including why `GenericInternalRow` exists, how `sun.misc.Unsafe` relates to on-heap vs off-heap allocation, and how Arrow eliminates per-row serialization — is covered in **Chapter 4**. Memory layout details and shuffle serialization cost are in **Chapter 30 (E1 — Spark Internals)**.
+Spark uses three internal row representations across different phases — `InternalRow` (trait/interface), `UnsafeRow` (Tungsten binary execution format), and Apache Arrow (pandas UDF boundary). The full breakdown — including why `GenericInternalRow` exists, how `sun.misc.Unsafe` relates to on-heap vs off-heap allocation, and how Arrow eliminates per-row serialization — is covered in **Chapter 30 (E1 — Spark Internals)**.
 
-**Adaptive Query Execution (AQE).** Spark 4.x enables AQE by default. Where Catalyst optimizes before execution using estimated statistics, AQE re-enters the optimization pipeline at shuffle boundaries using *actual* collected statistics — coalescing small partitions, switching join strategies, and splitting skewed partitions at runtime. The full detail is in **Chapter 4**.
+**Adaptive Query Execution (AQE).** Spark 4.x enables AQE by default. Where Catalyst optimizes before execution using estimated statistics, AQE re-enters the optimization pipeline at shuffle boundaries using *actual* collected statistics — coalescing small partitions, switching join strategies, and splitting skewed partitions at runtime. The full detail is in **Chapter 21 (A2 — Adaptive Query Execution)**.
 
 ---
 
@@ -400,7 +400,7 @@ The practical implication: shuffle operations (wide dependencies) are the expens
 |---|---|---|---|
 | **Execution model** | Fixed map → shuffle → reduce, one job at a time | DAG of arbitrary transformations, compiled to stages | Relational algebra compiled by Catalyst into DAG |
 | **Intermediate storage** | Full HDFS write between every job | In-memory within a stage; shuffle files between stages; no full dataset to disk | Same as RDD layer |
-| **Optimization scope** | Single job — no cross-job optimization | Full DAG visible before execution | Full logical plan; 60+ optimizer rules; AQE re-optimizes at runtime |
+| **Optimization scope** | Single job — no cross-job optimization | Full DAG visible before execution | Full logical plan; 100+ optimizer rules; AQE re-optimizes at runtime |
 | **Data reuse across iterations** | Not possible — every job rereads from HDFS | `.cache()` keeps RDD in memory across jobs | Same as RDD layer |
 | **Fault tolerance** | Re-run the entire job | Recompute lost partitions via lineage | Same as RDD layer |
 | **Shuffle mechanism** | Framework-managed sort-based shuffle | Same fundamental design (map writes files, reduce fetches, barrier enforced) | Same as RDD layer |
@@ -627,7 +627,7 @@ In the word count program, executors are the processes that actually read `1342-
 
 Each application gets its own isolated executors. They stay alive for the entire application (from `getOrCreate()` to `spark.stop()`), not just one query. The executor lifecycle — when they are launched, when they shut down, and how dynamic allocation (`spark.dynamicAllocation.enabled`) adjusts the executor count at runtime while requiring the External Shuffle Service — is covered in **Chapter 31 (E2 — Production Deployment: Cluster Management)**.
 
-Spark's programming model provides two shared variable types available to both the RDD and DataFrame APIs: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters that executors increment and only the driver reads. The mechanism and usage pattern differ between the two APIs: RDD usage (explicit `sc.broadcast()` and `sc.accumulator()`) is covered in **Chapter 3**; DataFrame-specific usage (`F.broadcast()` for join hints, accumulators inside UDFs) is covered in **Chapter 4**.
+Spark's programming model provides two shared variable types available to both the RDD and DataFrame APIs: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters that executors increment and only the driver reads. The mechanism and usage pattern differ between the two APIs: RDD usage (explicit `sc.broadcast()` and `sc.accumulator()`) is covered in **Chapter 13 (I4 — RDD Fundamentals)**; DataFrame-specific usage (`F.broadcast()` for join hints, accumulators inside UDFs) is covered in **Chapter 20 (A1 — Query Optimisation: Catalyst and the Physical Plan)**.
 
 Accumulators are intentionally **write-only for executors**. This is an architectural choice: if executors could read an accumulator mid-execution, the value would be inconsistent across tasks running in parallel, requiring distributed locking. Instead, executor tasks add their updates locally; Spark merges each task's update into the driver-side accumulator exactly once when the task completes (in actions only — accumulator updates in transformations may be applied more than once if stages are re-executed). A failed task's partial accumulator update is discarded; the retry starts from zero.
 
@@ -767,7 +767,7 @@ In the word count program:
 
 **Wide transformation (shuffle)** — `groupBy("word").count()` requires every occurrence of "the" from every partition to land on the same executor. Spark triggers a **shuffle**: data moves across the network, regrouped by key. This is the most expensive step in the program.
 
-After the shuffle, each executor holds all occurrences of a distinct set of words, counts them, and sends the top results back to the driver.
+After this shuffle, each executor holds all occurrences of a distinct set of words and runs the final `count` aggregation. A second shuffle (`orderBy`) then range-partitions the counts so the final sort can run locally on each partition — only after that does the ResultStage return sorted rows to the driver.
 
 ---
 
@@ -1515,7 +1515,7 @@ spark.submit.deployMode     cluster
 
 ### Option 1 — pip (client/driver side only)
 
-`pip install pyspark` bundles the Spark JARs inside the Python package — no tarball download or `SPARK_HOME` setup needed. Java 17+ must still be installed separately.
+`pip install pyspark` bundles the Spark JARs inside the Python package — no tarball download or `SPARK_HOME` setup needed. Java 17 or 21 must still be installed separately (Spark 4.x supports only these two LTS releases).
 
 ```bash
 pip install pyspark          # Spark JARs + Python bindings (~300 MB); Java 17+ required separately
