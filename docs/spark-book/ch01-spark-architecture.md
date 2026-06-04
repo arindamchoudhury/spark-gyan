@@ -1130,7 +1130,7 @@ flowchart LR
     end
 ```
 
-Every shuffle has two sides — a **write side** (map tasks hash each output row by key to determine which reducer owns it, then write all output to a local shuffle file on disk) and a **read side** (reduce tasks fetch their slice of that file from across the cluster). The two sides cannot run simultaneously, so every shuffle boundary produces two stages.
+Every shuffle has two sides — a **write side** (each map task hashes every output row by key to determine which reducer owns it, then writes all output into a single sorted file on local disk — one file per map task, with a separate index file recording the byte offset for each reducer's slice) and a **read side** (each reduce task fetches its slice from every map task's file using that index). The two sides cannot run simultaneously, so every shuffle boundary produces two stages.
 
 `groupBy("word").count()` therefore produces two stages, not one:
 
