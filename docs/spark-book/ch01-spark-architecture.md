@@ -1184,6 +1184,16 @@ When an executor signals it has a free slot, the TaskScheduler picks the best ta
 
 If no executor with better locality is available, the TaskScheduler waits up to `spark.locality.wait` (default **3s**) before falling back to the next-worse locality level. Each level gets its own wait budget: `spark.locality.wait.process`, `spark.locality.wait.node`, and `spark.locality.wait.rack` all default to the same `spark.locality.wait` value. Set a level to `0` to skip it entirely. The full wait-time logic and how the TaskScheduler decides when to give up are covered in **Chapter 30 (E1 — Spark Internals)**.
 
+> **Data locality does not apply to cloud object storage (S3, GCS, ADLS).** The locality model assumes data is co-located with compute — HDFS blocks live on the same physical machines as Spark executors. Cloud object stores are remote HTTP services; every read is a network request regardless of which executor runs the task. `FileScanRDD.getPreferredLocations()` returns block locations for HDFS but returns an empty list for S3 — the TaskScheduler sees `NO_PREF` for every task and assigns them to any available slot. The locality wait (`spark.locality.wait = 3s`) adds scheduling delay for no benefit; set it to `0` when reading exclusively from object storage.
+>
+> The optimization levers shift entirely:
+>
+> - **Partition pruning** — skipping S3 key prefixes based on partition column filters avoids HTTP requests entirely; the savings are large
+> - **Parallelism** — more concurrent S3 GET requests mean higher throughput; tune `spark.sql.files.maxPartitionBytes` to control how much each task reads
+> - **Pushdown** — column pruning and filter pushdown (e.g. S3 Select for CSV/JSON, Parquet metadata for column skipping) reduce bytes transferred over the network
+> - **Local caching** — Alluxio, Databricks Delta Cache, or EMR instance storage cache S3 objects on executor local disks, restoring some locality for repeated reads on the same data
+> - **Region colocation** — run compute in the same AWS region as the S3 bucket; cross-region reads add latency and egress cost
+
 The SchedulerBackend serializes the task and launches it on the chosen executor via RPC. The driver **pushes** tasks to executors — executors do not poll for work. The driver is therefore a coordination bottleneck for result collection (all task results flow back to the driver), while executors communicate directly with each other only during shuffle reads. The driver/executor network topology and communication patterns are covered in **Chapter 31 (E2 — Production Deployment)**.
 
 **What gets serialized — the task closure.** A task is not a copy of the data — it is a serialized description of *what to compute and where to find the input*. The closure contains: the transformation functions (the code), references to broadcast variables by ID, partition metadata (which file/block to read), and enough context to reconstruct the input RDD partition. The data itself stays in the executor's BlockManager or on disk; the task code travels to the data, not the other way around.
