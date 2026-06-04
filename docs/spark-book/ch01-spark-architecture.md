@@ -1115,6 +1115,8 @@ There are two types of stage:
 - **ShuffleMapStage** — a stage whose output is written to shuffle files on disk, to be consumed by the next stage. Tasks write partitioned user data to local disk and return a `MapStatus` to the driver — metadata recording which BlockManager holds each output partition, used by `MapOutputTrackerMaster` so downstream reducers know where to fetch.
 - **ResultStage** — the final stage in a job. Its tasks apply the user function to their partition and send the result back to the driver (the rows that `.show(10)` prints). May run on a subset of partitions — `first()` runs on one partition only and stops early.
 
+> **`ShuffleMapStage` / `ResultStage` vs `ShuffleQueryStage` / `ResultQueryStage`:** `explain()` shows the physical plan layer — `ShuffleQueryStage` and `ResultQueryStage` are AQE's plan-level wrappers around each `Exchange` operator, created when AQE executes. `ShuffleMapStage` and `ResultStage` are DAGScheduler objects, created at runtime when the DAGScheduler walks the RDD lineage — they are not plan nodes and never appear in `explain()` output. The mapping is 1-to-1: each `ShuffleQueryStage` in the plan becomes a `ShuffleMapStage` in the scheduler; the `ResultQueryStage` becomes the `ResultStage`.
+
 For the word count program:
 
 ```mermaid
@@ -1128,9 +1130,9 @@ flowchart LR
     end
 ```
 
-`groupBy("word")` is a wide dependency — every partition must send its words to the executor responsible for that word. That is the shuffle boundary. Everything before it is Stage 0; everything after is Stage 1.
+`groupBy("word")` does not map to a single stage — it is split across two. The physical plan contains two `HashAggregate` operators separated by an `Exchange`: **partial aggregation** runs in Stage 0 (one partial count per partition, before the shuffle writes), and **final aggregation** runs in Stage 1 (combining all partial counts for each word, after the shuffle read). The `orderBy` introduces a second shuffle — a `rangepartitioning` exchange that distributes rows by count range so each executor can sort its slice independently — creating Stage 2. Stage 1 is therefore a `ShuffleMapStage`, not the final stage; Stage 2 (`ResultStage`) only sorts and collects.
 
-The DAGScheduler does not schedule all stages at once. It schedules Stage 0 first, waits for it to complete, then schedules Stage 1.
+The DAGScheduler does not schedule all stages at once. It submits Stage 0, waits for all map tasks to report `MapStatus`, then submits Stage 1, and finally Stage 2.
 
 **Static vs dynamic stage DAG.** For raw RDD jobs the stage DAG is fully determined at `handleJobSubmitted` time and never changes. For DataFrame/SQL jobs with AQE enabled (`spark.sql.adaptive.enabled = true`, default since Spark 3.2), the physical plan contains an `AdaptiveSparkPlanExec` operator that communicates back to the planner after each shuffle stage completes — using actual partition statistics rather than pre-execution estimates. This can cause the DAGScheduler to receive entirely new stage submissions mid-job: coalescing many small shuffle partitions into fewer large ones, swapping a `SortMergeJoin` for a `BroadcastHashJoin` if the build side turns out small, or splitting a skewed partition into sub-tasks. Raw RDD jobs are unaffected by AQE — the stage DAG is immutable once submitted.
 
