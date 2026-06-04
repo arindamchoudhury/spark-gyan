@@ -1041,14 +1041,7 @@ The DAGScheduler itself behaves identically whether the job originated from raw 
 - **Upward to TaskScheduler**: when a slot becomes available, the SchedulerBackend offers it to the TaskScheduler, which decides which task to place there.
 - **Outbound from driver → executors**: the SchedulerBackend serialises each assigned task and sends it to the executor; it also sends task-kill signals when needed.
 
-A `reviveThread` fires `ReviveOffers` periodically so delay scheduling can re-evaluate locality preferences without waiting for a new status update.
-
-The actual work is in `CoarseGrainedSchedulerBackend` (shared base for all cluster managers). Each subclass adds only cluster-manager lifecycle logic:
-
-- `StandaloneSchedulerBackend` — Spark Standalone
-- `YarnClientSchedulerBackend` / `YarnClusterSchedulerBackend` — YARN client and cluster deploy modes (`YarnSchedulerBackend` is the abstract base, not a usable class)
-- `KubernetesClusterSchedulerBackend` — Kubernetes
-- `LocalSchedulerBackend` — local mode; extends `SchedulerBackend` directly, bypasses `CoarseGrainedSchedulerBackend` entirely
+There is one SchedulerBackend implementation per cluster manager — Standalone, YARN, Kubernetes, and local mode each have their own. The task dispatch logic is shared across all of them; what differs is how each integrates with the cluster manager's resource allocation protocol.
 
 **MapOutputTracker** — two classes: `MapOutputTrackerMaster` on the driver and `MapOutputTrackerWorker` on each executor. The worker is not a thin stub — it maintains a local `mapStatuses` cache and uses epoch-based invalidation to avoid querying the master on every shuffle read. After every ShuffleMapStage task completes, the master registers the shuffle block locations: `shuffleStatuses[shuffleId][mapIndex] → MapStatus (location: BlockManagerId + getSizeForBlock(reduceId): Long)` — the key is `mapIndex` (the partition index, 0-based), not a task ID. When a downstream stage starts, its tasks query their local `MapOutputTrackerWorker` (fetching from the master only if the epoch is stale) to discover which executor holds each input partition before opening fetch connections. For large shuffle outputs, the master delivers statuses via Broadcast rather than direct RPC. Without MapOutputTracker, the shuffle read step would have no way to locate its data. How often it is consulted, how stale entries are invalidated after executor failure, and its consistency guarantees are covered in **Chapter 30 (E1 — Spark Internals)**.
 
