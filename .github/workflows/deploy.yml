@@ -29,7 +29,24 @@ jobs:
           python-version: "3.12"
 
       - name: Install Zensical
-        run: pip install zensical
+        run: pip install zensical tomli-w
+
+      # Published site shows only these top-level nav sections. The committed
+      # zensical.toml keeps the full nav for local builds; this trims a copy in
+      # the ephemeral CI checkout only (not committed).
+      - name: Trim published nav
+        run: |
+          python - <<'PY'
+          import tomllib, tomli_w
+          KEEP = {"Learning Path", "Spark Book"}
+          with open("zensical.toml", "rb") as f:
+              cfg = tomllib.load(f)
+          nav = cfg["project"]["nav"]
+          cfg["project"]["nav"] = [it for it in nav if next(iter(it)) in KEEP]
+          with open("zensical.toml", "wb") as f:
+              tomli_w.dump(cfg, f)
+          print("Published nav:", [next(iter(it)) for it in cfg["project"]["nav"]])
+          PY
 
       - name: Build site
         run: zensical build          # outputs ./site
