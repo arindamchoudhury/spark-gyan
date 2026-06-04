@@ -371,6 +371,21 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
+### ⬜ I11 — SQL Scripting
+
+**What it is:** Multi-statement SQL scripts with procedural constructs: `BEGIN...END` compound bodies, local variable declarations (`DECLARE`, `SET`), `IF...THEN...ELSIF...ELSE`, `CASE` (searched and simple), `WHILE`, `FOR`, `LOOP`, `REPEAT...UNTIL`, and `LEAVE`/`ITERATE` for loop control. New in Spark 4.0.
+
+**Why you need it:** SQL scripting lets you express multi-step procedural logic — conditional branches, loops, intermediate variables — entirely in SQL without switching to Python. Useful for complex ETL stored as SQL scripts and for interoperability with data warehouses that already use procedural SQL.
+
+**Learn it with:**
+
+1. **Spark-docs → SQL Scripting** ([spark.apache.org/docs/latest/sql-scripting.html](https://spark.apache.org/docs/latest/sql-scripting.html)) — the canonical reference; covers all statement types with examples
+2. **Spark 4.0 release notes** — understand which constructs were added in 4.0 vs 4.1
+
+**Milestone:** You can write a SQL script that declares a variable, iterates over a cursor with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline.
+
+---
+
 ### ✅ Intermediate Checkpoint + Certification
 
 You are ready to leave this level when you can:
@@ -556,6 +571,22 @@ You are ready to leave this level when you can:
 3. `chispa` library docs ([github.com/MrPowers/chispa](https://github.com/MrPowers/chispa)) — DataFrame equality assertions
 
 **Milestone:** You can write a pytest test that creates a local SparkSession, runs a transformation function, and asserts the output DataFrame matches an expected schema and row set.
+
+---
+
+### ⬜ A11 — Spark Declarative Pipelines
+
+**What it is:** A Python/SQL framework (new in Spark 4.1, runs over Spark Connect) for defining data pipelines as graphs of `MaterializedView`, `StreamingTable`, and `TemporaryView` outputs connected by `Flow` and `AutoCdcFlow` definitions. The pipeline engine handles incremental processing, dependency ordering, and restart semantics automatically.
+
+**Why you need it:** Declarative Pipelines is Apache Spark's open-source equivalent of Databricks Delta Live Tables (DLT). It removes the boilerplate of managing incremental state, checkpoints, and pipeline dependencies manually — you declare what each dataset should contain; the engine decides how to compute it.
+
+**Learn it with:**
+
+1. **Spark-docs → Declarative Pipelines** ([spark.apache.org/docs/latest/pipelines.html](https://spark.apache.org/docs/latest/pipelines.html)) — the primary reference; covers `@table`, `@materialized_view`, flows, and `AutoCdcFlow`
+2. **Spark 4.1 release notes** — feature scope and current limitations
+3. **Local stack** — run a pipeline against your Delta Lake + Unity Catalog setup; the `pyspark.pipelines` module is available in Spark 4.1.x
+
+**Milestone:** You can define a three-node pipeline (raw ingest → cleaned materialized view → aggregated streaming table) using Declarative Pipelines, add an `AutoCdcFlow` for CDC ingestion, and explain how the engine determines execution order from the dependency graph.
 
 ---
 
@@ -746,17 +777,17 @@ You are operating at Expert level when you can:
 ## Suggested Study Sequence
 
 ```
-Beginner (B1–B9)         → 30–40 hrs
+Beginner (B1–B9)          → 30–40 hrs
     ↓
-Intermediate (I1–I10)    → 35–50 hrs
+Intermediate (I1–I11)     → 35–50 hrs
     ↓  [Certification: Associate Developer for Apache Spark]
-Advanced (A1–A10)        → 40–60 hrs
+Advanced (A1–A11)         → 40–60 hrs
     ↓  [Certification: Data Engineer Associate]
-Expert (E1–E9)           → 40–60+ hrs
+Expert (E1–E9)            → 40–60+ hrs
     ↓  [Certification: Data Engineer Professional]
 ```
 
-**You are currently here:** B1–B9 ✅ + I1–I5 ✅ (14/38 topics done). Next: ⬜ I6 — Caching and Persistence.
+**You are currently here:** B1–B9 ✅ + I1–I5 ✅ (14/40 topics done). Next: ⬜ I6 — Caching and Persistence.
 
 ---
 
