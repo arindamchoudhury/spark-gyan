@@ -13,7 +13,14 @@
     - **Stage and job cancellation** — how `cancelJob`, `cancelStage`, and `killTaskAttempt` propagate through the event loop and interrupt running tasks on executors
 
 !!! note "📌 Additional topics deferred here from Chapter 1"
-    - **DataFrame → RDD lineage translation** — how `QueryExecution` compiles a DataFrame into an `RDD[InternalRow]`: the `Dataset.withAction()` entry point; the four compilation phases (Analyzer → Optimizer → SparkPlanner → PrepareForExecution); how `executedPlan.execute()` walks the `SparkPlan` tree recursively via `executeRDD = LazyTry { doExecute() }`; how each operator's `doExecute()` calls `child.execute()` bottom-up; how `ShuffleExchangeExec` embeds a `ShuffleDependency` into the RDD lineage (via `ShuffledRowRDD.getDependencies`), which is what the DAGScheduler detects as a stage boundary; `QueryExecution.toRdd` as the bridge: `new SQLExecutionRDD(executedPlan.execute(), conf)` (source-verified v4.1.2)
+    - **DataFrame → RDD lineage translation** — how `QueryExecution` compiles a DataFrame into an `RDD[InternalRow]`: the `Dataset.withAction()` entry point; the four compilation phases (Analyzer → Optimizer → SparkPlanner → PrepareForExecution); how `executedPlan.execute()` walks the `SparkPlan` tree recursively via `executeRDD = LazyTry { doExecute() }`; how each operator's `doExecute()` calls `child.execute()` bottom-up; how `ShuffleExchangeExec` embeds a `ShuffleDependency` into the RDD lineage (via `ShuffledRowRDD.getDependencies`), which is what the DAGScheduler detects as a stage boundary; `QueryExecution.toRdd` as the bridge: `new SQLExecutionRDD(executedPlan.execute(), conf)` (source-verified v4.1.2). The recursive execution tree:
+      ```
+      root.execute()
+        └── root.doExecute()
+              └── child.execute()
+                    └── child.doExecute()       ← ShuffleExchangeExec: returns ShuffledRowRDD(shuffleDependency)
+                          └── leaf.doExecute()  ← FileScanRDD: one partition per input file split
+      ```
     - **Internal row formats** — `InternalRow` (logical row abstraction), `UnsafeRow` (compact binary row used by Tungsten; on-heap by default, off-heap opt-in; reduces GC), and Apache Arrow (columnar format used for cross-process transfer in pandas UDFs); why three formats exist and when each is used
     - **Speculative execution detection mechanism** — executor heartbeat protocol, `spark.speculation.quantile = 0.9` (fraction of stage tasks that must complete before speculation begins), `spark.speculation.multiplier = 3` (how many times slower than median before a task is flagged), `spark.speculation.efficiency.enabled = true` (Spark 3.4+)
     - **Data locality decision logic** — `spark.locality.wait` (default 3s) and per-level overrides (`spark.locality.wait.process`, `.node`, `.rack`); how the TaskScheduler iterates through locality levels and falls back when no slot at the preferred level is available within the wait window

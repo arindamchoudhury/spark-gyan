@@ -1003,17 +1003,7 @@ The compilation runs in four phases entirely inside the driver JVM — no data m
 | **SparkPlanner** | Selects concrete physical operators: `SortMergeJoin` vs `BroadcastHashJoin`, `HashAggregate` vs `SortAggregate`, scan strategies |
 | **PrepareForExecution** | Applies 13 preparation rules in order: inserts `ShuffleExchangeExec` at every wide-dependency boundary, wraps stages with `WholeStageCodegenExec` (Tungsten codegen), `PlanSubqueries`, `EnsureRequirements`, etc. |
 
-The `executedPlan` is a tree of `SparkPlan` nodes. Calling `executedPlan.execute()` walks this tree recursively from root to leaf — each node calls `doExecute()`, which calls `execute()` on its children and wraps their output RDDs:
-
-```
-root.execute()
-  └── root.doExecute()
-        └── child.execute()
-              └── child.doExecute()       ← e.g. ShuffleExchangeExec: wraps child's RDD in ShuffleDependency
-                    └── leaf.doExecute()  ← FileScanRDD: one partition per input file split
-```
-
-Each `ShuffleExchangeExec` node introduces a `ShuffleDependency` into the RDD lineage — **this is how the DAGScheduler later discovers shuffle boundaries**. It walks the RDD graph looking for `ShuffleDependency` objects and cuts stage boundaries there. At the leaves, `FileScanRDD` creates one partition per file split. The result of `executedPlan.execute()` is `RDD[InternalRow]` — the full execution plan expressed as RDD operations — wrapped by `QueryExecution.toRdd` as `new SQLExecutionRDD(executedPlan.execute(), conf)` (verified against `QueryExecution.scala` v4.1.2). Only then does `SparkContext.runJob(rdd)` hand it to the DAGScheduler.
+Calling `executedPlan.execute()` walks the `SparkPlan` tree recursively, building the `RDD[InternalRow]` bottom-up. `ShuffleExchangeExec` nodes embed a `ShuffleDependency` into the lineage — the signal the DAGScheduler uses to detect stage boundaries. The result is wrapped as `new SQLExecutionRDD(executedPlan.execute(), conf)` by `QueryExecution.toRdd`, then handed to `SparkContext.runJob()`. The full recursive mechanics — `doExecute()`, `ShuffledRowRDD`, `FileScanRDD` — are covered in **Chapter 30 (E1 — Spark Internals)**.
 
 ```mermaid
 flowchart TD
