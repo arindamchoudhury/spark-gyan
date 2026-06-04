@@ -183,6 +183,8 @@ The chapter claim *"AnalysisException always arrives with the action result — 
 | `IndexShuffleBlockResolver` BlockManager usage | `core/.../shuffle/IndexShuffleBlockResolver.scala:137,154` | Uses `blockManager.diskBlockManager.getFile(blockId)` — **path resolution only** (gets the local file path); does NOT call `putBytes`, `putBlock`, `MemoryStore`, or `DiskStore` |
 | Shuffle data storage layer | — | Shuffle files are written directly to local disk paths returned by `DiskBlockManager`; they are **not tracked** in BlockManager's memory budget or eviction policy |
 | "Bypasses BlockManager's storage layer" | Source-verified | **Correct** — shuffle writes bypass MemoryStore/DiskStore; `DiskBlockManager` (a sub-component) is used only for file path resolution |
+| Shuffle file naming scheme | `core/.../storage/BlockId.scala:91,96` and `ShuffleMapTask.scala:101-104` | `shuffle_{shuffleId}_{mapId}_0.data` + `shuffle_{shuffleId}_{mapId}_0.index`; `mapId = context.taskAttemptId()` by default (not partitionId); old protocol (`SHUFFLE_USE_OLD_FETCH_PROTOCOL=true`) uses `partitionId` instead |
+| "(shuffleId, mapTaskId, attemptId)" encoding claim | **Wrong** | There is no separate `attemptId` field — the single `mapId` field IS the `taskAttemptId()`; `reduceId` is always `0` (NOOP_REDUCE_ID) for SortShuffleWriter |
 
 ---
 
