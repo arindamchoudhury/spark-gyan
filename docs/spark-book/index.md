@@ -5,7 +5,7 @@ Personal book written as I work through the [learning path](../learning-path.md)
 | Status | Ch | Topic code | Title | Written |
 |---|---|---|---|---|
 | ✅ | 01 | B1 | [Spark Architecture and the Execution Model](ch01-spark-architecture.md) | 2026-05-31 |
-| ✅ | 02 | B2 | [SparkSession and Entry Points](ch02-sparksession.md) | 2026-05-31 |
+| ✅ | 02 | B2 | [SparkSession and Entry Points](ch02-sparksession.md) | 2026-06-05 |
 | ✅ | 03 | I4 | [RDD Fundamentals](ch03-rdds.md) | 2026-05-31 |
 | ✅ | 04 | B3 | [The DataFrame API: Basics](ch04-dataframe-basics.md) | 2026-05-31 |
 | ✅ | 05 | B4 | [Reading and Writing Data](ch05-reading-writing-data.md) | 2026-05-31 |
