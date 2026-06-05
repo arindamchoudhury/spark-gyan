@@ -68,7 +68,7 @@ RDDs are still fully present in Spark 4.1.x — they have not been deprecated. B
 | Logistic regression vs HadoopBinMem | **20.7× faster** | Even beating Hadoop with in-memory binary format |
 | PageRank without co-partitioning | **2.4× faster** than Hadoop | Shuffles links + ranks on every iteration |
 | PageRank with co-partitioning | **7.4× faster** than Hadoop | Join becomes narrow — no shuffle per iteration |
-| Interactive query on 1 TB | **1.7–7 seconds** | vs 170 seconds from disk — 150× faster |
+| Interactive query on 1 TB | **5–7 seconds** | vs 170 seconds from disk — ~24–34× faster |
 
 The PageRank row shows the impact of `partitionBy()` directly: the difference between 2.4× and 7.4× is one call to co-partition the links and ranks RDDs before the iteration loop.
 
