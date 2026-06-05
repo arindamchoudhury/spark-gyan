@@ -1,4 +1,4 @@
-# Chapter 03 — RDD Fundamentals
+# Chapter 05 — RDD Fundamentals
 
 > *Learning-path topic: I4 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
@@ -88,14 +88,14 @@ Every RDD — whether created by `sc.textFile()`, `sc.parallelize()`, or any tra
 | `preferredLocations(p)` | DataNode addresses where partition `p` can be read without network transfer | HDFS block replica locations for partition `p` |
 | `dependencies()` | List of dependencies on parent RDDs — each is either `NarrowDependency` or `ShuffleDependency` | `map` → `NarrowDependency`; `reduceByKey` → `ShuffleDependency` |
 | `iterator(p, parentIters)` | Computes the elements of partition `p` given iterators over parent partitions | Applies `flatMap(line.split())` to each element yielded by the parent iterator |
-| `partitioner()` | `None` for most RDDs; `HashPartitioner(n)` after `partitionBy(n)` | `None` on raw `textFile`; `HashPartitioner(4)` after `partitionBy(4)` |
+| `partitioner()` | `None` for most RDDs; a hash partitioner after `partitionBy(n)` | `None` on raw `textFile`; a `portable_hash`-based partitioner after `partitionBy(4)` |
 
 **Why this matters:**
 
 - `dependencies()` is what tells the scheduler whether a stage boundary (shuffle) is needed. A `NarrowDependency` means the child can pipeline; a `ShuffleDependency` means a new stage must start.
 - `preferredLocations(p)` is how Spark implements data locality — the scheduler tries to assign each task to the node that holds its partition, avoiding network reads.
 - `iterator(p, parentIters)` is the computation itself — it is called lazily, one element at a time, enabling pipelining. No intermediate RDD is ever fully materialised in memory.
-- `partitioner()` is what makes `join()` between co-partitioned RDDs narrow: both RDDs return the same `HashPartitioner`, so the scheduler knows keys are already co-located.
+- `partitioner()` is what makes `join()` between co-partitioned RDDs narrow: both RDDs return the same partitioner, so the scheduler knows keys are already co-located (covered in detail under [Custom partitioning](#custom-partitioning-with-partitionby) below).
 
 This interface is also what makes RDDs composable: any user-defined transformation only needs to implement these five methods to integrate seamlessly with the scheduler, storage system, and fault recovery mechanism.
 
@@ -103,7 +103,7 @@ This interface is also what makes RDDs composable: any user-defined transformati
 
 ## Creating an RDD
 
-All RDD creation goes through `SparkContext`, accessed via `spark.sparkContext`. The four methods you'll use in practice:
+All RDD creation goes through `SparkContext`, accessed via `spark.sparkContext`. The methods you'll use in practice:
 
 ### `sc.parallelize()` — from an in-memory collection
 
@@ -282,7 +282,9 @@ First, a distinction that the rest of this section depends on — **a partition 
 - A **partition** is a physical chunk of the data. *Every* RDD has partitions from the moment it is created — `textFile` makes one per HDFS block, `parallelize` splits the collection into `numSlices` pieces. Partitions are about *how many* pieces the data is in.
 - A **partitioner** is a *rule* that decides **which key goes into which partition**. It is about *where* a given key lives. Most RDDs have **no partitioner at all** — `rdd.partitioner` returns `None`. When you `parallelize` a list or read a `textFile`, elements are assigned to partitions arbitrarily (by position or block), with no relationship between an element's *key* and its partition number.
 
-A partitioner only appears on **key-value RDDs**, and only after an operation that imposes one: `partitionBy(n)` sets one, and shuffle operations like `reduceByKey` and `groupByKey` leave one behind as a side effect. The rule it applies is `partition = hash(key) % n` — so a given key is *deterministically* sent to the same partition number every time the same partitioner is applied. (In PySpark this is a `Partitioner` object holding the number of partitions and a `partitionFunc` — `portable_hash` by default — not a Java `HashPartitioner`; the engine uses `HashPartitioner` underneath.)
+A partitioner only appears on **key-value RDDs**, and only after an operation that imposes one: `partitionBy(n)` sets one, and shuffle operations like `reduceByKey` and `groupByKey` leave one behind as a side effect. The rule it applies is `partition = hash(key) % n` — so a given key is *deterministically* sent to the same partition number every time the same partitioner is applied.
+
+Concretely, the partitioner is a small object that bundles two things: **how many** partitions there are (`n`), and the **function** that maps a key to a partition number (`partitionFunc`). The default `partitionFunc` is `portable_hash` — a hash that returns the same value in every executor process, which is what makes the placement consistent across the cluster.
 
 ```python
 sc.parallelize([("a", 1), ("b", 2)]).partitioner          # None — no rule
@@ -310,8 +312,8 @@ ranks = sc.parallelize([("a", 1.0), ("b", 1.0), ("c", 1.0)])
 joined = links.join(ranks)   # wide, data moves
 
 # With partitionBy — co-partition both RDDs once, then all joins are narrow
-# PySpark partitionBy takes (numPartitions, partitionFunc=portable_hash)
-# — NOT a Java HashPartitioner object; just pass the number of partitions
+# partitionBy(numPartitions) — just pass the number of partitions;
+# the default partitionFunc is portable_hash
 n = 4
 links_p = links.partitionBy(n).cache()   # partition once, reuse
 ranks_p = ranks.partitionBy(n)           # same n → same hash boundaries
@@ -360,7 +362,7 @@ ranks_ok = ranks_p.mapValues(lambda v: v * 0.85)
 | `sortByKey(ascending=True)` | Sort a `(K, V)` RDD by key — equivalent to the paper's `sort(c: Comparator[K])`; differs from `sortBy(f)` which sorts by any function | Wide (shuffle) |
 | `sample(withReplacement, fraction, seed)` | Random sample; `seed` makes sampling deterministic and reproducible | Narrow |
 | `cartesian(other)` | Cartesian product of two RDDs → `(T, U)` pairs; result has `M × N` rows — **use with care** | Wide (very expensive) |
-| `aggregateByKey(zero)(seqOp, combOp)` | For `(K, V)` pairs — aggregate per key with a different result type than the values; like `reduceByKey` but the accumulator type can differ from `V` | Wide (shuffle) |
+| `aggregateByKey(zeroValue, seqFunc, combFunc)` | For `(K, V)` pairs — aggregate per key with a different result type than the values; like `reduceByKey` but the accumulator type can differ from `V` | Wide (shuffle) |
 | `intersection(other)` | Elements present in **both** RDDs, deduplicated | Wide (shuffle) |
 | `repartition(n)` | Reshuffle into exactly `n` partitions, evenly balanced — increases *or* decreases the count | Wide (full shuffle) |
 | `coalesce(n)` | Reduce to `n` partitions by **merging** adjacent ones — no shuffle, but can leave uneven partitions; decrease only | Narrow (no shuffle) |
@@ -401,8 +403,8 @@ colors.cartesian(sizes).collect()
 | `saveAsTextFile(path)` | None — writes RDD as text files to path | |
 | `foreach(f)` | None — runs `f` on each element for side effects | `f` runs on executors, not the driver |
 | `lookup(key)` | List of values for `key` — only works on hash/range partitioned RDDs | Efficient random access — reads only the relevant partition |
-| `fold(zero)(f)` | Like `reduce` but with a zero value — `f` must still be associative; `zero` is applied once per partition | `zero` is added per partition, not once overall |
-| `aggregate(zero)(seqOp, combOp)` | General fold where the result type differs from the element type — `seqOp` merges elements into the accumulator, `combOp` merges accumulators | Most general aggregation action |
+| `fold(zeroValue, op)` | Like `reduce` but with a zero value — `op` must still be associative; `zeroValue` is applied once per partition | `zeroValue` is added per partition, not once overall |
+| `aggregate(zeroValue, seqOp, combOp)` | General fold where the result type differs from the element type — `seqOp` merges elements into the accumulator, `combOp` merges accumulators | Most general aggregation action |
 | `takeOrdered(n, key)` | Smallest `n` elements by natural order or `key` function | Avoids a full sort + collect |
 | `takeSample(withReplacement, n, seed)` | Exactly `n` random elements as a driver list | Fixed count (unlike `sample`, which takes a fraction) |
 | `countByKey()` | For `(K, V)` pairs — `dict` of `{key: count}` | Result collected to driver — safe only if keys are few |
@@ -691,39 +693,15 @@ print(f"Blanks: {blank_count.value}")
 
 ## Examples
 
-### Minimal example: create, map, filter, collect
+The complete word-count pipeline above already exercised `textFile → flatMap → filter → map → reduceByKey → sortBy`. The two examples here add what it didn't show: key-value aggregation in isolation, and crossing between the RDD and DataFrame layers.
+
+### Key-value RDDs and reduce
 
 ```python
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.appName("ch03").master("local[*]").getOrCreate()
-sc = spark.sparkContext
-
-# Create an RDD from a Python list
-numbers = sc.parallelize([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-
-# map — apply a function to every element
-squared = numbers.map(lambda x: x ** 2)
-
-# filter — keep elements where condition is True
-even_squared = squared.filter(lambda x: x % 2 == 0)
-
-# collect — action: bring all elements to the driver as a Python list
-result = even_squared.collect()
-print(result)   # [4, 16, 36, 64, 100]
-
-# take — collect only the first N elements (safer for large RDDs)
-print(even_squared.take(3))   # [4, 16, 36]
-```
-
-### Building up: key-value RDDs and reduce
-
-```python
-# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.appName("ch03-kv").master("local[*]").getOrCreate()
+spark = SparkSession.builder.appName("ch05-kv").master("local[*]").getOrCreate()
 sc = spark.sparkContext
 
 # Key-value pairs — (word, 1) for word counting
@@ -755,7 +733,7 @@ print(words_flat.collect())   # ['hello', 'world', 'foo', 'bar', 'baz']
 import pyspark.sql.types as T
 from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.appName("ch03-convert").master("local[*]").getOrCreate()
+spark = SparkSession.builder.appName("ch05-convert").master("local[*]").getOrCreate()
 sc = spark.sparkContext
 
 # RDD of tuples → DataFrame
