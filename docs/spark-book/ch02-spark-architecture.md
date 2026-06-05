@@ -1,21 +1,9 @@
-# Chapter 01a — Spark Architecture: Driver, Executors, and Cluster Managers
+# Chapter 02 — Spark Architecture: Driver, Executors, and Cluster Managers
 
 > *Learning-path topic: B1 (Beginner)*
-> *Status: ⬜ Not yet written*
+> *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
 This chapter covers the physical architecture of a Spark cluster — the components that run when a job executes and how they coordinate.
-
-Topics to cover:
-
-- **Driver process** — the JVM process that runs `main()`, holds the `SparkContext`, builds the DAG, and coordinates job execution; runs on the client machine (client mode) or on a cluster node (cluster mode)
-- **Executor processes** — JVM processes launched on worker nodes; each holds a fixed number of task slots and a memory pool split between execution memory and storage memory
-- **Cluster managers** — the resource layer Spark asks for executors: Standalone (built-in), YARN, Kubernetes, and local mode; Spark is cluster-manager-agnostic
-- **Deploy modes** — `client` (driver on the submitting machine, good for interactive use) vs `cluster` (driver on a cluster node, required for production jobs that must survive client disconnection)
-- **Memory model** — unified memory manager: on-heap execution memory + on-heap storage memory share a single pool with a soft boundary; off-heap memory opt-in via `spark.memory.offHeap.enabled`; executor overhead outside the JVM heap
-- **Task slots** — `spark.executor.cores` controls concurrency per executor; one task occupies one slot; a partition maps to one task
-- **Shuffle service** — external shuffle service (ESS) decouples shuffle file lifetime from executor lifetime, enabling dynamic allocation
-
-*This chapter is not yet written. The above topics will form its core.*
 
 ---
 
@@ -1095,3 +1083,5 @@ Spark uses three internal row representations across different phases — `Inter
 **Adaptive Query Execution (AQE).** Spark 4.x enables AQE by default. Where Catalyst optimizes before execution using estimated statistics, AQE re-enters the optimization pipeline at shuffle boundaries using *actual* collected statistics — coalescing small partitions, switching join strategies, and splitting skewed partitions at runtime. The full detail is in **Chapter 23 (A2 — Adaptive Query Execution)**.
 
 ---
+
+With the architecture in place — driver, executors, cluster manager, stage DAG, and shuffle — the next question is how to configure and initialise the Spark runtime itself. **Chapter 04 (SparkSession)** covers `SparkSession.builder` in full: config precedence, runtime modes, session reuse, and the relationship between `SparkSession` and the underlying `SparkContext`.
