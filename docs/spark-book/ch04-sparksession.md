@@ -49,6 +49,29 @@ spark.range(5).show()
 
 That is the whole ceremony. `SparkSession` is the unified entry point introduced in Spark 2.0 — one object that gives you DataFrames, SQL, streaming, and ML. It superseded the older `SparkContext` / `SQLContext` / `HiveContext` split, where you needed a different handle for each kind of work.
 
+### A bit of history: why one object?
+
+The single entry point is a relatively recent convenience. For Spark's first two years you juggled several:
+
+```mermaid
+timeline
+    title Spark entry-point history
+    Spark 1.0 (2014) : SparkContext — the only entry point (RDD world)
+    Spark 1.3 (2015) : DataFrame API arrives; SQLContext is its entry point
+                     : HiveContext extends SQLContext (Hive metastore, HQL, window functions)
+    Spark 1.6 (2016) : Dataset API added; still entered via SQLContext / HiveContext
+    Spark 2.0 (2016) : SparkSession unifies all three; SQLContext + HiveContext deprecated
+    Spark 3.4 (2023) : Spark Connect adds SparkSession.builder.remote()
+    Spark 4.x (2025) : Connect matured; classic SparkSession still the default
+```
+
+- **Spark 1.0–1.2** — `SparkContext` (`sc`) was the *only* entry point. Everything was RDDs; there was no structured API.
+- **Spark 1.3** — the **DataFrame** arrived and needed its own handle, so you wrapped `SparkContext` in a `SQLContext` — or in a `HiveContext` (which extends `SQLContext`) for Hive metastore access, HQL parsing, and window functions. You now needed *two* objects: `sc` for RDDs and a context for DataFrames.
+- **Spark 1.6** — the typed **Dataset** API was added, but the entry points did not change. Three overlapping objects, with `HiveContext` strictly more capable than `SQLContext`, was now a genuine pain point.
+- **Spark 2.0** — `SparkSession` collapsed `SQLContext` and `HiveContext` into one builder; `DataFrame` became an alias for `Dataset[Row]`; Hive support became a flag (`.enableHiveSupport()`) instead of a separate class. Both old contexts were **deprecated in 2.0.0**.
+
+Two things did *not* happen. `SparkContext` was never deprecated — `SparkSession` wraps it, and it is still reachable via `spark.sparkContext` (this is the object the previous section describes). And the deprecated contexts were never removed — `SQLContext` and `HiveContext` still ship in Spark 4.x for backward compatibility, so decade-old code keeps running unchanged.
+
 The first line of every example you write will look like this. The interesting part is the last method call — `getOrCreate()` — which does more (and less) than it appears.
 
 ---
@@ -83,6 +106,12 @@ Only one SparkContext may be running in this JVM (see SPARK-2243)
 
 The restriction exists because two contexts in one process would both try to own the cluster connection, bind the same ports, and manage the same thread pools — a recipe for resource conflicts. The single-context rule keeps the driver's state coherent.
 
+This is the reason `getOrCreate()` ignores your config: the configuration that matters is baked into the SparkContext when it is *first* built, and since there can only be one context per JVM, a later builder cannot reconfigure the engine that is already running. It hands you the existing session instead. To force a fresh one with new config, shut the current session down first with `spark.stop()`, then rebuild.
+
+### One context, many sessions
+
+The singleton is the *context*, not the *session*. Many `SparkSession` objects can share one SparkContext via `spark.newSession()`. Each gets its own isolated namespace — temp views, SQL config, registered functions — while running on the same underlying engine:
+
 ```mermaid
 flowchart TD
     JVM["Driver JVM process"]
@@ -93,12 +122,6 @@ flowchart TD
     SC --> SS1
     SC --> SS2
 ```
-
-This is the reason `getOrCreate()` ignores your config: the configuration that matters is baked into the SparkContext when it is *first* built, and since there can only be one context per JVM, a later builder cannot reconfigure the engine that is already running. It hands you the existing session instead. To force a fresh one with new config, shut the current session down first with `spark.stop()`, then rebuild.
-
-### One context, many sessions
-
-The singleton is the *context*, not the *session*. Many `SparkSession` objects can share one SparkContext via `spark.newSession()`. Each gets its own isolated namespace — temp views, SQL config, registered functions — while running on the same underlying engine:
 
 ```python
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
@@ -119,7 +142,8 @@ In **cluster mode** the rule applies per *driver process*, not per cluster. Each
 
 Configuration falls into two camps, and confusing them is a common source of "I set it but nothing changed."
 
-**Build-time configs** are fixed when the SparkContext is created and cannot change for the life of the process — `spark.master` and `spark.app.name` are the classic examples. **Runtime configs** can be changed afterwards with `spark.conf.set(key, value)`; `spark.sql.shuffle.partitions` is one. When in doubt, ask Spark directly:
+- **Build-time configs** are fixed when the SparkContext is created and cannot change for the life of the process — `spark.master` and `spark.app.name` are the classic examples. 
+- **Runtime configs** can be changed afterwards with `spark.conf.set(key, value)`; `spark.sql.shuffle.partitions` is one. When in doubt, ask Spark directly:
 
 ```python
 spark.conf.isModifiable("spark.sql.shuffle.partitions")   # True
@@ -217,7 +241,7 @@ Spark 4.x ships two ways for your Python process to talk to the engine, and know
 
 **Classic mode** is what every example so far has used: the Python process launches a local driver JVM and talks to it in-process. It remains the **default** for both the `pyspark` shell and `spark-submit`.
 
-**Spark Connect** decouples the client from the driver. Your Python process becomes a thin client that sends an unresolved logical plan over gRPC to a separate Spark Connect server, which runs the engine and streams results back. The DataFrame API is identical — only the transport changes — but the client no longer needs a local JVM, which makes it ideal for lightweight clients, IDEs, and embedding Spark in applications.
+**Spark Connect** breaks that coupling. Instead of launching a local driver JVM, your Python process becomes a thin **client**: it sends an unresolved logical plan over gRPC to a separate Spark Connect server, and the server runs the engine and streams results back. The DataFrame API is identical — only the transport changes — but because the client no longer needs a local JVM, it is ideal for lightweight clients, IDEs, and embedding Spark in applications.
 
 Connect is **opt-in** in 4.x. You enable it explicitly with `SPARK_REMOTE`, the `--remote` flag, `spark.api.mode=connect`, or the builder's `.remote(...)`:
 
@@ -234,6 +258,18 @@ spark = (
 
 spark.range(5).show()   # identical API; only the transport layer differs
 ```
+
+Start the server before you connect. With a tarball or pip install, the Connect server JARs ship with Spark 4.x, so no `--packages` is needed:
+
+```bash
+# Start the Spark Connect server (binds gRPC on port 15002 by default)
+./sbin/start-connect-server.sh
+
+# Stop it when done
+./sbin/stop-connect-server.sh
+```
+
+In this project's Docker stack the Connect server is already running inside the `spark` container on port 15002 — you connect straight to `sc://localhost:15002` without starting anything yourself.
 
 The most common Connect mistake is opting in without a server running: point at `sc://localhost:15002` with nothing listening and the session fails at startup. If you are not deliberately using Connect, you are in classic mode and do not need a server at all.
 
