@@ -1,7 +1,7 @@
-# Chapter 01b — Installing Spark
+# Chapter 03 — Installing Spark
 
-> *Learning-path topic: B1 (Beginner)*
-> *Written: 2026-06-05 · Spark 4.1.x / Python 3.11+*
+> *Learning-path topic: Setup (prerequisite)*
+> *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
 ---
 
@@ -111,3 +111,7 @@ EOF
 ```
 
 After this, `import pyspark` and `import py4j` resolve to the tarball's copies — identical to what the daemons and executors use. No `pip install pyspark` needed, and `PYTHONPATH` does not need to be set manually.
+
+---
+
+With Spark installed and reachable, **Chapter 04 (SparkSession)** covers how to initialise the runtime from Python: `SparkSession.builder`, config precedence, session reuse, and the relationship between `SparkSession` and the underlying `SparkContext`.
