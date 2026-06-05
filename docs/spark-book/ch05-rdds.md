@@ -254,9 +254,24 @@ Wide transformations trigger a **shuffle** — data must move across executors, 
 
 ### Custom partitioning with `partitionBy()`
 
-By default Spark assigns partitions arbitrarily. For key-value RDDs that are joined repeatedly, explicitly controlling partitioning eliminates the shuffle entirely — the most impactful single optimisation available in the RDD API.
+First, a distinction that the rest of this section depends on — **a partition is not the same thing as a partitioner:**
 
-**The rule:** if two RDDs are partitioned the same way (same partitioner, same number of partitions), a `join()` between them requires **no data movement** — each key's values are already co-located on the same executor.
+- A **partition** is a physical chunk of the data. *Every* RDD has partitions from the moment it is created — `textFile` makes one per HDFS block, `parallelize` splits the collection into `numSlices` pieces. Partitions are about *how many* pieces the data is in.
+- A **partitioner** is a *rule* that decides **which key goes into which partition**. It is about *where* a given key lives. Most RDDs have **no partitioner at all** — `rdd.partitioner` returns `None`. When you `parallelize` a list or read a `textFile`, elements are assigned to partitions arbitrarily (by position or block), with no relationship between an element's *key* and its partition number.
+
+A partitioner only appears on **key-value RDDs**, and only after an operation that imposes one: `partitionBy(n)` sets one, and shuffle operations like `reduceByKey` and `groupByKey` leave one behind as a side effect. The rule it applies is `partition = hash(key) % n` — so a given key is *deterministically* sent to the same partition number every time the same partitioner is applied. (In PySpark this is a `Partitioner` object holding the number of partitions and a `partitionFunc` — `portable_hash` by default — not a Java `HashPartitioner`; the engine uses `HashPartitioner` underneath.)
+
+```python
+sc.parallelize([("a", 1), ("b", 2)]).partitioner          # None — no rule
+sc.parallelize([("a", 1), ("b", 2)]).partitionBy(4).partitioner
+# <pyspark...Partitioner object> — keys now placed by portable_hash(key) % 4
+```
+
+This is the foundation for everything below: two RDDs are **co-partitioned** when they carry the *same* partitioner and the *same* number of partitions — which guarantees that any given key sits in the same partition number in both, on the same executor. PySpark compares partitioners by both the partition count *and* the partition function (`Partitioner.__eq__`), which is what lets the engine recognise the join as narrow.
+
+By default Spark assigns keys to partitions arbitrarily (no partitioner). For key-value RDDs that are joined repeatedly, explicitly imposing a partitioner eliminates the shuffle entirely — the most impactful single optimisation available in the RDD API.
+
+**The rule:** if two RDDs share a partitioner (same partitioner type, same number of partitions), a `join()` between them requires **no data movement** — each key's values are already co-located on the same executor.
 
 ```python
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
@@ -281,6 +296,15 @@ ranks_p = ranks.partitionBy(n)           # same n → same hash boundaries
 # join is now narrow — keys guaranteed to be on the same partition
 joined_p = links_p.join(ranks_p)   # no shuffle
 ```
+
+**Why "repeatedly" is the operative word.** `partitionBy` is *itself* a shuffle — co-partitioning the data the first time costs exactly one shuffle. Join two RDDs only once and you have paid for a shuffle either way; there is no win. The payoff comes from amortization: pay the shuffle **once**, then every subsequent join is free.
+
+```
+One-time cost:   partitionBy        → 1 shuffle
+Then:            join #1, #2, #3, … → 0 shuffles each
+```
+
+This is exactly the PageRank pattern — `links` is joined against `ranks` once *per iteration*, for 10–50 iterations. Partition `links` once, `.cache()` it so the partitioned form is reused rather than recomputed from lineage on every iteration, and every iteration's join after the first is a narrow, shuffle-free operation. Spark decides this per input RDD at join time: internally `CoGroupedRDD` checks `if (rdd.partitioner == Some(part))` and emits a narrow `OneToOneDependency` when the partitioners already match, falling back to a `ShuffleDependency` only when they do not.
 
 The Zaharia et al. (2012) PageRank experiment measured this directly: with co-partitioning, PageRank ran **7.4× faster** than Hadoop; without it, only **2.4×**. The difference is entirely the eliminated shuffle.
 
