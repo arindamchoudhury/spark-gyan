@@ -13,6 +13,7 @@ The RDD (Resilient Distributed Dataset) is Spark's original data model — a sch
 - All the ways to create an RDD manually
 - The programming model: transformations vs actions, lazy evaluation, narrow vs wide
 - Why higher-order functions (`map`, `flatMap`, `filter`) are the core RDD API
+- How closures are shipped to executors — and why mutating driver state inside one silently fails on a cluster
 - How data moves between disk, executor memory, and the driver during execution
 - How RDD partitions are stored — `MEMORY_ONLY`, `MEMORY_AND_DISK`, `OFF_HEAP`
 - The Python-JVM serialisation cost and why it matters
@@ -173,6 +174,28 @@ row_rdd = df.rdd
 # RDD[Row] — Row(id=1, name='alice'), Row(id=2, name='bob')
 print(row_rdd.collect())
 ```
+
+### Binary and Hadoop formats
+
+Beyond text, `SparkContext` can read and write the binary formats Spark inherited from Hadoop. These are niche in a PySpark/DataFrame world — for tabular data you would reach for `spark.read.parquet` instead — but they appear in older RDD pipelines and when interoperating with Hadoop systems.
+
+| Method | Direction | Format |
+|---|---|---|
+| `sc.pickleFile(path)` / `rdd.saveAsPickleFile(path)` | read / write | PySpark's own format — Python objects serialised with pickle, batched. The PySpark equivalent of Scala's `objectFile`/`saveAsObjectFile`. |
+| `sc.sequenceFile(path, keyClass, valueClass)` / `rdd.saveAsSequenceFile(path)` | read / write | Hadoop `SequenceFile` — flat binary key-value records, with Writable types converted to/from Python via PySpark's converter layer |
+| `sc.hadoopFile(...)` / `sc.newAPIHadoopFile(...)` | read | Any Hadoop `InputFormat` — the old (`mapred`) and new (`mapreduce`) APIs respectively; lets you plug in arbitrary formats (HBase, Cassandra, custom) |
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+sc = spark.sparkContext
+
+# PySpark pickle format — round-trips arbitrary Python objects
+sc.parallelize([("a", 1), ("b", 2)]).saveAsPickleFile("out/pickled")
+restored = sc.pickleFile("out/pickled")
+print(restored.collect())   # [('a', 1), ('b', 2)]
+```
+
+For new code, prefer `spark.read` / `df.write` with Parquet or Delta — they are columnar, splittable, schema-aware, and far faster than these RDD-era formats. Reach for `sequenceFile`/`hadoopFile` only when an existing Hadoop system forces the format on you.
 
 ### Quick reference
 
@@ -337,6 +360,12 @@ ranks_ok = ranks_p.mapValues(lambda v: v * 0.85)
 | `sortByKey(ascending=True)` | Sort a `(K, V)` RDD by key — equivalent to the paper's `sort(c: Comparator[K])`; differs from `sortBy(f)` which sorts by any function | Wide (shuffle) |
 | `sample(withReplacement, fraction, seed)` | Random sample; `seed` makes sampling deterministic and reproducible | Narrow |
 | `cartesian(other)` | Cartesian product of two RDDs → `(T, U)` pairs; result has `M × N` rows — **use with care** | Wide (very expensive) |
+| `aggregateByKey(zero)(seqOp, combOp)` | For `(K, V)` pairs — aggregate per key with a different result type than the values; like `reduceByKey` but the accumulator type can differ from `V` | Wide (shuffle) |
+| `intersection(other)` | Elements present in **both** RDDs, deduplicated | Wide (shuffle) |
+| `repartition(n)` | Reshuffle into exactly `n` partitions, evenly balanced — increases *or* decreases the count | Wide (full shuffle) |
+| `coalesce(n)` | Reduce to `n` partitions by **merging** adjacent ones — no shuffle, but can leave uneven partitions; decrease only | Narrow (no shuffle) |
+| `repartitionAndSortWithinPartitions(p)` | Repartition by partitioner `p` **and** sort within each partition in one shuffle — cheaper than `repartition` then `sortBy` | Wide (shuffle) |
+| `pipe(command)` | Stream each partition through an external shell command (e.g. a Perl/C binary), one line per element | Narrow |
 
 ```python
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
@@ -372,6 +401,12 @@ colors.cartesian(sizes).collect()
 | `saveAsTextFile(path)` | None — writes RDD as text files to path | |
 | `foreach(f)` | None — runs `f` on each element for side effects | `f` runs on executors, not the driver |
 | `lookup(key)` | List of values for `key` — only works on hash/range partitioned RDDs | Efficient random access — reads only the relevant partition |
+| `fold(zero)(f)` | Like `reduce` but with a zero value — `f` must still be associative; `zero` is applied once per partition | `zero` is added per partition, not once overall |
+| `aggregate(zero)(seqOp, combOp)` | General fold where the result type differs from the element type — `seqOp` merges elements into the accumulator, `combOp` merges accumulators | Most general aggregation action |
+| `takeOrdered(n, key)` | Smallest `n` elements by natural order or `key` function | Avoids a full sort + collect |
+| `takeSample(withReplacement, n, seed)` | Exactly `n` random elements as a driver list | Fixed count (unlike `sample`, which takes a fraction) |
+| `countByKey()` | For `(K, V)` pairs — `dict` of `{key: count}` | Result collected to driver — safe only if keys are few |
+| `foreachPartition(f)` | Run `f` once per partition, passed an iterator of its elements | Use for per-partition setup (open one DB connection per partition, not per row) |
 
 ### A complete example — data in memory and on disk
 
@@ -554,6 +589,48 @@ flowchart LR
 ```
 
 For structured data, DataFrames avoid this entirely — the Python process sends only the logical plan to the JVM; data never crosses the boundary. This is why DataFrames are typically 3–8× faster than RDDs for tabular operations.
+
+---
+
+## Closures and the execution model
+
+Every function you pass to a transformation or action — a lambda, a named function — is a **closure**: it captures the variables it references from the surrounding scope. To run it on the cluster, Spark **cloudpickles the closure**, including a *copy* of every captured variable, and ships that copy to each executor. The executors run against their own copies. This single fact is the source of the most common correctness bug in the RDD API.
+
+### The counter that never counts
+
+Consider trying to total a list by mutating an outer variable inside `foreach`:
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+sc = spark.sparkContext
+
+counter = 0
+rdd = sc.parallelize(range(1, 11))   # 1..10
+
+def add_to_counter(x):
+    global counter
+    counter += x        # mutates the EXECUTOR's copy, not the driver's
+
+rdd.foreach(add_to_counter)
+print(counter)          # 0  — not 55
+```
+
+The result is `0`, not `55`. When `foreach` runs, Spark serialises the closure — including the current value of `counter` (`0`) — and sends a copy to each executor. Each executor increments **its own copy**. The driver's `counter` is never touched. After the action completes, the executor copies are discarded and the driver still reads `0`.
+
+### Why it "works" locally and breaks on a cluster
+
+The cruellest part: in `local[*]` mode the driver and executors share one JVM and one Python process, so the closure may mutate the same object and the counter *appears* to work. Deploy the identical code to a real cluster — where executors are separate processes on separate machines — and it silently returns wrong answers. Code that passed every local test fails in production with no error, no stack trace, just a wrong number.
+
+> **The rule:** never mutate driver-side state from inside a closure. A closure can *read* captured values (you get a copy), but anything it *writes* is lost when the task ends. This applies to counters, lists, dictionaries, and any object defined on the driver.
+
+### The two correct tools
+
+Spark provides two purpose-built shared-variable types precisely because ordinary closures cannot share state back to the driver or efficiently share large state out to executors:
+
+- **Accumulators** — the correct way to aggregate a value *back to* the driver (the `counter` above becomes `sc.accumulator(0)`).
+- **Broadcast variables** — the correct way to share a large read-only value *out to* executors without copying it into every task closure.
+
+Both are covered next.
 
 ---
 
