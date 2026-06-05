@@ -564,8 +564,9 @@ sc.setCheckpointDir("hdfs:///spark-checkpoints/")   # must be set first
 for i in range(100):
     ranks = ranks.join(links).mapValues(lambda v: 0.15 + 0.85 * v)
     if i % 10 == 0:
+        ranks.cache()        # cache FIRST — else checkpoint recomputes ranks from scratch
         ranks.checkpoint()   # truncates lineage here
-        ranks.count()        # materialise before moving on (checkpoint needs an action)
+        ranks.count()        # materialise: count populates cache, checkpoint reads from it
 ```
 
 Key rules:
@@ -579,7 +580,9 @@ Key rules:
 
 ### The Python-JVM serialisation cost
 
-Every RDD operation in PySpark crosses the JVM-Python boundary. Data is serialised from the JVM (where Spark's storage lives) into Python worker processes via cloudpickle, the function runs, then results are cloudpickled back. This happens **per partition per operation**.
+Every RDD operation that **runs a Python function over the data** crosses the JVM-Python boundary. Data is serialised from the JVM (where Spark stores each partition as pickled byte arrays) into Python worker processes via cloudpickle, the function runs, then results are cloudpickled back. This happens **per partition per such operation**.
+
+Not every operation pays this cost. Operations that only move or tag the stored bytes — `union`, `coalesce`, `repartition`, `cache`, `persist`, `checkpoint` — delegate straight to the JVM RDD and never ship data to a Python worker. The crossing happens specifically when your code (or an internal helper) executes on each record: `map`, `filter`, `flatMap`, `foreach`, and even `count` (internally `mapPartitions(lambda i: [sum(1 for _ in i)]).sum()`). The practical lesson: the boundary tax is the cost of *running Python over the data*, not of using the RDD API at all.
 
 ```mermaid
 flowchart LR
