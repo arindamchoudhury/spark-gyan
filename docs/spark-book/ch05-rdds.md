@@ -44,11 +44,13 @@ This made two classes of computation prohibitively slow:
 RDDs solved both by letting users **explicitly cache a dataset in memory** across operations. After the first computation, the data stays on executors. Subsequent operations read from RAM instead of HDFS — 10–100× faster.
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph MapReduce["MapReduce (disk-bound)"]
+        direction LR
         D1["Iteration 1\nread HDFS"] --> D2["Iteration 2\nread HDFS"] --> D3["Iteration 3\nread HDFS"]
     end
     subgraph Spark["Spark RDD (in-memory)"]
+        direction LR
         M1["Iteration 1\nread source"] --> M2["Iteration 2\nfrom memory"] --> M3["Iteration 3\nfrom memory"]
     end
 ```
