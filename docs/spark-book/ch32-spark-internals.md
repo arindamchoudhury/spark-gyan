@@ -4,7 +4,7 @@
 > *Status: ⬜ Not yet written*
 
 > **Note "📌 Topics deferred here from Chapter 1"
-    The following DAGScheduler internals are introduced conceptually in [Chapter 1](ch01-spark-architecture.md) and covered in full implementation detail here:
+    The following DAGScheduler internals are introduced conceptually in [Chapter 2](ch02-spark-architecture.md) and covered in full implementation detail here:
 
     - **`handleJobSubmitted → createResultStage → submitStage → submitMissingTasks`** — the full call chain from job submission to task launch, including how `createResultStage` recursively calls `getOrCreateShuffleMapStage` to build the stage graph bottom-up
     - **Parent-availability gating and child-stage submission** — how `submitStage` checks each parent `ShuffleMapStage`'s `isAvailable` (are its shuffle outputs registered?) before launching a stage, placing not-yet-ready stages in `waitingStages`; and how `processShuffleMapStageCompletion → submitWaitingChildStages` promotes a waiting child stage the instant its last parent's `MapStatus` arrives. This is the runtime mechanism behind Chapter 1's "submits Stage 0, waits, then Stage 1, finally Stage 2" — Chapter 1 states the *behaviour*; this chapter names the methods.

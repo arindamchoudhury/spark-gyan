@@ -705,7 +705,7 @@ print(back_to_rdd.first())   # Row(id=1, name='Alice', salary=95000)
 - RDD operations cross the Python-JVM boundary per partition per operation — slower than DataFrames for structured data.
 - `collect()` brings all data to the driver — use only when the result is small; prefer `take(N)` for sampling.
 - Convert RDD → DataFrame with `spark.createDataFrame(rdd, schema)`; DataFrame → RDD with `df.rdd`.
-- Chapter 14 covers partitioning — how Spark distributes data and how to control it.
+- Chapter 16 covers partitioning — how Spark distributes data and how to control it.
 
 ---
 
