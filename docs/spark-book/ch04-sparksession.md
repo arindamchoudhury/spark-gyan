@@ -73,12 +73,7 @@ To understand *why* it works this way, you need to see what lives underneath the
 
 PySpark is a Python wrapper around an engine written in Scala and Java. When you start a PySpark application, your Python process launches a **JVM** (Java Virtual Machine) alongside it — the driver JVM from Chapter 1 — and that JVM is where Spark's engine actually runs.
 
-Inside that JVM sits the **SparkContext**: the object that
-
-- holds the connection to the cluster manager,
-- manages thread pools for job submission,
-- tracks RDD lineage,
-- and owns the shuffle manager, broadcast registry, and accumulators.
+Inside that JVM sits the **SparkContext**: the coordinator between your application and the cluster. It owns the scheduler stack — the components that turn a job into stages, stages into tasks, and tasks into executor assignments — and holds the connection to the cluster manager for resource allocation. It also tracks which RDD partitions have been explicitly cached. Lower-level infrastructure — the broadcast system, the block manager, and the shuffle machinery — is managed by a companion environment object that SparkContext creates and owns.
 
 Spark enforces a hard rule: **one SparkContext per JVM**. When a SparkContext is created it registers itself in a global variable in the Scala source, and any attempt to create a second one without stopping the first throws:
 
