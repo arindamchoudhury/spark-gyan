@@ -1,11 +1,11 @@
 # Chapter 01 — Spark Architecture and the Execution Model
 
 > *Learning-path topic: B1 (Beginner)*
-> *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
+> *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
 > **Source:** *"Spark: The Definitive Guide"* — Bill Chambers & Matei Zaharia (O'Reilly, 2018) · Chapters 1–3, 15–16
 
-!!! note "📌 Spark version note"
+> **Note "📌 Spark version note"
     The Chambers & Zaharia book targets Spark 2.x. This chapter is written against **Spark 4.1.x / Python 3.10+**. Key differences: `SparkSession` replaces `SQLContext` (since 2.0); Structured Streaming replaces the DStream API (removed in 4.0); ANSI mode is on by default (since 4.0); Spark Connect is available as a client-only mode (GA in 4.0); `pyspark-client` ships without a JVM (4.0+).
 
 Apache Spark is a distributed analytics engine. Understanding how it distributes work — and why — is the foundation every debugging and tuning decision rests on. Get this mental model right and most Spark surprises become predictable.
@@ -25,6 +25,8 @@ By 2010, Hadoop MapReduce was the dominant large-scale data processing framework
 | DAG node | One full job (Map phase + Reduce phase) | One operator (`filter`, `groupBy`, `join`, …) |
 | Data between nodes | Mandatory HDFS write + read | In-memory pipeline within a stage; disk only at shuffle boundaries |
 | Working-set reuse | Impossible — every job rereads from disk | `.cache()` keeps partitions in executor memory across actions |
+
+> **Note — two levels of DAG in Spark.** The "one operator per DAG node" description applies to the *logical plan* (the Catalyst tree the optimizer rewrites). At *execution* time the DAGScheduler works with **stages**, not individual operators: consecutive narrow operators (`filter → withColumn → select`) collapse into a single stage and run as one pipeline pass, with no materialization between them. Wide operators (`groupBy`, `join`) introduce a shuffle boundary and start a new stage. So the logical DAG is operator-grained; the execution DAG is stage-grained. The table captures the right spirit — Spark's unit of work is far more granular than a MapReduce job — but the execution node is a stage, not a single operator.
 
 Each MapReduce job reads from disk, applies map and reduce functions, and writes results back to HDFS. There is no way to carry data in memory from one job to the next.
 
@@ -490,7 +492,7 @@ Every line between `spark.read.text(...)` and `.show(10)` is a **transformation*
 
 ---
 
-## Core concept
+## Anatomy of a Spark application
 
 [![Spark cluster overview](assets/ch01/cluster-overview.png)](assets/ch01/cluster-overview.png)
 
@@ -821,172 +823,9 @@ A fourth mechanism handles *slowness* rather than failure: **speculative executi
 
 ---
 
-### The full sequence for `.show(10)`
-
-#### The two-layer Python/JVM model (classic mode)
-
-In classic mode, PySpark's `DataFrame` is a two-layer object. The Python `DataFrame` you hold in your code is a thin proxy — it has no logical plan of its own, no execution engine, and cannot trigger computation. It holds one important attribute: `self._jdf`, a Py4J `JavaObject` reference to a `Dataset[Row]` living in the driver JVM.
-
-The `Dataset[Row]` in the JVM is the real Spark object. It owns the `QueryExecution`, holds the logical plan tree, and is the component that triggers actions. When `df.show(10)` is called in Python, the Python `DataFrame` delegates immediately to `self._jdf` over the Py4J local socket — a TCP connection on `127.0.0.1`. The action does not fire in Python; it fires in the JVM when `Dataset[Row]` calls `withAction()`. Python is the messenger; the JVM `Dataset[Row]` is the actor.
-
-#### The same call in Connect mode
-
-In Connect mode the two-layer structure is replaced by a client/server split across a network boundary. The Python `DataFrame` holds a `LogicalPlan` protobuf — there is no `self._jdf`, no Py4J socket, and no JVM in the client process at all.
-
-When `df.show(10)` is called, the Python process serializes the entire unresolved logical plan as protobuf and sends it to the Connect server over a gRPC `ExecutePlan` RPC. The Connect server — which runs the JVM — receives the protobuf, deserializes it into its own `Dataset[Row]`, and runs `withAction()` there. Results stream back to the Python client as Apache Arrow record batches.
-
-| | Classic | Connect |
-|---|---|---|
-| Python `DataFrame` holds | `self._jdf` — Py4J proxy to JVM `Dataset[Row]` | A protobuf `LogicalPlan` — no JVM reference |
-| Action trigger | `Dataset[Row].withAction()` in the driver JVM (same machine) | `Dataset[Row].withAction()` on the Connect server (remote JVM) |
-| Transport | Py4J local socket (`127.0.0.1`) | gRPC over the network |
-| Results returned as | JVM objects serialized back through Py4J | Apache Arrow record batches |
-| Where `AnalysisException` fires | Driver JVM — can be raised locally before any action (e.g. `.schema` access) | Connect server — always arrives as a gRPC error response; never raised locally |
-| `df._jdf` accessible | Yes | No — raises `PySparkAttributeError: JVM_ATTRIBUTE_NOT_SUPPORTED` |
-
-```
-[driver JVM]
-1. Python process (Py4J) → Dataset.show() triggers action
-   who:         Python worker + JVM Dataset layer
-   explanation: This is the moment the lazy evaluation contract ends.
-     Every transformation call before this point was only recording
-     intent — no data moved and no executor CPU was used. In classic
-     mode the call crosses the Py4J boundary into the JVM's
-     Dataset[Row], where the action is officially registered. In
-     Connect mode the Python process serializes the unresolved plan as
-     protobuf and sends it to the Connect server over gRPC; the action
-     fires there and all remaining steps happen on the server.
-
-2. QueryExecution runs the compilation pipeline:
-     Analyzer         → resolves column names/types against catalog   (analyzed)
-     Optimizer        → Catalyst rules: predicate pushdown, etc.      (optimizedPlan)
-     SparkPlanner     → selects physical operators                     (sparkPlan)
-     PrepareForExecution → inserts ShuffleExchangeExec,
-                           WholeStageCodegenExec, etc.                (executedPlan)
-     executedPlan.execute() → each SparkPlan builds its RDD;
-                           ShuffleExchangeExec embeds ShuffleDependency in lineage
-   who:         QueryExecution (driver JVM)
-   explanation: The driver compiles the logical plan into a physical
-     execution plan — entirely inside the driver JVM, with no data
-     movement. The Analyzer resolves symbolic column references into
-     concrete typed attributes using the catalog. The Optimizer
-     rewrites the plan using algebraic equivalence rules, reordering
-     and pruning operators in ways that are mathematically equivalent
-     but cheaper to execute. The Planner selects physical operators
-     (which join algorithm, which aggregation strategy). The codegen
-     step fuses multiple operators into a single compiled JVM function,
-     eliminating per-row virtual method call overhead. The boundary
-     between "plan" and "execution" is crossed here — the output is an
-     RDD lineage that the DAGScheduler can act on.
-
-3. DAGScheduler walks the RDD lineage, finds ShuffleDependency objects,
-   cuts a stage boundary at each one, builds the stage DAG
-   who:         DAGScheduler (driver JVM)
-   explanation: The DAGScheduler classifies every dependency between a
-     child RDD and its parent RDD as narrow (each output partition
-     depends on one input partition — pipelineable) or wide (each
-     output partition depends on many — requires a shuffle). Every wide
-     dependency becomes a stage boundary. The result is a DAG of
-     stages: each node is a group of tasks that run in parallel on
-     their partitions; each edge is a shuffle that must complete in
-     full before the next node can start. No computation has started
-     yet — the driver has only decided how to decompose the work.
-
-4. DAGScheduler submits ready stages as TaskSets to TaskScheduler;
-   TaskSetManager serializes each Task object (closure over one partition's data)
-   and TaskScheduler assigns tasks to available executor slots
-   [executors already running — launched at SparkContext init, not at job time]
-   [application JARs fetched by executors at startup via updateDependencies()]
-   who:         DAGScheduler + TaskScheduler + TaskSetManager (all driver JVM)
-   explanation: The full job is never submitted at once. It is an
-     iterative, event-driven process: the DAGScheduler submits one
-     stage at a time, driven by task completion events on its single-
-     threaded event loop. submitStage(ResultStage) is called first. The
-     DAGScheduler walks the RDD graph upward, finds Stage 0's
-     ShuffleDependency, and checks whether Stage 0's shuffle output is
-     already written (isAvailable). It is not — no tasks have run yet
-     — so Stage 0 is added to the missing list. ResultStage is placed
-     in waitingStages and submitStage(Stage 0) is called recursively.
-     Stage 0 has no parent ShuffleDependencies (it reads directly from
-     the source file), so its missing list is empty and its tasks are
-     dispatched to executors immediately. For each submitted stage the
-     driver creates one task per partition. A task carries the
-     transformation code and the address of the data to run it on —
-     never the data itself. The data stays on disk or in executor
-     memory; the code travels to wherever the data lives. The
-     TaskScheduler assigns each task to an executor slot, preferring
-     executors co-located with the data (data locality), then
-     dispatches the serialized task. Executors were launched at
-     application start — they are already waiting for work. When every
-     task in Stage 0 completes, processShuffleMapStageCompletion fires,
-     which calls submitWaitingChildStages(Stage 0) — this finds
-     ResultStage in waitingStages, removes it, and calls
-     submitStage(ResultStage). Now Stage 0 is available, so
-     ResultStage's missing list is empty and its tasks are dispatched.
-
-[executor JVM]
-5. executors receive Task objects, deserialize, run task closure:
-   read partition of 1342-0.txt → split → lower → filter             (Stage 0)
-   who:         Executor.TaskRunner (executor JVM)
-   explanation: Each executor receives its task and runs it against
-     the assigned partition. For narrow transformations within a stage,
-     operators are pipelined: a single row flows through every operator
-     before the next row is touched. There are no intermediate
-     materializations between operators in the same stage — the stage
-     is a single pass over the partition data. When Tungsten whole-
-     stage codegen is active, all operators are fused into one compiled
-     loop with no virtual method calls between them.
-
-6. each executor writes shuffle output to local disk;
-   MapOutputTracker on driver records the locations (MapStatus)
-   who:         ShuffleWriter (executor) + MapOutputTracker (driver)
-   explanation: When a stage produces output that must be redistributed
-     (groupBy, join), each task writes its results to local disk on the
-     executor, partitioned by the target key so each downstream task
-     will find all the data it needs in one place. Only the metadata —
-     which executor holds which output partition and how large each
-     block is — is sent back to the driver as a MapStatus. The
-     DAGScheduler receives it via a CompletionEvent and calls
-     mapOutputTracker.registerMapOutput() to store it in
-     MapOutputTrackerMaster. The input data never returns to the driver
-     during a shuffle; it stays on executor-local storage until the
-     downstream stage fetches it.
-
-7. downstream tasks fetch shuffle blocks from Stage 0 executors via BlockManager;
-   count word groups                                                   (Stage 1)
-   who:         ShuffleReader + Executor.TaskRunner (executor JVM)
-   explanation: The downstream stage's tasks query
-     MapOutputTrackerMaster on the driver to discover where each of
-     their input partitions landed. Each executor runs a
-     MapOutputTrackerWorker that caches this information locally and
-     only contacts the master if its epoch is stale. Once locations are
-     known, tasks open direct Netty connections to those Stage 0
-     executors and pull the shuffle blocks. This is the only point in
-     the pipeline where the input data crosses the network. After
-     fetching, each task runs its computation on the merged input.
-
-8. ResultTask sends top-10 rows back to driver;
-   show() prints them to stdout
-   who:         ResultTask (executor) → driver JobWaiter → Dataset.show()
-   explanation: Each ResultTask sends its rows back to the driver. The
-     driver has been blocking on a JobWaiter — an object that
-     represents the pending job result and collects each task's output
-     as it arrives. Once the last task reports in, the JobWaiter
-     unblocks, the assembled rows are returned to Dataset.show(), and
-     show() prints them. Only the rows .show(10) needs travel back —
-     not the full dataset.
-```
-
-Steps 1–4 are entirely driver-side planning. Steps 5–8 are executor computation,
-with the driver's MapOutputTracker and JobWaiter coordinating at boundaries.
-
-The JVM-Python boundary matters here. PySpark's DataFrame API generates JVM instructions — so `F.sum()`, `F.join()`, and `F.filter()` all run at full JVM speed regardless of Python. The Python process only sends the plan; the JVM does the heavy lifting. Python UDFs break this model (covered in Chapter 13), but for the DataFrame API the performance gap between Python and Scala is negligible.
-
----
-
 ## How Spark runs an application: from action to result
 
-The eight-step sequence above describes *what* happens. This section explains *how* — the internal components that manage the process and the decisions each one makes.
+This section walks a single action — `.show(10)` on the word-count job — through every internal component, from the moment it fires to the rows returning to the driver. **Stages 1–4 are driver-side planning; Stages 5–7 are executor computation**, with the driver's MapOutputTracker and JobWaiter coordinating at the boundaries. First, the components involved; then the journey, stage by stage.
 
 ### The components involved
 
@@ -1051,7 +890,18 @@ There is one SchedulerBackend implementation per cluster manager — Standalone,
 
 ### Stage 1: action triggers a job — and DataFrame becomes RDD
 
-When `.show(10)` is called, the Python process sends the unresolved logical plan across Py4J to the driver JVM. Before `SparkContext.runJob` is called, **`QueryExecution`** — Spark SQL's execution pipeline — compiles the DataFrame plan through the following phases entirely inside the driver JVM:
+**What `.show(10)` crosses first.** In classic mode the Python `DataFrame` you hold is a thin two-layer proxy: it owns no logical plan and cannot trigger computation. Its one important attribute is `self._jdf`, a Py4J reference to the real `Dataset[Row]` living in the driver JVM. Calling `df.show(10)` delegates immediately across the Py4J local socket (`127.0.0.1`) to that `Dataset[Row]`, which fires the action via `withAction()`. Python is the messenger; the JVM `Dataset[Row]` is the actor. In **Connect mode** there is no `self._jdf` and no JVM in the client at all: the Python `DataFrame` holds the plan as protobuf and ships it to the Connect server over a gRPC `ExecutePlan` RPC, where a server-side `Dataset[Row]` runs `withAction()` and streams results back as Arrow batches.
+
+| | Classic | Connect |
+|---|---|---|
+| Python `DataFrame` holds | `self._jdf` — Py4J proxy to JVM `Dataset[Row]` | protobuf `LogicalPlan` — no JVM reference |
+| Action fires in | driver JVM (same machine) | Connect server (remote JVM) |
+| Transport | Py4J local socket (`127.0.0.1`) | gRPC over the network |
+| Results returned as | JVM objects via Py4J | Apache Arrow record batches |
+| Where `AnalysisException` fires | driver JVM — can raise before any action (e.g. `.schema` access) | Connect server — always a gRPC error; never raised locally |
+| `df._jdf` accessible | Yes | No — raises `PySparkAttributeError: JVM_ATTRIBUTE_NOT_SUPPORTED` |
+
+Once the action fires in the JVM, **`QueryExecution`** — Spark SQL's execution pipeline — compiles the DataFrame plan through the following phases entirely inside the driver JVM (in Connect mode, on the server JVM), before `SparkContext.runJob` is called:
 
 ```mermaid
 flowchart TD
@@ -1198,6 +1048,8 @@ Once the TaskScheduler has selected a task-executor pairing, it hands the assign
 
 **What gets serialized — the task closure.** A task is not a copy of the data — it is a serialized description of *what to compute and where to find the input*. The closure contains: the transformation functions (the code), references to broadcast variables by ID, partition metadata (which file/block to read), and enough context to reconstruct the input RDD partition. The data itself stays in the executor's BlockManager or on disk; the task code travels to the data, not the other way around.
 
+The application's own code dependencies — JARs and files supplied via `--jars` / `--files` or `SparkContext.addFile` — are not part of the per-task closure either. Each executor fetches them once at startup (via the internal `updateDependencies()` step) and reuses them for every task it runs, which is why the closure shipped per task stays small.
+
 **Broadcast variables are not copied into the closure.** Only the broadcast variable's integer ID is included. When the executor receives a task that references a broadcast ID it has not yet fetched, it pulls the serialized value directly from the driver (or, for large broadcasts, from other executors using a BitTorrent-like protocol called TorrentBroadcast). The fetched value is cached in the executor's BlockManager and reused by all subsequent tasks that reference the same broadcast ID — the value is never re-transmitted per task. This is the entire point of broadcast variables: sending a large lookup table once per executor instead of once per task.
 
 Spark uses **Java serialization** (Java `ObjectOutputStream`) by default for task closures. **Kryo** serialization is available and approximately 10× faster and more compact — recommended for jobs with heavy shuffle traffic. Enable it with `spark.serializer = org.apache.spark.serializer.KryoSerializer`. In Python, closures are serialized with **CloudPickle** (bundled as `pyspark/cloudpickle`). Standard pickle only serializes functions by reference — the function must be importable on the executor — which breaks for lambdas and functions defined interactively in notebooks. CloudPickle serializes by value: the function bytecode itself is included, so UDFs and closures defined in notebooks or scripts travel to executors without requiring a matching module on the other side. Since Spark 2.0, internal shuffle data for simple types (primitives, strings, arrays of primitives) uses Kryo automatically regardless of the configured default.
@@ -1260,7 +1112,7 @@ The word count example has **two** shuffles: Stage 0 → Stage 1 (`hashpartition
 
 **DAGScheduler Stage 2** (ResultStage 2) tasks read the range-partitioned shuffle from Stage 1. Because the data is already globally bucketed by count, each task only needs to `Sort [count DESC]` within its own partition to produce a globally correct ordered slice. The sorted rows from each partition are sent back to the driver via the SchedulerBackend.
 
-The driver assembles the partition results in order. `show(10)` prints the first 10 rows of the globally sorted result.
+Throughout execution the driver has been blocking on a **JobWaiter** — an object representing the pending job result that collects each task's output as it arrives. Once the last ResultTask reports in, the JobWaiter unblocks, the assembled rows return to `Dataset.show()` in partition order, and `show(10)` prints the first 10 rows of the globally sorted result. Only the rows `.show(10)` needs travel back to the driver — not the full dataset.
 
 ---
 

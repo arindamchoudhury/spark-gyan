@@ -3,16 +3,17 @@
 > *Learning-path topic: E1 (Expert)*
 > *Status: ⬜ Not yet written*
 
-!!! note "📌 Topics deferred here from Chapter 1"
+> **Note "📌 Topics deferred here from Chapter 1"
     The following DAGScheduler internals are introduced conceptually in [Chapter 1](ch01-spark-architecture.md) and covered in full implementation detail here:
 
     - **`handleJobSubmitted → createResultStage → submitStage → submitMissingTasks`** — the full call chain from job submission to task launch, including how `createResultStage` recursively calls `getOrCreateShuffleMapStage` to build the stage graph bottom-up
+    - **Parent-availability gating and child-stage submission** — how `submitStage` checks each parent `ShuffleMapStage`'s `isAvailable` (are its shuffle outputs registered?) before launching a stage, placing not-yet-ready stages in `waitingStages`; and how `processShuffleMapStageCompletion → submitWaitingChildStages` promotes a waiting child stage the instant its last parent's `MapStatus` arrives. This is the runtime mechanism behind Chapter 1's "submits Stage 0, waits, then Stage 1, finally Stage 2" — Chapter 1 states the *behaviour*; this chapter names the methods.
     - **State machine** — `activeJobs`, `waitingStages`, `runningStages`, `failedStages` and how `CompletionEvent` and `TaskSetFailed` drive transitions between them
     - **Stage deduplication** — `getOrCreateParentStages` ensures a shared RDD ancestor (e.g. a cached or checkpointed RDD depended on by two branches) becomes a single stage, not one per downstream branch
     - **Barrier execution mode** — all tasks in a barrier stage must launch simultaneously; used for distributed ML frameworks (e.g. Horovod) that need a global synchronization point before proceeding
     - **Stage and job cancellation** — how `cancelJob`, `cancelStage`, and `killTaskAttempt` propagate through the event loop and interrupt running tasks on executors
 
-!!! note "📌 Additional topics deferred here from Chapter 1"
+> **Note "📌 Additional topics deferred here from Chapter 1"
     - **DataFrame → RDD lineage translation** — how `QueryExecution` compiles a DataFrame into an `RDD[InternalRow]`: the `Dataset.withAction()` entry point; the four compilation phases (Analyzer → Optimizer → SparkPlanner → PrepareForExecution); how `executedPlan.execute()` walks the `SparkPlan` tree recursively via `executeRDD = LazyTry { doExecute() }`; how each operator's `doExecute()` calls `child.execute()` bottom-up; how `ShuffleExchangeExec` embeds a `ShuffleDependency` into the RDD lineage (via `ShuffledRowRDD.getDependencies`), which is what the DAGScheduler detects as a stage boundary; `QueryExecution.toRdd` as the bridge: `new SQLExecutionRDD(executedPlan.execute(), conf)` (source-verified v4.1.2). The recursive execution tree:
       ```
       root.execute()
@@ -35,10 +36,10 @@
     - **Executor exclusions (`HealthTracker`)** — when an executor accumulates too many task failures (`MAX_FAILURES_PER_EXEC`), `HealthTracker` marks it excluded and `TaskSchedulerImpl` skips it during slot assignment (`isExecutorExcluded`); exclusion expires after `EXCLUDE_ON_FAILURE_TIMEOUT_MILLIS`; whole nodes can also be excluded via `MAX_FAILED_EXEC_PER_NODE`; `EXCLUDE_ON_FAILURE_KILL_ENABLED` can decommission the executor immediately
     - **Serialization in the shuffle data path** — how `UnsafeRow` binary format avoids extra serialization during shuffle for SQL/DataFrame operations; when Java vs Kryo serialization applies to shuffle data for raw RDD operations
 
-!!! note "✍️ Writing reminder — DAGScheduler internals"
+> **Note "✍️ Writing reminder — DAGScheduler internals"
     Chapter 1 covered DAGScheduler behaviour (what it decides and why). This chapter must cover the full implementation: the `handleJobSubmitted → createResultStage → submitStage → submitMissingTasks` call chain; the `activeJobs` / `waitingStages` / `runningStages` / `failedStages` state machine and how `CompletionEvent` drives it; stage deduplication via `getOrCreateParentStages`; barrier execution mode; and stage/job cancellation propagation. See the first deferred-topics note above for the full list.
 
-!!! note "✍️ Writing reminder — DataFrame → RDD translation"
+> **Note "✍️ Writing reminder — DataFrame → RDD translation"
     Chapter 1 introduces `QueryExecution` conceptually. This chapter must cover the full implementation: `Dataset.withAction()`, the recursive `execute()` / `doExecute()` tree, how `ShuffleExchangeExec` embeds `ShuffleDependency` into the RDD lineage via `ShuffledRowRDD`, `FileScanRDD` as the leaf, and `QueryExecution.toRdd` as the bridge to `SparkContext.runJob()`. See the deferred-topics note above for the source-verified detail.
 
 *This chapter is not yet written. The above topics will form its core.*
