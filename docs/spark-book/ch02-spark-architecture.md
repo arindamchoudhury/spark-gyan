@@ -112,6 +112,13 @@ flowchart LR
 - The **Python process** runs your application code — this is what Spark's official docs call "the process running main()."
 - The **JVM process** is the Spark engine — it hosts SparkContext, Catalyst, DAGScheduler, and TaskScheduler. It is a separate OS process from Python, running on the same machine.
 
+**PySpark uses two distinct channels, not one.** The Py4J socket carries Python→JVM calls (building plans, issuing actions, reading results). A completely separate `pyspark.worker` socket is used when the JVM executor needs to run a Python function — it spawns a Python worker process per task. DataFrame operations (Catalyst expressions, built-in functions like `F.lower()`) run entirely inside the JVM and never cross back to Python. Only when a Python UDF or RDD lambda runs does the executor spawn a Python worker and communicate through `pyspark.worker`. This is the root cause of Python UDF overhead: serializing each row from JVM binary format to Python objects and back, once per row, via a socket.
+
+| Direction | Channel | Used for |
+|---|---|---|
+| Python → JVM | Py4J local socket | Building plans, issuing actions, reading results |
+| JVM → Python | `pyspark.worker` socket (separate) | Running Python UDFs and RDD lambdas inside executor tasks |
+
 **"The driver" means both processes together.** When Spark's UI, logs, or error messages say "driver" they usually mean the JVM side (where scheduling happens), but the Python process is equally part of the driver — it is the one building the plan and issuing calls. Neither process alone is the full driver. Executors are entirely separate JVM processes on worker nodes; they receive tasks but do no planning or scheduling.
 
 **The driver is a single point of failure.** If the driver JVM runs out of memory, the entire application fails and all pending stages are cancelled. This surprises people because during transformations the driver never reads partition data — that work is handled entirely by executors. The driver only holds the logical plan, scheduling state, and shuffle metadata. The danger comes from certain **actions** that pull data back to the driver: `.collect()` transfers every row of the result DataFrame into driver memory; `.toPandas()` does the same. Both will crash the driver on a large DataFrame. `.show(n)` is safe — it transfers only `n` rows. Prefer `.write` over `.collect()` for large results, and size the driver with `spark.driver.memory` (default: 1g) when it must handle significant result sets.
@@ -193,6 +200,8 @@ It is the single object through which you read data, run SQL, and build DataFram
 > *"The SparkContext object in your main program. It coordinates independent sets of processes on a cluster and connects to cluster managers to allocate resources."* — [cluster-overview](https://spark.apache.org/docs/latest/cluster-overview.html)
 
 You don't create or interact with SparkContext directly in normal work — SparkSession creates and owns it (`self._sc = sparkContext` in `session.py`). It surfaces in architecture discussions because it is the actual coordinator: when `.show(10)` triggers a job, SparkContext receives the job and passes it to the DAGScheduler, which breaks it into stages and tasks. The TaskScheduler then dispatches tasks to executors via the SchedulerBackend. The cluster manager is involved only for **resource allocation** (executor count, CPU, memory) — it never sees the plan. Executors are allocated at application startup, not per-job. In classic mode you can reach SparkContext via `spark.sparkContext` for low-level RDD operations or configuration inspection; this property does not exist in Connect mode (`pyspark-client`), where `RemoteSparkSession` has no underlying SparkContext. For all DataFrame and SQL work SparkSession is sufficient.
+
+In Spark 4.x, `SparkSession` lives in the `org.apache.spark.sql.classic` package rather than `org.apache.spark.sql`, to coexist with `org.apache.spark.sql.connect.SparkSession`. The Python import path (`from pyspark.sql import SparkSession`) is unchanged — this only surfaces in JVM stack traces and Scala/Java source browsing.
 
 ---
 
@@ -712,7 +721,7 @@ Throughout execution the driver has been blocking on a **JobWaiter** — an obje
 
 The DAGScheduler and TaskScheduler handle failures at different levels:
 
-- **Task failure** (executor crash, out-of-memory, exception): the TaskScheduler retries the task on a different executor, up to `spark.task.maxFailures` times (default 4). The shuffle state of the stage is unaffected — only this one task re-runs.
+- **Task failure** (executor crash, out-of-memory, exception): the TaskScheduler retries the task on a different executor, up to `spark.task.maxFailures` times (default 4). The shuffle state of the stage is unaffected — only this one task re-runs. **Local mode exception:** `TaskSchedulerImpl` is always constructed with `maxTaskFailures = 1` in local mode regardless of `spark.task.maxFailures` — a single task failure aborts the stage immediately with no retry. Setting `spark.task.maxFailures = 4` in local mode has no effect.
 - **Executor failure** (the JVM process dies): this is more severe than a task failure because the executor's shuffle files are gone. The DAGScheduler calls `mapOutputTracker.removeOutputsOnExecutor(execId)`, unregistering all map outputs from that executor. `ShuffleMapStage.findMissingPartitions()` then returns only those now-missing partitions — those tasks re-run, not necessarily the whole stage. The distinction matters: losing one task loses one partition's work; losing an executor loses all that executor's shuffle output, which may be a large fraction of the stage.
 - **Stage failure** (all task retries exhausted, or fetch failures exhaust `spark.stage.maxConsecutiveAttempts` — default 4): the DAGScheduler first retries the entire stage. If the retry succeeds (e.g. a transient network error resolved), the job continues. Only when all stage retries are exhausted does the job fail. When a stage fails permanently, all sibling stages at the same level and all downstream stages are cancelled immediately — a Spark job is all-or-nothing at the stage level.
 
@@ -962,7 +971,7 @@ Both types are concrete classes in `Dependency.scala` (v4.1.2):
   - `RangeDependency` — used by `union`; each output partition maps to a contiguous range of an input RDD's partitions.
 - **`ShuffleDependency`** — *"a dependency on the output of a shuffle stage."* Every `groupBy`, `join`, `repartition`, or `distinct` creates one.
 
-The DAGScheduler walks the RDD lineage backwards via `DAGScheduler.getShuffleDependenciesAndResourceProfiles`. Every time it encounters a `ShuffleDependency`, it stops and records a stage boundary — the upstream RDD becomes the root of a new `ShuffleMapStage`. Every time it encounters a `NarrowDependency`, it continues traversal. All narrow transformations between two boundaries are collapsed into a single **stage**.
+The DAGScheduler walks the RDD lineage backwards via `DAGScheduler.getShuffleDependenciesAndResourceProfiles`. Every time it encounters a `ShuffleDependency`, it stops and records a stage boundary — the upstream RDD becomes the root of a new `ShuffleMapStage`. Every time it encounters a `NarrowDependency`, it continues traversal. All narrow transformations between two boundaries are collapsed into a single **stage**. The entire narrow/wide classification reduces to one function: `getMissingParentStages` ([DAGScheduler.scala:765](https://github.com/apache/spark/blob/v4.1.2/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L765)) — the single place in the codebase where that conceptual rule is enforced mechanically.
 
 ```mermaid
 flowchart LR

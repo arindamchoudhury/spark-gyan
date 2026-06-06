@@ -401,6 +401,57 @@ You are ready to leave this level when you can:
 
 ---
 
+
+### ⬜ I14 — AsyncRDDActions: Non-Blocking Job Submission
+
+> Discovered from source sweep (refinement): `core: async-rdd-actions`
+
+**What it is:** AsyncRDDActions wraps countAsync, collectAsync, takeAsync, foreachAsync, and foreachPartitionAsync, each returning a FutureAction backed by SparkContext.submitJob rather than runJob.
+
+**Why you need it:** Relevant for workloads that interleave Spark jobs with I/O; takeAsync implements a recursive-future scan with configurable scale-up, making its partition-scan behavior non-obvious.
+
+**Learn it with:**
+
+1. **Spark-docs** — see official documentation.
+
+**Milestone:** TBD
+
+---
+
+
+### ⬜ I13 — Closure Cleaning and the Task-Not-Serializable Problem
+
+> Discovered from source sweep (refinement): `core: closure-cleaning`
+
+**What it is:** SparkContext.clean() delegates to ClosureCleaner (ASM 9 bytecode analysis) to null out unreferenced outer-object fields in Scala closures before they are serialized to executors.
+
+**Why you need it:** Every transformation lambda passes through closure cleaning; failures here produce the ubiquitous Task not serializable error, and understanding the mechanism is required to reason about what driver-side state leaks into tasks.
+
+**Learn it with:**
+
+1. **Spark-docs** — see official documentation.
+
+**Milestone:** TBD
+
+---
+
+
+### ⬜ I12 — Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey
+
+> Discovered from source sweep (refinement): `core: pair-rdd-functions`
+
+**What it is:** PairRDDFunctions adds key-value operations to RDD[(K,V)] via implicit conversion; all aggregations bottom out in combineByKeyWithClassTag, which either applies in-place or routes through ShuffledRDD.
+
+**Why you need it:** The cost difference between reduceByKey (map-side combine) and groupByKey (no combine) is the canonical RDD-level skew and OOM lesson; understanding combineByKey explains every higher-level shuffle.
+
+**Learn it with:**
+
+1. **Spark-docs** — see official documentation.
+
+**Milestone:** TBD
+
+---
+
 ## Advanced
 
 **Goal:** Write high-performance, production-grade pipelines. Understand Spark's optimiser deeply enough to fix it when it makes wrong decisions. Handle streaming workloads. Build ML pipelines.
@@ -771,6 +822,40 @@ You are operating at Expert level when you can:
 - Architect a streaming CDC pipeline with SCD Type 2 history and exactly-once guarantees
 
 ---
+
+---
+
+
+### ⬜ E11 — Serialization: KryoSerializer vs JavaSerializer
+
+> Discovered from source sweep (refinement): `core: serialization`
+
+**What it is:** KryoSerializer uses the Kryo library with a KryoPool, unsafe I/O, and optional class registration; JavaSerializer (default) uses Java object streams with periodic reset to bound stream-table memory.
+
+**Why you need it:** Serializer choice determines shuffle and broadcast throughput; Kryo requires explicit class registration for production determinism, and misconfiguration produces cryptic NotSerializableException or data-corruption failures.
+
+**Learn it with:**
+
+1. **Spark-docs** — see official documentation.
+
+**Milestone:** TBD
+
+---
+
+
+### ⬜ E10 — AccumulatorV2: Distributed Side-Effect Counters
+
+> Discovered from source sweep (refinement): `core: accumulator-v2`
+
+**What it is:** AccumulatorV2[IN,OUT] is the abstract base for user-defined accumulators registered with SparkContext; each task receives a copy(), calls add() locally, and the driver merges all copies back via merge() at task completion.
+
+**Why you need it:** Accumulators are the only executor-to-driver side-channel in Spark; understanding the copy-merge lifecycle and countFailedValues prevents double-counting bugs on speculative execution and task retries.
+
+**Learn it with:**
+
+1. **Spark-docs** — see official documentation.
+
+**Milestone:** TBD
 
 ---
 

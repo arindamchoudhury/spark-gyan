@@ -8,6 +8,19 @@ copyright = "Copyright © 2026 Arindam. Notes are personal study summaries."
 nav = [
     { "Home" = "index.md" },
     { "Learning Path" = "learning-path.md" },
+    { "Spark Source Map" = [
+        { "Overview" = "reference/spark-source-map/index.md" },
+        { "Config catalog" = "reference/spark-source-map/configs/index.md" },
+        { "Topic traces" = [
+            { "B1 — Spark Architecture & Execution Model" = "reference/spark-source-map/topics/b1.md" },
+            { "B2 — SparkSession and Entry Points" = "reference/spark-source-map/topics/b2.md" },
+            { "B3 — The DataFrame API: Basics" = "reference/spark-source-map/topics/b3.md" },
+            { "I4 — RDD Fundamentals" = "reference/spark-source-map/topics/i4.md" },
+        ]},
+        { "Sweeps" = [
+            { "core (RDD layer)" = "reference/spark-source-map/sweeps/core.md" },
+        ]},
+    ]},
     { "Spark Book" = [
         { "Contents" = "spark-book/index.md" },
         { "Ch 01. Introduction to Spark" = "spark-book/ch01-introduction-to-spark.md" },

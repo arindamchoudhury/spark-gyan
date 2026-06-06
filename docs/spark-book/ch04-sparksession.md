@@ -134,6 +134,24 @@ spark2.sql("SELECT * FROM foo")   # AnalysisException — foo doesn't exist in s
 
 In practice you almost never need `newSession()` — one session per application is the norm. It exists for multi-tenant server scenarios (e.g. the Thrift Server) where different users need separate namespaces on a shared cluster.
 
+`spark.cloneSession()` is the alternative when the child must *inherit* the parent's current configuration snapshot rather than starting from defaults. It copies the parent's `SessionState` (active SQL configs, registered UDFs, job tags) and forces eager initialisation so the child is ready to use immediately. Changes made to the clone do not propagate back:
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+child = spark.cloneSession()
+child.conf.set("spark.sql.shuffle.partitions", "4")   # only affects child
+print(spark.conf.get("spark.sql.shuffle.partitions"))  # parent unchanged
+```
+
+Use `newSession()` when you want a clean slate that shares the same engine; use `cloneSession()` when you want an isolated copy that inherits the parent's current settings.
+
+For test harnesses, `SparkSession.builder.create()` (added in Spark 3.5.0) gives the opposite guarantee from `getOrCreate()`: it *always* forces a new session, bypassing the "get" half of `getOrCreate()`. A test that calls `getOrCreate()` may silently reuse a session left over from a previous test; `create()` prevents that.
+
+```python
+# In a test setup — guaranteed fresh session regardless of existing state
+spark = SparkSession.builder.master("local").appName("test").create()
+```
+
 In **cluster mode** the rule applies per *driver process*, not per cluster. Each application has its own driver JVM with its own SparkContext and its own isolated executor JVMs — tasks from different applications never share a JVM. What is shared is the cluster manager (YARN, Kubernetes, Standalone master), which allocates resources to each application independently ([Cluster Mode Overview](https://spark.apache.org/docs/latest/cluster-overview.html)).
 
 ---
@@ -164,18 +182,19 @@ spark = (
     SparkSession.builder
     .appName("configured-app")
     .master("local[*]")
+    .config("spark.log.level", "WARN")             # fires at startup, before any Spark logging
     .config("spark.sql.shuffle.partitions", "8")   # default 200 — far too many for a laptop
     .config("spark.ui.port", "4041")               # avoid port 4040 conflict with Docker
     .getOrCreate()
 )
 
-spark.sparkContext.setLogLevel("WARN")
 print(spark.conf.get("spark.sql.shuffle.partitions"))   # 8
 ```
 
-Two of these deserve a closer look:
+Three of these deserve a closer look:
 
 - **`SPARK_LOCAL_IP=127.0.0.1`** — set *before* creating the session. On laptops with a VPN or Docker, Spark may try to bind to the wrong network interface and fail at startup. Pinning it to loopback avoids the error.
+- **`spark.log.level`** — the preferred way to silence Spark's INFO noise. Setting it in the builder fires at `SparkContext` startup, before any Spark logging begins, and also propagates to executors when `spark.executor.allowSyncLogLevel=true`. The in-code call `spark.sparkContext.setLogLevel("WARN")` works too, but it fires *after* startup and affects only the driver. Valid values: `ALL`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `OFF`.
 - **`spark.sql.shuffle.partitions`** — the number of tasks Spark uses to redistribute data after `groupBy`, `join`, and `repartition`. The default is **200**, designed for large clusters with hundreds of cores. On a laptop processing a small dataset, 200 shuffle tasks produce 200 tiny files and pure scheduling overhead. Set it to roughly `2 × CPU cores` (8–16) for local development.
 
 ### Don't hard-code resources in application code
@@ -241,6 +260,8 @@ Spark 4.x ships two ways for your Python process to talk to the engine, and know
 
 **Classic mode** is what every example so far has used: the Python process launches a local driver JVM and talks to it in-process. It remains the **default** for both the `pyspark` shell and `spark-submit`.
 
+> **3-layer class split (Spark 4.x).** In the JVM source, `SparkSession` is split across three packages: `org.apache.spark.sql.SparkSession` (abstract API, shared by both modes), `org.apache.spark.sql.classic.SparkSession` (the classic implementation), and `org.apache.spark.sql.connect.SparkSession` (the Connect client). The Python import `from pyspark.sql import SparkSession` is unchanged — this split only surfaces in JVM stack traces and source browsing.
+
 **Spark Connect** breaks that coupling. Instead of launching a local driver JVM, your Python process becomes a thin **client**: it sends an unresolved logical plan over gRPC to a separate Spark Connect server, and the server runs the engine and streams results back. The DataFrame API is identical — only the transport changes — but because the client no longer needs a local JVM, it is ideal for lightweight clients, IDEs, and embedding Spark in applications.
 
 Connect is **opt-in** in 4.x. You enable it explicitly with `SPARK_REMOTE`, the `--remote` flag, `spark.api.mode=connect`, or the builder's `.remote(...)`:
@@ -272,6 +293,8 @@ Start the server before you connect. With a tarball or pip install, the Connect 
 In this project's Docker stack the Connect server is already running inside the `spark` container on port 15002 — you connect straight to `sc://localhost:15002` without starting anything yourself.
 
 The most common Connect mistake is opting in without a server running: point at `sc://localhost:15002` with nothing listening and the session fails at startup. If you are not deliberately using Connect, you are in classic mode and do not need a server at all.
+
+**`pyspark` shell and notebook bootstrap.** When you run `pyspark` (or open a Jupyter kernel that imports PySpark), the shell bootstraps via `shell.py` which calls `_create_shell_session()`. This function tries `enableHiveSupport()` first; if that fails (no Hive jars), it falls back to `_getActiveSessionOrCreate()` to build a plain session. Either way, it binds four globals for interactive use: `spark` (`SparkSession`), `sc` (`SparkContext`), `sql` (a shorthand for `spark.sql`), and `sqlContext` (a legacy `SQLContext` wrapper). You do not need to call `SparkSession.builder` in an interactive shell — `spark` is already there.
 
 ---
 
@@ -326,6 +349,7 @@ def main():
    | `local` | `1` | One thread, one task at a time |
    | `local[2]` | `2` | Exactly 2 threads |
    | `local[*]` | number of CPU cores | Spark reads `Runtime.getRuntime.availableProcessors()` |
+   | `local[2,3]` | `2` | 2 threads; max 3 task failures before aborting. This is the **only way to test task-retry logic in local mode** — the default in local mode is 1 failure allowed regardless of `spark.task.maxFailures`. |
 
    In local mode `defaultParallelism` equals the number of threads. On a cluster it is the total number of executor cores instead.
 
