@@ -159,6 +159,15 @@ df.coalesce(1).write.mode("overwrite").parquet("out/single/")
 
 ---
 
+❓ **To cover — schema inference, driver-side analysis, and AnalysisException:**
+
+- `spark.read.csv()` without an explicit `.schema(...)` runs a data scan in the driver to determine column types — this is eager, not lazy. Always pass a schema explicitly in production.
+- Spark resolves column names and validates types in the driver as soon as something forces plan inspection (accessing `.schema`, `.dtypes`, `.explain()`, or calling an action). This is why `AnalysisException` can surface before an action fires.
+- What triggers analysis eagerly vs what keeps it deferred; treat `AnalysisException` as a compile error — fix the schema or column reference, don't catch and retry.
+- In Spark Connect (opt-in in 4.x), analysis always runs server-side; `AnalysisException` arrives as an RPC error from either an `AnalyzePlan` or `ExecutePlan` call.
+
+---
+
 ## Summary
 
 - `spark.read` and `df.write` are fluent builders — chain options, then call the terminal format method.

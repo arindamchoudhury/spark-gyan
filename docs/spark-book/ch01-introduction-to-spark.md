@@ -202,9 +202,9 @@ To counter this, Spark uses **lineage**. Every RDD records how it was derived �
 
 ### From RDDs to the DataFrame API
 
-RDDs were Spark's original API. The DataFrame API (Spark 1.3) built on top of them, adding the Catalyst optimizer and a relational programming model. The two working-set properties from the 2010 paper survive intact:
+RDDs were Spark's original API. The DataFrame API (Spark 1.3) built on top of them, adding the Catalyst optimizer and a relational programming model. DataFrames are backed by `RDD[InternalRow]` internally and have the same ephemeral lifecycle as RDDs. `df.write.parquet(...)` saves to Parquet; there is no "save as DataFrame." The two working-set properties from the 2010 paper survive intact:
 
-- **Working-set reuse.** `df.cache()` marks a DataFrame so its partitions are kept in executor memory after the first action — subsequent actions read from memory instead of recomputing from source. The full caching mechanics (`InMemoryRelation`, `InMemoryTableScan`, block manager) are covered in **Chapter 17 (I6 — Caching and Persistence)**.
+- **Working-set reuse.** `df.cache()` marks a DataFrame so its partitions are kept in executor memory after the first action — subsequent actions read from memory instead of recomputing from source.
 - **Lineage-based fault recovery.** If a cached partition is evicted, Spark replays the Catalyst logical plan lineage for that partition from the original source — no checkpoint needed.
 
 ### Spark as a unified engine
@@ -256,25 +256,7 @@ flowchart LR
     E --> F["write Parquet"]
 ```
 
-The user builds this graph by writing transformation calls. The graph exists only as a description in the driver until an action is called — no executor computation (tasks on workers) occurs until then. Two things happen eagerly, before any action:
-
-- **Schema inference** — `spark.read.csv()` without an explicit `.schema(...)` runs a data scan in the driver to determine column types. Always pass a schema explicitly to keep reads fully lazy.
-- **Driver-side analysis** — Spark resolves column names against the catalog and validates types in the driver as soon as something forces plan inspection (accessing `.schema`, `.dtypes`, or calling an action). This is why `AnalysisException` can surface before an action fires — the analysis step already ran.
-
-**How to control driver-side analysis.** Analysis is a required Catalyst step — it cannot be skipped. What you control is when it is triggered:
-
-| What triggers analysis eagerly | What keeps analysis deferred |
-|---|---|
-| Accessing `.schema` or `.dtypes` on a DataFrame | Chaining transformations without inspecting schema |
-| Calling `.explain()` | Passing explicit schemas — nothing to infer, resolution is instant |
-| Calling any action (`.show()`, `.count()`, `.write`) | — |
-
-Practical rules:
-
-- **Do not access `.schema` or `.dtypes` mid-pipeline** unless you genuinely need the result at that point. If you chain `filter → join → select` without inspecting schema, analysis stays deferred to the action.
-- **Always provide an explicit schema** (`spark.read.csv(..., schema=my_schema)`) so the Analyzer has nothing to infer and resolves column names instantly against a known structure.
-- **Treat `AnalysisException` as a compile error, not a runtime error.** It fires because a column name or type is wrong at definition time — the same way a type error in a compiled language is caught before the program runs. The right response is to fix the schema or column reference, not to catch the exception and retry.
-- **In Spark Connect** (opt-in in 4.x), the client sends an unresolved logical plan to the server; analysis always runs server-side — never in the Python process. `AnalysisException` always comes from the server as an RPC error, but it can arrive from an `AnalyzePlan` RPC (triggered by accessing `.schema`, `.dtypes`, or `.explain()`) as well as from an `ExecutePlan` RPC (actions). Classic mode (the default) analyzes in the driver JVM, which is why eager triggers exist locally.
+The user builds this graph by writing transformation calls. The graph exists only as a description in the driver until an action is called — no executor computation (tasks on workers) occurs until then.
 
 When an action fires, the **DAGScheduler** receives the full graph and compiles it into a physical execution plan. It does not process one step at a time the way Hadoop processes one job at a time — it sees the whole picture before execution begins.
 
