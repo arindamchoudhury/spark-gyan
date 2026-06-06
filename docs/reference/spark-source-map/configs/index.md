@@ -7,15 +7,35 @@
 ## Contents
 
 - [connector/kafka-0-10](#connectorkafka-0-10) — 8 configs
+  - **Group 1 — Kafka consumer & rate control** (topics A7): kafka010/ (KafkaRDD, consumer cache, rate limiting, offset management)
 - [connector/kafka-0-10-sql](#connectorkafka-0-10-sql) — 8 configs
+  - **Group 1 — Kafka source & sink** (topics A7, A8): kafka010/ (KafkaSourceProvider, KafkaMicroBatchStream, KafkaSink)
 - [connector/profiler](#connectorprofiler) — 7 configs
+  - **Group 1 — Async profiler integration** (topics E3): profiler/ (ExecutorProfiler, ProfilerPlugin)
 - [core](#core) — 533 configs
+  - **Group 1 — RDD layer** (topics I4, I5, I6): rdd/, Dependency, Partition, Partitioner, broadcast/
+  - **Group 2 — Execution engine** (topics B1, E1): scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext
+  - **Group 3 — Shuffle & memory** (topics A4, E1): shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression
+  - **Group 4 — Storage & serialization** (topics I6, E1): storage/ (BlockManager, StorageLevel), serializer/ (Kryo vs Java)
+  - **Group 5 — Infra** (topics E2, E3): deploy/, metrics/, security/, ui/, History Server configs
 - [resource-managers/kubernetes](#resource-managerskubernetes) — 81 configs
+  - **Group 1 — Driver & executor lifecycle** (topics E2): k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates)
+  - **Group 2 — Auth & networking** (topics E2): k8s/ (authentication, service account, node affinity, executor env)
 - [resource-managers/yarn](#resource-managersyarn) — 59 configs
+  - **Group 1 — AM & executor allocation** (topics E2): yarn/ (ApplicationMaster, YarnAllocator, executor containers)
 - [sql/catalyst](#sqlcatalyst) — 656 configs
+  - **Group 1 — Analysis** (topics A1, B1): analysis/ (Analyzer, resolution rules, catalog)
+  - **Group 2 — Optimizer** (topics A1, A2): optimizer/ (logical rules, CBO, statistics)
+  - **Group 3 — Planner & physical operators** (topics A1, A3, E1): planning/ (SparkPlanner, strategies), execution/ (physical operators)
+  - **Group 4 — Expressions & codegen** (topics E1): expressions/ (Expression hierarchy, codegen, Whole-Stage CodeGen)
+  - **Group 5 — Types & SQL parser** (topics B5): types/ (DataType hierarchy), parser/ (Antlr4, AbstractSqlParser)
 - [sql/connect](#sqlconnect) — 14 configs
+  - **Group 1 — Client-server protocol** (topics E9): connect/ (gRPC service, proto definitions, session management)
 - [sql/hive](#sqlhive) — 11 configs
+  - **Group 1 — Hive metastore & DDL** (topics B4): hive/ (HiveSessionCatalog, HiveExternalCatalog, HiveClientImpl)
 - [streaming](#streaming) — 28 configs
+  - **Group 1 — Structured Streaming** (topics A7, A8): sql/streaming/ (StreamExecution, MicroBatchExecution, TriggerExecutor)
+  - **Group 2 — DStream (legacy)** (topics ): streaming/ (StreamingContext, DStream, ReceiverTracker)
 
 ## connector/kafka-0-10
 

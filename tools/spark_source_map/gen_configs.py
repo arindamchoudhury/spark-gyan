@@ -413,7 +413,7 @@ def github_url(version: str, source_file: str, line: int) -> str:
     return f"https://github.com/apache/spark/blob/{ref}/{source_file}#L{line}"
 
 
-def render_markdown(cat: Catalog) -> str:
+def render_markdown(cat: Catalog, groups: dict | None = None) -> str:
     meta = cat.meta
     ver = meta.get("spark_version", "unknown")
     lines: list[str] = []
@@ -439,6 +439,13 @@ def render_markdown(cat: Catalog) -> str:
     for sub in sorted(by_sub):
         anchor = sub.replace("/", "").replace(".", "")
         lines.append(f"- [{sub}](#{anchor}) — {len(by_sub[sub])} configs")
+        if groups and sub in groups:
+            for g in groups[sub]:
+                topics_str = ", ".join(g.get("topics", []))
+                scope = g.get("scope", "")
+                lines.append(
+                    f"  - **Group {g['number']} — {g['title']}**"
+                    f" (topics {topics_str}): {scope}")
     lines.append("")
 
     for sub in sorted(by_sub):
@@ -479,9 +486,17 @@ def render_markdown(cat: Catalog) -> str:
     return "\n".join(lines) + "\n"
 
 
+def load_groups(out_dir: Path) -> dict | None:
+    groups_file = out_dir.parent / "groups.yaml"
+    if not groups_file.exists():
+        return None
+    return yaml.safe_load(groups_file.read_text(encoding="utf-8"))
+
+
 def write_markdown(cat: Catalog, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_markdown(cat), encoding="utf-8", newline="\n")
+    groups = load_groups(path.parent)
+    path.write_text(render_markdown(cat, groups), encoding="utf-8", newline="\n")
 
 
 # --- CLI ---------------------------------------------------------------------

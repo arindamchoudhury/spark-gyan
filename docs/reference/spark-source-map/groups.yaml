@@ -1,0 +1,139 @@
+core:
+  - number: 1
+    name: rdd-layer
+    title: "RDD layer"
+    topics: [I4, I5, I6]
+    scope: "rdd/, Dependency, Partition, Partitioner, broadcast/"
+    description: "RDD programming model, transformations/actions, lineage, persistence, broadcast variables"
+  - number: 2
+    name: execution-engine
+    title: "Execution engine"
+    topics: [B1, E1]
+    scope: "scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext"
+    description: ""
+  - number: 3
+    name: shuffle-memory
+    title: "Shuffle & memory"
+    topics: [A4, E1]
+    scope: "shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression"
+    description: ""
+  - number: 4
+    name: storage-serializer
+    title: "Storage & serialization"
+    topics: [I6, E1]
+    scope: "storage/ (BlockManager, StorageLevel), serializer/ (Kryo vs Java)"
+    description: ""
+  - number: 5
+    name: infra
+    title: "Infra"
+    topics: [E2, E3]
+    scope: "deploy/, metrics/, security/, ui/, History Server configs"
+    description: ""
+
+sql/catalyst:
+  - number: 1
+    name: analysis
+    title: "Analysis"
+    topics: [A1, B1]
+    scope: "analysis/ (Analyzer, resolution rules, catalog)"
+    description: "Name resolution, type coercion, and catalog lookups that turn an unresolved logical plan into a resolved one"
+  - number: 2
+    name: optimizer
+    title: "Optimizer"
+    topics: [A1, A2]
+    scope: "optimizer/ (logical rules, CBO, statistics)"
+    description: "Rule-based and cost-based logical optimizations applied before physical planning"
+  - number: 3
+    name: planner
+    title: "Planner & physical operators"
+    topics: [A1, A3, E1]
+    scope: "planning/ (SparkPlanner, strategies), execution/ (physical operators)"
+    description: "Conversion of logical plans to physical execution plans and operator implementations"
+  - number: 4
+    name: expressions
+    title: "Expressions & codegen"
+    topics: [E1]
+    scope: "expressions/ (Expression hierarchy, codegen, Whole-Stage CodeGen)"
+    description: "Expression evaluation, code generation, and the columnar execution model"
+  - number: 5
+    name: types-parser
+    title: "Types & SQL parser"
+    topics: [B5]
+    scope: "types/ (DataType hierarchy), parser/ (Antlr4, AbstractSqlParser)"
+    description: "DataType system and the SQL/DDL parser that produces unresolved logical plans"
+
+sql/connect:
+  - number: 1
+    name: client-server
+    title: "Client-server protocol"
+    topics: [E9]
+    scope: "connect/ (gRPC service, proto definitions, session management)"
+    description: "Spark Connect protocol separating the client from the server over gRPC"
+
+streaming:
+  - number: 1
+    name: structured-streaming
+    title: "Structured Streaming"
+    topics: [A7, A8]
+    scope: "sql/streaming/ (StreamExecution, MicroBatchExecution, TriggerExecutor)"
+    description: "Incremental query execution, triggers, watermarks, and stateful processing"
+  - number: 2
+    name: dstream
+    title: "DStream (legacy)"
+    topics: []
+    scope: "streaming/ (StreamingContext, DStream, ReceiverTracker)"
+    description: "Legacy RDD-based streaming model; superseded by Structured Streaming"
+
+resource-managers/kubernetes:
+  - number: 1
+    name: driver-executor
+    title: "Driver & executor lifecycle"
+    topics: [E2]
+    scope: "k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates)"
+    description: "Pod allocation, executor lifecycle, and driver submission on Kubernetes"
+  - number: 2
+    name: auth-networking
+    title: "Auth & networking"
+    topics: [E2]
+    scope: "k8s/ (authentication, service account, node affinity, executor env)"
+    description: "Kubernetes authentication, RBAC, service accounts, and network configuration"
+
+resource-managers/yarn:
+  - number: 1
+    name: am-executor
+    title: "AM & executor allocation"
+    topics: [E2]
+    scope: "yarn/ (ApplicationMaster, YarnAllocator, executor containers)"
+    description: "YARN ApplicationMaster, container allocation, and executor lifecycle"
+
+connector/kafka-0-10:
+  - number: 1
+    name: consumer
+    title: "Kafka consumer & rate control"
+    topics: [A7]
+    scope: "kafka010/ (KafkaRDD, consumer cache, rate limiting, offset management)"
+    description: "RDD-based Kafka connector with consumer caching and per-partition rate control"
+
+connector/kafka-0-10-sql:
+  - number: 1
+    name: source-sink
+    title: "Kafka source & sink"
+    topics: [A7, A8]
+    scope: "kafka010/ (KafkaSourceProvider, KafkaMicroBatchStream, KafkaSink)"
+    description: "Structured Streaming Kafka source and sink with offset tracking and exactly-once semantics"
+
+connector/profiler:
+  - number: 1
+    name: async-profiler
+    title: "Async profiler integration"
+    topics: [E3]
+    scope: "profiler/ (ExecutorProfiler, ProfilerPlugin)"
+    description: "Per-executor async-profiler integration for CPU and memory flamegraph collection"
+
+sql/hive:
+  - number: 1
+    name: hive-metastore
+    title: "Hive metastore & DDL"
+    topics: [B4]
+    scope: "hive/ (HiveSessionCatalog, HiveExternalCatalog, HiveClientImpl)"
+    description: "Hive metastore connectivity, DDL compatibility, and SerDe/UDF bridging"
