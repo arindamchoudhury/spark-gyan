@@ -69,6 +69,12 @@ sql/connect:
     topics: [E9]
     scope: "connect/ (gRPC service, proto definitions, session management)"
     description: "Spark Connect protocol separating the client from the server over gRPC"
+  - number: 2
+    name: declarative-pipelines
+    title: "Declarative Pipelines"
+    topics: [A11]
+    scope: "connect/pipelines/ (PipelinesHandler, DataflowGraphRegistry, PipelineEventSender); configs: spark.sql.pipelines.* in sql/catalyst"
+    description: "Declarative ETL framework (Spark 4.1+) — flows, streaming tables, materialized views, spark-pipelines CLI"
 
 streaming:
   - number: 1

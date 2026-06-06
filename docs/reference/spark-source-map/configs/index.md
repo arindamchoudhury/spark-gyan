@@ -31,6 +31,7 @@
     - **Group 5 — Types & SQL parser** (topics B5): types/ (DataType hierarchy), parser/ (Antlr4, AbstractSqlParser)
 - [sql/connect](#sqlconnect) — 14 configs
     - **Group 1 — Client-server protocol** (topics E9): connect/ (gRPC service, proto definitions, session management)
+    - **Group 2 — Declarative Pipelines** (topics A11): connect/pipelines/ (PipelinesHandler, DataflowGraphRegistry, PipelineEventSender); configs: spark.sql.pipelines.* in sql/catalyst
 - [sql/hive](#sqlhive) — 11 configs
     - **Group 1 — Hive metastore & DDL** (topics B4): hive/ (HiveSessionCatalog, HiveExternalCatalog, HiveClientImpl)
 - [streaming](#streaming) — 28 configs
