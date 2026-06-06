@@ -23,7 +23,7 @@ import os
 import re
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterator
 
 import yaml
 
@@ -441,11 +441,12 @@ def render_markdown(cat: Catalog, groups: dict | None = None) -> str:
         lines.append(f"- [{sub}](#{anchor}) — {len(by_sub[sub])} configs")
         if groups and sub in groups:
             for g in groups[sub]:
-                topics_str = ", ".join(g.get("topics", []))
+                topics = g.get("topics", [])
+                topics_str = f" (topics {', '.join(topics)})" if topics else ""
                 scope = g.get("scope", "")
                 lines.append(
-                    f"  - **Group {g['number']} — {g['title']}**"
-                    f" (topics {topics_str}): {scope}")
+                    f"    - **Group {g['number']} — {g['title']}**"
+                    f"{topics_str}: {scope}")
     lines.append("")
 
     for sub in sorted(by_sub):
