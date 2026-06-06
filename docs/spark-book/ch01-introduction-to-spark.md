@@ -50,7 +50,7 @@ The challenge is coordination. Dividing the data, routing intermediate results, 
 
 ---
 
-## How the industry first solved it: Google, MapReduce, and Hadoop
+## How the industry first solved it: MapReduce and Hadoop
 
 The companies building at this scale in the early 2000s hit those limits first. Google's core product was web search: crawling billions of pages, building and continuously updating an inverted index of the entire web, and serving query results in milliseconds. By 2003 the index was so large that maintaining it required processing petabytes of crawl data across thousands of machines.
 
@@ -60,7 +60,7 @@ The answer came in two papers.
 
 In **2003**, Google published the **Google File System (GFS)** paper — a distributed filesystem designed to store enormous files reliably across thousands of commodity servers. Each file was split into fixed-size chunks and each chunk was replicated to three machines automatically. A hardware failure became routine rather than catastrophic: the framework simply reread the block from one of its two surviving replicas.
 
-In **2004**, Dean and Ghemawat published **MapReduce: Simplified Data Processing on Large Clusters** (OSDI 2004) — a framework that abstracted all the distributed-systems plumbing behind two functions the programmer supplied: `map` and `reduce`. The framework owned the hard parts: partitioning input, scheduling work across machines, detecting and re-running failed tasks, sorting intermediate data by key, and routing each key's values to exactly one reducer.
+In **2004**, Dean and Ghemawat published **MapReduce: Simplified Data Processing on Large Clusters** (OSDI 2004) — a framework that abstracted all the distributed-systems plumbing behind two functions the programmer supplied: `map` and `reduce`. The framework owned the hard parts: partitioning input, scheduling work across machines, detecting and re-running failed tasks, sorting intermediate data by key, routing each key's values to exactly one reducer, and **data locality** — preferring to run each map task on the machine that already held a replica of its input block (falling back to the same rack, then anywhere), so that processing happened where data lived rather than shipping data across the network.
 
 The result: engineers without distributed-systems backgrounds could write correct, fault-tolerant, parallelized batch jobs — because the framework handled everything they didn't write.
 
@@ -68,12 +68,13 @@ The result: engineers without distributed-systems backgrounds could write correc
 
 Google did not open-source either system. But both papers were public, and Doug Cutting — who was building Nutch, an open-source web crawler at Apache — recognized immediately that he had the same problem. Nutch needed to crawl and index the web on commodity hardware.
 
-Cutting implemented GFS as **HDFS (Hadoop Distributed File System)** and MapReduce as **Hadoop MapReduce**, then factored them out of Nutch into a standalone project. Hadoop 0.1.0 shipped in April 2006 — roughly 5,000 lines for HDFS and 6,000 for MapReduce. Yahoo adopted it within months; by the end of 2006 they had a 600-node Hadoop cluster running in production. In 2008 it graduated to an Apache top-level project, with Facebook, LinkedIn, Twitter, and Netflix running production workloads on it within two years.
+Cutting implemented GFS as **HDFS (Hadoop Distributed File System)** and MapReduce as **Hadoop MapReduce**, then factored them out of Nutch into a standalone project. In **January 2006** Yahoo hired Cutting specifically to develop Hadoop there — making Yahoo the founding industrial sponsor. Yahoo stood up a research cluster in March 2006, and Hadoop 0.1.0 shipped in April 2006 — roughly 5,000 lines for HDFS and 6,000 for MapReduce. By the end of 2006 Yahoo had a 600-node Hadoop cluster running in production. In 2008 it graduated to an Apache top-level project, with Facebook, LinkedIn, Twitter, and Netflix running production workloads on it within two years.
 
 Hadoop solved two problems that had previously required either Google-scale engineering teams or expensive proprietary hardware:
 
 - **HDFS** made it possible to store datasets larger than any single machine — reliably and cheaply — on commodity servers, with automatic three-way block replication.
 - **Hadoop MapReduce** made it possible to process those datasets in parallel without writing distributed infrastructure from scratch.
+- **Data locality** — the scheduler coordinated with HDFS block placement to run each map task on the same node (or same rack) that already held its input block. Computation moved to data rather than the reverse; on a well-loaded cluster, map-phase input read from local disk rather than crossing the network. The fallback order was the same as the original Google paper: same node → same rack → any node.
 
 ### The Hadoop MapReduce execution model
 
