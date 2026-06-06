@@ -30,8 +30,10 @@ python tools/spark_source_map/gen_configs.py
 # Output: docs/reference/spark-source-map/configs/catalog.yaml + configs/index.md
 
 # Regenerate the landing page / coverage matrix
+# Also appends any proposed topics from gap concepts to learning-path.md automatically.
+# Pass --no-write-proposals to skip the learning-path update.
 python tools/spark_source_map/gen_coverage.py
-# Output: docs/reference/spark-source-map/index.md
+# Output: docs/reference/spark-source-map/index.md (+ learning-path.md if proposals exist)
 
 # Run tests
 python -m pytest tools/spark_source_map/test_gen_configs.py
