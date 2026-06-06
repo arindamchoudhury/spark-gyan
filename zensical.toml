@@ -11,6 +11,9 @@ nav = [
     { "Spark Source Map" = [
         { "Overview" = "reference/spark-source-map/index.md" },
         { "Config catalog" = "reference/spark-source-map/configs/index.md" },
+        { "Topic traces" = [
+            { "B1 — Spark Architecture & Execution Model" = "reference/spark-source-map/topics/b1.md" },
+        ]},
         { "Sweeps" = [
             { "core (RDD layer)" = "reference/spark-source-map/sweeps/core.md" },
         ]},
