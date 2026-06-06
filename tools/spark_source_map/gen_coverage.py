@@ -250,18 +250,27 @@ def build_index(root: Path) -> str:
     L.append("")
 
     # --- sweep status -------------------------------------------------------
-    group_pages: dict[tuple[str, str], str] = {}
+    # group_meta: (sub, group) -> {status, spark_version, swept_at}
+    group_meta: dict[tuple[str, str], dict] = {}
     all_groups_by_sub: dict[str, list[str]] = {}
+    # sub_meta: sub -> {status, spark_version, swept_at}  (for non-grouped subs)
+    sub_meta: dict[str, dict] = {}
     for page in swept:
         sub = page.get("subsystem", "?")
         group = page.get("group")
         all_groups = page.get("all_groups") or []
+        meta = {
+            "status": page.get("status", "complete"),
+            "spark_version": page.get("spark_version", "—"),
+            "swept_at": str(page.get("swept_at", "—")),
+        }
         if group:
-            group_pages[(sub, group)] = page.get("status", "complete")
+            group_meta[(sub, group)] = meta
+        else:
+            sub_meta[sub] = meta
         if all_groups and sub not in all_groups_by_sub:
             all_groups_by_sub[sub] = all_groups
     grouped_subs = set(all_groups_by_sub)
-    status_by_sub = {p.get("subsystem"): p.get("status", "complete") for p in swept}
     swept_names = {p.get("subsystem") for p in swept}
 
     L.append("## Sweep status")
@@ -270,18 +279,28 @@ def build_index(root: Path) -> str:
         "Which subsystems have been swept for source-concept discovery. "
         "Sweep in book-priority order: `sql/catalyst`, `sql/core` first.")
     L.append("")
-    L.append("| Subsystem | Configs | Swept |")
-    L.append("|---|---|---|")
+    L.append("| Subsystem | Configs | Status | Spark version | When |")
+    L.append("|---|---|---|---|---|")
     for sub in sorted(sub_counts, key=lambda s: (-sub_counts[s], s)):
         if sub in grouped_subs:
             for i, g in enumerate(all_groups_by_sub[sub]):
                 configs_col = str(sub_counts[sub]) if i == 0 else "—"
-                st = ("✅ " + group_pages[(sub, g)]) if (sub, g) in group_pages else "⬜ pending"
-                L.append(f"| {sub} — {g} | {configs_col} | {st} |")
+                if (sub, g) in group_meta:
+                    m = group_meta[(sub, g)]
+                    st = "✅ " + m["status"]
+                    ver = m["spark_version"]
+                    when = m["swept_at"]
+                else:
+                    st, ver, when = "⬜ pending", "—", "—"
+                L.append(f"| {sub} — {g} | {configs_col} | {st} | {ver} | {when} |")
         elif sub in swept_names:
-            L.append(f"| {sub} | {sub_counts[sub]} | ✅ {status_by_sub.get(sub, 'complete')} |")
+            m = sub_meta.get(sub, {})
+            st = "✅ " + m.get("status", "complete")
+            ver = m.get("spark_version", "—")
+            when = m.get("swept_at", "—")
+            L.append(f"| {sub} | {sub_counts[sub]} | {st} | {ver} | {when} |")
         else:
-            L.append(f"| {sub} | {sub_counts[sub]} | ⬜ pending |")
+            L.append(f"| {sub} | {sub_counts[sub]} | ⬜ pending | — | — |")
     L.append("")
 
     return "\n".join(L) + "\n"

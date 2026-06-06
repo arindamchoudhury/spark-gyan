@@ -1,6 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.1.2"
+swept_at: 2026-06-06
 group: rdd-layer
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra]
 status: partial

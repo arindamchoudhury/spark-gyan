@@ -75,20 +75,20 @@ Source concepts found during sweeps that don't map to any learning-path topic. R
 
 Which subsystems have been swept for source-concept discovery. Sweep in book-priority order: `sql/catalyst`, `sql/core` first.
 
-| Subsystem | Configs | Swept |
-|---|---|---|
-| sql/catalyst | 656 | ⬜ pending |
-| core — rdd-layer | 533 | ✅ partial |
-| core — execution-engine | — | ⬜ pending |
-| core — shuffle-memory | — | ⬜ pending |
-| core — storage-serializer | — | ⬜ pending |
-| core — infra | — | ⬜ pending |
-| resource-managers/kubernetes | 81 | ⬜ pending |
-| resource-managers/yarn | 59 | ⬜ pending |
-| streaming | 28 | ⬜ pending |
-| sql/connect | 14 | ⬜ pending |
-| sql/hive | 11 | ⬜ pending |
-| connector/kafka-0-10 | 8 | ⬜ pending |
-| connector/kafka-0-10-sql | 8 | ⬜ pending |
-| connector/profiler | 7 | ⬜ pending |
+| Subsystem | Configs | Status | Spark version | When |
+|---|---|---|---|---|
+| sql/catalyst | 656 | ⬜ pending | — | — |
+| core — rdd-layer | 533 | ✅ partial | 4.1.2 | 2026-06-06 |
+| core — execution-engine | — | ⬜ pending | — | — |
+| core — shuffle-memory | — | ⬜ pending | — | — |
+| core — storage-serializer | — | ⬜ pending | — | — |
+| core — infra | — | ⬜ pending | — | — |
+| resource-managers/kubernetes | 81 | ⬜ pending | — | — |
+| resource-managers/yarn | 59 | ⬜ pending | — | — |
+| streaming | 28 | ⬜ pending | — | — |
+| sql/connect | 14 | ⬜ pending | — | — |
+| sql/hive | 11 | ⬜ pending | — | — |
+| connector/kafka-0-10 | 8 | ⬜ pending | — | — |
+| connector/kafka-0-10-sql | 8 | ⬜ pending | — | — |
+| connector/profiler | 7 | ⬜ pending | — | — |
 
