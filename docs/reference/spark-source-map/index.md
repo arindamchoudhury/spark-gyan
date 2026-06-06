@@ -65,10 +65,10 @@ Subsystems are listed with their config count (from the catalog) and trace statu
 
 | Subsystem | Configs | Traced |
 |---|---|---|
-| sql/catalyst | 721 | ⬜ pending |
-| core | 546 | ⬜ pending |
-| resource-managers/kubernetes | 89 | ⬜ pending |
-| resource-managers/yarn | 60 | ⬜ pending |
+| sql/catalyst | 656 | ⬜ pending |
+| core | 533 | ⬜ pending |
+| resource-managers/kubernetes | 81 | ⬜ pending |
+| resource-managers/yarn | 59 | ⬜ pending |
 | streaming | 28 | ⬜ pending |
 | sql/connect | 14 | ⬜ pending |
 | sql/hive | 11 | ⬜ pending |

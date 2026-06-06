@@ -490,7 +490,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Generate the Spark config catalog.")
     ap.add_argument("--source", default=os.environ.get("SPARK_SRC", r"C:/opt/learn/spark/spark"),
                     help="Spark source root.")
-    ap.add_argument("--out-dir", default="docs/reference/spark-source-map/configs",
+    _repo_root = Path(__file__).resolve().parents[2]
+    ap.add_argument("--out-dir", default=str(_repo_root / "docs/reference/spark-source-map/configs"),
                     help="Directory for catalog.yaml and index.md.")
     ap.add_argument("--render-only", action="store_true",
                     help="Skip parsing; re-render index.md from existing catalog.yaml.")

@@ -193,7 +193,8 @@ def build_index(root: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Render the spark-source-map landing page.")
-    ap.add_argument("--root", default=".", help="Notes repo root.")
+    ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]),
+                    help="Notes repo root.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     out = root / "docs" / "reference" / "spark-source-map" / "index.md"
