@@ -274,28 +274,19 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Render the spark-source-map landing page.")
     ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]),
                     help="Notes repo root.")
-    ap.add_argument("--write-proposals", action="store_true",
-                    help="Append proposed topics from gap concepts to learning-path.md.")
+    ap.add_argument("--no-write-proposals", action="store_true",
+                    help="Skip appending proposed topics from gap concepts to learning-path.md.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
 
-    if args.write_proposals:
+    if not args.no_write_proposals:
         traced = load_traced(
             root / "docs" / "reference" / "spark-source-map" / "subsystems")
         proposals = collect_proposals(traced)
-        if not proposals:
-            print("No proposals found (no gap concepts with propose: blocks).")
-            return 0
-        appended = append_proposals_to_learning_path(root, proposals)
-        if appended:
-            print(f"Appended {len(appended)} topic(s) to learning-path.md: {', '.join(appended)}")
-        else:
-            print("All proposed codes already present in learning-path.md.")
-        # Re-render index.md so the matrix picks up the new topics
-        out = root / "docs" / "reference" / "spark-source-map" / "index.md"
-        out.write_text(build_index(root), encoding="utf-8", newline="\n")
-        print(f"re-wrote {out}")
-        return 0
+        if proposals:
+            appended = append_proposals_to_learning_path(root, proposals)
+            if appended:
+                print(f"Appended {len(appended)} topic(s) to learning-path.md: {', '.join(appended)}")
 
     out = root / "docs" / "reference" / "spark-source-map" / "index.md"
     out.parent.mkdir(parents=True, exist_ok=True)
