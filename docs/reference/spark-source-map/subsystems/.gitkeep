@@ -1,0 +1,3 @@
+# Traced subsystem maps live here.
+# Authored by the spark-source-map skill `trace <subsystem>` verb.
+# Front-matter contract: see tools/spark_source_map/gen_coverage.py docstring.
