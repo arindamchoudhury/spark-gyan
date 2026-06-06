@@ -878,6 +878,18 @@ print(back_to_rdd.first())   # Row(id=1, name='Alice', salary=95000)
 
 ---
 
+❓ **To cover — RDD partition count and size:**
+
+RDD partitions are logical divisions, not fixed-size chunks. Cover in detail:
+
+- How partition count is determined by source: reading from HDFS → one partition per block (128 MB default); `sc.parallelize(data, N)` → N partitions; `sc.textFile(path, minPartitions)` → at least `minPartitions`.
+- `spark.default.parallelism` as the fallback when no explicit count is given.
+- How `repartition(N)` triggers a full shuffle to produce exactly N (roughly equal) partitions; `coalesce(N)` avoids a shuffle by merging partitions on the same executor — but can produce skewed sizes.
+- `rdd.getNumPartitions()` to inspect; `rdd.glom().map(len).collect()` to see per-partition element counts.
+- Rule of thumb: 2–4 partitions per CPU core; too few → cores idle; too many → scheduler overhead dominates.
+
+---
+
 ## Summary
 
 - An RDD is a distributed, schema-free collection of Python objects — no types, no SQL optimiser.

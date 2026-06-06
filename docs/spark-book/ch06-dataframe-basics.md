@@ -836,6 +836,18 @@ print(f"Rejected emails: {reject_count.value}")
 
 ---
 
+❓ **To cover — DataFrame partition count and size:**
+
+DataFrames are partitioned the same way as RDDs (they are backed by `RDD[InternalRow]`). Cover in detail:
+
+- Partition count on read: one partition per file block for Parquet/ORC on HDFS; for S3/GCS the default is controlled by `spark.sql.files.maxPartitionBytes` (default 128 MB) and `spark.sql.files.openCostInBytes`.
+- `spark.sql.shuffle.partitions` (default 200) controls partition count after a shuffle (`groupBy`, `join`) — the most common tuning knob for DataFrames.
+- `df.repartition(N)` → full shuffle, exactly N partitions; `df.coalesce(N)` → no shuffle, reduces partition count only.
+- `df.rdd.getNumPartitions()` to inspect; AQE (`spark.sql.adaptive.enabled`, default true in 4.x) can coalesce shuffle partitions automatically at runtime.
+- Rule of thumb: target partitions of 100–200 MB after shuffle; too many small partitions → task scheduling overhead; too few → memory pressure per task.
+
+---
+
 ❓ **To cover:** The DataFrame API is grounded in relational algebra — each operation maps to a formal algebraic operator (σ filter, π project, ⨝ join, γ aggregate). This is why Catalyst can apply 100+ rewrite rules, and why `df.filter(...)` and `spark.sql("WHERE ...")` compile to the same plan. Explain the relational algebra foundation and its practical consequences.
 
 ---

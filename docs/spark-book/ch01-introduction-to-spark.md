@@ -276,7 +276,35 @@ Spark was designed as a reaction to MapReduce's limitations, but it kept the par
 
 **Key-value operations.** At the RDD level, Spark's model is explicitly key-value: `reduceByKey`, `groupByKey`, `combineByKey`, `mapToPair`. These are direct analogues of MapReduce's emit/reduce pattern. The DataFrame API abstracts this away, but the RDD layer underneath still speaks in keys and values.
 
-**Partition model and commodity hardware.** Both divide data into fixed-size chunks (HDFS blocks / RDD partitions) and assign one task per chunk. Both assume commodity hardware and treat machine failures as routine, not exceptional.
+**Partition model and commodity hardware.** Both divide data into chunks and assign one task per chunk. HDFS blocks are fixed-size (128 MB by default); RDD partitions are logical divisions whose count and size depend on the source and configuration — when reading from HDFS, each partition maps to one block, but after a `repartition()` or `coalesce()` the sizes vary. Both systems assume commodity hardware and treat machine failures as routine, not exceptional.
+
+---
+
+## Storage backends Spark supports
+
+For file-based storage, Spark reads and writes any system that implements the Hadoop `FileSystem` API — the URI scheme in the path determines which connector is used:
+
+| Storage | URI scheme | Notes |
+|---|---|---|
+| HDFS | `hdfs://` | Built-in; true data locality |
+| Local filesystem | `file://` | Single-node only |
+| Amazon S3 | `s3a://` | Preferred; `s3n://` is legacy |
+| Google Cloud Storage | `gs://` | Via GCS connector |
+| Azure Blob Storage | `wasb://` | |
+| Azure Data Lake Gen 2 | `abfs://` / `abfss://` | |
+| Alibaba Cloud OSS | — | Via JindoFS SDK |
+| OpenStack Swift | — | Via Stocator |
+
+Spark also connects to sources outside the `FileSystem` API entirely:
+
+- **JDBC databases** (PostgreSQL, MySQL, Oracle) — via `spark.read.jdbc()` using the JDBC protocol
+- **Kafka** — Structured Streaming reads and writes via the Kafka consumer/producer protocol
+- **Cassandra / HBase / DynamoDB** — via dedicated connectors with their own native protocols
+- **In-memory** — `sc.parallelize()`, `spark.range()`, `spark.createDataFrame()` use no storage at all
+
+Delta Lake, Iceberg, and Hudi are not filesystems — they are table formats (transaction log + Parquet files) that sit on top of any file-based backend above.
+
+**Data locality caveat.** The locality levels discussed in the MapReduce comparison (`PROCESS_LOCAL → NODE_LOCAL → RACK_LOCAL → ANY`) are effectively HDFS concepts. Cloud object stores (S3, GCS, ADLS) are remote storage — there is no co-located block to schedule a task against. On cloud clusters the scheduler always falls through to `ANY`, so locality optimisation is meaningful only when running Spark against HDFS on a co-located cluster.
 
 ---
 
