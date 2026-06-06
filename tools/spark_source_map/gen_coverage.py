@@ -250,6 +250,21 @@ def build_index(root: Path) -> str:
     L.append("")
 
     # --- subsystem tracing status -----------------------------------------
+    # Collect group info: subsystems traced in named groups declare group + all_groups.
+    group_pages: dict[tuple[str, str], str] = {}   # (sub, group) -> status
+    all_groups_by_sub: dict[str, list[str]] = {}   # sub -> ordered group list
+    for page in traced:
+        sub = page.get("subsystem", "?")
+        group = page.get("group")
+        all_groups = page.get("all_groups") or []
+        if group:
+            group_pages[(sub, group)] = page.get("status", "complete")
+        if all_groups and sub not in all_groups_by_sub:
+            all_groups_by_sub[sub] = all_groups
+    grouped_subs = set(all_groups_by_sub)
+
+    status_by_sub = {p.get("subsystem"): p.get("status", "complete") for p in traced}
+
     L.append("## Subsystem tracing status")
     L.append("")
     L.append(
@@ -258,13 +273,19 @@ def build_index(root: Path) -> str:
     L.append("")
     L.append("| Subsystem | Configs | Traced |")
     L.append("|---|---|---|")
-    status_by_sub = {p.get("subsystem"): p.get("status", "complete") for p in traced}
     for sub in sorted(sub_counts, key=lambda s: (-sub_counts[s], s)):
-        if sub in traced_names:
-            st = "✅ " + status_by_sub.get(sub, "complete")
+        if sub in grouped_subs:
+            for i, g in enumerate(all_groups_by_sub[sub]):
+                configs_col = str(sub_counts[sub]) if i == 0 else "—"
+                if (sub, g) in group_pages:
+                    st = "✅ " + group_pages[(sub, g)]
+                else:
+                    st = "⬜ pending"
+                L.append(f"| {sub} — {g} | {configs_col} | {st} |")
+        elif sub in traced_names:
+            L.append(f"| {sub} | {sub_counts[sub]} | ✅ {status_by_sub.get(sub, 'complete')} |")
         else:
-            st = "⬜ pending"
-        L.append(f"| {sub} | {sub_counts[sub]} | {st} |")
+            L.append(f"| {sub} | {sub_counts[sub]} | ⬜ pending |")
     L.append("")
 
     return "\n".join(L) + "\n"

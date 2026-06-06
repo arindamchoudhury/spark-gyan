@@ -1,6 +1,8 @@
 ---
 subsystem: core
 spark_version: "4.1.2"
+group: rdd-layer
+all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra]
 status: partial
 concepts:
   - name: rdd-model

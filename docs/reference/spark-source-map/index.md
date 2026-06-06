@@ -76,7 +76,11 @@ Subsystems are listed with their config count (from the catalog) and trace statu
 | Subsystem | Configs | Traced |
 |---|---|---|
 | sql/catalyst | 656 | ⬜ pending |
-| core | 533 | ✅ partial |
+| core — rdd-layer | 533 | ✅ partial |
+| core — execution-engine | — | ⬜ pending |
+| core — shuffle-memory | — | ⬜ pending |
+| core — storage-serializer | — | ⬜ pending |
+| core — infra | — | ⬜ pending |
 | resource-managers/kubernetes | 81 | ⬜ pending |
 | resource-managers/yarn | 59 | ⬜ pending |
 | streaming | 28 | ⬜ pending |
