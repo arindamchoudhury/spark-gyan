@@ -82,6 +82,77 @@ def load_traced(subsystems_dir: Path) -> list[dict]:
     return pages
 
 
+def collect_proposals(traced: list[dict]) -> list[dict]:
+    """Return propose blocks from gap concepts (topics: []) across all traced pages."""
+    proposals: list[dict] = []
+    for page in traced:
+        sub = page.get("subsystem", "?")
+        for concept in page.get("concepts", []) or []:
+            ctopics = concept.get("topics", []) or []
+            propose = concept.get("propose")
+            if not ctopics and propose:
+                proposals.append({"subsystem": sub, "concept": concept.get("name", "?"),
+                                   **propose})
+    return proposals
+
+
+LEVEL_ORDER = {"Beginner": 0, "Intermediate": 1, "Advanced": 2, "Expert": 3}
+LEVEL_HEADING_RE = re.compile(r"^## (Beginner|Intermediate|Advanced|Expert)\s*$", re.MULTILINE)
+SUGGESTED_RE = re.compile(r"^## Suggested Study Sequence", re.MULTILINE)
+
+
+def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list[str]:
+    """Append proposed topic sections to learning-path.md. Returns list of appended codes."""
+    lp = root / "docs" / "learning-path.md"
+    text = lp.read_text(encoding="utf-8")
+    existing_codes = {m.group(1) for m in re.finditer(r"###\s+[✅⬜]\s+([BIAE]\d+)\s+—", text)}
+    appended: list[str] = []
+
+    # Group proposals by level; insert each before "## Suggested Study Sequence"
+    insert_point = SUGGESTED_RE.search(text)
+    if not insert_point:
+        return appended
+
+    additions: list[str] = []
+    for p in proposals:
+        code = p.get("code", "")
+        if not code or code in existing_codes:
+            continue
+        level = p.get("level", "Advanced")
+        title = p.get("title", code)
+        what = p.get("what", "")
+        why = p.get("why", "")
+        section = (
+            f"\n### ⬜ {code} — {title}\n\n"
+            f"> Discovered from source trace: `{p['subsystem']}: {p['concept']}`\n\n"
+            f"**What it is:** {what}\n\n"
+            f"**Why you need it:** {why}\n\n"
+            "**Learn it with:**\n\n"
+            "1. **Spark-docs** — see official documentation.\n\n"
+            "**Milestone:** TBD\n\n"
+            "---\n"
+        )
+        # Find the right level section to append to
+        level_matches = list(LEVEL_HEADING_RE.finditer(text))
+        target_pos = insert_point.start()
+        for i, m in enumerate(level_matches):
+            if m.group(1) == level:
+                next_pos = level_matches[i + 1].start() if i + 1 < len(level_matches) else insert_point.start()
+                target_pos = min(next_pos, insert_point.start())
+                break
+        additions.append((target_pos, section, code))
+        existing_codes.add(code)
+
+    if additions:
+        # Insert in reverse order so positions stay valid
+        for pos, section, code in sorted(additions, key=lambda x: -x[0]):
+            text = text[:pos] + section + "\n" + text[pos:]
+            appended.append(code)
+        lp.write_text(text, encoding="utf-8", newline="\n")
+
+    return appended
+
+
 def build_index(root: Path) -> str:
     base = root / "docs" / "reference" / "spark-source-map"
     topics = parse_topics(root / "docs" / "learning-path.md")
@@ -91,7 +162,8 @@ def build_index(root: Path) -> str:
 
     # topic code -> list of "subsystem: concept" that back it
     backing: dict[str, list[str]] = {code: [] for code, _ in topics}
-    gaps: list[tuple[str, str]] = []  # (subsystem, concept) mapping to no topic
+    # gaps: (subsystem, concept_name, propose_dict_or_None)
+    gaps: list[tuple[str, str, dict | None]] = []
     traced_names = set()
     for page in traced:
         sub = page.get("subsystem", "?")
@@ -100,7 +172,7 @@ def build_index(root: Path) -> str:
             cname = concept.get("name", "?")
             ctopics = concept.get("topics", []) or []
             if not ctopics:
-                gaps.append((sub, cname))
+                gaps.append((sub, cname, concept.get("propose")))
             for tc in ctopics:
                 backing.setdefault(tc, []).append(f"{sub}: {cname}")
 
@@ -162,10 +234,17 @@ def build_index(root: Path) -> str:
     L.append("## Discovery gaps — source concepts mapping to no topic")
     L.append("")
     if gaps:
-        L.append("| Concept | Subsystem | Note |")
-        L.append("|---|---|---|")
-        for sub, cname in sorted(gaps):
-            L.append(f"| {cname} | {sub} | candidate new topic |")
+        L.append("| Concept | Subsystem | Proposed code | Proposed title |")
+        L.append("|---|---|---|---|")
+        for sub, cname, propose in sorted(gaps, key=lambda x: (x[0], x[1])):
+            code = propose.get("code", "—") if propose else "—"
+            title = propose.get("title", "—") if propose else "—"
+            L.append(f"| {cname} | {sub} | {code} | {title} |")
+        L.append("")
+        proposals_with_detail = [(sub, cname, p) for sub, cname, p in gaps if p]
+        if proposals_with_detail:
+            L.append("> Run `python tools/spark_source_map/gen_coverage.py --write-proposals`"
+                     " to append the proposed topics to `learning-path.md`.")
     else:
         L.append("> None recorded yet (appears as subsystems are traced).")
     L.append("")
@@ -195,8 +274,29 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Render the spark-source-map landing page.")
     ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]),
                     help="Notes repo root.")
+    ap.add_argument("--write-proposals", action="store_true",
+                    help="Append proposed topics from gap concepts to learning-path.md.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+
+    if args.write_proposals:
+        traced = load_traced(
+            root / "docs" / "reference" / "spark-source-map" / "subsystems")
+        proposals = collect_proposals(traced)
+        if not proposals:
+            print("No proposals found (no gap concepts with propose: blocks).")
+            return 0
+        appended = append_proposals_to_learning_path(root, proposals)
+        if appended:
+            print(f"Appended {len(appended)} topic(s) to learning-path.md: {', '.join(appended)}")
+        else:
+            print("All proposed codes already present in learning-path.md.")
+        # Re-render index.md so the matrix picks up the new topics
+        out = root / "docs" / "reference" / "spark-source-map" / "index.md"
+        out.write_text(build_index(root), encoding="utf-8", newline="\n")
+        print(f"re-wrote {out}")
+        return 0
+
     out = root / "docs" / "reference" / "spark-source-map" / "index.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(build_index(root), encoding="utf-8", newline="\n")
