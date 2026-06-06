@@ -121,6 +121,8 @@ numbers_4p = sc.parallelize(range(100), 4)
 print(numbers_4p.getNumPartitions())  # 4
 ```
 
+**`defaultParallelism` formula.** When `numSlices` is omitted, the default comes from `sc.defaultParallelism`, which equals the total core count across all executors (minimum 2). In local mode `local[N]` it is N; `local[*]` uses the available CPU count. `spark.default.parallelism` overrides this when set explicitly. This same value controls the default shuffle output partition count — so if you never set `spark.default.parallelism`, your shuffle partition count silently tracks the cluster's core count.
+
 ### `sc.textFile()` — from a text file (one element per line)
 
 Reads a text file and returns one string element per line. Supports local paths, HDFS, S3, GCS, and wildcards.
@@ -154,7 +156,7 @@ for path, content in file_rdd.take(1):
 
 ### `sc.range()` — integer sequence
 
-Creates a partitioned RDD of integers. More efficient than `parallelize(range(...))` because it avoids materialising the list in driver memory.
+Creates a partitioned RDD of integers. More efficient than `parallelize(range(...))` because it delegates to the JVM, which encodes each partition as a pair of start/end integers and generates values lazily on the executor. `sc.parallelize(range(N))` iterates the Python range into a full Python list on the driver before distributing it; for large N this allocates all N integers in driver memory. Prefer `sc.range()` for large integer sequences.
 
 ```python
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
@@ -206,6 +208,39 @@ For new code, prefer `spark.read` / `df.write` with Parquet or Delta — they ar
 | `sc.wholeTextFiles(path)` | Directory of files | `(path, content)` tuple | Data-locality dependent | One document per file |
 | `sc.range(n)` | Integer range | `int` | `sc.defaultParallelism` | Synthetic/test integer data |
 | `df.rdd` | DataFrame | `Row` | Same as DataFrame | Rarely — only when DataFrame can't express the operation |
+
+### Inspecting an RDD
+
+Four utility methods that don't do any distributed computation — they interrogate the RDD's local metadata:
+
+| Method | What it returns |
+|---|---|
+| `rdd.getNumPartitions()` | Partition count; use to verify before/after `repartition`/`coalesce` |
+| `rdd.id` | Unique integer ID auto-assigned at construction; appears in driver logs |
+| `rdd.name` / `rdd.setName("tag")` | Mutable label propagated to Spark UI job and stage names |
+| `rdd.toDebugString()` | Full lineage tree with partition counts, storage-level annotations, and `ShuffleDependency` boundaries |
+| `rdd.glom()` | Returns `RDD[list]` — each partition's elements as a single list; lets the driver inspect per-partition contents without a shuffle |
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+sc = spark.sparkContext
+
+words = sc.textFile("data.txt").flatMap(str.split).filter(str.isalpha)
+words.setName("clean_words")
+
+print(words.getNumPartitions())   # e.g. 2
+print(words.toDebugString())
+# (2) clean_words PythonRDD[5] at RDD at PythonRDD.scala:53
+#  |  filter PythonRDD[4] ...
+#  |  flatMap PythonRDD[3] ...
+#  |  data.txt MapPartitionsRDD[2] at textFile at NativeMethodAccessorImpl
+#  |  data.txt HadoopRDD[1] at textFile at NativeMethodAccessorImpl
+
+# glom — inspect contents per partition (pulls each partition to driver as a list)
+sc.parallelize([1, 2, 3, 4], 2).glom().collect()   # [[1, 2], [3, 4]]
+```
+
+`toDebugString` is the first thing to check when a job is slower than expected: the `+-(n)` prefix marks a shuffle boundary and tells you how many stages the plan has. `glom()` is the tool for confirming partition skew — if one partition's list is 10× longer than the others, that partition is doing 10× the work.
 
 ---
 
@@ -350,7 +385,7 @@ ranks_ok = ranks_p.mapValues(lambda v: v * 0.85)
 | `map(f)` | Apply `f` to every element — 1-in, 1-out | Narrow |
 | `flatMap(f)` | Apply `f` to every element — 1-in, 0-or-more-out | Narrow |
 | `filter(f)` | Keep elements where `f(x)` is truthy | Narrow |
-| `mapPartitions(f)` | Apply `f` to each partition as an iterator — avoids per-row overhead | Narrow |
+| `mapPartitions(f)` | Apply `f` to each partition as an iterator — one call per partition, not one per element | Narrow |
 | `distinct()` | Remove duplicate elements | Wide (shuffle) |
 | `union(other)` | Concatenate two RDDs | Narrow |
 | `reduceByKey(f)` | For `(K, V)` pairs — aggregate values per key; pre-aggregates locally first | Wide (shuffle) |
@@ -368,6 +403,22 @@ ranks_ok = ranks_p.mapValues(lambda v: v * 0.85)
 | `coalesce(n)` | Reduce to `n` partitions by **merging** adjacent ones — no shuffle, but can leave uneven partitions; decrease only | Narrow (no shuffle) |
 | `repartitionAndSortWithinPartitions(p)` | Repartition by partitioner `p` **and** sort within each partition in one shuffle — cheaper than `repartition` then `sortBy` | Wide (shuffle) |
 | `pipe(command)` | Stream each partition through an external shell command (e.g. a Perl/C binary), one line per element | Narrow |
+
+**`mapPartitions` vs `map` — when to choose.** `map(f)` calls `f` once per element. `mapPartitions(f)` calls `f` once per partition, receiving an iterator of all elements. Use `mapPartitions` whenever there is any per-partition initialization cost — opening a database connection, compiling a regex, loading a model — so that cost is paid once per partition rather than once per row.
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+import sqlite3
+sc = spark.sparkContext
+
+def write_to_db(records):
+    conn = sqlite3.connect("out.db")   # one connection per partition
+    conn.executemany("INSERT INTO t VALUES (?,?)", records)
+    conn.commit(); conn.close()
+    return iter([])
+
+rdd.mapPartitions(write_to_db).count()
+```
 
 ```python
 # Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
@@ -398,7 +449,7 @@ colors.cartesian(sizes).collect()
 | `collect()` | All elements as a Python list | Loads entire RDD into driver memory — only safe on small RDDs |
 | `count()` | Number of elements | Triggers full scan |
 | `first()` | First element | |
-| `take(n)` | First `n` elements as a list | Safer than `collect()` |
+| `take(n)` | First `n` elements as a list | Adaptive multi-round scan — reads only as many partitions as needed |
 | `reduce(f)` | Single value — folds all elements using `f`; `f` must be commutative and associative | |
 | `saveAsTextFile(path)` | None — writes RDD as text files to path | |
 | `foreach(f)` | None — runs `f` on each element for side effects | `f` runs on executors, not the driver |
@@ -409,6 +460,8 @@ colors.cartesian(sizes).collect()
 | `takeSample(withReplacement, n, seed)` | Exactly `n` random elements as a driver list | Fixed count (unlike `sample`, which takes a fraction) |
 | `countByKey()` | For `(K, V)` pairs — `dict` of `{key: count}` | Result collected to driver — safe only if keys are few |
 | `foreachPartition(f)` | Run `f` once per partition, passed an iterator of its elements | Use for per-partition setup (open one DB connection per partition, not per row) |
+
+**`take(n)` adaptive scanning.** `take` does not scan all partitions upfront. It starts by scanning `spark.rdd.limit.initialNumPartitions` partitions (default: 1). If the result is still short it retries with a geometrically larger count, multiplying by `spark.rdd.limit.scaleUpFactor` (default: 4) each round. This means `take(1)` on a 10,000-partition RDD reads only the first partition, not all 10,000. On a dataset where the first partition is very sparse or skewed, raise `spark.rdd.limit.initialNumPartitions` to avoid many round-trips.
 
 ### A complete example — data in memory and on disk
 
@@ -514,6 +567,8 @@ from pyspark import StorageLevel
 word_counts.persist(StorageLevel.MEMORY_AND_DISK)
 ```
 
+**Compression on top of storage level.** Setting `spark.rdd.compress = true` compresses the serialized partition bytes stored in the BlockManager, using the codec configured by `spark.io.compression.codec` (default: LZ4). This applies in addition to the chosen `StorageLevel` — even `MEMORY_ONLY` partitions are compressed before being placed on the JVM heap. It trades CPU time for memory: a good choice when the RDD is large and the bottleneck is heap pressure, not CPU.
+
 **LRU eviction policy.** When a new partition is computed but no space remains, Spark evicts the partition from the **least recently used RDD**. One important exception: it never evicts a partition from the *same* RDD currently being computed. Without this rule, a full scan over a large RDD would repeatedly evict and re-fetch its own earlier partitions — thrashing. The exception ensures each partition of the active RDD is computed exactly once before any of them can be evicted. Users can override the default policy with an explicit persistence priority per RDD (higher priority partitions are kept longer).
 
 ### What "deserialized" means for PySpark
@@ -575,6 +630,7 @@ Key rules:
 - **Persist the RDD before checkpointing** (`rdd.cache()` then `rdd.checkpoint()`). Without this, Spark must recompute the RDD from scratch to write the checkpoint, which wastes the work you just did.
 - Always follow `checkpoint()` with an action (`count()`) to ensure the checkpoint is written before the lineage reference is dropped.
 - `cache()` and `checkpoint()` are complementary: `cache()` avoids recomputation on the *happy path*; `checkpoint()` shortens the recovery path on *failure*.
+- **`spark.cleaner.referenceTracking.cleanCheckpoints`** defaults to `false`, meaning checkpoint files on HDFS accumulate indefinitely until manually deleted. Set it to `true` for iterative algorithms that checkpoint frequently, so that checkpoint files are removed when the corresponding RDD is garbage-collected by the driver.
 
 ---
 
@@ -594,6 +650,29 @@ flowchart LR
 ```
 
 For structured data, DataFrames avoid this entirely — the Python process sends only the logical plan to the JVM; data never crosses the boundary. This is why DataFrames are typically 3–8× faster than RDDs for tabular operations.
+
+### Serialization: Java vs Kryo
+
+When Spark writes RDD partition data to the BlockManager, shuffles, or broadcasts, it uses the serializer configured by `spark.serializer`. The default is `org.apache.spark.serializer.JavaSerializer` — safe and zero-config, but slow and verbose for numeric or case-class RDDs.
+
+Switch to Kryo for significant throughput gains:
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+spark = (
+    SparkSession.builder
+    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    .getOrCreate()
+)
+```
+
+Kryo is faster and produces smaller output than Java serialization for most RDD workloads. The tradeoff: it cannot serialize arbitrary Python objects — for Python-heavy RDD pipelines the cloudpickle path (see above) still dominates, so this setting matters most when the bottleneck is Scala-side partition serialization (shuffle files, broadcast, `MEMORY_AND_DISK` spill).
+
+### PipelinedRDD — function fusion in PySpark
+
+PySpark chains consecutive Python transformations into a single Python worker call via `PipelinedRDD`. When two `map` calls are applied to a non-cached RDD, the second transformation detects a pipelinable parent and composes both functions into one `pipeline_func`, so each partition crosses the JVM→Python boundary exactly once for the entire chain.
+
+A `cache()` or `checkpoint()` in between breaks the pipeline — the cached materialization is an opaque JVM object, so the next transformation must cross the boundary fresh. An unnecessary `.cache()` mid-chain therefore forces an extra round-trip rather than saving one.
 
 ---
 
@@ -664,6 +743,8 @@ bc.unpersist()   # release when no longer needed
 
 Use broadcast variables for any large read-only lookup table — country codes, model weights, feature dictionaries. The `.value` attribute accesses the broadcasted data on the executor.
 
+**How broadcast actually ships data.** Spark uses a BitTorrent-style protocol (`TorrentBroadcast`): the driver splits the serialized object into 4 MB blocks (`spark.broadcast.blockSize`) and stores them in its own BlockManager. Each executor fetches blocks in a randomized order from both the driver and from peer executors that have already downloaded some blocks. Once an executor has a block it serves it to other peers, so the driver is never the sole source. For large lookup tables (>100 MB), this peer-to-peer distribution prevents the driver from becoming a bottleneck.
+
 ### Accumulators — write-only counters from executors
 
 An accumulator is a variable that tasks can **add to** but only the driver can **read**. It is used for side-channel metrics — counting errors, skipped rows, or debug events — without collecting data back to the driver.
@@ -691,6 +772,21 @@ print(f"Blanks: {blank_count.value}")
 **Key constraint:** accumulators are **write-only from executor code**. Reading `.value` inside a task produces undefined results — the partial value from that executor only. The correct value is available on the driver after an action completes.
 
 **Caution with re-execution:** if a task is re-run due to failure or speculative execution, its accumulator updates are applied again. Accumulators inside `foreach` (actions) are guaranteed to be applied exactly once; accumulators inside transformations (`map`, `filter`) may be applied more than once if tasks are retried.
+
+**`LongAccumulator` — count and average.** Under the hood, `sc.accumulator(0)` is backed by a `LongAccumulator` on the JVM, which tracks both `_sum` and `_count` (the number of `.add()` calls). In the Scala API, `.avg` returns the per-element average directly. In PySpark, only `.value` (the sum) is exposed on the Python wrapper — for a distributed average, use two accumulators:
+
+```python
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
+total_sum   = sc.accumulator(0)
+total_count = sc.accumulator(0)
+
+def add_to_acc(x):
+    total_sum.add(x)
+    total_count.add(1)
+
+rdd.foreach(add_to_acc)
+avg = total_sum.value / total_count.value
+```
 
 ---
 
