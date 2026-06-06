@@ -6,7 +6,17 @@ This is the map+discover view: which parts of the Apache Spark source back each 
 
 ## Concept map
 
-> No subsystems traced yet. Run `trace <subsystem>` (e.g. `sql/core`) to populate this map. The diagram renders once the first subsystem page exists.
+```mermaid
+flowchart LR
+    S0["core"]
+    S0 --> S0c0["rdd-model"]
+    S0 --> S0c1["transformations-actions"]
+    S0 --> S0c2["partitioning"]
+    S0 --> S0c3["persistence"]
+    S0 --> S0c4["checkpointing"]
+    S0 --> S0c5["broadcast"]
+    S0 --> S0c6["context-cleaner"]
+```
 
 ## Topic coverage
 
@@ -14,7 +24,7 @@ Each learning-path topic and the traced source concepts that back it.
 
 | Topic | Title | Chapter | Backed by (subsystem: concept) | Traced |
 |---|---|---|---|---|
-| B1 | Spark Architecture & the Execution Model | [03](../../spark-book/ch03-spark-installation.md) ✅ | — | ⬜ |
+| B1 | Spark Architecture & the Execution Model | [03](../../spark-book/ch03-spark-installation.md) ✅ | core: rdd-model | ✅ |
 | B2 | SparkSession and Entry Points | [04](../../spark-book/ch04-sparksession.md) ✅ | — | ⬜ |
 | B3 | The DataFrame API: Basics | [06](../../spark-book/ch06-dataframe-basics.md) ✅ | — | ⬜ |
 | B4 | Reading and Writing Data | [07](../../spark-book/ch07-reading-writing-data.md) ✅ | — | ⬜ |
@@ -26,9 +36,9 @@ Each learning-path topic and the traced source concepts that back it.
 | I1 | Complex Column Types: Arrays, Maps, Structs | [13](../../spark-book/ch13-complex-types.md) ✅ | — | ⬜ |
 | I2 | Window Functions | [14](../../spark-book/ch14-window-functions.md) ✅ | — | ⬜ |
 | I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) ✅ | — | ⬜ |
-| I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) ✅ | — | ⬜ |
-| I5 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) ✅ | — | ⬜ |
-| I6 | Caching and Persistence | — | — | ⬜ |
+| I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) ✅ | core: rdd-model; core: transformations-actions; core: partitioning; core: checkpointing; core: broadcast | ✅ |
+| I5 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) ✅ | core: partitioning | ✅ |
+| I6 | Caching and Persistence | — | core: persistence; core: checkpointing | ✅ |
 | I7 | The Spark UI: Reading Plans and Diagnosing Jobs | — | — | ⬜ |
 | I8 | Delta Lake Basics | — | — | ⬜ |
 | I9 | The Medallion Architecture | — | — | ⬜ |
@@ -37,7 +47,7 @@ Each learning-path topic and the traced source concepts that back it.
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
-| A4 | Data Skew and Shuffle Optimisation | — | — | ⬜ |
+| A4 | Data Skew and Shuffle Optimisation | — | core: partitioning | ✅ |
 | A5 | Advanced pandas UDFs and UDFs on Windows | — | — | ⬜ |
 | A6 | Delta Lake Advanced Operations | — | — | ⬜ |
 | A7 | Structured Streaming: Fundamentals | — | — | ⬜ |
@@ -45,7 +55,7 @@ Each learning-path topic and the traced source concepts that back it.
 | A9 | ML Pipelines with Spark MLlib | — | — | ⬜ |
 | A10 | Testing PySpark Pipelines | — | — | ⬜ |
 | A11 | Spark Declarative Pipelines | — | — | ⬜ |
-| E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
+| E1 | Spark Internals: Memory, Execution, and Serialisation | — | core: broadcast; core: context-cleaner | ✅ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
 | E4 | Delta Lake Internals: Transaction Log, MVCC, and Concurrency | — | — | ⬜ |
@@ -66,7 +76,7 @@ Subsystems are listed with their config count (from the catalog) and trace statu
 | Subsystem | Configs | Traced |
 |---|---|---|
 | sql/catalyst | 656 | ⬜ pending |
-| core | 533 | ⬜ pending |
+| core | 533 | ✅ partial |
 | resource-managers/kubernetes | 81 | ⬜ pending |
 | resource-managers/yarn | 59 | ⬜ pending |
 | streaming | 28 | ⬜ pending |

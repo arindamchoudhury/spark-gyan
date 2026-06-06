@@ -11,6 +11,7 @@ nav = [
     { "Spark Source Map" = [
         { "Overview" = "reference/spark-source-map/index.md" },
         { "Config catalog" = "reference/spark-source-map/configs/index.md" },
+        { "core (RDD layer)" = "reference/spark-source-map/subsystems/core.md" },
     ]},
     { "Spark Book" = [
         { "Contents" = "spark-book/index.md" },
