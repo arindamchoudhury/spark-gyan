@@ -15,6 +15,7 @@ nav = [
             { "B1 — Spark Architecture & Execution Model" = "reference/spark-source-map/topics/b1.md" },
             { "B2 — SparkSession and Entry Points" = "reference/spark-source-map/topics/b2.md" },
             { "B3 — The DataFrame API: Basics" = "reference/spark-source-map/topics/b3.md" },
+            { "I4 — RDD Fundamentals" = "reference/spark-source-map/topics/i4.md" },
         ]},
         { "Sweeps" = [
             { "core (RDD layer)" = "reference/spark-source-map/sweeps/core.md" },

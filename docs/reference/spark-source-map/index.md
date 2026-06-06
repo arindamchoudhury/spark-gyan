@@ -22,7 +22,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I1 | Complex Column Types: Arrays, Maps, Structs | [13](../../spark-book/ch13-complex-types.md) ✅ | — | ⬜ |
 | I2 | Window Functions | [14](../../spark-book/ch14-window-functions.md) ✅ | — | ⬜ |
 | I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) ✅ | — | ⬜ |
-| I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) ✅ | — | ⬜ |
+| I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) ✅ | apache/spark | ✅ complete |
 | I5 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) ✅ | — | ⬜ |
 | I6 | Caching and Persistence | — | — | ⬜ |
 | I7 | The Spark UI: Reading Plans and Diagnosing Jobs | — | — | ⬜ |
