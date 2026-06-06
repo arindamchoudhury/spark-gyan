@@ -30,6 +30,9 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I9 | The Medallion Architecture | — | — | ⬜ |
 | I10 | Data Formats: Parquet, Delta, Avro, JSON | — | — | ⬜ |
 | I11 | SQL Scripting | — | — | ⬜ |
+| I14 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
+| I13 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
+| I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -50,6 +53,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E7 | CI/CD for Data Engineering | — | — | ⬜ |
 | E8 | Change Data Capture (CDC) and Slowly Changing Dimensions | — | — | ⬜ |
 | E9 | Spark Connect and the Modern Client Architecture | — | — | ⬜ |
+| E11 | Serialization: KryoSerializer vs JavaSerializer | — | — | ⬜ |
+| E10 | AccumulatorV2: Distributed Side-Effect Counters | — | — | ⬜ |
 
 ## Source concept map
 
@@ -63,13 +68,25 @@ flowchart LR
     S0 --> S0c4["checkpointing"]
     S0 --> S0c5["broadcast"]
     S0 --> S0c6["context-cleaner"]
+    S0 --> S0c7["pair-rdd-functions"]
+    S0 --> S0c8["closure-cleaning"]
+    S0 --> S0c9["accumulator-v2"]
+    S0 --> S0c10["async-rdd-actions"]
+    S0 --> S0c11["serialization"]
 ```
 
-## Discovery gaps
+## Discovery gaps and refinement proposals
 
-Source concepts found during sweeps that don't map to any learning-path topic. Run `gen_coverage.py` to auto-append proposed stubs to `learning-path.md`.
+**Gap** = no learning-path topic covers this concept at all. **Refinement** = covered by a broader topic, but warrants a dedicated topic. Both are auto-appended to `learning-path.md` when `gen_coverage.py` runs.
 
-> None yet — appears as sweeps are run.
+| Concept | Subsystem | Kind | Proposed code | Proposed title |
+|---|---|---|---|---|
+| accumulator-v2 | core | refinement | E10 | AccumulatorV2: Distributed Side-Effect Counters |
+| async-rdd-actions | core | refinement | I14 | AsyncRDDActions: Non-Blocking Job Submission |
+| closure-cleaning | core | refinement | I13 | Closure Cleaning and the Task-Not-Serializable Problem |
+| pair-rdd-functions | core | refinement | I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
+| serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
+
 
 ## Sweep status
 
@@ -78,7 +95,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
 | sql/catalyst | 656 | ⬜ pending | — | — |
-| core — rdd-layer | 533 | ✅ partial | 4.1.2 | 2026-06-06 |
+| core — rdd-layer | 533 | ✅ complete | 4.1.2 | 2026-06-06 |
 | core — execution-engine | — | ⬜ pending | — | — |
 | core — shuffle-memory | — | ⬜ pending | — | — |
 | core — storage-serializer | — | ⬜ pending | — | — |

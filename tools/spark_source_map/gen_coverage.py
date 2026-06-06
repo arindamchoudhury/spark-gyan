@@ -86,16 +86,24 @@ def load_sweep_pages(sweeps_dir: Path) -> list[dict]:
 
 
 def collect_proposals(swept: list[dict]) -> list[dict]:
-    """Return propose blocks from gap concepts (topics: []) across all sweep pages."""
+    """Return all propose blocks from sweep pages.
+
+    Includes both pure gaps (topics: []) and refinement proposals (topics: [...] + propose:).
+    Each proposal dict carries a 'gap' bool: True = no topic covers it, False = refinement.
+    """
     proposals: list[dict] = []
     for page in swept:
         sub = page.get("subsystem", "?")
         for concept in page.get("concepts", []) or []:
             ctopics = concept.get("topics", []) or []
             propose = concept.get("propose")
-            if not ctopics and propose:
-                proposals.append({"subsystem": sub, "concept": concept.get("name", "?"),
-                                   **propose})
+            if propose:
+                proposals.append({
+                    "subsystem": sub,
+                    "concept": concept.get("name", "?"),
+                    "gap": not ctopics,
+                    **propose,
+                })
     return proposals
 
 
@@ -123,9 +131,10 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
         title = p.get("title", code)
         what = p.get("what", "")
         why = p.get("why", "")
+        kind = "gap" if p.get("gap") else "refinement"
         section = (
             f"\n### ⬜ {code} — {title}\n\n"
-            f"> Discovered from source sweep: `{p['subsystem']}: {p['concept']}`\n\n"
+            f"> Discovered from source sweep ({kind}): `{p['subsystem']}: {p['concept']}`\n\n"
             f"**What it is:** {what}\n\n"
             f"**Why you need it:** {why}\n\n"
             "**Learn it with:**\n\n"
@@ -161,13 +170,15 @@ def build_index(root: Path) -> str:
     topic_pages = load_topic_pages(base / "topics")
     swept = load_sweep_pages(base / "sweeps")
 
-    # gaps from sweeps: concepts that map to no topic
-    gaps: list[tuple[str, str, dict | None]] = []
+    # proposals from sweeps: gaps (topics: []) and refinements (topics: [...] + propose:)
+    gaps: list[tuple[str, str, dict | None, bool]] = []
     for page in swept:
         sub = page.get("subsystem", "?")
         for concept in page.get("concepts", []) or []:
-            if not (concept.get("topics") or []):
-                gaps.append((sub, concept.get("name", "?"), concept.get("propose")))
+            ctopics = concept.get("topics") or []
+            propose = concept.get("propose")
+            if not ctopics or propose:
+                gaps.append((sub, concept.get("name", "?"), propose, not ctopics))
 
     L: list[str] = []
     L.append("# Spark source map")
@@ -231,19 +242,21 @@ def build_index(root: Path) -> str:
     L.append("")
 
     # --- discovery gaps -----------------------------------------------------
-    L.append("## Discovery gaps")
+    L.append("## Discovery gaps and refinement proposals")
     L.append("")
     L.append(
-        "Source concepts found during sweeps that don't map to any learning-path topic. "
-        "Run `gen_coverage.py` to auto-append proposed stubs to `learning-path.md`.")
+        "**Gap** = no learning-path topic covers this concept at all. "
+        "**Refinement** = covered by a broader topic, but warrants a dedicated topic. "
+        "Both are auto-appended to `learning-path.md` when `gen_coverage.py` runs.")
     L.append("")
     if gaps:
-        L.append("| Concept | Subsystem | Proposed code | Proposed title |")
-        L.append("|---|---|---|---|")
-        for sub, cname, propose in sorted(gaps, key=lambda x: (x[0], x[1])):
+        L.append("| Concept | Subsystem | Kind | Proposed code | Proposed title |")
+        L.append("|---|---|---|---|---|")
+        for sub, cname, propose, is_gap in sorted(gaps, key=lambda x: (x[0], x[1])):
             pcode = propose.get("code", "—") if propose else "—"
             ptitle = propose.get("title", "—") if propose else "—"
-            L.append(f"| {cname} | {sub} | {pcode} | {ptitle} |")
+            kind = "gap" if is_gap else "refinement"
+            L.append(f"| {cname} | {sub} | {kind} | {pcode} | {ptitle} |")
         L.append("")
     else:
         L.append("> None yet — appears as sweeps are run.")
