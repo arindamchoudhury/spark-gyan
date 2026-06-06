@@ -1,30 +1,15 @@
 #!/usr/bin/env python3
-"""Render the spark-source-map landing page (concept map + coverage matrix).
+"""Render the spark-source-map landing page (topic coverage + sweep gaps).
 
-Engine-3 of the pipeline: deterministic assembly of ``index.md`` from
-  - learning-path.md       (the 40 topics, ordered)
-  - spark-book/index.md    (topic -> chapter mapping)
-  - configs/catalog.yaml    (subsystems + per-subsystem config counts)
-  - subsystems/*.md          (front matter: which concepts back which topics)
+Hybrid pipeline — two complementary engines:
+  - topic pages  (docs/reference/spark-source-map/topics/*.md)  — topic-first traces
+  - sweep pages  (docs/reference/spark-source-map/sweeps/*.md)  — source-first discovery
 
-The traced subsystem pages are LLM-authored, but this matrix is recomputed
-from their structured front matter, so coverage is never hand-maintained.
-
-Subsystem page front matter contract:
-
-    ---
-    subsystem: sql/core
-    spark_version: "5.0.0-SNAPSHOT"
-    status: complete            # or: partial
-    concepts:
-      - name: joins
-        topics: [B7, A3]         # learning-path codes this concept backs
-      - name: vectorized-reader
-        topics: []                # empty => discovery gap (no topic)
-    ---
+Coverage matrix comes from topic pages (which topics have been traced).
+Gap discovery comes from sweep pages (which source concepts have no topic).
 
 Usage:
-    python gen_coverage.py --root <notes-repo-root>
+    python gen_coverage.py [--root <notes-repo-root>] [--no-write-proposals]
 """
 from __future__ import annotations
 
@@ -68,11 +53,29 @@ def load_catalog_subsystems(catalog: Path) -> dict[str, int]:
     return counts
 
 
-def load_traced(subsystems_dir: Path) -> list[dict]:
-    pages: list[dict] = []
-    if not subsystems_dir.exists():
+def load_topic_pages(topics_dir: Path) -> dict[str, dict]:
+    """Load topic-first trace pages; returns {topic-code -> front matter}."""
+    pages: dict[str, dict] = {}
+    if not topics_dir.exists():
         return pages
-    for path in sorted(subsystems_dir.glob("*.md")):
+    for path in sorted(topics_dir.glob("*.md")):
+        m = FRONT_MATTER_RE.match(path.read_text(encoding="utf-8"))
+        if not m:
+            continue
+        fm = yaml.safe_load(m.group(1)) or {}
+        code = fm.get("topic")
+        if code:
+            fm["_file"] = path.name
+            pages[code] = fm
+    return pages
+
+
+def load_sweep_pages(sweeps_dir: Path) -> list[dict]:
+    """Load source-sweep pages (subsystem-first discovery)."""
+    pages: list[dict] = []
+    if not sweeps_dir.exists():
+        return pages
+    for path in sorted(sweeps_dir.glob("*.md")):
         m = FRONT_MATTER_RE.match(path.read_text(encoding="utf-8"))
         if not m:
             continue
@@ -82,10 +85,10 @@ def load_traced(subsystems_dir: Path) -> list[dict]:
     return pages
 
 
-def collect_proposals(traced: list[dict]) -> list[dict]:
-    """Return propose blocks from gap concepts (topics: []) across all traced pages."""
+def collect_proposals(swept: list[dict]) -> list[dict]:
+    """Return propose blocks from gap concepts (topics: []) across all sweep pages."""
     proposals: list[dict] = []
-    for page in traced:
+    for page in swept:
         sub = page.get("subsystem", "?")
         for concept in page.get("concepts", []) or []:
             ctopics = concept.get("topics", []) or []
@@ -96,7 +99,6 @@ def collect_proposals(traced: list[dict]) -> list[dict]:
     return proposals
 
 
-LEVEL_ORDER = {"Beginner": 0, "Intermediate": 1, "Advanced": 2, "Expert": 3}
 LEVEL_HEADING_RE = re.compile(r"^## (Beginner|Intermediate|Advanced|Expert)\s*$", re.MULTILINE)
 SUGGESTED_RE = re.compile(r"^## Suggested Study Sequence", re.MULTILINE)
 
@@ -108,12 +110,11 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
     existing_codes = {m.group(1) for m in re.finditer(r"###\s+[✅⬜]\s+([BIAE]\d+)\s+—", text)}
     appended: list[str] = []
 
-    # Group proposals by level; insert each before "## Suggested Study Sequence"
     insert_point = SUGGESTED_RE.search(text)
     if not insert_point:
         return appended
 
-    additions: list[str] = []
+    additions: list[tuple[int, str, str]] = []
     for p in proposals:
         code = p.get("code", "")
         if not code or code in existing_codes:
@@ -124,7 +125,7 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
         why = p.get("why", "")
         section = (
             f"\n### ⬜ {code} — {title}\n\n"
-            f"> Discovered from source trace: `{p['subsystem']}: {p['concept']}`\n\n"
+            f"> Discovered from source sweep: `{p['subsystem']}: {p['concept']}`\n\n"
             f"**What it is:** {what}\n\n"
             f"**Why you need it:** {why}\n\n"
             "**Learn it with:**\n\n"
@@ -132,19 +133,18 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
             "**Milestone:** TBD\n\n"
             "---\n"
         )
-        # Find the right level section to append to
         level_matches = list(LEVEL_HEADING_RE.finditer(text))
         target_pos = insert_point.start()
-        for i, m in enumerate(level_matches):
-            if m.group(1) == level:
-                next_pos = level_matches[i + 1].start() if i + 1 < len(level_matches) else insert_point.start()
+        for i, lm in enumerate(level_matches):
+            if lm.group(1) == level:
+                next_pos = (level_matches[i + 1].start()
+                            if i + 1 < len(level_matches) else insert_point.start())
                 target_pos = min(next_pos, insert_point.start())
                 break
         additions.append((target_pos, section, code))
         existing_codes.add(code)
 
     if additions:
-        # Insert in reverse order so positions stay valid
         for pos, section, code in sorted(additions, key=lambda x: -x[0]):
             text = text[:pos] + section + "\n" + text[pos:]
             appended.append(code)
@@ -158,45 +158,66 @@ def build_index(root: Path) -> str:
     topics = parse_topics(root / "docs" / "learning-path.md")
     chapters = parse_book_chapters(root / "docs" / "spark-book" / "index.md")
     sub_counts = load_catalog_subsystems(base / "configs" / "catalog.yaml")
-    traced = load_traced(base / "subsystems")
+    topic_pages = load_topic_pages(base / "topics")
+    swept = load_sweep_pages(base / "sweeps")
 
-    # topic code -> list of "subsystem: concept" that back it
-    backing: dict[str, list[str]] = {code: [] for code, _ in topics}
-    # gaps: (subsystem, concept_name, propose_dict_or_None)
+    # gaps from sweeps: concepts that map to no topic
     gaps: list[tuple[str, str, dict | None]] = []
-    traced_names = set()
-    for page in traced:
+    for page in swept:
         sub = page.get("subsystem", "?")
-        traced_names.add(sub)
         for concept in page.get("concepts", []) or []:
-            cname = concept.get("name", "?")
-            ctopics = concept.get("topics", []) or []
-            if not ctopics:
-                gaps.append((sub, cname, concept.get("propose")))
-            for tc in ctopics:
-                backing.setdefault(tc, []).append(f"{sub}: {cname}")
+            if not (concept.get("topics") or []):
+                gaps.append((sub, concept.get("name", "?"), concept.get("propose")))
 
     L: list[str] = []
     L.append("# Spark source map")
     L.append("")
     L.append(
-        "> Auto-generated by `tools/spark_source_map/gen_coverage.py`. It reconciles the "
-        "[configuration catalog](configs/index.md) and the traced subsystem maps against the "
-        "book's [40-topic learning path](../../learning-path.md). Do not edit by hand.")
+        "> Auto-generated by `tools/spark_source_map/gen_coverage.py`. Do not edit by hand.")
     L.append("")
     L.append(
-        "This is the map+discover view: which parts of the Apache Spark source back each "
-        "learning-path topic, and which source concepts are **not yet** covered by any topic "
-        "(discovery gaps). Full code-path traces live under `subsystems/`.")
+        "Two complementary engines: **topic traces** (start from a learning-path topic, find "
+        "the backing source) and **source sweeps** (scan a subsystem, discover concepts that "
+        "aren't in the learning path yet). The [config catalog](configs/index.md) is a "
+        "shared lookup for both engines.")
     L.append("")
 
-    # --- concept map -------------------------------------------------------
-    L.append("## Concept map")
+    # --- topic trace coverage -----------------------------------------------
+    L.append("## Topic traces")
     L.append("")
-    if traced:
+    L.append(
+        "One row per learning-path topic. A topic is traced when its page exists under "
+        "`topics/`. The Chapter column links to the spark-book chapter.")
+    L.append("")
+    L.append("| Topic | Title | Chapter | Repos | Status |")
+    L.append("|---|---|---|---|---|")
+    for code, title in topics:
+        ch = chapters.get(code)
+        if ch:
+            link = ch["link"]
+            chap_link = f"../../spark-book/{link}" if not link.startswith("http") else link
+            chap = f"[{ch['chapter']}]({chap_link})"
+            chap += " ✅" if ch["done"] else " ⬜"
+        else:
+            chap = "—"
+        tp = topic_pages.get(code)
+        if tp:
+            repos = ", ".join(tp.get("repos") or []) or "—"
+            status = tp.get("status", "complete")
+            mark = "✅ complete" if status == "complete" else "⬡ partial"
+        else:
+            repos = "—"
+            mark = "⬜"
+        L.append(f"| {code} | {title} | {chap} | {repos} | {mark} |")
+    L.append("")
+
+    # --- source concept map (from sweeps) -----------------------------------
+    L.append("## Source concept map")
+    L.append("")
+    if swept:
         L.append("```mermaid")
         L.append("flowchart LR")
-        for i, page in enumerate(traced):
+        for i, page in enumerate(swept):
             sub = page.get("subsystem", "?")
             sid = f"S{i}"
             L.append(f'    {sid}["{sub}"]')
@@ -206,54 +227,32 @@ def build_index(root: Path) -> str:
         L.append("```")
     else:
         L.append(
-            "> No subsystems traced yet. Run `trace <subsystem>` (e.g. `sql/core`) to populate "
-            "this map. The diagram renders once the first subsystem page exists.")
+            "> No sweeps yet. Run `sweep <subsystem>` (e.g. `core`) to populate this map.")
     L.append("")
 
-    # --- coverage matrix ---------------------------------------------------
-    L.append("## Topic coverage")
+    # --- discovery gaps -----------------------------------------------------
+    L.append("## Discovery gaps")
     L.append("")
-    L.append("Each learning-path topic and the traced source concepts that back it.")
-    L.append("")
-    L.append("| Topic | Title | Chapter | Backed by (subsystem: concept) | Traced |")
-    L.append("|---|---|---|---|---|")
-    for code, title in topics:
-        ch = chapters.get(code)
-        if ch:
-            chap = f"[{ch['chapter']}]({('../../spark-book/' + ch['link']) if not ch['link'].startswith('http') else ch['link']})"
-            chap += " ✅" if ch["done"] else " ⬜"
-        else:
-            chap = "—"
-        back = backing.get(code) or []
-        back_txt = "; ".join(back) if back else "—"
-        mark = "✅" if back else "⬜"
-        L.append(f"| {code} | {title} | {chap} | {back_txt} | {mark} |")
-    L.append("")
-
-    # --- discovery gaps ----------------------------------------------------
-    L.append("## Discovery gaps — source concepts mapping to no topic")
+    L.append(
+        "Source concepts found during sweeps that don't map to any learning-path topic. "
+        "Run `gen_coverage.py` to auto-append proposed stubs to `learning-path.md`.")
     L.append("")
     if gaps:
         L.append("| Concept | Subsystem | Proposed code | Proposed title |")
         L.append("|---|---|---|---|")
         for sub, cname, propose in sorted(gaps, key=lambda x: (x[0], x[1])):
-            code = propose.get("code", "—") if propose else "—"
-            title = propose.get("title", "—") if propose else "—"
-            L.append(f"| {cname} | {sub} | {code} | {title} |")
+            pcode = propose.get("code", "—") if propose else "—"
+            ptitle = propose.get("title", "—") if propose else "—"
+            L.append(f"| {cname} | {sub} | {pcode} | {ptitle} |")
         L.append("")
-        proposals_with_detail = [(sub, cname, p) for sub, cname, p in gaps if p]
-        if proposals_with_detail:
-            L.append("> Run `python tools/spark_source_map/gen_coverage.py --write-proposals`"
-                     " to append the proposed topics to `learning-path.md`.")
     else:
-        L.append("> None recorded yet (appears as subsystems are traced).")
+        L.append("> None yet — appears as sweeps are run.")
     L.append("")
 
-    # --- subsystem tracing status -----------------------------------------
-    # Collect group info: subsystems traced in named groups declare group + all_groups.
-    group_pages: dict[tuple[str, str], str] = {}   # (sub, group) -> status
-    all_groups_by_sub: dict[str, list[str]] = {}   # sub -> ordered group list
-    for page in traced:
+    # --- sweep status -------------------------------------------------------
+    group_pages: dict[tuple[str, str], str] = {}
+    all_groups_by_sub: dict[str, list[str]] = {}
+    for page in swept:
         sub = page.get("subsystem", "?")
         group = page.get("group")
         all_groups = page.get("all_groups") or []
@@ -262,27 +261,24 @@ def build_index(root: Path) -> str:
         if all_groups and sub not in all_groups_by_sub:
             all_groups_by_sub[sub] = all_groups
     grouped_subs = set(all_groups_by_sub)
+    status_by_sub = {p.get("subsystem"): p.get("status", "complete") for p in swept}
+    swept_names = {p.get("subsystem") for p in swept}
 
-    status_by_sub = {p.get("subsystem"): p.get("status", "complete") for p in traced}
-
-    L.append("## Subsystem tracing status")
+    L.append("## Sweep status")
     L.append("")
     L.append(
-        "Subsystems are listed with their config count (from the catalog) and trace status. "
-        "Trace in book-priority order: `sql/catalyst`, `sql/core` first.")
+        "Which subsystems have been swept for source-concept discovery. "
+        "Sweep in book-priority order: `sql/catalyst`, `sql/core` first.")
     L.append("")
-    L.append("| Subsystem | Configs | Traced |")
+    L.append("| Subsystem | Configs | Swept |")
     L.append("|---|---|---|")
     for sub in sorted(sub_counts, key=lambda s: (-sub_counts[s], s)):
         if sub in grouped_subs:
             for i, g in enumerate(all_groups_by_sub[sub]):
                 configs_col = str(sub_counts[sub]) if i == 0 else "—"
-                if (sub, g) in group_pages:
-                    st = "✅ " + group_pages[(sub, g)]
-                else:
-                    st = "⬜ pending"
+                st = ("✅ " + group_pages[(sub, g)]) if (sub, g) in group_pages else "⬜ pending"
                 L.append(f"| {sub} — {g} | {configs_col} | {st} |")
-        elif sub in traced_names:
+        elif sub in swept_names:
             L.append(f"| {sub} | {sub_counts[sub]} | ✅ {status_by_sub.get(sub, 'complete')} |")
         else:
             L.append(f"| {sub} | {sub_counts[sub]} | ⬜ pending |")
@@ -296,14 +292,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]),
                     help="Notes repo root.")
     ap.add_argument("--no-write-proposals", action="store_true",
-                    help="Skip appending proposed topics from gap concepts to learning-path.md.")
+                    help="Skip appending proposed topics from sweep gaps to learning-path.md.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
 
     if not args.no_write_proposals:
-        traced = load_traced(
-            root / "docs" / "reference" / "spark-source-map" / "subsystems")
-        proposals = collect_proposals(traced)
+        swept = load_sweep_pages(root / "docs" / "reference" / "spark-source-map" / "sweeps")
+        proposals = collect_proposals(swept)
         if proposals:
             appended = append_proposals_to_learning_path(root, proposals)
             if appended:

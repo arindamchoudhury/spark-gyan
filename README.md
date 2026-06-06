@@ -22,7 +22,11 @@ zensical serve
 
 ## Spark source map
 
-Tools in `tools/spark_source_map/` mine the Apache Spark source to generate a config catalog and topic-coverage matrix under `docs/reference/spark-source-map/`.
+Tools in `tools/spark_source_map/` mine the Apache Spark source using a hybrid two-direction pipeline under `docs/reference/spark-source-map/`.
+
+**Two tracing directions:**
+- **Topic-first** (`trace <code>`) — start from a learning-path topic, find the backing source classes and configs. Output: `topics/<code>.md`.
+- **Source-first sweep** (`sweep <subsystem>`) — scan a subsystem, surface concepts the learning path doesn't yet cover. Output: `sweeps/<slug>.md` + proposals auto-appended to `learning-path.md`.
 
 ```bash
 # Refresh the whole-repo config catalog (deterministic, ~8 s)
@@ -30,7 +34,7 @@ python tools/spark_source_map/gen_configs.py
 # Output: docs/reference/spark-source-map/configs/catalog.yaml + configs/index.md
 
 # Regenerate the landing page / coverage matrix
-# Also appends any proposed topics from gap concepts to learning-path.md automatically.
+# Also appends proposed topics from sweep gaps to learning-path.md automatically.
 # Pass --no-write-proposals to skip the learning-path update.
 python tools/spark_source_map/gen_coverage.py
 # Output: docs/reference/spark-source-map/index.md (+ learning-path.md if proposals exist)
@@ -39,9 +43,9 @@ python tools/spark_source_map/gen_coverage.py
 python -m pytest tools/spark_source_map/test_gen_configs.py
 ```
 
-Both scripts work from any directory. `SPARK_SRC` env var or `--source` flag overrides the default Spark source path (`C:/opt/learn/spark/spark`). Never hand-edit the generated files — re-run the generator instead.
+Both scripts work from any directory. The `--source` flag overrides the default Spark source path (`C:/opt/learn/spark/spark`). Never hand-edit generated files — re-run the generator instead.
 
-Subsystem traces (LLM-driven, one subsystem at a time) are done via the `spark-source-map` Claude Code skill.
+Topic traces and source sweeps (LLM-driven, one unit at a time) are done via the `spark-source-map` Claude Code skill.
 
 ## Adding a new chapter's notes
 
