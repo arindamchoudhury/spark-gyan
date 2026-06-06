@@ -198,38 +198,39 @@ Spark reads and writes HDFS natively — a path like `hdfs://namenode:8020/data/
 
 The files Spark reads from — whether on HDFS, S3, or GCS — are already protected by the storage layer's own replication. But during a Spark job, the results of intermediate transformations — a filtered RDD, an aggregated RDD, a joined RDD — live only in executor memory. They are never written back to storage between steps; that is precisely what gives Spark its speed advantage over MapReduce. If an executor crashes, its in-memory partitions are gone with no replica anywhere — the storage layer cannot help with data that was never written to disk.
 
-To counter this, Spark uses **lineage**. Every RDD records how it was derived — which parent RDD it came from and which transformation produced it. This chain of derivations reaches all the way back to the original source data, which is durably stored in HDFS or S3. Crucially, the lineage graph lives in the **driver** — the separate JVM process that runs the user's main program — not in the executors. Executors hold partition data; the driver holds the recipe. When an executor crashes, the driver is still alive and still holds the complete lineage. The DAGScheduler (running in the driver) detects the failed tasks, walks the lineage it already has, and schedules recomputation of only the lost partitions on surviving executors. The rest of the job continues uninterrupted. Lineage is what makes it safe to keep intermediate results only in memory: you never need a replica, because you can always rebuild. The driver going down is a different failure mode — it kills the entire application, because the lineage lives there.
+To counter this, Spark uses **lineage**. Every RDD records how it was derived — which parent RDD it came from and which transformation produced it. This chain of derivations reaches all the way back to the original source data, which is durably stored in HDFS or S3. Crucially, the lineage graph lives in the **driver** — the separate JVM process that runs the user's main program — not in the executors. Executors compute partition data when tasks run, and retain it only if the RDD is explicitly cached; the driver holds the recipe regardless. When an executor crashes, the driver is still alive and still holds the complete lineage. The DAGScheduler (running in the driver) detects the failed tasks, walks the lineage it already has, and schedules recomputation of only the lost partitions on surviving executors. The rest of the job continues uninterrupted. Lineage is what makes it safe to keep intermediate results only in memory: you never need a replica, because you can always rebuild. The driver going down is a different failure mode — it kills the entire application, because the lineage lives there.
 
-### Why this matters for the DataFrame API
+### From RDDs to the DataFrame API
 
-RDDs were Spark's original API. The DataFrame API (Spark 1.3) unified Spark SQL's `SchemaRDD` under a new name, bringing the Catalyst optimizer — which had shipped with Spark SQL since Spark 1.0 — to the wider API surface. When you write `df.filter(...).groupBy(...).count()`, Spark builds a **Catalyst logical plan** lazily — no data moves, no computation starts. When an action fires, Catalyst optimizes the plan, selects a physical execution strategy, and Tungsten compiles it to JVM bytecode that runs on partitioned data across executors. The full mechanics of this pipeline — how `WholeStageCodegenExec` wraps `FileScanRDD`, how `RDD[InternalRow]` relates to `RDD[Row]`, and the two-layer scheduling/computation model — are covered in **Chapter 30 (E1 — Spark Internals)**. The two working-set properties from the 2010 paper survive intact — but they operate through the `InMemoryRelation` bridge:
+RDDs were Spark's original API. The DataFrame API (Spark 1.3) built on top of them, adding the Catalyst optimizer and a relational programming model. The two working-set properties from the 2010 paper survive intact:
 
 - **Working-set reuse.** `df.cache()` marks a DataFrame so its partitions are kept in executor memory after the first action — subsequent actions read from memory instead of recomputing from source. The full caching mechanics (`InMemoryRelation`, `InMemoryTableScan`, block manager) are covered in **Chapter 17 (I6 — Caching and Persistence)**.
 - **Lineage-based fault recovery.** If a cached partition is evicted, Spark replays the Catalyst logical plan lineage for that partition from the original source — no checkpoint needed.
-
-The DataFrame API is grounded in relational algebra — each operation maps to a formal algebraic operator (σ, π, ⨝, γ), which is why Catalyst can apply 100+ rewrite rules and why `df.filter(...)` and `spark.sql("WHERE ...")` compile to the same plan. The full mapping and its implications are covered in **Chapter 22 (A1 — Query Optimization: Catalyst and the Physical Plan)**.
 
 ### Spark as a unified engine
 
 SQL, Streaming, ML, and graph processing all run as libraries over the same core — sharing the same execution engine, fault tolerance, and memory model.
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph libs["High-level libraries"]
-        SQL["Spark SQL\n& DataFrames"]
-        STREAM["Structured\nStreaming"]
-        ML["MLlib\nML Pipelines"]
+        direction LR
+        SQL["Spark SQL & DataFrames"]
+        STREAM["Structured Streaming"]
+        ML["MLlib — ML Pipelines"]
         GRAPH["GraphX"]
-        DP["Declarative\nPipelines"]
+        DP["Declarative Pipelines"]
     end
 
-    subgraph core["Spark Core  —  shared by all libraries"]
-        DAG["DAGScheduler\nstage DAG"]
-        TASK["TaskScheduler\ntask dispatch"]
-        BLOCK["BlockManager\nmemory & storage"]
+    subgraph core["Spark Core — shared by all libraries"]
+        direction LR
+        DAG["DAGScheduler — stage DAG"]
+        TASK["TaskScheduler — task dispatch"]
+        BLOCK["BlockManager — memory & storage"]
     end
 
     subgraph cm["Cluster managers"]
+        direction LR
         YARN["YARN"]
         K8S["Kubernetes"]
         SA["Standalone"]
@@ -238,7 +239,7 @@ flowchart LR
     libs --> core --> cm
 ```
 
-Because every library operates on RDDs, Spark can optimize *across* library boundaries — fusing a SQL map into a downstream MLlib pipeline without serializing data between engines. This is why Spark is called unified rather than a collection of separate tools.
+Because all libraries share the same in-memory data representation — the DataFrame, backed by `RDD[InternalRow]` internally — data flows from a SQL query into an MLlib pipeline or a Streaming job without copying or serializing between engines. This is why Spark is called unified rather than a collection of separate tools.
 
 ---
 

@@ -836,6 +836,10 @@ print(f"Rejected emails: {reject_count.value}")
 
 ---
 
+❓ **To cover:** The DataFrame API is grounded in relational algebra — each operation maps to a formal algebraic operator (σ filter, π project, ⨝ join, γ aggregate). This is why Catalyst can apply 100+ rewrite rules, and why `df.filter(...)` and `spark.sql("WHERE ...")` compile to the same plan. Explain the relational algebra foundation and its practical consequences.
+
+---
+
 ## Summary
 
 - DataFrames are typed, schema-enforced, distributed — every operation returns a new DataFrame, nothing is mutated. In execution they are row-oriented (`UnsafeRow`); columnar applies to cache storage and file I/O only.
