@@ -29,7 +29,7 @@ docker compose exec spark spark-submit \
 ```
 
 ```python
-# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.14
+# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
 # Run from workspace/notebooks/ — requires the local stack running (docker compose up)
 import os
 from pyspark.sql import SparkSession
@@ -175,6 +175,12 @@ The first two paths decouple the client completely from cluster management. The 
 | `sc://host:port` | Connects directly to an existing remote Connect server |
 | `yarn`, `spark://…`, `k8s://…` | **Blocked** — setting both `spark.master` and `spark.remote` raises `CANNOT_CONFIGURE_SPARK_CONNECT_MASTER`; use `spark.api.mode=connect` with `--master` instead |
 
+> **When to use each URL form:**
+>
+> - **`local[N]` / `local[*]`** — use when developing or testing Connect-compatible code on a machine with a full PySpark install. The main reason: Connect mode disallows `df._jdf`, `sc._jsc`, and any direct JVM-object access. Running locally with `local[*]` catches those violations before you deploy to a real server. Also useful in CI pipelines. Requires a full PySpark install — there must be a JVM available to start the server.
+>
+> - **`sc://host:port`** — the normal production path: a Connect server is already running on a cluster (YARN, Kubernetes, Databricks) and you connect to it from a lightweight client. This is the **only** option when using `pyspark-client` (the JVM-free package introduced in Spark 4.0), since there is no JVM available to start a local server.
+
 `spark.remote` and `spark.master` cannot be combined — they represent incompatible execution models. `spark.master` means "I am starting Spark infrastructure; negotiate with this cluster manager." `spark.remote` means "I am a thin client; connect me to an already-running server." Setting both raises `CANNOT_CONFIGURE_SPARK_CONNECT_MASTER` at session creation. If a Spark Connect server is already deployed on a real cluster, `spark.remote = "sc://cluster-host:15002"` works fine without `spark.master` — the client has no cluster management role. If you want Spark to manage cluster resources itself and also use the Connect API, use `spark.api.mode=connect` with `--master`.
 
 ```bash
@@ -219,7 +225,7 @@ The **Cluster Manager** is an external service that allocates resources (machine
 | YARN | Hadoop ecosystem; multi-tenant clusters |
 | Kubernetes (`k8s://https://host:port`) | Container-native deployments |
 
-In the local stack (`docker compose up`) it is Spark Standalone, running inside the `spark` container. On cloud deployments it is typically YARN or Kubernetes.
+In the [local stack](https://github.com/arindamchoudhury/spark-delta-unitycatalog), it is Spark Standalone, running inside the `spark` container. On cloud deployments it is typically YARN or Kubernetes.
 
 Executors are allocated at **application startup** — when `SparkSession.builder.getOrCreate()` initialises `SparkContext`, it registers with the cluster manager which then launches executor processes on worker nodes. When `.show(10)` fires a job later, the executors are already running and waiting for tasks. The cluster manager is not contacted again per-job. With **dynamic allocation** (`spark.dynamicAllocation.enabled=true`), the `ExecutorAllocationManager` inside the driver can request additional executors or release idle ones during the application lifetime — but this is driven by scheduler backpressure (pending tasks), not by individual job triggers.
 
@@ -229,11 +235,11 @@ Executors are allocated at **application startup** — when `SparkSession.builde
 
 A **Worker Node** is any machine in the cluster that can run application code. The cluster manager launches an **Executor** process on each worker node it allocates to your application.
 
-In the word count program, executors are the processes that actually read `1342-0.txt`, run `split`, `regexp_extract`, `lower`, and `filter` on lines of text, and count words. The driver never touches the file contents directly — it delegates all of that to executors.
+In the word count program, executors are the processes that actually read `1342-0.txt`, run `split`, `regexp_extract`, `lower`, and `filter` on lines of text, and count words. The driver reads file metadata (directory listings, file sizes, split boundaries) to build the physical plan and assign tasks — it never reads row data. Each executor receives a task describing exactly which file and byte range to read, opens that range itself, and processes the rows locally.
 
-Each application gets its own isolated executors. They stay alive for the entire application (from `getOrCreate()` to `spark.stop()`), not just one query. The executor lifecycle — when they are launched, when they shut down, and how dynamic allocation (`spark.dynamicAllocation.enabled`) adjusts the executor count at runtime while requiring the External Shuffle Service — is covered in **Chapter 33 (E2 — Production Deployment: Cluster Management)**.
+Each application gets its own isolated executors. They stay alive for the entire application (from `getOrCreate()` to `spark.stop()`), not just one query. 
 
-Spark's programming model provides two shared variable types available to both the RDD and DataFrame APIs: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters that executors increment and only the driver reads. The mechanism and usage pattern differ between the two APIs: RDD usage (explicit `sc.broadcast()` and `sc.accumulator()`) is covered in **Chapter 5 (RDD Fundamentals)**; DataFrame-specific usage (`F.broadcast()` for join hints, accumulators inside UDFs) is covered in **Chapter 24 (Join Strategies and Tuning)**.
+Spark's programming model provides two shared variable types available to both the RDD and DataFrame APIs: **broadcast variables** — large read-only objects (e.g. a lookup table) sent once to every executor and cached there, rather than copied with every task closure — and **accumulators** — add-only counters that executors increment and only the driver reads.
 
 Accumulators are intentionally **write-only for executors**. This is an architectural choice: if executors could read an accumulator mid-execution, the value would be inconsistent across tasks running in parallel, requiring distributed locking. Instead, executor tasks add their updates locally; Spark merges each task's update into the driver-side accumulator exactly once when the task completes (in actions only — accumulator updates in transformations may be applied more than once if stages are re-executed). A failed task's partial accumulator update is discarded; the retry starts from zero.
 
@@ -309,7 +315,7 @@ A task that has only acquired 30 MB so far and needs 80 MB would **wait**, not s
 
 The 300 MB reserved region is hardcoded. It protects Spark's own internal data structures from being crowded out by user workloads.
 
-**What causes GC pressure.** `UnsafeRow` binary data in the managed memory pool does not create JVM objects and generates no GC pressure. GC pressure comes from the **user memory pool** — any JVM objects your code creates: Python UDF result objects converted back to JVM types, intermediate Scala/Java collections in user functions, large driver-side variables accidentally captured in closures and shipped to executors. A full JVM GC pause stalls all tasks on the executor simultaneously and, if long enough, causes the executor to miss heartbeats and be marked dead by the driver. Monitoring GC time in the Spark UI (covered in Chapter 18 — I7) is the first step in diagnosing executor performance problems.
+**What causes GC pressure.** `UnsafeRow` binary data in the managed memory pool does not create JVM objects and generates no GC pressure. GC pressure comes from the **user memory pool** — any JVM objects your code creates: Python UDF result objects converted back to JVM types, intermediate Scala/Java collections in user functions, large driver-side variables accidentally captured in closures and shipped to executors. A full JVM GC pause stalls all tasks on the executor simultaneously and, if long enough, causes the executor to miss heartbeats and be marked dead by the driver. Monitoring GC time in the Spark UI is the first step in diagnosing executor performance problems.
 
 | Config | Default | What it controls |
 |---|---|---|
@@ -333,10 +339,13 @@ The problem: `spark.memory.offHeap.size` is allocated from native memory, which 
 **Correct sizing formula:**
 
 ```
-total container memory = spark.executor.memory        (JVM heap)
-                       + spark.executor.memoryOverhead (JVM internals + Python workers + overhead)
-                       + spark.memory.offHeap.size     (off-heap execution/storage)
+total container memory = spark.executor.memory           (JVM heap)
+                       + spark.executor.memoryOverhead    (JVM internals + native overhead)
+                       + spark.memory.offHeap.size        (off-heap execution/storage)
+                       + spark.pyspark.executor.memory    (PySpark apps only)
 ```
+
+- **`spark.pyspark.executor.memory`** — memory reserved for the Python worker process on each executor (separate from the JVM heap and from `memoryOverhead`). Relevant when tasks contain Python UDFs or RDD lambdas — those tasks spawn a Python worker process on the executor to execute the Python code. If unset, no extra memory is reserved for the Python process — the Python worker shares whatever the OS allows beyond the JVM. Source-verified: `Client.scala` L130–134 reads this as `pysparkWorkerMemory` and adds it as a fourth term in the container size calculation.
 
 Set `spark.executor.memoryOverhead` to at least cover `spark.memory.offHeap.size` plus the original overhead budget.
 
@@ -350,14 +359,16 @@ The access overhead of `sun.misc.Unsafe` reads is negligible — the cost is ope
 | Large heaps (>4-8 GB), GC pauses >10% of task time in Spark UI | **Consider enabling** — GC storms become a real throughput bottleneck |
 | Long-running Structured Streaming jobs | **Often beneficial** — GC accumulates over hours of uptime |
 
-**Always check GC time in the Spark UI (Chapter 18) before enabling off-heap.** If GC is <5% of task time, off-heap adds complexity with no measurable gain. If GC is high, first try using more executors with smaller heaps (smaller heap = smaller GC scan scope) — that often resolves GC pressure without the off-heap sizing risk.
+**Always check GC time in the Spark UI before enabling off-heap.** If GC is <5% of task time, off-heap adds complexity with no measurable gain. If GC is high, first try using more executors with smaller heaps (smaller heap = smaller GC scan scope) — that often resolves GC pressure without the off-heap sizing risk.
 
-**Unmanaged memory (Spark 4.x).** `UnifiedMemoryManager.scala` v4.1.2 introduced a new tracking category — **unmanaged memory**: memory consumed by components that manage their own allocations outside of Spark's unified memory system. The source lists two examples:
+**Unmanaged memory (Spark 4.x).** `UnifiedMemoryManager.scala` v4.1.2 added a third type of memory that `UnifiedMemoryManager` accounts for, alongside execution memory and storage memory — **unmanaged memory**: memory consumed by components that manage their own allocations outside of Spark's unified memory system. The source lists two examples:
 
 - **RocksDB state stores** — used by Structured Streaming stateful operations; manages its own block cache and write buffers entirely outside the unified pool
 - **Native libraries** — any JNI or off-heap allocation not routed through `spark.memory.offHeap`
 
-Polling is **disabled by default** (`spark.memory.unmanagedMemoryPollingInterval = 0s`, added in Spark 4.1.0). When enabled, a background thread periodically queries each registered consumer and subtracts the result from the available execution and storage budgets. With polling disabled (the default), Spark has no visibility into unmanaged allocations — they are completely invisible to the unified memory manager. If your job uses Structured Streaming with RocksDB state stores (`spark.sql.streaming.stateStore.providerClass = RocksDBStateStoreProvider`), account for RocksDB's native off-heap memory separately and increase `spark.executor.memoryOverhead` to cover it — without polling enabled, an OOM will surface only as a container kill with no Java stack trace.
+Polling is **disabled by default** (`spark.memory.unmanagedMemoryPollingInterval = 0s`, Spark 4.1.0+). When enabled, a background thread periodically queries each registered consumer and subtracts their usage from the available execution and storage budgets — making Spark's allocator aware of how much headroom is actually left. When disabled, unmanaged allocations are invisible to `UnifiedMemoryManager`: Spark grants memory as if they don't exist.
+
+Either way, `spark.executor.memoryOverhead` remains necessary — polling adjusts internal JVM allocation decisions but does not change the container's physical memory limit. If you use RocksDB state stores (`spark.sql.streaming.stateStore.providerClass = RocksDBStateStoreProvider`), size `spark.executor.memoryOverhead` to cover RocksDB's native off-heap footprint. Without sufficient overhead, the failure mode is a silent container kill with no Java stack trace.
 
 ---
 
@@ -383,7 +394,7 @@ Every transformation you write — `select`, `filter`, `groupBy`, `join` — doe
 
 Laziness enables five things:
 
-- **Whole-chain static optimization** — Catalyst sees the complete transformation chain before generating any physical plan, enabling predicate pushdown, column pruning, join reordering, broadcast join selection, and constant folding across the entire query. The full set of Catalyst optimizations is covered in [§ What lazy evaluation enables](#what-lazy-evaluation-enables-the-catalyst-optimizer) above.
+- **Whole-chain static optimization** — Catalyst sees the complete transformation chain before generating any physical plan, enabling predicate pushdown, column pruning, join reordering, broadcast join selection, and constant folding across the entire query. The full set of Catalyst optimizations is covered in [§ What lazy evaluation enables](#what-lazy-evaluation-enables-the-catalyst-optimizer) below.
 - **No intermediate materialization** — Spark pipelines narrow transformations within a stage; intermediate DataFrames never need to be written to memory or disk between operator calls.
 - **Lineage-based fault tolerance** — failed partitions can be recomputed from source without manual recovery, because Spark has the full transformation recipe on hand.
 - **AQE runtime re-optimization** — because the plan for remaining stages is not committed at job submission, Spark can collect real shuffle statistics (actual partition sizes, row counts) at each stage boundary and re-optimize the remainder of the query: coalescing small post-shuffle partitions, switching join strategies, or splitting skewed partitions. Source: `AdaptiveSparkPlanExec.scala` — *"When one stage completes, the data statistics of the materialized output will be used to optimize the remainder of the query."*
@@ -531,6 +542,8 @@ flowchart TD
 **The Catalog.** The Analyzer's resolution step — `Unresolved Logical Plan → Analyzed Logical Plan` — depends on the **Catalog**: the driver-side metadata repository that stores database names, table names, schemas (column names and types), views, functions, and partition metadata. When you write `df.filter(F.col("country") == "DE")`, the Analyzer looks up `country` in the Catalog to confirm it exists and determine its type before any optimization or execution begins. The default Catalog is in-memory for the current SparkSession (manages temporary views and session-scoped metadata); connecting to a Hive metastore or Unity Catalog makes metadata persistent and shared across sessions. Accessible in PySpark via `spark.catalog`.
 
 `QueryExecution.toRdd` is the boundary between Spark SQL and Spark Core. In Spark 4.1.2 it returns `SQLExecutionRDD(executedPlan.execute(), conf)` — a thin wrapper around `RDD[InternalRow]` that carries SQL execution metadata. Only after this step does `SparkContext.runJob` get called.
+
+> The diagram above shows this `toRdd → runJob` boundary as the general SQL-to-Core path. Bounded actions take a more direct route: `.show(10)`, `.take(n)`, and `.head(n)` call `executedPlan.executeTake(n)`, and `.collect()` calls `executeCollect()` — both run the physical plan on a subset of partitions and assemble `InternalRow`s without going through `QueryExecution.toRdd`. The `toRdd` path is taken when you access `Dataset.rdd` directly. Either way the physical plan is executed and `SparkContext.runJob` is the entry to Spark Core — the difference is which method assembles the result.
 
 **Tungsten** (the `CollapseCodegenStages` preparation step) fuses multiple physical operators into a single compiled Java function, eliminating virtual dispatch and per-row object allocation that the JVM would otherwise impose. Controlled by `spark.sql.codegen.wholeStage` (default: `true`). It is the primary reason the DataFrame API runs at near-native speed regardless of the Python layer above it.
 
@@ -1003,10 +1016,7 @@ Stage boundaries are the only points at which data is serialized and written to 
 
 **Contrast with Hadoop:** in Hadoop, every `groupBy` is an entire separate MapReduce job with a mandatory disk write of the full dataset. In Spark, a `groupBy` is a shuffle boundary between two in-memory stages — the only disk I/O is the shuffle files themselves, not the full dataset before and after.
 
-**Two types of stage:**
-
-- **ShuffleMapStage** — its tasks write partitioned output to shuffle files on local disk, to be consumed by the downstream stage. Tasks return a `MapStatus` to the driver — a small metadata object recording which executor's BlockManager holds each output partition. This is how `MapOutputTrackerMaster` knows where reducers must fetch data. User data never flows back to the driver; only the location metadata does.
-- **ResultStage** — the final stage. Its tasks apply the user function to their partition and send the result back to the driver (or write directly to storage). A ResultStage may run on only a **subset** of partitions — `first()` runs on one partition, `lookup(key)` runs on the single partition that owns the key — and stops as soon as enough results are collected.
+Each boundary produces one of the **two stage types** introduced in [§ Stage 2](#stage-2-dagscheduler-builds-the-stage-dag): a **ShuffleMapStage** (writes partitioned shuffle output and returns a `MapStatus` to the driver) for every boundary except the last, and a single **ResultStage** at the end (applies the user function and returns rows to the driver, or writes directly to storage). A ResultStage may run on only a **subset** of partitions — `first()` runs on one partition, `lookup(key)` runs on the single partition that owns the key — and stops as soon as enough results are collected.
 
 ---
 
@@ -1065,7 +1075,7 @@ None of these optimizations are available in Hadoop MapReduce, because the frame
 
 ## The full compilation pipeline: from DataFrame to bytecode
 
-Every Spark 4.x query passes through a six-stage compilation pipeline before any computation begins. The Unresolved and Resolved logical plans are **relational algebra expression trees** — structured representations of σ, π, ⨝, and γ operators (introduced in [§ Why this matters for the DataFrame API](#why-this-matters-for-the-dataframe-api)). Because the plan is algebraic rather than arbitrary code, Catalyst can rewrite it freely using mathematical equivalence laws:
+Every Spark 4.x query passes through a six-stage compilation pipeline before any computation begins. The Unresolved and Resolved logical plans are **relational algebra expression trees** — structured representations of σ (select), π (project), ⨝ (join), and γ (aggregate) operators. Because the plan is algebraic rather than arbitrary code, Catalyst can rewrite it freely using mathematical equivalence laws:
 
 ```mermaid
 flowchart TD
