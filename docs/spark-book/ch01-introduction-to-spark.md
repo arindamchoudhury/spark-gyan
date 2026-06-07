@@ -3,11 +3,6 @@
 > *Learning-path topic: B1 (Beginner)*
 > *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
-> **Source:** *"Spark: The Definitive Guide"* — Bill Chambers & Matei Zaharia (O'Reilly, 2018) · Chapters 1–3, 15–16
-
-> **Note "📌 Spark version note"
-    The Chambers & Zaharia book targets Spark 2.x. This chapter is written against **Spark 4.1.x / Python 3.10+**. Key differences: `SparkSession` replaces `SQLContext` (since 2.0); Structured Streaming replaces the DStream API (removed in 4.0); ANSI mode is on by default (since 4.0); Spark Connect is available as a client-only mode (GA in 4.0); `pyspark-client` ships without a JVM (4.0+).
-
 ---
 
 ## Why processing big data matters

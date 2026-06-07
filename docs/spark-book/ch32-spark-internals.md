@@ -42,4 +42,16 @@
 > **Note "✍️ Writing reminder — DataFrame → RDD translation"
     Chapter 1 introduces `QueryExecution` conceptually. This chapter must cover the full implementation: `Dataset.withAction()`, the recursive `execute()` / `doExecute()` tree, how `ShuffleExchangeExec` embeds `ShuffleDependency` into the RDD lineage via `ShuffledRowRDD`, `FileScanRDD` as the leaf, and `QueryExecution.toRdd` as the bridge to `SparkContext.runJob()`. See the deferred-topics note above for the source-verified detail.
 
+    - **Python worker lifecycle (`pyspark/daemon.py` and `PythonWorkerFactory`)** — daemon.py listens on a socket and forks a new child process **on demand** each time the executor JVM opens a connection (no pre-warmed pool in daemon.py itself); if `SPARK_REUSE_WORKER` is set, the forked child loops on the same socket and handles the next task without exiting (`daemon.py` L232–243: `while True: code = worker(sock, ...); if not reuse or code: break`); the **idle worker pool** is JVM-side (`PythonWorkerFactory.idleWorkers` queue in `PythonWorkerFactory.scala`) — it holds open sockets to alive worker processes between tasks; `releaseWorker()` returns a socket to the pool; the next task dequeues an idle worker rather than asking daemon.py for a new fork; on non-UNIX (Windows), daemon mode is unavailable and workers are spawned directly per connection via `worker.py`
+
+> **Note "✍️ Writing reminder — Python worker lifecycle"**
+>
+> Cover `pyspark/daemon.py` and `PythonWorkerFactory.scala` together. Key points verified against v4.1.2 source:
+>
+> - daemon.py forks on demand (one fork per new JVM connection) — it has no pre-warmed pool
+> - Worker reuse requires `SPARK_REUSE_WORKER` env var; the forked child loops on the socket (`daemon.py` L232–243)
+> - The idle pool is JVM-side: `PythonWorkerFactory.idleWorkers` (a `mutable.Queue`) holds open sockets to alive workers between tasks; `releaseWorker()` enqueues, `create()` dequeues
+> - Non-UNIX (Windows): daemon mode unavailable; workers spawned directly via `worker.py` per connection
+> - Contrast with Chapter 2's two-sentence summary — this chapter gives the full implementation detail
+
 *This chapter is not yet written. The above topics will form its core.*

@@ -13,4 +13,6 @@
     - **Cost-based optimizer (CBO)** — uses table and column statistics (`ANALYZE TABLE`) to estimate row counts and data sizes; the `JoinReorderDP` rule uses dynamic programming over estimated costs to find the optimal join order; falls back to heuristics when statistics are absent
     - **Physical plan selection** — the `SparkPlanner` generates multiple candidate physical plans for each logical operator (e.g. SortMergeJoin, BroadcastHashJoin, ShuffledHashJoin for a join node) and selects the lowest-cost candidate; see also Chapter 22 (A3) for execution-level join differences
 
+- **Catalyst expression AST** — every column operation written in Python (`F.lower()`, `F.col("a") + F.col("b")`, `F.when(...)`) becomes a Scala `Expression` node in the JVM (e.g. `Lower(AttributeReference(...))`, `Add(...)`, `CaseWhen(...)`); the Python side never processes data rows; explain the full `Expression` class hierarchy and how expressions are resolved, typed, and compiled to bytecode
+
 *This chapter is not yet written. The above topics will form its core.*
