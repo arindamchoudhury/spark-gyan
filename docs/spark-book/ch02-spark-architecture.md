@@ -52,8 +52,8 @@ book = spark.read.text("../data/gutenberg_books/1342-0.txt")
 
 top_words = (
     book
-    .select(F.explode(F.split("value", " ")).alias("word"))    # split lines into words
-    .select(F.lower(F.regexp_extract("word", "[a-z]+", 0))     # lowercase, strip punctuation
+    .select(F.explode(F.split("value", " ")).alias("word"))        # split lines into words
+    .select(F.regexp_extract(F.lower(F.col("word")), "[a-z]+", 0)  # lowercase FIRST, then strip punctuation
              .alias("word"))
     .filter(F.col("word") != "")                               # drop empties
     .groupBy("word")
@@ -65,16 +65,16 @@ top_words.show(10)   # <-- THIS is the first action; only now does Spark execute
 # +----+-----+
 # |word|count|
 # +----+-----+
-# | the| 4207|
-# |  to| 4179|
-# |  of| 3696|
-# | and| 3445|
-# | her| 2136|
-# |   a| 1950|
-# | was| 1841|
-# |  in| 1833|
-# |  he| 1709|
-# |that| 1528|
+# | the| 4496|
+# |  to| 4235|
+# |  of| 3719|
+# | and| 3602|
+# | her| 2223|
+# |   i| 2052|
+# |   a| 1997|
+# |  in| 1920|
+# | was| 1844|
+# | she| 1703|
 # +----+-----+
 
 spark.stop()
