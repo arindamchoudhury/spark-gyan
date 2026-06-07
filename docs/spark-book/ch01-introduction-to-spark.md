@@ -204,7 +204,7 @@ RDDs were Spark's original API. The DataFrame API (Spark 1.3) built on top of th
 
 ### Spark as a unified engine
 
-SQL, Streaming, ML, and graph processing all run as libraries over the same core — sharing the same execution engine, fault tolerance, and memory model.
+SQL, Streaming, ML, graph processing, and declarative pipelines all run as libraries over the same core — sharing the same execution engine, fault tolerance, and memory model.
 
 ```mermaid
 flowchart TD
@@ -356,10 +356,13 @@ Spark is genuinely excellent for large-scale distributed batch processing, itera
 
 ## References
 
-- [Zaharia et al. — Spark: Cluster Computing with Working Sets (2010)](https://www.usenix.org/legacy/event/hotcloud10/tech/full_papers/Zaharia.pdf)
+- [Zaharia et al. — Spark: Cluster Computing with Working Sets (HotCloud 2010)](https://www.usenix.org/legacy/event/hotcloud10/tech/full_papers/Zaharia.pdf)
+- [Zaharia et al. — Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing (NSDI 2012)](https://www.usenix.org/system/files/conference/nsdi12/nsdi12-final138.pdf)
 - [Dean & Ghemawat — MapReduce: Simplified Data Processing on Large Clusters (OSDI 2004)](https://research.google.com/archive/mapreduce-osdi04.pdf)
 - [Apache Spark history](https://spark.apache.org/history.html)
 - [TechTarget — 5 Vs of Big Data](https://www.techtarget.com/searchdatamanagement/definition/5-Vs-of-big-data)
 - [Integrate.io — 7 Vs of Big Data](https://www.integrate.io/blog/7-vs-big-data/)
 - [AWS — Hadoop vs Spark](https://aws.amazon.com/compare/the-difference-between-hadoop-vs-spark/)
+- [Statista — Volume of data created, captured, copied, and consumed worldwide (181 ZB 2025, 221 ZB 2026, forecast to 2029)](https://www.statista.com/statistics/871513/worldwide-data-created/)
+- [Maximize Market Research — Big Data Market size ($244B in 2025, 12.4% CAGR)](https://www.maximizemarketresearch.com/market-report/global-big-data-market/66349/)
 
