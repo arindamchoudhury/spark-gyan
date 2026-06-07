@@ -7,9 +7,9 @@
 
 ## Why processing big data matters
 
-The industry characterizes big data by five properties — the **5 Vs** — that together explain why it cannot be handled with tools built for smaller datasets.
+The industry characterizes big data by a set of properties — the **Vs of big data** — that together explain why it cannot be handled with tools built for smaller datasets. The classic taxonomy lists five (Volume, Velocity, Variety, Veracity, Value); the six covered below extend it with **Variability**.
 
-**Volume** is the most obvious: the sheer amount of data generated has grown beyond what any single machine can store or process. **402 million terabytes** are created every day in 2026. The total data generated worldwide reached 181 zettabytes in 2025 and is forecast to hit 221 zettabytes in 2026 — a 22% increase in a single year. By 2029 the projection is 527 zettabytes. What qualifies as "big" shifts as hardware improves; the practical definition is simpler: data is big when it exceeds the capacity of the system you have.
+**Volume** is the most obvious: the sheer amount of data generated has grown beyond what any single machine can store or process. The total data generated worldwide reached 181 zettabytes in 2025 and is forecast to hit 221 zettabytes in 2026 — a 22% increase in a single year. By 2029 the projection is 527 zettabytes. What qualifies as "big" shifts as hardware improves; the practical definition is simpler: data is big when it exceeds the capacity of the system you have.
 
 **Velocity** is the speed at which data arrives and must be processed. A payment terminal generates a transaction record on each swipe. A network of IoT sensors emits readings every second. A social media platform logs clicks, impressions, and scroll events continuously. Organizations must process this stream fast enough to act on it — fraud detection must fire before the transaction clears, not after. Data collected faster than it can be processed piles up as a liability rather than an asset.
 
@@ -27,7 +27,7 @@ Together, these properties create processing demands that stress a single machin
 
 The instinct when data grows is to buy a bigger machine — more RAM, more CPUs, faster storage. This is **vertical scaling** (scaling up): concentrate more power in a single node. It works up to a point, and that point arrives sooner than hardware catalogues suggest.
 
-**Hardware ceiling.** A high-end server in 2026 carries 1–2 TB of RAM. A streaming platform's daily event log, a bank's transaction history, or a retailer's click-stream can each be orders of magnitude larger. At the physical limit of what a single machine can hold, vertical scaling stops being an option — there is no bigger box to buy.
+**Hardware ceiling.** A typical server in 2026 carries 1–2 TB of RAM, and even the highest-end machines top out at a handful of terabytes. A streaming platform's daily event log, a bank's transaction history, or a retailer's click-stream can each be orders of magnitude larger. At the physical limit of what a single machine can hold, vertical scaling stops being an option — there is no bigger box to buy.
 
 **Cost curve.** Vertical scaling is not linear in cost. Doubling RAM does not double the machine price — it more than doubles it, because high-density memory and the server chassis to support it command a significant premium. At the extreme end, a fully specced-out single server can cost more than a cluster of twenty commodity machines with the same aggregate resources.
 
@@ -213,7 +213,8 @@ flowchart TD
         SQL["Spark SQL & DataFrames"]
         STREAM["Structured Streaming"]
         ML["MLlib — ML Pipelines"]
-        GRAPH["GraphX"]
+        GRAPH["GraphX (legacy)"]
+        GF["GraphFrames (DataFrame-based)"]
         DP["Declarative Pipelines"]
     end
 
@@ -235,6 +236,8 @@ flowchart TD
 ```
 
 Because all libraries share the same in-memory data representation — the DataFrame, backed by `RDD[InternalRow]` internally — data flows from a SQL query into an MLlib pipeline or a Streaming job without copying or serializing between engines. This is why Spark is called unified rather than a collection of separate tools.
+
+For graph processing the picture is split: **GraphX** is the original RDD-based library and is now effectively frozen (no DataFrame API, no Python bindings). **GraphFrames** is the DataFrame-based successor — it runs on the same core and integrates with the rest of the stack — but it ships as a separate package (`graphframes`) rather than in the core Spark distribution, so it must be added explicitly (e.g. `--packages graphframes:graphframes:…`).
 
 ---
 
@@ -285,7 +288,7 @@ For file-based storage, Spark reads and writes any system that implements the Ha
 | Local filesystem | `file://` | Single-node only |
 | Amazon S3 | `s3a://` | Preferred; `s3n://` is legacy |
 | Google Cloud Storage | `gs://` | Via GCS connector |
-| Azure Blob Storage | `wasb://` | |
+| Azure Blob Storage | `wasb://` | Legacy; use `abfss://` (ADLS Gen2) |
 | Azure Data Lake Gen 2 | `abfs://` / `abfss://` | |
 | Alibaba Cloud OSS | — | Via JindoFS SDK |
 | OpenStack Swift | — | Via Stocator |
@@ -311,7 +314,7 @@ Delta Lake, Iceberg, and Hudi are not filesystems — they are table formats (tr
 | **Data between steps** | Full HDFS write + read between every job | In-memory pipeline; disk only at shuffle boundaries |
 | **Working-set reuse** | Impossible — every job rereads from disk | `.cache()` keeps partitions in executor memory |
 | **Iterative workloads** | 100 iterations = 100 full HDFS reads | After first load, subsequent iterations read from memory |
-| **Measured speedup** | Baseline | 10–20× faster on iterative ML; 35–70× faster on interactive queries (Zaharia 2010) |
+| **Measured speedup** | Baseline | 10× faster on iterative ML (Zaharia 2010), up to 20× with RDDs (Zaharia 2012); 35–70× faster on interactive queries |
 | **Fault tolerance** | Rerun the job from checkpointed HDFS output | Lineage: recompute only the lost partition |
 | **Optimization** | None — user controls all efficiency | Catalyst: predicate pushdown, column pruning, join reordering, broadcast selection |
 | **API** | Java `map()` and `reduce()` functions | Python/Scala/Java/R — DataFrames, SQL, Streaming, MLlib |
