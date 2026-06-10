@@ -372,6 +372,8 @@ Either way, `spark.executor.memoryOverhead` remains necessary — polling adjust
 
 ---
 
+## Partitions, laziness, and fault tolerance
+
 ### Partitions and Tasks
 
 `1342-0.txt` is not loaded as a single block. Spark splits it into **partitions** — subdivisions of the dataset, each processed by exactly one task on one executor. During execution a partition lives in executor memory; if it exceeds available memory Spark spills it to disk. Each partition is assigned to exactly one **Task**, and each task runs on one executor. This is a **hard invariant** in Spark's execution model: one task processes exactly one partition, and one partition is processed by exactly one task. A partition cannot be split across tasks; a task cannot span multiple partitions. Calling `.cache()` on a DataFrame persists its partitions after they are first computed, cutting the lineage so that re-use does not re-read from source. Since Spark 4.0.0, `df.cache()` defaults to `MEMORY_AND_DISK` (controlled by `spark.sql.defaultCacheStorageLevel`, added in 4.0.0) — partitions spill to disk if executor memory is insufficient. This differs from `RDD.cache()`, which still defaults to `MEMORY_ONLY`. By default, cached partitions are **not replicated** — each partition lives on exactly one executor. If that executor crashes, the partition is lost; Spark falls back to lineage recomputation from the original source. Storage levels with replication (`MEMORY_AND_DISK_2`) exist but double the memory cost.
