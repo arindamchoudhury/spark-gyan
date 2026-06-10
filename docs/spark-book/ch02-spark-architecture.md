@@ -117,6 +117,11 @@ Laziness enables five things:
 
 A **job** is triggered by one action. Each job is broken into **stages** — groups of operations that can run without shuffling data across the network. Within a stage, each partition becomes a **task**. Understanding this hierarchy (job → stage → task) is what makes the Spark UI readable.
 
+**Some work is eager — before any action.** The pipeline above runs lazily, only when an action fires. But two things run the moment you *build* the DataFrame:
+
+- **Schema inference** — `spark.read.csv()` without an explicit `.schema(...)` reads and samples the file immediately to infer column types. This is a real job; always pass a schema in production to avoid the extra read.
+- **Column validation** — referencing a column that doesn't exist raises `AnalysisException` as soon as the Analyzer runs, which can be *before* any action (e.g. when you access `.schema`). The Analyzer checks the plan against the **Catalog** — Spark's registry of tables, columns, and types — covered in **Chapter 11 (Spark SQL)** and, for shared/persistent catalogs, **Chapter 34 (Unity Catalog)**.
+
 ---
 
 ### Fault tolerance: lineage, not replication
@@ -608,11 +613,6 @@ Optimized Plan → [SparkPlanner] → sparkPlan → [PrepareForExecution] → ex
 **JVM bytecode compilation is executor-side.** The driver generates and validates Java *source*; executors compile it.
 
 This whole pipeline is the heart of Spark SQL, and the internals are covered later: **how** Catalyst rewrites the plan (its rule batches, tree rewriting, and cost-based planning) is **Chapter 22 (A1 — Catalyst and the Physical Plan)**; the exact DataFrame-to-RDD compilation (`QueryExecution`, `executedPlan.execute()`, `toRdd`) and why bounded actions like `show`/`take` scan only a subset of partitions while `collect` scans all of them are in **Chapter 32 (E1 — Spark Internals)**.
-
-**Some work is eager — before any action.** The pipeline above runs lazily, only when an action fires. But two things run the moment you *build* the DataFrame:
-
-- **Schema inference** — `spark.read.csv()` without an explicit `.schema(...)` reads and samples the file immediately to infer column types. This is a real job; always pass a schema in production to avoid the extra read.
-- **Column validation** — referencing a column that doesn't exist raises `AnalysisException` as soon as the Analyzer runs, which can be *before* any action (e.g. when you access `.schema`). The Analyzer checks the plan against the **Catalog** — Spark's registry of tables, columns, and types — covered in **Chapter 11 (Spark SQL)** and, for shared/persistent catalogs, **Chapter 34 (Unity Catalog)**.
 
 At this point no data has moved. The DAGScheduler receives the compiled `RDD[InternalRow]` — every transformation the user wrote, from `spark.read.text(...)` to `.orderBy(...)`, now expressed as RDD operations.
 
