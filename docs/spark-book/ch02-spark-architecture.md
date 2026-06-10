@@ -475,7 +475,12 @@ flowchart TD
 
 **DAGScheduler** — lives in the driver JVM. Its job is to construct a **DAG of stages** for each job — a directed acyclic graph where each node is a stage and each edge is a dependency (a stage cannot start until all its parent stages have completed and written their shuffle output). To build this DAG, the DAGScheduler walks the RDD lineage, identifies wide dependencies (shuffles), and groups all narrow transformations between two shuffles into a single stage. It does not think about machines or threads — it only thinks about the logical structure of the computation. The DAGScheduler always works at the RDD level — `handleJobSubmitted(finalRDD: RDD[_])` — it has no knowledge of DataFrames or physical plans; all optimization decisions are already encoded in the RDD lineage it receives.
 
-Its two core responsibilities are: building the DAG of stages from the RDD lineage, and submitting each stage once all its parent stages have written their shuffle output. When a stage is ready, the DAGScheduler creates a **TaskSet** — one task per partition of that stage — and hands it to the TaskScheduler for execution. On failure it also resubmits map stages whose shuffle output was lost and cancels downstream stages when a job cannot recover. Task retries within a stage are the TaskScheduler's responsibility, not the DAGScheduler's. All these decisions are driven by a **single-threaded event loop** — every notification that affects stage state (a new job arriving, a stage completing, an executor being lost) is serialised onto this loop and handled one at a time. This keeps the DAGScheduler's state consistent without requiring locks on the core execution path.
+Its two core responsibilities are: 
+
+- building the DAG of stages from the RDD lineage.
+- submitting each stage once all its parent stages have written their shuffle output. 
+
+When a stage is ready, the DAGScheduler creates a **TaskSet** — one task per partition of that stage — and hands it to the TaskScheduler for execution. On failure it also resubmits map stages whose shuffle output was lost and cancels downstream stages when a job cannot recover. Task retries within a stage are the TaskScheduler's responsibility, not the DAGScheduler's. All these decisions are driven by a **single-threaded event loop** — every notification that affects stage state (a new job arriving, a stage completing, an executor being lost) is serialised onto this loop and handled one at a time. This keeps the DAGScheduler's state consistent without requiring locks on the core execution path.
 
 The DAGScheduler itself behaves identically whether the job originated from raw RDD code or a DataFrame query — it always works at the RDD level. What differs is the path *to* the DAGScheduler:
 
@@ -487,7 +492,15 @@ The DAGScheduler itself behaves identically whether the job originated from raw 
 | **Row format** | `RDD[T]` — standard JVM objects | `RDD[InternalRow]` — compact binary `UnsafeRow` |
 | **AQE** | ❌ Stage DAG fixed at job submission | ✅ Stage DAG can change mid-execution at shuffle boundaries |
 
-**TaskScheduler** — lives in the driver JVM. Receives `TaskSet` objects from the DAGScheduler and assigns each task to an available executor slot. It does not reason about DAG structure — that is the DAGScheduler's concern. Its responsibilities are: task-to-executor assignment (using data locality to prefer executors co-located with the data), multi-job scheduling order (FIFO or FAIR), task retries on failure, speculative execution of straggler tasks, and avoiding executors that have accumulated too many failures. It reports task completions and failures back to the DAGScheduler so stage state can be updated.
+**TaskScheduler** — lives in the driver JVM. Receives `TaskSet` objects from the DAGScheduler and assigns each task to an available executor slot. It does not reason about DAG structure — that is the DAGScheduler's concern. Its responsibilities are: 
+
+- task-to-executor assignment (using data locality to prefer executors co-located with the data). 
+- multi-job scheduling order (FIFO or FAIR). 
+- task retries on failure. 
+- speculative execution of straggler tasks.
+- avoiding executors that have accumulated too many failures. 
+
+It reports task completions and failures back to the DAGScheduler so stage state can be updated.
 
 **SchedulerBackend** — the two-way RPC bridge between the driver's `TaskScheduler` and the executors. Its job has three directions:
 
@@ -497,7 +510,7 @@ The DAGScheduler itself behaves identically whether the job originated from raw 
 
 There is one SchedulerBackend implementation per cluster manager — Standalone, YARN, Kubernetes, and local mode each have their own. The task dispatch logic is shared across all of them; what differs is how each integrates with the cluster manager's resource allocation protocol.
 
-**MapOutputTracker** — a directory service for shuffle data. When a map stage completes, each task registers the location of its output partitions with the driver-side tracker. When a downstream stage starts, its tasks query the tracker to find which executor holds each input partition, then fetch the data through that executor's BlockManager. MapOutputTracker answers *where*; BlockManager handles *how*.
+**MapOutputTracker** — a directory service for shuffle data. When a map stage completes, each `ShuffleMapTask` returns a `MapStatus` containing the executor location and per-partition sizes; the DAGScheduler registers it with the driver-side tracker. When a downstream stage starts, its tasks query the tracker to find which executor holds each input partition, then fetch the data through that executor's BlockManager. MapOutputTracker answers *where*; BlockManager handles *how*.
 
 **BlockManager** — runs on every executor and on the driver. It manages two things: 
 
@@ -505,6 +518,42 @@ There is one SchedulerBackend implementation per cluster manager — Standalone,
 - serving as the network interface through which remote tasks fetch shuffle blocks from this executor. 
 
 Shuffle data itself is written directly to disk by the shuffle writer and bypasses BlockManager's own storage — BlockManager only serves it over the network on request. Reading from file sources (HDFS, S3, etc.) bypasses BlockManager entirely — data comes directly from the storage system.
+
+#### Component map
+
+```mermaid
+flowchart TB
+    subgraph DRV["Driver JVM"]
+        SC["SparkContext"]
+        DAG["DAGScheduler"]
+        TS["TaskSchedulerImpl"]
+        SB["SchedulerBackend"]
+        MOT["MapOutputTrackerMaster"]
+        BMd["BlockManager"]
+        SC -->|"runJob"| DAG -->|"submitTasks"| TS -->|"launchTasks"| SB
+        DAG -->|"registerMapOutput"| MOT
+    end
+
+    subgraph EXC["Executor JVM (× N)"]
+        EB["ExecutorBackend"]
+        EX["Executor"]
+        BMe["BlockManager"]
+        MOW["MapOutputTrackerWorker"]
+        EB -->|"dispatch"| EX
+        EX <-->|"cache / serve"| BMe
+        EX --> MOW
+    end
+
+    CM(["Cluster Manager\nStandalone · YARN · K8s"])
+    FS[("HDFS / S3 / GCS")]
+
+    SB <-->|"LaunchTask · StatusUpdate\nRegisterExecutor · KillTask"| EB
+    SB <-->|"allocate / release"| CM
+    CM -->|"start executor"| EB
+    MOW <-->|"getMapSizes"| MOT
+    BMd -->|"broadcasts"| BMe
+    EX -.->|"direct read\nbypasses BlockManager"| FS
+```
 
 ---
 
