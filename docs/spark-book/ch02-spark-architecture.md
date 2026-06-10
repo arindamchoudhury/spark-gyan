@@ -568,14 +568,22 @@ In classic mode the Python `DataFrame` is just a handle to a real `Dataset[Row]`
 
 ```mermaid
 flowchart TD
-    A["Logical Plan\n(your DataFrame calls)"]
-    B["Analyzed Plan\n(column names + types resolved)"]
-    D["Optimized Plan\n(Catalyst rewrites: predicate pushdown,\ncolumn pruning, join reordering)"]
-    E["Physical Plan\n(operators chosen: joins, aggregates, scans)"]
-    G["RDD[InternalRow]\n◀ DataFrame world ends, RDD world begins"]
-    H["SparkContext.runJob → DAGScheduler"]
+    PY["PySpark transformations\neach call appends a node — nothing runs\n(PySpark code)"]
+    ULP["Unresolved Logical Plan"]
+    ALP["Analyzed Plan\ncolumn names + types resolved against Catalog"]
+    OLP["Optimized Plan\n100+ Catalyst rules: predicate pushdown,\ncolumn pruning, join reordering"]
+    SP["sparkPlan\nphysical operators chosen:\nwhich join, which aggregate, which scan"]
+    EP["executedPlan\nPrepareForExecution: inserts ShuffleExchangeExec,\nCollapseCodegenStages → WholeStageCodegenExec"]
+    RDD["RDD[InternalRow]\n◀ DataFrame world ends, RDD world begins"]
+    SC["SparkContext.runJob → DAGScheduler"]
 
-    A -->|"Analyzer"| B -->|"Catalyst Optimizer"| D -->|"SparkPlanner"| E -->|"compile to RDD"| G --> H
+    PY -->|"lazy recording"| ULP
+    ULP -->|"Analyzer"| ALP
+    ALP -->|"Catalyst Optimizer"| OLP
+    OLP -->|"SparkPlanner"| SP
+    SP -->|"PrepareForExecution"| EP
+    EP -->|"executedPlan.execute()"| RDD
+    RDD --> SC
 ```
 
 The sequence inside the driver JVM, for `df.show(10)`:
@@ -587,7 +595,7 @@ The sequence inside the driver JVM, for `df.show(10)`:
 
 `SparkContext` is the Spark Core entry point, called after compilation, only to submit the resulting RDD job. It doesn't know about DataFrames or `Dataset[Row]` — it receives an `RDD[InternalRow]`. It does live in the same driver JVM (established in the SparkContext section earlier), but it's the scheduling gateway, not what processes the `Dataset`.
 
-`PrepareForExecution` isn't a plan in the same sense as the other four — it's a post-processing step on the physical plan. The full pipeline actually has two physical-plan stages:
+`PrepareForExecution` isn't a plan in the same sense as the other three — it's a post-processing step on the physical plan. The full pipeline actually has two physical-plan stages:
 
 ```text
 Optimized Plan → [SparkPlanner] → sparkPlan → [PrepareForExecution] → executedPlan → RDD[InternalRow]
@@ -596,8 +604,6 @@ Optimized Plan → [SparkPlanner] → sparkPlan → [PrepareForExecution] → ex
 - `SparkPlanner` produces `sparkPlan` — the initial physical plan: operators chosen (which join, which aggregate), but not yet runnable.
 - `PrepareForExecution` turns `sparkPlan` into `executedPlan` — the final physical plan — by applying preparation rules: `EnsureRequirements` (which inserts `ShuffleExchangeExec` at shuffle boundaries and adds the sorts/repartitions operators require) and `CollapseCodegenStages` (Tungsten whole-stage codegen), among others.
 - Then `executedPlan.execute()` produces the `RDD[InternalRow]`.
-
-In the simplified diagram those two stages — `sparkPlan` and `executedPlan` — are collapsed into a single "Physical Plan" box, with all of `PrepareForExecution`'s work folded onto the one "compile to RDD" arrow.
 
 The physical plan is compiled to optimized JVM bytecode by **Tungsten** (whole-stage code generation, `spark.sql.codegen.wholeStage`, default `true`). That — together with built-in functions (`F.lower()`, `F.sum()`, …) running entirely in the JVM — is why the DataFrame API runs fast no matter what the Python layer above it looks like.
 
