@@ -35,52 +35,72 @@ docker compose exec spark env SPARK_CONNECT_MODE=0 spark-submit \
 ```
 
 ```python
-# Apache Spark 4.1.x / PySpark 4.1.x · Python 3.10+
-# Run from workspace/notebooks/ — requires the local stack running (docker compose up)
+import sys
+from pathlib import Path
 import os
+
+# Apache Spark 4.1.2 / PySpark 4.1.2 · Python 3.14.4 · Delta Lake 4.2.0
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 
+# ── Session setup ──────────────────────────────────────────────────────────────
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DATA_FILE  = SCRIPT_DIR / ".." / "data" / "gutenberg_books" / "1342-0.txt"
+
 os.environ["SPARK_LOCAL_IP"] = "127.0.0.1"
-conf_path = os.path.abspath("log4j2.xml")   # silences Spark's INFO noise
+conf_path = (SCRIPT_DIR / "log4j2.xml").as_posix()
 
 spark = (
     SparkSession.builder
-    .appName("word-count")
     .config("spark.ui.port", "4041")
-    .config("spark.driver.extraJavaOptions",
-            f"-Dlog4j2.configurationFile={conf_path}")
+    .config(
+        "spark.driver.extraJavaOptions",
+        f"-Dlog4j2.configurationFile={conf_path}",
+    )
+    .appName("word-count")
     .getOrCreate()
 )
 
-# Everything below this line is lazy — no data moves yet
-book = spark.read.text("../data/gutenberg_books/1342-0.txt")
+print(f"Spark {spark.version} · Python {sys.version.split()[0]}")
+
+# ── Read ───────────────────────────────────────────────────────────────────────
+
+# spark.read.text() is lazy — the file is not read until an action fires.
+book = spark.read.text(DATA_FILE.as_posix())
+
+# ── Transform (all lazy) ───────────────────────────────────────────────────────
 
 top_words = (
     book
-    .select(F.explode(F.split("value", " ")).alias("word"))        # split lines into words
-    .select(F.regexp_extract(F.lower(F.col("word")), "[a-z]+", 0)  # lowercase FIRST, then strip punctuation
-             .alias("word"))
-    .filter(F.col("word") != "")                               # drop empties
+    .select(F.explode(F.split("value", " ")).alias("word"))    # one word per row
+    .select(
+        F.lower(F.regexp_extract("word", "[a-z]+", 0))         # lowercase + strip punctuation
+         .alias("word")
+    )
+    .filter(F.col("word") != "")                               # drop empty strings
     .groupBy("word")
     .count()
     .orderBy(F.col("count").desc())
 )
 
+# ── Action ─────────────────────────────────────────────────────────────────────
+
+# .show(10) is the first action — Spark executes the full plan here.
 top_words.show(10)   # <-- THIS is the first action; only now does Spark execute the plan
 # +----+-----+
 # |word|count|
 # +----+-----+
-# | the| 4496|
-# |  to| 4235|
-# |  of| 3719|
-# | and| 3602|
-# | her| 2223|
-# |   i| 2052|
-# |   a| 1997|
-# |  in| 1920|
-# | was| 1844|
-# | she| 1703|
+# | the| 4207|
+# |  to| 4179|
+# |  of| 3696|
+# | and| 3445|
+# | her| 2136|
+# |   a| 1950|
+# | was| 1841|
+# |  in| 1833|
+# |  he| 1709|
+# |that| 1528|
 # +----+-----+
 
 spark.stop()
