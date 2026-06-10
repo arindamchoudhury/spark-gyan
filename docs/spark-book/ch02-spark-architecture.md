@@ -108,6 +108,40 @@ spark.stop()
 
 `spark.read.text(...)` defines the source, and every line up to `.show(10)` adds a **transformation** on top — all of it recorded but not executed. `.show(10)` is the first **action** — the moment Spark takes all the recorded instructions, builds an optimized physical plan, distributes the work across executors, and returns a result. The rest of this chapter explains exactly what happens during those few milliseconds.
 
+### Applications, jobs, stages, and tasks
+
+Every Spark program has four nested levels of execution. Understanding them is what makes the Spark UI readable — every tab and row maps to exactly one of these levels.
+
+```mermaid
+flowchart TD
+    App["Application"] --> J["Job"]
+    J --> S0["Stage 0\nShuffleMapStage\nP tasks"]
+    J --> S1["Stage 1\nResultStage\n200 tasks"]
+    S0 -.->|"shuffle boundary"| S1
+```
+
+**Application** is the outermost unit — one `SparkSession`, alive for the lifetime of your script. All jobs in the application share the same executors and the same in-memory caches.
+
+**Job** maps one-to-one to an action. `.show(10)` fires once, so Spark submits exactly one job. A script with three `.count()` calls submits three jobs; each is scheduled independently and can run in sequence or, if dependencies allow, in parallel.
+
+**Stage** is a group of tasks that can run without any data moving across the network. Stage boundaries are drawn at *shuffle boundaries* — wide dependencies like `groupBy`, `join`, and `repartition`. The word count has two stages:
+
+- **Stage 0 (ShuffleMapStage)** — reads the text file, splits each line into words, strips punctuation, and writes partitioned shuffle files to local disk. One task per input partition. Stage 1 cannot start until every task here has completed and written its output.
+- **Stage 1 (ResultStage)** — reads the shuffle output, finishes the word count aggregation, sorts descending, and returns the top 10 rows to the driver. One task per shuffle partition (200 by default; AQE can reduce this).
+
+**Task** is the smallest unit of work: one partition, one thread, one executor core. All tasks in a stage execute identical code on different slices of data and run in parallel across the cluster.
+
+For the word count on a file that Spark reads as *P* partitions:
+
+| Level | Count | What it maps to |
+|---|---|---|
+| Application | 1 | the script's `SparkSession` |
+| Job | 1 | the `.show(10)` action |
+| Stage | 2 | one pre-shuffle, one post-shuffle |
+| Task | P + 200 | P input partitions + 200 shuffle partitions |
+
+This is exactly the structure the Spark UI exposes: **Jobs → Stages → Tasks**. Once you can read that hierarchy, the UI becomes a debugging tool rather than a wall of numbers.
+
 ---
 
 
