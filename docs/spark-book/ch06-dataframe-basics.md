@@ -476,6 +476,8 @@ A DataFrame is a **distributed table**. Understanding its physical internals exp
 
 **Type erasure.** The static type `RDD[InternalRow]` hides the fact that the actual runtime objects are `UnsafeRow` (and in columnar paths, may even be `ColumnarBatch`). Spark's own source acknowledges this: `FileScanRDD.scala` (v4.1.2) ends its `compute()` method with `iterator.asInstanceOf[Iterator[InternalRow]] // This is an erasure hack.` The JVM erases the `[InternalRow]` type parameter at runtime — the cast is unchecked and exists purely to satisfy the static type system.
 
+**`RDD[InternalRow]` is not the RDD you write.** When Spark's compilation pipeline produces a "chain of RDD objects", each object in that chain represents one **operator** in the physical plan — not one partition. A five-operator query produces five RDD objects (`FileScanRDD → MapPartitionsRDD → MapPartitionsRDD → ShuffledRowRDD → MapPartitionsRDD`), each wrapping the previous. The partition count (20 partitions, or whatever) is just metadata stored inside each RDD — not separate objects. These `RDD[InternalRow]` objects are invisible to user code: you cannot write a lambda over them, and the type is internal API. They exist solely as the scheduling backbone for DAGScheduler.
+
 **`RDD[InternalRow]` vs `RDD[Row]` vs user RDDs.** These are all the same `RDD[T]` class — the difference is the element type:
 
 | | `RDD[InternalRow]` | `RDD[Row]` | `RDD[String]` / user RDDs |
