@@ -14,16 +14,22 @@ Before explaining the architecture, here is a complete word count program — th
 The full runnable versions are in the repo:
 
 - **[`workspace/notebooks/intro.ipynb`](https://github.com/arindamchoudhury/spark-delta-unitycatalog/blob/main/workspace/notebooks/intro.ipynb)** — notebook with cells labelled Read / Transform / Action / Inspect the plan
-- **[`workspace/pyscript/intro.py`](https://github.com/arindamchoudhury/spark-delta-unitycatalog/blob/main/workspace/pyscript/intro.py)** — standalone script for `spark-submit`
+- **[`workspace/pyscript/intro.py`](https://github.com/arindamchoudhury/spark-delta-unitycatalog/blob/main/workspace/pyscript/intro.py)** — standalone script; runs in Connect mode by default inside the Docker stack
 
-To run `intro.py` with `spark-submit`:
+To run `intro.py`:
 
 ```bash
-# Local mode — no cluster required, uses all available CPU cores
-spark-submit --master "local[*]" workspace/pyscript/intro.py
 
-# Against the Docker stack — submit inside the spark container
-docker compose exec spark spark-submit \
+python /workspace/pyscript/intro.py
+
+# Connect mode — Docker stack running (docker compose up)
+docker compose exec spark python /workspace/pyscript/intro.py
+
+# Classic local mode — forces classic SparkContext, no Connect server needed
+SPARK_CONNECT_MODE=0 spark-submit --master "local[*]" /workspace/pyscript/intro.py
+
+# Classic mode inside the Docker stack container
+docker compose exec spark env SPARK_CONNECT_MODE=0 spark-submit \
     --master "local[*]" \
     /workspace/pyscript/intro.py
 ```
@@ -217,7 +223,7 @@ flowchart LR
 | Python↔JVM transport | Py4J local socket | gRPC + Apache Arrow |
 | RDD support | Yes | No |
 | Direct JVM access (`df._jdf`) | Yes | No |
-| Default for `pyspark` shell | Yes — in all Spark 4.x | No — opt-in via `SPARK_REMOTE`, `--remote`, or `spark.api.mode=connect` |
+| Default for `pyspark` shell | Yes — with the classic package (`bin-hadoop3`); force with `SPARK_CONNECT_MODE=0` | Yes — with the Connect package (`bin-hadoop3-connect`), because `pyspark_connect` is importable and `default_api_mode()` returns `"connect"`; opt-in on the classic package via `SPARK_REMOTE`, `--remote`, or `spark.api.mode=connect` |
 
 **How to activate each mode:**
 
@@ -614,7 +620,7 @@ Optimized Plan → [SparkPlanner] → sparkPlan → [PrepareForExecution] → ex
 
 This whole pipeline is the heart of Spark SQL, and the internals are covered later: **how** Catalyst rewrites the plan (its rule batches, tree rewriting, and cost-based planning) is **Chapter 22 (A1 — Catalyst and the Physical Plan)**; the exact DataFrame-to-RDD compilation (`QueryExecution`, `executedPlan.execute()`, `toRdd`) and why bounded actions like `show`/`take` scan only a subset of partitions while `collect` scans all of them are in **Chapter 32 (E1 — Spark Internals)**.
 
-At this point no data has moved. The DAGScheduler receives the compiled `RDD[InternalRow]` — every transformation the user wrote, from `spark.read.text(...)` to `.orderBy(...)`, now expressed as RDD operations.
+At this point no data has moved. The DAGScheduler receives the `RDD[InternalRow]` — every transformation the user wrote, from `spark.read.text(...)` to `.orderBy(...)`, now expressed as RDD operations.
 
 ---
 
@@ -622,10 +628,10 @@ At this point no data has moved. The DAGScheduler receives the compiled `RDD[Int
 
 The DAGScheduler walks the RDD lineage backwards from the final operation, identifying two types of dependency:
 
-- **Narrow dependency** — each partition of the child depends on at most one partition of the parent (e.g. `filter`, `select`, `map`). These can be pipelined: one executor processes the full chain on its partition without any data movement. All consecutive narrow transformations are collapsed into a single stage.
-- **Wide dependency** — each partition of the child depends on multiple partitions of the parent (e.g. `groupBy`, `join`, `repartition`). This requires a shuffle: data must move across executors before the next operation can proceed. Wide dependencies become **stage boundaries**.
+- **Narrow dependency** — each partition of the child depends on at most one partition of the parent (e.g. `filter`, `select`, `map`). These can be pipelined: one executor processes the full chain on its partition without any data movement. All consecutive narrow transformations are collapsed into a single stage. (This is distinct from `CollapseCodegenStages` in Stage 1, which fused *operators* within a partition for speed; here the DAGScheduler is grouping *RDDs* into a scheduling unit.)
+- **Wide dependency** — each partition of the child depends on multiple partitions of the parent (e.g. `groupBy`, `join`, `repartition`). This requires a shuffle: data must move across executors before the next operation can proceed. Wide dependencies become **stage boundaries**. (The `ShuffleExchangeExec` nodes that mark these boundaries were already inserted by `EnsureRequirements` in Stage 1; the DAGScheduler now encounters them in the RDD lineage and uses them to split the graph into scheduling stages.)
 
-> **Two uses of the word "stage."** Tungsten's whole-stage code generation (Stage 1 above) fuses *adjacent physical operators* into one compiled function for speed. The DAGScheduler's stages (here) are scheduling units split at *shuffle boundaries* — about which work must wait for which. Both use shuffle boundaries as a dividing line, but they answer different questions: Tungsten asks how fast a stage runs; the DAGScheduler asks when a stage is allowed to start.
+> **Two uses of the word "stage."** Tungsten's whole-stage code generation (Stage 1 above) fuses *adjacent physical operators* into one generated Java source function (compiled to JVM bytecode by the executor) for speed. The DAGScheduler's stages (here) are scheduling units split at *shuffle boundaries* — about which work must wait for which. Both use shuffle boundaries as a dividing line, but they answer different questions: Tungsten asks how fast a stage runs; the DAGScheduler asks when a stage is allowed to start.
 
 The result is a DAG of stages: each node is a stage, each edge is a shuffle dependency. A stage cannot start until all its parent stages have completed and written their shuffle output to disk.
 
