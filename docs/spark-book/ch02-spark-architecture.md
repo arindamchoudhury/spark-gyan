@@ -789,7 +789,11 @@ Spark uses **Java serialization** (Java `ObjectOutputStream`) by default for tas
 
 ### Stage 5: executor runs the task
 
-The executor deserializes the task closure and runs it against its assigned partition. For Stage 0 (ShuffleMapStage) in the word count:
+The executor deserializes the task closure and runs it against its assigned partition.
+
+**Tungsten bytecode compilation happens here, not on the driver.** The driver generated Java source for each `WholeStageCodegenExec` group in Stage 1 and ran a validation compile, but it only produced source — not bytecode. When the executor invokes the partition function, `WholeStageCodegenEvaluatorFactory.createEvaluator()` calls `CodeGenerator.compile()` (Janino) to compile that source to JVM bytecode. The result is cached in the executor JVM, so subsequent partitions on the same executor skip the compile step.
+
+For Stage 0 (ShuffleMapStage) in the word count:
 
 1. Reads lines from its partition of `1342-0.txt` directly from the file system — file source reads bypass BlockManager entirely
 2. Runs `split → lower → filter` on each line
@@ -797,7 +801,7 @@ The executor deserializes the task closure and runs it against its assigned part
 4. Writes the partitioned output to shuffle files on local disk directly — the shuffle writer bypasses BlockManager's storage layer; each file is named `shuffle_{shuffleId}_{taskAttemptId}_0.data` (with a matching `.index` file), so a retried attempt gets a different `taskAttemptId` and writes to a different file, preventing overwrite of a successful attempt's output
 5. Reports completion to the driver — including a **`MapStatus`** for each output partition: the executor's `BlockManagerId` (host + port) and the byte size of each shuffle block it wrote
 
-**What "pipelined execution" means.** Step 2 above — `split → lower → filter` — is not three separate passes over the partition data. It is a single iterator-based pass: each row flows through all three operations before the next row is processed. There is no intermediate materialization between operators within a stage. When Tungsten whole-stage codegen is active, `WholeStageCodegenEvaluatorFactory.createEvaluator()` calls `CodeGenerator.compile(source)` here on the executor — Janino compiles the Java source (generated and validated on the driver in Stage 1) to JVM bytecode, cached per executor JVM. The fused operator chain then runs as a tight native bytecode loop with no virtual method calls between operators. That — together with built-in functions (`F.lower()`, `F.sum()`, …) running entirely in the JVM — is why the DataFrame API runs fast regardless of what the Python layer above looks like. This is the operational meaning of "pipelined": one pass, one loop, no intermediate buffers. Source-verified v4.1.2: `WholeStageCodegenEvaluatorFactory.scala` L45 (executor: compile).
+**What "pipelined execution" means.** Step 2 above — `split → lower → filter` — is not three separate passes over the partition data. It is a single iterator-based pass: each row flows through all three operations before the next row is processed. There is no intermediate materialization between operators within a stage. With whole-stage codegen active, the fused operator chain runs as a tight native bytecode loop with no virtual method calls between operators. That — together with built-in functions (`F.lower()`, `F.sum()`, …) running entirely in the JVM — is why the DataFrame API runs fast regardless of what the Python layer above looks like. This is the operational meaning of "pipelined": one pass, one loop, no intermediate buffers. Source-verified v4.1.2: `WholeStageCodegenEvaluatorFactory.scala` L45 (executor: compile).
 
 The DAGScheduler's event loop receives this `CompletionEvent` and registers the shuffle block locations in the **MapOutputTracker** — a driver-side registry that maps `(shuffleId, mapTaskId) → (executor host, port, block locations)`. Once all 4 tasks in Stage 0 are done and their locations are registered, the DAGScheduler submits Stage 1.
 
