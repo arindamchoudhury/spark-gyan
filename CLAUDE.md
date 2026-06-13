@@ -26,6 +26,22 @@ The site is scaffolded for multiple books under `docs/books/<book-slug>/`. Curre
 
 **`[project.theme]` is intentionally absent from `zensical.toml`.** Zensical 0.0.x raises an install error if a theme name is set. Do not add it until Zensical 0.1+ ships.
 
+## Site customisation
+
+Custom CSS and JS are loaded via `zensical.toml`:
+
+```toml
+extra_css = ["stylesheets/extra.css"]
+extra_javascript = ["javascripts/sidebar-toggle.js"]
+```
+
+**Sidebar collapse toggle** (`docs/javascripts/sidebar-toggle.js` + `docs/stylesheets/extra.css`):
+- Both sidebars are `position: sticky` so they float in place as the main content scrolls
+- Adds a ◀/▶ button to each sidebar; click to collapse/expand
+- Collapsed state persists in `localStorage` across page navigations
+- Left nav uses key `sidebar-nav-collapsed`, right TOC uses `sidebar-toc-collapsed`
+- To remove: delete both files and remove the `extra_css`/`extra_javascript` lines from `zensical.toml`
+
 ## Adding a chapter
 
 1. Fill in `docs/books/rioux/chapters/<NN>-<slug>.md` (all 14 files already exist as placeholders, and nav is already wired in `zensical.toml`).
