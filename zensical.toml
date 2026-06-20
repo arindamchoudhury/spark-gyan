@@ -1,5 +1,5 @@
 [project]
-site_name = "PySpark — Reading Notes"
+site_name = "The Spark Book"
 site_url = "https://arindamchoudhury.github.io/spark-gyan/"
 site_description = "Personal study notes on Apache Spark and PySpark, drawing on multiple books."
 site_author = "Arindam"
