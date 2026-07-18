@@ -80,12 +80,19 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 1. **Rioux Ch 1–3** — builds the model from scratch with diagrams; the best prose introduction
 2. **LS2e Ch 1–2** — covers the same ground with more technical depth on the execution model
-3. **Spark-docs → Overview** ([spark.apache.org/docs/latest/](https://spark.apache.org/docs/latest/)) — skim once; return as reference
+3. **Spark-docs → Cluster Mode Overview** ([cluster-overview.html](https://spark.apache.org/docs/latest/cluster-overview.html)) — the driver/executor/cluster-manager picture stated canonically; shorter and more precise than either book's version. The [docs index](https://spark.apache.org/docs/latest/) is worth one skim for orientation
+4. **Source trace — [B1 in the source map](reference/spark-source-map/topics/b1.md)** — the actual code path from `getOrCreate()` through `DAGScheduler` to `TaskRunner`, with verified `file:line` anchors against 4.2.0. Read it *after* the books: it turns "the DAG scheduler splits stages at shuffle boundaries" from a claim you accept into one you can go and look at
 
-**Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code.
+**Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code. Stronger version, if you have read the source trace: name the single function that decides where one stage ends and the next begins, and explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop.
 
 !!! warning "Marked 🔄 — the installation chapter has a wrong Java-version claim"
-    Chapter 03 (Spark Installation, written under this topic) states that Spark 4.x supports only Java 17 and 21. Spark 4.2.0 builds and runs on **Java 25** ([SPARK-51167]). The architecture material for this topic is unaffected; only the install chapter needs the correction.
+    Chapter 03 (Spark Installation, written under this topic) states that Spark 4.x supports only Java 17 and 21. Spark 4.2.0 builds and runs on **Java 25** ([SPARK-51167]). Two further gaps the 4.2.0 source re-trace opened, both in Ch03: Spark 4.x is **Scala 2.13 only** (Scala 2.12 support was dropped across the whole 4.x line), which decides the `_2.13` suffix on every dependency artifact and silently breaks build files copied from Spark 3.x material; and the chapter's header still pins `Spark 4.1.x`. The architecture material in Ch01–Ch02 re-verified clean against 4.2.0 — only the install chapter needs work.
+
+!!! info "Two facts from the source that the books state loosely"
+    Both surfaced by the 4.2.0 trace and worth carrying into your own notes:
+
+    - **One function enforces the stage split.** `DAGScheduler.getMissingParentStages` is the only place the narrow-vs-wide distinction is mechanically applied: a `ShuffleDependency` starts a new `ShuffleMapStage`, a `NarrowDependency` stays in the current one. Every prose explanation of stage boundaries is a description of this one function.
+    - **`spark.task.maxFailures` does not apply in local mode.** `SparkContext` passes a hardcoded `MAX_LOCAL_TASK_FAILURES = 1` when building the local scheduler, so the documented default of 4 is ignored on your laptop and a single task failure aborts the stage. This is a common source of "it retried on the cluster but died locally" confusion.
 
 ---
 
