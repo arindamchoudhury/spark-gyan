@@ -120,6 +120,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 1. **Rioux Ch 2–3** — reading CSV with options; writing with modes
 2. **LS2e Ch 4** — comprehensive treatment of all built-in sources (Parquet, JSON, CSV, Avro, ORC, binary, images)
 3. **SDG Ch 9** — the deepest coverage of every data source option
+4. **Spark-docs → Data Sources** ([sql-data-sources.html](https://spark.apache.org/docs/latest/sql-data-sources.html)) — per-format option tables (the [generic options](https://spark.apache.org/docs/latest/sql-data-sources-generic-options.html) page covers path globbing, `recursiveFileLookup`, and `modifiedBefore/After`); the canonical answer for "what options does this reader take"
 
 **Milestone:** You can read multi-file datasets with glob patterns, declare a schema programmatically with `StructType`, write in append/overwrite mode, and explain why Parquet is preferred for analytical workloads.
 
@@ -151,6 +152,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 
 1. **Rioux Ch 3, 5** — covers groupby, agg, and the GroupedData intermediate object
 2. **LS2e Ch 4** — adds `F.expr()`, SQL aggregations, and the full function catalogue
+3. **Spark-docs → Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the complete aggregate-function list; skim the aggregate section once so you stop reaching for a UDF when a built-in exists
 
 **Milestone:** You can compute multiple aggregations in a single `agg()` call, use `F.when()` for conditional counting, and write a query equivalent to a SQL `GROUP BY ... HAVING`.
 
@@ -167,6 +169,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 1. **Rioux Ch 5** — all join types with visual diagrams; column-clash solutions
 2. **LS2e Ch 4** — join in the context of SQL tables and views
 3. **SDG Ch 8** — the most comprehensive treatment of join mechanics, including physical strategies
+4. **Spark-docs → JOIN syntax** ([sql-ref-syntax-qry-select-join.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-join.html)) — every join type in SQL form, including the semi/anti variants the books skim; also where `NEAREST BY` is documented from 4.2.0
 
 **Milestone:** You can perform all seven join types, explain what `left_semi` and `left_anti` return without looking it up, and name three situations where a broadcast join is appropriate.
 
@@ -204,6 +207,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 
 1. **Rioux Ch 5** — `dropna`/`fillna` with `how`, `thresh`, and `subset`
 2. **SDG Ch 6** — null semantics, null-safe joins, and null coercion rules
+3. **Spark-docs → NULL Semantics** ([sql-ref-null-semantics.html](https://spark.apache.org/docs/latest/sql-ref-null-semantics.html)) — the authoritative page: how NULL behaves in comparisons, `IN`/`EXISTS`, aggregates, joins, and `GROUP BY`. Settles the cases where the books disagree with intuition
 
 **Milestone:** You can explain why `F.count("col")` and `F.count("*")` return different results for a column with nulls.
 
@@ -241,6 +245,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **Rioux Ch 6** — the most thorough beginner treatment of all three complex types
 2. **LS2e Ch 5** — higher-order functions (`TRANSFORM`, `FILTER`, `AGGREGATE` on arrays) — very useful in practice
 3. **SDG Ch 6** — working with all data types; the most complete reference
+4. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) + **Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the array/map/struct function catalogue, including the higher-order functions (`transform`, `filter`, `aggregate`) that replace an explode/re-group round trip
 
 **Milestone:** You can flatten a JSON array-of-structs into rows, extract fields from nested structs, build an array column from grouped rows, and apply a lambda transform to every element of an array column.
 
@@ -257,6 +262,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **Rioux Ch 10** — the clearest full chapter introduction to all window function types
 2. **LS2e Ch 5** — window functions in the context of SQL and DataFrame APIs
 3. **SDG Ch 7** — aggregations chapter includes window functions with the deepest semantic explanations
+4. **Spark-docs → Window Functions** ([sql-ref-syntax-qry-select-window.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-window.html)) — frame semantics stated precisely: `ROWS` vs `RANGE`, and what the default frame becomes once you add `ORDER BY` (the single most common window bug)
 
 **Milestone:** You can reproduce a self-join using a window function, explain why an ordered aggregate window produces different results than an unordered one, and build a 30-day rolling average using `rangeBetween` on a unix timestamp.
 
@@ -325,6 +331,8 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 1. **LS2e Ch 7** — caching section with practical rules
 2. **SDG Ch 19** — performance tuning; caching strategy
+3. **Spark-docs → RDD Persistence** ([rdd-programming-guide.html#rdd-persistence](https://spark.apache.org/docs/latest/rdd-programming-guide.html#rdd-persistence)) — the storage-level table and the eviction rules; the DataFrame `cache()` you use daily is this mechanism underneath
+4. **Spark-docs → CACHE TABLE** ([sql-ref-syntax-aux-cache-cache-table.html](https://spark.apache.org/docs/latest/sql-ref-syntax-aux-cache-cache-table.html)) — the SQL side, including `LAZY` and why `CACHE TABLE` is eager while `df.cache()` is not
 
 **Milestone:** You can identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower.
 
@@ -392,6 +400,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **LS2e Ch 4** — data sources and format comparison
 2. **SDG Ch 9** — the most complete treatment of every format option
 3. **DLDG Ch 1** — how Delta wraps Parquet and what the transaction log adds
+4. **Spark-docs → Parquet** ([sql-data-sources-parquet.html](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html)) — partition discovery, schema merging, and the predicate-pushdown knobs; pair with **Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) for the columnar-reader settings
 
 **Milestone:** You can explain why `F.col("date") > '2024-01-01'` on a Parquet file can be resolved without reading any data, and why the same filter on a CSV cannot.
 
@@ -408,7 +417,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Learn it with:**
 
-1. **Spark-docs → SQL Scripting** ([spark.apache.org/docs/latest/sql-scripting.html](https://spark.apache.org/docs/latest/sql-scripting.html)) — the canonical reference; covers all statement types with examples
+1. **Spark-docs → SQL Scripting** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — the canonical reference; covers all statement types with examples
 2. **Spark 4.0 release notes** — understand which constructs were added in 4.0 vs 4.1
 
 **Milestone:** You can write a SQL script that declares a variable, iterates over a cursor with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline.
@@ -441,9 +450,11 @@ You are ready to leave this level when you can:
 
 **Learn it with:**
 
-1. **Spark-docs** — see official documentation.
+1. **SDG Ch 20** — job scheduling and concurrent job submission; the context in which async actions make sense
+2. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — scheduling *within* an application, the FAIR scheduler, and pools; async actions are how you get concurrent jobs from one driver thread
+3. **Source** — `core/src/main/scala/org/apache/spark/rdd/AsyncRDDActions.scala`; trace `takeAsync` for the recursive scale-up
 
-**Milestone:** TBD
+**Milestone:** You can submit two Spark jobs concurrently from one driver, explain what a `FutureAction` gives you that a blocking action does not, and describe how `takeAsync` decides how many partitions to scan next.
 
 ---
 
@@ -458,9 +469,11 @@ You are ready to leave this level when you can:
 
 **Learn it with:**
 
-1. **Spark-docs** — see official documentation.
+1. **Spark-docs → Understanding closures** ([rdd-programming-guide.html#understanding-closures](https://spark.apache.org/docs/latest/rdd-programming-guide.html#understanding-closures)) — the canonical explanation of why mutating a driver variable inside a transformation silently does nothing
+2. **SDG Ch 14** — distributed shared variables; broadcast and accumulators as the correct alternatives to capturing driver state
+3. **Source** — `core/src/main/scala/org/apache/spark/util/ClosureCleaner.scala`
 
-**Milestone:** TBD
+**Milestone:** You can explain why a counter incremented inside `foreach` stays zero on the driver, predict whether a given lambda will raise `Task not serializable` before running it, and name the two fixes (broadcast the value, or move construction inside the closure).
 
 ---
 
@@ -475,9 +488,11 @@ You are ready to leave this level when you can:
 
 **Learn it with:**
 
-1. **Spark-docs** — see official documentation.
+1. **SDG Ch 13** — advanced RDDs; key-value operations and the aggregation family in full
+2. **Spark-docs → Shuffle operations** ([rdd-programming-guide.html#shuffle-operations](https://spark.apache.org/docs/latest/rdd-programming-guide.html#shuffle-operations)) — what a shuffle costs and which operations trigger one
+3. **Source** — `core/src/main/scala/org/apache/spark/rdd/PairRDDFunctions.scala`; every aggregation bottoms out in `combineByKeyWithClassTag`
 
-**Milestone:** TBD
+**Milestone:** You can explain why `reduceByKey` beats `groupByKey().mapValues(sum)` in terms of what crosses the network, and express both as a `combineByKey` call with its three functions.
 
 ---
 
@@ -665,7 +680,7 @@ You are ready to leave this level when you can:
 
 **Learn it with:**
 
-1. **Spark-docs → Declarative Pipelines** ([spark.apache.org/docs/latest/pipelines.html](https://spark.apache.org/docs/latest/pipelines.html)) — the primary reference; covers `@table`, `@materialized_view`, flows, and `AutoCdcFlow`
+1. **Spark-docs → Declarative Pipelines Programming Guide** ([declarative-pipelines-programming-guide.html](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html)) — the primary reference; covers `@table`, `@materialized_view`, flows, and `AutoCdcFlow`
 2. **Spark 4.1 release notes** — feature scope and current limitations
 3. **Local stack** — run a pipeline against your Delta Lake + Unity Catalog setup; the `pyspark.pipelines` module is available in Spark 4.1.x
 
@@ -766,6 +781,7 @@ You are ready to leave this level when you can:
 1. **DLDG Ch 1** — the transaction log as a single source of truth; MVCC internals
 2. **DLDG Ch 8** — row-level concurrency; deletion vectors; advanced write operations
 3. **DLUR Ch 6** — time travel and `RESTORE` in full operational detail
+4. **Delta-docs → Protocol spec** ([PROTOCOL.md](https://github.com/delta-io/delta/blob/master/PROTOCOL.md)) — the actual commit-file schema, checkpoint format, and reader/writer version rules; the only source that settles concurrency questions definitively. Pair with [Concurrency control](https://docs.delta.io/latest/concurrency-control.html) for the exception taxonomy
 
 **Milestone:** You can describe what a Delta commit JSON file contains, explain what `VACUUM` removes and why running it too aggressively breaks time travel, and demonstrate resolving a `ConcurrentModificationException` during a concurrent MERGE and INSERT.
 
@@ -883,9 +899,11 @@ You are operating at Expert level when you can:
 
 **Learn it with:**
 
-1. **Spark-docs** — see official documentation.
+1. **Spark-docs → Data Serialization** ([tuning.html#data-serialization](https://spark.apache.org/docs/latest/tuning.html#data-serialization)) — the official Kryo recommendation, registration, and buffer sizing
+2. **SDG Ch 19** — performance tuning; serialization in the context of everything else that makes a job slow. Treat its JVM-flag specifics as dated (see E1 — 4.2.0 runs on Java 25)
+3. **Source** — `core/src/main/scala/org/apache/spark/serializer/KryoSerializer.scala`
 
-**Milestone:** TBD
+**Milestone:** You can enable Kryo with class registration, explain what `spark.kryo.registrationRequired=true` protects you from, and describe why this matters far less for pure DataFrame work than for RDDs of custom objects.
 
 ---
 
@@ -900,9 +918,11 @@ You are operating at Expert level when you can:
 
 **Learn it with:**
 
-1. **Spark-docs** — see official documentation.
+1. **Spark-docs → Accumulators** ([rdd-programming-guide.html#accumulators](https://spark.apache.org/docs/latest/rdd-programming-guide.html#accumulators)) — includes the exactly-once caveat: guaranteed only inside actions, not transformations
+2. **SDG Ch 14** — distributed shared variables; accumulators and broadcast together, with custom accumulator examples
+3. **Source** — `core/src/main/scala/org/apache/spark/util/AccumulatorV2.scala`; the `copy`/`add`/`merge` lifecycle
 
-**Milestone:** TBD
+**Milestone:** You can write a custom `AccumulatorV2`, explain why an accumulator updated inside a `map` may double-count after a task retry or speculative execution while one inside `foreach` does not, and say what `countFailedValues` changes.
 
 ---
 
