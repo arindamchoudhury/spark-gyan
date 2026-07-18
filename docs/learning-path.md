@@ -132,8 +132,17 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 2. **LS2e Ch 3** — adds the Catalyst/Tungsten context; explains *why* the API works the way it does
 3. **DataCamp: Introduction to PySpark** ([datacamp.com](https://www.datacamp.com/courses/introduction-to-pyspark)) — ~4 hrs; interactive browser exercises; good for checking comprehension
 4. **Spark-docs → Getting Started** ([sql-getting-started.html](https://spark.apache.org/docs/latest/sql-getting-started.html)) — untyped Dataset operations with the Python tab selected; the shortest correct reference for the core verbs
+5. **Spark-docs → `DataFrame` API reference** ([reference/pyspark.sql/dataframe.html](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html)) — all 150+ methods in one indexed page. This is the one to keep open while working; the books cover perhaps twenty of them
+6. **Spark-docs → ANSI Compliance** ([sql-ref-ansi-compliance.html](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html)) — read the [Cast](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html#cast) and [Arithmetic Operations](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html#arithmetic-operations) sections before you trust any book example that casts a column. See the warning below
+7. **Spark-docs → SELECT syntax** ([sql-ref-syntax-qry-select.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select.html)) — the SQL form of everything in this topic; useful for building the DataFrame ↔ SQL mapping early rather than treating B8 as a separate skill
+8. **Source trace — [B3 in the source map](reference/spark-source-map/topics/b3.md)** — which plan node each verb produces. Read it once you can write the chains fluently: knowing `distinct()` becomes `Deduplicate` and `withColumn` becomes `Project(UnresolvedStarWithColumns)` is what makes `EXPLAIN` output readable later
 
-**Milestone:** You can take a raw CSV, select specific columns, filter rows, add derived columns, and write the result to Parquet — all in a single method-chained program.
+!!! warning "Spark 4.x changed what a bad cast does — every book here predates it"
+    `spark.sql.ansi.enabled` now defaults to **`true`**. Under ANSI mode Spark raises an exception at runtime where it previously returned `null`: invalid casts (`"abc"` to int), arithmetic overflow, and division by zero all now fail loudly. The official docs describe the `false` setting as "the behavior of Spark 3 or older" — which is exactly what Rioux (2022), LS2e (2020) and SDG (2018) document throughout.
+
+    Practical effect: book examples that quietly produced `null` columns will instead stop your job. That is better behaviour, but it means a failing example is not necessarily your mistake. Do not switch ANSI off to make a book example work — read the Cast section, understand which conversion is invalid, and fix the expression with `try_cast` or an explicit filter.
+
+**Milestone:** You can take a raw CSV, select specific columns, filter rows, add derived columns, and write the result to Parquet — all in a single method-chained program. Then predict, before running: which of your casts would throw under ANSI mode, and which columns would silently have been `null` on Spark 3.
 
 ---
 
