@@ -388,7 +388,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Estimated time to complete this level:** 38–54 hrs
 
-**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I15** (the storage-and-table-format run) → I11, then the checkpoint. The optional-depth topics (I12–I14) come after it and are read on demand, not in sequence.
+**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I15** (the storage-and-table-format run) → I11. The level then ends with its checkpoint. I12–I14 sit just above that gate as optional depth — they are not required to pass it, and are read on demand rather than in sequence.
 
 !!! info "Why the numbering jumps"
     I15 is a main-line topic that sits at the end of the format run; I12–I14 are optional-depth topics from a source sweep. Codes are permanent identifiers — the book index, chapter files and coverage matrix all reference them — so they are never renumbered when the taxonomy changes. Follow the reading order above, not the numbers.
@@ -825,25 +825,9 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### 🎯 Intermediate Checkpoint
-
-You are ready to leave this level when you can:
-
-- Build a layered pipeline (bronze → silver → gold) with `MERGE INTO` upserts, and predict roughly how many files a merge will rewrite before running it
-- Use window functions for time-series feature engineering, naming the default frame you get with and without an `ORDER BY`
-- Read a Spark UI physical plan, locate the bottleneck, and say whether the numbers you are looking at are complete
-- Write and test a pandas UDF, and measure its speedup on 4.2.0 rather than quoting a book
-- Choose between a storage format and a table format for a given dataset, and explain what Delta and Iceberg each add over plain Parquet
-- Explain when caching helps, when it is evicted, and why a cache hit depends on plan equivalence rather than your variable
-
-*Optional:* this is the natural point for the Databricks Associate Developer exam if you want it — see [optional certification milestones](#optional-certification-milestones). Not a prerequisite for continuing.
-
----
-
-
 ### Optional depth — source-derived topics
 
-These three came from a source sweep of `core`, not from a book, course or exam guide. They sit outside the main line: read one when you hit the underlying problem in practice — a `Task not serializable` error, a `groupByKey` OOM, a job that needs concurrent submission — rather than in sequence. Codes are non-contiguous because topic codes are stable identifiers (see the header note).
+**Not required for the checkpoint below.** These three came from a source sweep of `core`, not from a book, course or exam guide. Read one when you hit the underlying problem in practice — a `Task not serializable` error, a `groupByKey` OOM, a job that needs concurrent submission — rather than in sequence. Codes are non-contiguous because topic codes are stable identifiers (see the header note).
 
 ---
 
@@ -916,6 +900,22 @@ These three came from a source sweep of `core`, not from a book, course or exam 
     No book in the resources table covers `AsyncRDDActions` directly. SDG Ch 15 gives the execution model it builds on, but the async API itself is docs-and-source territory.
 
 **Milestone:** You can submit two Spark jobs concurrently from one driver, explain what a `FutureAction` gives you that a blocking action does not, and describe how `takeAsync` decides how many partitions to scan next.
+
+---
+
+
+### 🎯 Intermediate Checkpoint
+
+You are ready to leave this level when you can:
+
+- Build a layered pipeline (bronze → silver → gold) with `MERGE INTO` upserts, and predict roughly how many files a merge will rewrite before running it
+- Use window functions for time-series feature engineering, naming the default frame you get with and without an `ORDER BY`
+- Read a Spark UI physical plan, locate the bottleneck, and say whether the numbers you are looking at are complete
+- Write and test a pandas UDF, and measure its speedup on 4.2.0 rather than quoting a book
+- Choose between a storage format and a table format for a given dataset, and explain what Delta and Iceberg each add over plain Parquet
+- Explain when caching helps, when it is evicted, and why a cache hit depends on plan equivalence rather than your variable
+
+*Optional:* this is the natural point for the Databricks Associate Developer exam if you want it — see [optional certification milestones](#optional-certification-milestones). Not a prerequisite for continuing.
 
 ---
 
@@ -1164,7 +1164,7 @@ You are ready to leave this level when you can:
 
 **Estimated time to complete this level:** 40–60+ hrs (ongoing)
 
-**Reading order:** E1 → E2 → E3 → E4 → E5 → E6 → E7 → E8 → E9, then the checkpoint. E10–E11 are optional-depth topics after it, read on demand.
+**Reading order:** E1 → E2 → E3 → E4 → E5 → E6 → E7 → E8 → E9. E10–E11 sit above the closing checkpoint as optional depth — not required to pass it, read on demand.
 
 ---
 
@@ -1357,23 +1357,9 @@ You are ready to leave this level when you can:
 
 ---
 
-### 🎯 Expert Checkpoint
-
-You are operating at Expert level when you can:
-
-- Design a governed lakehouse from scratch (medallion + a catalog with lineage — Unity Catalog, an Iceberg REST catalog, or equivalent)
-- Debug a production incident using Spark metrics + History Server without the live UI
-- Implement CI/CD for a multi-environment pipeline with automated tests
-- Architect a streaming CDC pipeline with SCD Type 2 history and exactly-once guarantees
-
-*Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
-
----
-
-
 ### Optional depth — source-derived topics
 
-As with the Intermediate pair above: derived from the `core` sweep, read on demand rather than in order.
+**Not required for the checkpoint below.** As with the Intermediate group: derived from the `core` sweep, read on demand rather than in order.
 
 ---
 
@@ -1410,6 +1396,20 @@ As with the Intermediate pair above: derived from the `core` sweep, read on dema
 3. **Source** — `core/src/main/scala/org/apache/spark/serializer/KryoSerializer.scala`
 
 **Milestone:** You can enable Kryo with class registration, explain what `spark.kryo.registrationRequired=true` protects you from, and describe why this matters far less for pure DataFrame work than for RDDs of custom objects.
+
+---
+
+
+### 🎯 Expert Checkpoint
+
+You are operating at Expert level when you can:
+
+- Design a governed lakehouse from scratch (medallion + a catalog with lineage — Unity Catalog, an Iceberg REST catalog, or equivalent)
+- Debug a production incident using Spark metrics + History Server without the live UI
+- Implement CI/CD for a multi-environment pipeline with automated tests
+- Architect a streaming CDC pipeline with SCD Type 2 history and exactly-once guarantees
+
+*Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
 
 ---
 
