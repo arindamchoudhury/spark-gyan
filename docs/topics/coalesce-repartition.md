@@ -104,4 +104,4 @@ spark.conf.set("spark.databricks.delta.autoCompact.enabled", "true")
 ## Chapter links
 
 - [Ch 2 — First data program](../books/rioux/chapters/02-first-data-program.md)
-- [Ch 3 — DataFrames and datasets](../books/rioux/chapters/03-dataframes.md)
+- [Ch 3 — Submitting and Scaling Your First PySpark Program](../books/rioux/chapters/03-submitting-scaling.md)

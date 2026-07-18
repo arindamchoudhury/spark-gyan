@@ -110,5 +110,5 @@ spark.conf.get("spark.sql.ansi.enabled")   # "true" on Spark 4.x
 ## Chapter links
 
 - [Ch 4 — Tabular data and CSV ingestion](../books/rioux/chapters/04-tabular-data.md)
-- [Ch 5 — Joins and aggregations](../books/rioux/chapters/05-joins-aggregations.md)
+- [Ch 5 — Joining and Grouping](../books/rioux/chapters/05-joining-grouping.md)
 - [Ch 7 — Python, Spark SQL, and interoperability](../books/rioux/chapters/07-python-sql.md)

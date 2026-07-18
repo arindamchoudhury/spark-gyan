@@ -119,5 +119,5 @@ These are `Column` expression operators, not Python dict/list access — they wo
 
 - [Ch 2 — First data program](../books/rioux/chapters/02-first-data-program.md)
 - [Ch 4 — Tabular data and CSV ingestion](../books/rioux/chapters/04-tabular-data.md)
-- [Ch 5 — Joins and aggregations](../books/rioux/chapters/05-joins-aggregations.md)
+- [Ch 5 — Joining and Grouping](../books/rioux/chapters/05-joining-grouping.md)
 - [Ch 6 — JSON and complex types](../books/rioux/chapters/06-json-data.md)

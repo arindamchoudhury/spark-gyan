@@ -138,6 +138,6 @@ result = (
 
 ## Chapter links
 
-- [Ch 3 — DataFrames and datasets](../books/rioux/chapters/03-dataframes.md)
-- [Ch 5 — Joins and aggregations](../books/rioux/chapters/05-joins-aggregations.md)
+- [Ch 3 — Submitting and Scaling Your First PySpark Program](../books/rioux/chapters/03-submitting-scaling.md)
+- [Ch 5 — Joining and Grouping](../books/rioux/chapters/05-joining-grouping.md)
 - [Ch 7 — Python, Spark SQL, and interoperability](../books/rioux/chapters/07-python-sql.md)

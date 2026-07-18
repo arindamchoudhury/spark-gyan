@@ -99,6 +99,6 @@ For everything else — structured, semi-structured, or tabular data — prefer 
 
 ## Chapter links
 
-- [Ch 1 — Intro to PySpark](../books/rioux/chapters/01-intro-to-pyspark.md)
+- [Ch 1 — Introduction](../books/rioux/chapters/01-introduction.md)
 - [Ch 2 — First data program](../books/rioux/chapters/02-first-data-program.md)
 - [Ch 8 — RDDs and UDFs](../books/rioux/chapters/08-rdd-udfs.md)

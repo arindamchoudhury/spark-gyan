@@ -130,8 +130,8 @@ Compiled bytecode executed on JVM
 
 ## Chapter links
 
-- [Ch 1 — Intro to PySpark](../books/rioux/chapters/01-intro-to-pyspark.md)
+- [Ch 1 — Introduction](../books/rioux/chapters/01-introduction.md)
 - [Ch 2 — First data program](../books/rioux/chapters/02-first-data-program.md)
-- [Ch 3 — DataFrames and datasets](../books/rioux/chapters/03-dataframes.md)
+- [Ch 3 — Submitting and Scaling Your First PySpark Program](../books/rioux/chapters/03-submitting-scaling.md)
 - [Ch 7 — Python, Spark SQL, and interoperability](../books/rioux/chapters/07-python-sql.md)
 - [Ch 8 — RDDs and UDFs](../books/rioux/chapters/08-rdd-udfs.md)

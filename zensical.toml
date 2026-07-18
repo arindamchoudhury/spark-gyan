@@ -91,6 +91,15 @@ nav = [
     ]},
 ]
 
+# Admonitions (`!!! note "Title"` + 4-space-indented body) are the callout
+# convention across the notes. Without this extension enabled they render as
+# literal "!!! note" text — which is what happened before 2026-07-18.
+[project.markdown_extensions.admonition]
+
+# `???` collapsible admonitions, and required alongside admonition by the
+# Zensical docs' recommended set.
+[project.markdown_extensions.pymdownx.details]
+
 [project.markdown_extensions.wikilinks]
 base_url = ""
 end_url = ""

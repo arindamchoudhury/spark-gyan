@@ -125,5 +125,5 @@ df.withColumn("upper", slow_upper(F.col("name")))
 
 ## Chapter links
 
-- [Ch 1 — Intro to PySpark](../books/rioux/chapters/01-intro-to-pyspark.md)
+- [Ch 1 — Introduction](../books/rioux/chapters/01-introduction.md)
 - [Ch 8 — RDDs and UDFs](../books/rioux/chapters/08-rdd-udfs.md)

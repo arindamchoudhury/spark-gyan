@@ -130,4 +130,4 @@ Skipping the post-join `select()` is the most common way to accidentally propaga
 
 - [Ch 2 — First data program](../books/rioux/chapters/02-first-data-program.md)
 - [Ch 4 — Tabular data and CSV ingestion](../books/rioux/chapters/04-tabular-data.md)
-- [Ch 5 — Joins and aggregations](../books/rioux/chapters/05-joins-aggregations.md)
+- [Ch 5 — Joining and Grouping](../books/rioux/chapters/05-joining-grouping.md)

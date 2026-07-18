@@ -134,6 +134,6 @@ except Py4JJavaError as e:
 ## Chapter links
 
 - [Ch 4 — Tabular data and CSV ingestion](../books/rioux/chapters/04-tabular-data.md)
-- [Ch 5 — Joins and aggregations](../books/rioux/chapters/05-joins-aggregations.md)
+- [Ch 5 — Joining and Grouping](../books/rioux/chapters/05-joining-grouping.md)
 - [Ch 6 — JSON and complex types](../books/rioux/chapters/06-json-data.md)
 - [Ch 8 — RDDs and UDFs](../books/rioux/chapters/08-rdd-udfs.md)
