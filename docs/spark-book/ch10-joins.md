@@ -3,6 +3,8 @@
 > *Learning-path topic: B7 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+> 🔄 **Needs revisiting — Spark 4.2.0 (flagged 2026-07-18).** Nothing here is wrong, but the chapter is now incomplete: Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a top-K ranking join primitive for nearest-neighbour queries with Catalyst support and a DataFrame API. It is not one of the seven relational join types this chapter covers and needs its own section — probably after the seven, framed as "the eighth thing called a join that isn't one."
+
 Joins are the most common source of performance problems in Spark, and the most common source of subtle data bugs. Getting join types right is foundational; everything in advanced tuning (Chapter 22) builds on this.
 
 ---

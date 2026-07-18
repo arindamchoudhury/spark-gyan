@@ -6,6 +6,8 @@
 >
 > Spark 4.2.0 is the third 4.x release — 1,700+ Jira tickets. Learn against 4.2.0; the books below are written against 3.x, so the callouts on each topic mark where they diverge.
 >
+> **Status key.** ⬜ not started · ✅ done and current · 🔄 done, but written against an older Spark and now needs revisiting (the topic's callout says what drifted).
+>
 > **How to read this page.** Topics are grouped by level — Beginner → Intermediate → Advanced → Expert. Each topic lists what it is, why it matters, and exactly which resources to use and in what order. Books, MOOCs, university courses, official docs, and certifications are all included. Pick the level where you currently are and work through the topics in sequence within that level.
 
 ---
@@ -57,7 +59,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 
 ---
 
-### ✅ B1 — Spark Architecture & the Execution Model
+### 🔄 B1 — Spark Architecture & the Execution Model
 
 **What it is:** The mental model of how Spark distributes work — driver, executors, cluster manager, JVM vs Python process, lazy evaluation, DAG, stages, tasks.
 
@@ -70,6 +72,9 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 3. **Spark-docs → Overview** ([spark.apache.org/docs/latest/](https://spark.apache.org/docs/latest/)) — skim once; return as reference
 
 **Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code.
+
+!!! warning "Marked 🔄 — the installation chapter has a wrong Java-version claim"
+    Chapter 03 (Spark Installation, written under this topic) states that Spark 4.x supports only Java 17 and 21. Spark 4.2.0 builds and runs on **Java 25** ([SPARK-51167]). The architecture material for this topic is unaffected; only the install chapter needs the correction.
 
 ---
 
@@ -151,7 +156,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 
 ---
 
-### ✅ B7 — Joins: Types and Mechanics
+### 🔄 B7 — Joins: Types and Mechanics
 
 **What it is:** Inner, left, right, full outer, semi, anti joins; equi-join shorthand; column disambiguation; broadcast join hint.
 
@@ -170,7 +175,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 
 ---
 
-### ✅ B8 — Spark SQL
+### 🔄 B8 — Spark SQL
 
 **What it is:** `createOrReplaceTempView`, `spark.sql()`, SQL string expressions in `selectExpr`/`F.expr`, the Spark catalog.
 
@@ -257,7 +262,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ✅ I3 — User-Defined Functions
+### 🔄 I3 — User-Defined Functions
 
 **What it is:** `@F.udf` (row-by-row Python UDF); `@F.pandas_udf` (vectorised Series→Series, Iterator→Iterator); the performance hierarchy; `.func` for local testing.
 
@@ -916,7 +921,9 @@ Expert (E1–E9)                →  9 topics · 40–60+ hrs
 Optional depth (I12–I14, E10–E11) → 5 topics, source-sweep derived; not on the main line
 ```
 
-**You are currently here:** B1–B9 ✅ + I1–I5 ✅ (**14 of 40** main-line topics done; 45 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
+**You are currently here:** B1–B9 + I1–I5 done (**14 of 40** main-line topics; 45 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
+
+**Carrying 🔄:** B1, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. Only I3 and the B1 install chapter contain claims that are actually *wrong*; B7 and B8 are merely missing new surface. Clearing them is a smaller job than a new topic, and worth doing before the Associate Developer exam, which weights DataFrame API (30%) and Spark SQL (20%) most heavily.
 
 !!! info "About the optional-depth topics (I12–I14, E10–E11)"
     These five were derived from Spark source sweeps rather than from books, courses, or exam guides. They sit outside the main study line, still carry `Milestone: TBD`, and their only listed resource is the official docs. Treat them as reading prompts when you hit the underlying problem in practice (a `Task not serializable` error, a `groupByKey` OOM), not as sequential coursework.

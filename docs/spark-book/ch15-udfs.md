@@ -3,6 +3,8 @@
 > *Learning-path topic: I3 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+> 🔄 **Needs revisiting — Spark 4.2.0 (flagged 2026-07-18).** Arrow-optimized Python UDFs and Arrow-based PySpark IPC are **enabled by default** as of 4.2.0 ([SPARK-54555]). Two things below are now stale: the performance table describes Arrow-native UDFs as opt-in via `useArrow=True` (4.1+ framing), and the "typically 5–10× faster than Python UDFs" figure for pandas UDFs was measured against non-Arrow Python UDFs — the real gap on 4.2.0 is narrower. The cost *hierarchy* and the reasoning behind it still hold; the defaults and the multipliers need re-measuring on 4.2.0. Spark 4.2.0 also adds Arrow and pandas grouped-aggregation UDFs, not covered here.
+
 Built-in Spark functions cover the vast majority of column transformations. When they don't, UDFs are the escape hatch. Understanding the cost hierarchy — and when to pay it — is what separates accidental slowness from intentional trade-offs.
 
 ---
