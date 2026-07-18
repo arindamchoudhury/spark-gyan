@@ -7,7 +7,9 @@
 > Spark 4.2.0 is the third 4.x release — 1,700+ Jira tickets. Learn against 4.2.0; the books below are written against 3.x, so the callouts on each topic mark where they diverge.
 >
 !!! note "Status key"
-    ⬜ not started · ✅ done and current · 🔄 done, but written against an older Spark and now needs revisiting (the topic's callout says what drifted).
+    **Topics:** ⬜ not started · ✅ done and current · 🔄 done, but written against an older Spark and now needs revisiting (the topic's callout says what drifted).
+
+    **Checkpoints:** 🎯 — a gate, not a topic. It carries no completion status: it is a self-test you attempt to decide whether you are ready to leave a level.
 
     **How to read this page.** Topics are grouped by level — Beginner → Intermediate → Advanced → Expert. Each topic lists what it is, why it matters, and exactly which resources to use and in what order. Pick the level where you currently are and work through the topics in sequence within that level.
 
@@ -59,8 +61,6 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 | Spark Connect as the default client architecture in 4.x | B2 basics, E9 depth |
 | Declarative pipelines replacing hand-rolled orchestration glue | A11 |
 | SQL fluency weighted at least as heavily as Python | B8, I11 |
-
----
 
 ---
 
@@ -371,7 +371,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 ---
 
-### ✅ Beginner Checkpoint
+### 🎯 Beginner Checkpoint
 
 You are ready to leave this level when you can build a complete end-to-end batch pipeline:
 
@@ -379,8 +379,6 @@ You are ready to leave this level when you can build a complete end-to-end batch
 - Clean (null handling, type casting, deduplication)
 - Transform (join, group, aggregate, derive columns)
 - Write output to Parquet with a sensible partition scheme
-
----
 
 ---
 
@@ -827,18 +825,18 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ✅ Intermediate Checkpoint
+### 🎯 Intermediate Checkpoint
 
 You are ready to leave this level when you can:
 
-- Build a medallion pipeline with MERGE INTO upserts
-- Use window functions for time-series feature engineering
-- Read a Spark UI physical plan and locate the bottleneck
-- Write and test a pandas UDF
+- Build a layered pipeline (bronze → silver → gold) with `MERGE INTO` upserts, and predict roughly how many files a merge will rewrite before running it
+- Use window functions for time-series feature engineering, naming the default frame you get with and without an `ORDER BY`
+- Read a Spark UI physical plan, locate the bottleneck, and say whether the numbers you are looking at are complete
+- Write and test a pandas UDF, and measure its speedup on 4.2.0 rather than quoting a book
+- Choose between a storage format and a table format for a given dataset, and explain what Delta and Iceberg each add over plain Parquet
+- Explain when caching helps, when it is evicted, and why a cache hit depends on plan equivalence rather than your variable
 
 *Optional:* this is the natural point for the Databricks Associate Developer exam if you want it — see [optional certification milestones](#optional-certification-milestones). Not a prerequisite for continuing.
-
----
 
 ---
 
@@ -1146,18 +1144,17 @@ These three came from a source sweep of `core`, not from a book, course or exam 
 
 ---
 
-### ✅ Advanced Checkpoint
+### 🎯 Advanced Checkpoint
 
 You are ready to leave this level when you can:
 
-- Debug a slow job using the Spark UI and fix the bottleneck
-- Build a streaming pipeline with watermarks and Delta sinks
-- Implement MERGE INTO with SCD Type 2 logic
+- Debug a slow job using the Spark UI and fix the bottleneck — reading the post-AQE plan, not the one `explain()` printed
+- Build a streaming pipeline from Kafka with watermarks and a table-format sink, and say which component gives you the delivery guarantee
+- Implement `MERGE INTO` with SCD Type 2 logic
+- Diagnose a skewed join and know what AQE will and will not fix for you
 - Build and evaluate an ML pipeline with cross-validation
 
 *Optional:* the Databricks Data Engineer Associate exam maps to roughly I8–A6 plus orchestration, if you are working on that platform.
-
----
 
 ---
 
@@ -1360,9 +1357,7 @@ You are ready to leave this level when you can:
 
 ---
 
-### ✅ Expert Checkpoint
-
-*Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
+### 🎯 Expert Checkpoint
 
 You are operating at Expert level when you can:
 
@@ -1371,7 +1366,7 @@ You are operating at Expert level when you can:
 - Implement CI/CD for a multi-environment pipeline with automated tests
 - Architect a streaming CDC pipeline with SCD Type 2 history and exactly-once guarantees
 
----
+*Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
 
 ---
 
