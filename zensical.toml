@@ -23,6 +23,7 @@ nav = [
             { "B7 — Joins: Types and Mechanics" = "reference/spark-source-map/topics/b7.md" },
             { "B8 — Spark SQL" = "reference/spark-source-map/topics/b8.md" },
             { "B9 — Null Handling" = "reference/spark-source-map/topics/b9.md" },
+            { "I1 — Complex Column Types" = "reference/spark-source-map/topics/i1.md" },
             { "I4 — RDD Fundamentals" = "reference/spark-source-map/topics/i4.md" },
         ]},
         { "Sweeps" = [

@@ -3,6 +3,17 @@
 > *Learning-path topic: I1 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+!!! warning "🔄 Needs revisiting — I1 source trace (flagged 2026-07-18)"
+    Incomplete rather than wrong. Ten gaps; three change what a reader should *do*, not just what they know.
+
+    **`explode` silently drops rows.** A null or empty array yields zero output rows, so the parent row disappears — data loss that looks like a correct, smaller result. `explode_outer` (via the `GeneratorOuter` wrapper) emits one null row instead. The chapter lists both as variants; the difference deserves to be stated as a correctness rule.
+
+    **Higher-order functions replace the explode/re-group pattern.** `transform`, `filter` and `aggregate` work within a row, so no shuffle happens — whereas `explode` + `groupBy` + `collect_list` shuffles the expanded data. And the lambda is a Catalyst `LambdaFunction` running in the JVM, not a Python callable, so it costs nothing at the Python boundary unlike an equivalent UDF (links to Ch15).
+
+    **`collect_list`/`collect_set` change your aggregate operator.** Their buffer is a growable JVM collection — the non-mutable case that forces `ObjectHashAggregateExec` and its 128-group sort fallback (see Ch09). Neither preserves order; `collect_set` drops nulls by default.
+
+    Also missing: duplicate map keys raising by default (`spark.sql.mapKeyDedupPolicy=EXCEPTION`); array index raising under ANSI while a missing map key returns null; generators needing their own `Generate` plan node, which explains the errors from putting `explode` in the wrong position; nested schema pruning reading only referenced struct fields; and `inline` doing explode-plus-extraction in one step. Full list in the [I1 source trace](../reference/spark-source-map/topics/i1.md).
+
 Real-world data is rarely flat. Event logs carry arrays of tags, JSON APIs return nested objects, and analytical schemas embed structs. The three complex column types — Array, Map, Struct — are what separates PySpark from a tool that works on toy data from one that works on production data.
 
 ---

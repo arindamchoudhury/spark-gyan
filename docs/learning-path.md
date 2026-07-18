@@ -392,7 +392,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ✅ I1 — Complex Column Types: Arrays, Maps, Structs
+### 🔄 I1 — Complex Column Types: Arrays, Maps, Structs
 
 **What it is:** `ArrayType`, `MapType`, `StructType` as column values; `F.explode`, `F.posexplode`, `F.explode_outer`; array functions (`F.array_contains`, `F.size`, `F.array_distinct`); struct dot notation; `collect_list`/`collect_set`.
 
@@ -405,7 +405,24 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **SDG Ch 6** — working with all data types; the most complete reference
 4. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) + **Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the array/map/struct function catalogue, including the higher-order functions (`transform`, `filter`, `aggregate`) that replace an explode/re-group round trip
 
-**Milestone:** You can flatten a JSON array-of-structs into rows, extract fields from nested structs, build an array column from grouped rows, and apply a lambda transform to every element of an array column. You can also state when `VARIANT` is the better choice than a declared `StructType`, and why.
+5. **Source trace — [I1 in the source map](reference/spark-source-map/topics/i1.md)** — why generators need their own plan node, what `explode_outer` actually adds, and why a higher-order function costs nothing where a UDF doing the same work costs a great deal
+
+**Milestone:** You can flatten a JSON array-of-structs into rows, extract fields from nested structs, build an array column from grouped rows, and apply a lambda transform to every element of an array column. You can also state when `VARIANT` is the better choice than a declared `StructType`, and why. Then the one that catches people: given a column where some arrays are empty or null, predict how many rows survive `explode` versus `explode_outer`.
+
+!!! warning "`explode` silently drops rows — this is data loss, not a variant"
+    A null or empty array produces **zero** output rows, so the parent row disappears entirely. Nothing warns you; the result is simply smaller than the input and looks correct.
+
+    `explode_outer` wraps the generator in `GeneratorOuter`, which emits one row with nulls instead. Treat `explode` as the special case you choose deliberately when you *want* rows without array elements removed, and reach for `explode_outer` by default when the array can be empty or null.
+
+!!! info "Prefer higher-order functions over explode-and-regroup — no shuffle, no Python boundary"
+    `transform`, `filter` and `aggregate` operate **within a single row**, so they replace the explode → `groupBy` → `collect_list` round trip that shuffles the expanded data. Same result, categorically different cost.
+
+    The lambda you pass is a Catalyst expression (`LambdaFunction`), not a Python callable — it compiles and runs in the JVM. So unlike a UDF doing identical work, it crosses no Python boundary at all (see I3). Reach for `explode` only when you genuinely need one output row per element.
+
+!!! info "Two container types, two behaviours, and `collect_*` changes your aggregate operator"
+    Under ANSI, an out-of-range **array index raises**, while a **missing map key returns null** — both correct, easy to conflate. Building a map from data with duplicate keys also raises by default (`spark.sql.mapKeyDedupPolicy=EXCEPTION`); `LAST_WIN` is opt-in.
+
+    And `collect_list`/`collect_set` use a growable JVM collection as their aggregation buffer, which is exactly the non-mutable case that forces `ObjectHashAggregateExec` and its 128-group sort fallback (see B6). Neither preserves order, and `collect_set` drops nulls.
 
 !!! warning "`VARIANT` is missing from every book — and it changes this topic"
     Spark 4.0 introduced `VARIANT`, a first-class type for semi-structured data (JSON and friends) that stores values in a binary encoded form and lets you query into them without declaring a schema up front. It went GA with *shredding* — physically splitting frequently-accessed fields into columnar storage for fast reads — and Parquet has since adopted the type natively.
@@ -1182,7 +1199,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1–B9 and I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
+**Carrying 🔄:** B1–B9, I1 and I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 

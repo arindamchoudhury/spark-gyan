@@ -19,7 +19,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | B7 | Joins: Types and Mechanics | [10](../../spark-book/ch10-joins.md) 🔄 | apache/spark | ✅ complete |
 | B8 | Spark SQL | [11](../../spark-book/ch11-spark-sql.md) 🔄 | apache/spark | ✅ complete |
 | B9 | Null Handling | [12](../../spark-book/ch12-null-handling.md) 🔄 | apache/spark | ✅ complete |
-| I1 | Complex Column Types: Arrays, Maps, Structs | [13](../../spark-book/ch13-complex-types.md) ✅ | — | ⬜ |
+| I1 | Complex Column Types: Arrays, Maps, Structs | [13](../../spark-book/ch13-complex-types.md) 🔄 | apache/spark | ✅ complete |
 | I2 | Window Functions | [14](../../spark-book/ch14-window-functions.md) ✅ | — | ⬜ |
 | I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) 🔄 | — | ⬜ |
 | I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) ✅ | apache/spark | ✅ complete |

@@ -21,7 +21,7 @@ Personal book written as I work through the [learning path](../learning-path.md)
 | 🔄 | 10 | B7 | [Joins: Types and Mechanics](ch10-joins.md) | 2026-05-31 |
 | 🔄 | 11 | B8 | [Spark SQL](ch11-spark-sql.md) | 2026-05-31 |
 | 🔄 | 12 | B9 | [Null Handling](ch12-null-handling.md) | 2026-05-31 |
-| ✅ | 13 | I1 | [Complex Types: Arrays, Maps, and Structs](ch13-complex-types.md) | 2026-05-31 |
+| 🔄 | 13 | I1 | [Complex Types: Arrays, Maps, and Structs](ch13-complex-types.md) | 2026-05-31 |
 | ✅ | 14 | I2 | [Window Functions](ch14-window-functions.md) | 2026-05-31 |
 | 🔄 | 15 | I3 | [User-Defined Functions: Python and pandas UDFs](ch15-udfs.md) | 2026-05-31 |
 | ✅ | 16 | I5 | [Partitioning: Concepts and Control](ch16-partitioning.md) | 2026-05-31 |
