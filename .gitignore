@@ -1,5 +1,6 @@
 site/
 .zensical/
+cache/
 .venv/
 __pycache__/
 *.pyc

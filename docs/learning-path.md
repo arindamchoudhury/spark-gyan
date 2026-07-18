@@ -1,6 +1,10 @@
 # Learning Path: Apache Spark / PySpark
 
-> **Last updated:** 2026-05-31 · **Current Spark stable:** 4.1.2
+> **Last updated:** 2026-07-18 (Phase 4 review: verified Spark releases + all three Databricks cert pages against official sources; Spark stable moved 4.1.2 → 4.2.0; added exam question counts/time limits and the real DE Associate domain weights; folded Spark 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8 as callouts)
+>
+> **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026)
+>
+> Spark 4.2.0 is the third 4.x release — 1,700+ Jira tickets. Learn against 4.2.0; the books below are written against 3.x, so the callouts on each topic mark where they diverge.
 >
 > **How to read this page.** Topics are grouped by level — Beginner → Intermediate → Advanced → Expert. Each topic lists what it is, why it matters, and exactly which resources to use and in what order. Books, MOOCs, university courses, official docs, and certifications are all included. Pick the level where you currently are and work through the topics in sequence within that level.
 
@@ -23,7 +27,7 @@ These are the sources cited throughout this page. Abbreviations are used inline.
 | **DEB** | *Data Engineering with Databricks* — Databricks Academy | Official course | [Databricks](https://www.databricks.com/training/catalog/data-engineering-with-databricks-911) |
 | **ADEB** | *Advanced Data Engineering with Databricks* — Databricks Academy | Official course | [Databricks](https://www.databricks.com/training/catalog/advanced-data-engineering-with-databricks-971) |
 | **DagEss** | *Dagster Essentials* — Dagster Academy | Free course | [dagster.io](https://courses.dagster.io/courses/dagster-essentials) |
-| **Spark-docs** | Apache Spark 4.1.2 official documentation | Official docs | [spark.apache.org](https://spark.apache.org/docs/latest/) |
+| **Spark-docs** | Apache Spark 4.2.0 official documentation | Official docs | [spark.apache.org](https://spark.apache.org/docs/latest/) |
 | **Delta-docs** | Delta Lake official documentation | Official docs | [docs.delta.io](https://docs.delta.io/latest/) |
 
 ---
@@ -32,11 +36,16 @@ These are the sources cited throughout this page. Abbreviations are used inline.
 
 Three credentials worth knowing about — used as milestones at the end of each level.
 
-| Cert | Level | Topics tested | Fee | When to attempt |
+All three are proctored, multiple-choice, $200, English-delivered (DE exams also in 日本語 / Português BR / 한국어), valid 2 years, no test aides. Facts below verified 2026-07-18 against the official certification pages.
+
+| Cert | Level | Domain weights | Questions / time | When to attempt |
 |---|---|---|---|---|
-| **Databricks Associate Developer for Apache Spark** | Intermediate→Advanced | DataFrame API 30%, Architecture 20%, Spark SQL 20%, Tuning 10%, Streaming 10%, Spark Connect 5%, pandas on Spark 5% | $200 | After Intermediate |
-| **Databricks Data Engineer Associate** | Intermediate→Advanced | Ingestion, ETL/PySpark, Delta Lake, Lakeflow Jobs, Unity Catalog, monitoring | $200 | After Intermediate + Delta Lake |
-| **Databricks Data Engineer Professional** | Advanced→Expert | Advanced pipelines, performance optimisation 13%, security/governance 10%, CDC, debugging, data modelling | $200 | After Advanced |
+| **Databricks Associate Developer for Apache Spark** | Intermediate→Advanced | DataFrame/DataSet API 30%, Architecture & Components 20%, Spark SQL 20%, Troubleshooting & Tuning 10%, Structured Streaming 10%, Spark Connect 5%, pandas API on Spark 5% | 45 scored / 90 min | After Intermediate |
+| **Databricks Data Engineer Associate** | Intermediate→Advanced | Data Transformation & Modeling 22%, Data Ingestion & Loading 21%, Lakeflow Jobs 16%, Governance & Security 15%, CI/CD 10%, Troubleshooting/Monitoring/Optimization 10%, Databricks Intelligence Platform 6% | 45 scored / 90 min | After Intermediate + Delta Lake |
+| **Databricks Data Engineer Professional** | Advanced→Expert | Code for Data Processing (Python & SQL) 22%, Cost & Performance Optimisation 13%, Data Transformation/Cleansing/Quality 10%, Monitoring & Alerting 10%, Security & Compliance 10%, Debugging & Deploying 10%, Data Ingestion 7%, Data Governance 7%, Data Modelling 6%, Data Sharing & Federation 5% | 59 scored / 120 min | After Advanced |
+
+!!! info "Spark Associate is Python-only; DE exams lead with SQL"
+    Every code snippet on the Spark Developer Associate exam is Python. On both Data Engineer exams, data-manipulation code is given in SQL where possible and Python otherwise — so B8 (Spark SQL) and I9 (Medallion) carry more exam weight than their position in this path suggests.
 
 ---
 
@@ -156,6 +165,9 @@ Three credentials worth knowing about — used as milestones at the end of each 
 
 **Milestone:** You can perform all seven join types, explain what `left_semi` and `left_anti` return without looking it up, and name three situations where a broadcast join is appropriate.
 
+!!! note "New in Spark 4.2.0 — `NEAREST BY` top-K ranking join"
+    Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a join primitive for nearest-neighbour queries with both Catalyst and DataFrame API support. It is not one of the seven relational join types and none of the books cover it — learn the seven first, then read the 4.2.0 SQL reference. Relevant if you do vector/embedding work.
+
 ---
 
 ### ✅ B8 — Spark SQL
@@ -171,6 +183,9 @@ Three credentials worth knowing about — used as milestones at the end of each 
 3. **Spark-docs → SQL Guide** ([spark.apache.org/docs/latest/sql-programming-guide.html](https://spark.apache.org/docs/latest/sql-programming-guide.html))
 
 **Milestone:** You can register a DataFrame as a temp view, query it with `spark.sql()`, and mix SQL expressions into a method-chained DataFrame pipeline.
+
+!!! note "New in Spark 4.2.0 — QUALIFY, search paths, metric views"
+    Three additions the books predate: `QUALIFY` ([SPARK-31561]) filters on window-function results without a wrapping subquery — worth learning alongside I2; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]) changes how unqualified names resolve; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]) add a declarative semantic-modelling surface. Learn the classic catalog model first — it's what the exam tests.
 
 ---
 
@@ -257,6 +272,9 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Milestone:** You can replace a Python UDF with a pandas UDF and measure the speedup; you can load an ML model once per partition using an Iterator UDF; you can test a UDF locally without a SparkSession.
 
+!!! warning "Spark 4.2.0 changes the UDF performance hierarchy the books teach"
+    Arrow-optimized Python UDFs and Arrow-based PySpark IPC are now **on by default** ([SPARK-54555]). Rioux and LS2e were written when plain `@F.udf` meant row-by-row pickle serialisation, so the "pandas UDF is dramatically faster" gap they measure is narrower on 4.2.0. Learn the hierarchy anyway — it explains *why* Arrow helps, and the exam still tests it — but re-run the speedup measurement in the milestone on your own 4.2.0 stack rather than trusting the book's numbers. Spark 4.2.0 also adds Arrow and pandas grouped-aggregation UDFs, which belong with A5.
+
 ---
 
 ### ✅ I4 — RDD Fundamentals
@@ -321,6 +339,9 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Milestone:** You can open the Spark UI on a running job, locate the most expensive stage, identify whether it involves a sort-merge join or a broadcast join, and read a physical plan to find a pushed-down filter.
 
+!!! warning "The Spark UI was rebuilt in 4.2.0 — book screenshots are stale"
+    Spark 4.2.0 ships a modernized Web UI ([SPARK-55760]) with dark mode and searchable, zoomable, side-by-side SQL plan visualisation. Rioux Ch 11 and LS2e Ch 7 show the old layout. The tabs and the metrics behind them are the same — read the chapters for *what to look for*, then find it in the new UI yourself. The side-by-side plan view makes the A1 milestone (comparing plans before/after a change) substantially easier.
+
 ---
 
 ### ⬜ I8 — Delta Lake Basics
@@ -368,6 +389,9 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **DLDG Ch 1** — how Delta wraps Parquet and what the transaction log adds
 
 **Milestone:** You can explain why `F.col("date") > '2024-01-01'` on a Parquet file can be resolved without reading any data, and why the same filter on a CSV cannot.
+
+!!! note "New in Spark 4.2.0 — geospatial and TIME types across file formats"
+    Native `GEOMETRY` and `GEOGRAPHY` types with `ST_*` functions, WKB/WKT and Parquet I/O, and an SRID registry ([SPARK-51658]) — **enabled by default**, no extension needed. Spark 4.2.0 also lands the `TIME` type across file formats, and vectorized data loading ([SPARK-55722]). None of the books cover any of this; go to the 4.2.0 docs.
 
 ---
 
@@ -508,6 +532,9 @@ You are ready to leave this level when you can:
 
 **Milestone:** You can look at a query's physical plan, identify the join strategy, force a broadcast join on a table below the auto-broadcast threshold, and handle a skewed join key with salting.
 
+!!! note "New in Spark 4.2.0 — `NEAREST BY` and DSv2 partition-stats filtering"
+    `NEAREST BY` ([SPARK-56395]) adds a top-K ranking join with its own physical strategy — see B7. Data Source V2 also gained enhanced partition-stats filtering ([SPARK-55596]) and `TABLESAMPLE SYSTEM` block sampling with DSv2 pushdown ([SPARK-55978]), both of which change what the planner can prune before a join.
+
 ---
 
 ### ⬜ A4 — Data Skew and Shuffle Optimisation
@@ -639,6 +666,9 @@ You are ready to leave this level when you can:
 
 **Milestone:** You can define a three-node pipeline (raw ingest → cleaned materialized view → aggregated streaming table) using Declarative Pipelines, add an `AutoCdcFlow` for CDC ingestion, and explain how the engine determines execution order from the dependency graph.
 
+!!! note "Updated in Spark 4.2.0 — Auto CDC"
+    Declarative Pipelines gained Auto CDC for declarative SCD Type 1 upserts ([SPARK-56249]), building on the new engine-wide CDC support (see E8). Run this topic against 4.2.0, not the 4.1 feature set the topic was originally written for.
+
 ---
 
 ### ✅ Advanced Checkpoint + Certification
@@ -679,6 +709,9 @@ You are ready to leave this level when you can:
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
+!!! info "Runtime baseline as of Spark 4.2.0"
+    Spark 4.2.0 builds and runs on **Java 25** ([SPARK-51167]) and is Scala 2.13-only — Scala 2.12 support was dropped across the whole Spark 4 line. GC behaviour on a modern JVM differs materially from what SDG Ch 19 (written against Java 8/11) describes, so treat its specific GC-flag advice as dated and verify against your own runtime.
+
 ---
 
 ### ⬜ E2 — Production Deployment: Cluster Management and Scaling
@@ -711,6 +744,9 @@ You are ready to leave this level when you can:
 3. **Spark-docs → Monitoring** ([spark.apache.org/docs/latest/monitoring.html](https://spark.apache.org/docs/latest/monitoring.html))
 
 **Milestone:** You can configure a custom Spark listener that emits stage completion metrics to a log sink, and set up an alert that fires when a job's duration exceeds 2× its 7-day moving average.
+
+!!! note "New in Spark 4.2.0 — History Server scalability"
+    The History Server got scalability work in 4.2.0 ([SPARK-56287]), which matters directly for this topic's premise (debugging a completed job without the live UI). Kubernetes deployments also gained a Resource Manager API ([SPARK-56603]) and reduced control-plane overhead ([SPARK-55400]) — relevant to E2.
 
 ---
 
@@ -793,6 +829,9 @@ You are ready to leave this level when you can:
 
 **Milestone:** You can implement a full SCD Type 2 merge that adds `effective_start`, `effective_end`, and `is_current` columns, process deletes via Delta CDF, and explain the difference between `UPDATE` and `MERGE INTO` from a transaction-log perspective.
 
+!!! note "New in Spark 4.2.0 — CDC is now a first-class Spark feature, not just a Delta one"
+    Spark 4.2.0 adds a SQL `CHANGES` clause plus DataFrame/PySpark/Connect APIs for reading row-level changes in batch *and* streaming ([SPARK-55668]), and Auto CDC in Spark Declarative Pipelines for declarative SCD Type 1 upserts ([SPARK-56249]). This is open-source Spark's answer to Databricks `AUTO CDC INTO` — the ADEB material still teaches the Databricks-specific form, which is what the DE Professional exam tests. Learn the `MERGE INTO` mechanics first; they explain what both engines do underneath.
+
 ---
 
 ### ⬜ E9 — Spark Connect and the Modern Client Architecture
@@ -807,6 +846,9 @@ You are ready to leave this level when you can:
 2. **Databricks Spark Associate Cert** — Spark Connect is 5% of the exam; a good forcing function to study it
 
 **Milestone:** You can explain the difference between classic mode and Connect mode, start a local Spark Connect server, connect to it from a Python client, and describe what changes in a UDF when running over Connect.
+
+!!! note "New in Spark 4.2.0 — RDD API compatibility over Connect"
+    Spark Connect gained RDD API compatibility ([SPARK-55227]), closing one of the largest gaps between classic and Connect mode. The classic-vs-Connect feature-parity table in older material is therefore out of date — check the 4.2.0 docs before concluding something "doesn't work over Connect". Ties back to I4.
 
 ---
 
@@ -862,26 +904,32 @@ You are operating at Expert level when you can:
 ## Suggested Study Sequence
 
 ```
-Beginner (B1–B9)          → 30–40 hrs
+Beginner (B1–B9)              →  9 topics · 30–40 hrs
     ↓
-Intermediate (I1–I11)     → 35–50 hrs
+Intermediate (I1–I11)         → 11 topics · 35–50 hrs
     ↓  [Certification: Associate Developer for Apache Spark]
-Advanced (A1–A11)         → 40–60 hrs
+Advanced (A1–A11)             → 11 topics · 40–60 hrs
     ↓  [Certification: Data Engineer Associate]
-Expert (E1–E9)            → 40–60+ hrs
+Expert (E1–E9)                →  9 topics · 40–60+ hrs
     ↓  [Certification: Data Engineer Professional]
+
+Optional depth (I12–I14, E10–E11) → 5 topics, source-sweep derived; not on the main line
 ```
 
-**You are currently here:** B1–B9 ✅ + I1–I5 ✅ (14/40 topics done). Next: ⬜ I6 — Caching and Persistence.
+**You are currently here:** B1–B9 ✅ + I1–I5 ✅ (**14 of 40** main-line topics done; 45 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
+
+!!! info "About the optional-depth topics (I12–I14, E10–E11)"
+    These five were derived from Spark source sweeps rather than from books, courses, or exam guides. They sit outside the main study line, still carry `Milestone: TBD`, and their only listed resource is the official docs. Treat them as reading prompts when you hit the underlying problem in practice (a `Task not serializable` error, a `groupByKey` OOM), not as sequential coursework.
 
 ---
 
 ## Sources consulted
 
 - O'Reilly TOCs: *Learning Spark 2e*, *Spark: The Definitive Guide*, *Delta Lake: Up and Running*, *Delta Lake: The Definitive Guide*
-- Databricks certification guides: [Associate Spark Developer](https://www.databricks.com/learn/certification/apache-spark-developer-associate), [DE Associate](https://www.databricks.com/learn/certification/data-engineer-associate), [DE Professional](https://www.databricks.com/learn/certification/data-engineer-professional)
+- Databricks certification guides: [Associate Spark Developer](https://www.databricks.com/learn/certification/apache-spark-developer-associate), [DE Associate](https://www.databricks.com/learn/certification/data-engineer-associate), [DE Professional](https://www.databricks.com/learn/certification/data-engineer-professional) *(all three re-fetched 2026-07-18)*
 - Databricks Academy course catalogues: [Data Engineering with Databricks](https://www.databricks.com/training/catalog/data-engineering-with-databricks-911), [Advanced DE with Databricks](https://www.databricks.com/training/catalog/advanced-data-engineering-with-databricks-971)
 - [Dagster Essentials syllabus](https://courses.dagster.io/courses/dagster-essentials)
-- [Apache Spark 4.1.2 documentation](https://spark.apache.org/docs/latest/)
+- [Apache Spark documentation](https://spark.apache.org/docs/latest/), [downloads page](https://spark.apache.org/downloads.html) *(re-fetched 2026-07-18)*
+- [Spark 4.2.0 release notes](https://spark.apache.org/releases/spark-release-4-2-0.html) *(fetched 2026-07-18)*
 - [ProjectPro PySpark roadmap](https://www.projectpro.io/learning-paths/pyspark-roadmap), [DataCamp PySpark guide](https://www.datacamp.com/blog/learn-pyspark)
 - IBM Spark courses: [edX](https://www.edx.org/learn/apache-spark/ibm-apache-spark-for-data-engineering-and-machine-learning), [Coursera ML](https://www.coursera.org/learn/machine-learning-big-data-apache-spark)
