@@ -28,7 +28,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I7 | The Spark UI: Reading Plans and Diagnosing Jobs | — | apache/spark | ✅ complete |
 | I8 | Delta Lake Basics | — | delta-io/delta, apache/spark | ✅ complete |
 | I9 | The Medallion Architecture | — | delta-io/delta, apache/spark | ✅ complete |
-| I10 | Data Formats: Parquet, Delta, Avro, JSON | — | — | ⬜ |
+| I10 | Data Formats: Parquet, Delta, Avro, JSON | — | apache/spark | ✅ complete |
 | I11 | SQL Scripting | — | — | ⬜ |
 | I15 | Apache Iceberg and Table-Format Interoperability | — | apache/iceberg, delta-io/delta, apache/spark | ✅ complete |
 | I14 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |

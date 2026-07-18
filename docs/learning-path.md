@@ -746,8 +746,22 @@ You are ready to leave this level when you can build a complete end-to-end batch
 2. **SDG Ch 9** — the most complete treatment of every format option
 3. **DLDG Ch 1** — how Delta wraps Parquet and what the transaction log adds
 4. **Spark-docs → Parquet** ([sql-data-sources-parquet.html](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html)) — partition discovery, schema merging, and the predicate-pushdown knobs; pair with **Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) for the columnar-reader settings
+5. **Spark-docs → ORC** ([sql-data-sources-orc.html](https://spark.apache.org/docs/latest/sql-data-sources-orc.html)) and **Avro** ([sql-data-sources-avro.html](https://spark.apache.org/docs/latest/sql-data-sources-avro.html)) — the two comparison points: ORC is Parquet's architecture with different defaults, Avro is the row-oriented case and ships as a separate artifact
+6. **Source trace — [I10 in the source map](reference/spark-source-map/topics/i10.md)** — where columnar execution actually stops, why pushdown is per-filter rather than per-format, and what `VARIANT` changed
 
-**Milestone:** You can explain why `F.col("date") > '2024-01-01'` on a Parquet file can be resolved without reading any data, and why the same filter on a CSV cannot.
+!!! info "Spark is columnar at the scan and nowhere else"
+    The vectorized reader fills `ColumnarBatch`es of 4096 rows directly from Parquet row groups, constructing no per-row objects. Then `ColumnarToRowExec` converts the batch to `UnsafeRow` as soon as an operator cannot consume columnar input — which, in open-source Spark, is almost immediately.
+
+    So the **reader** is vectorized and the **engine** is row-based (Tungsten). That is the honest account of why Parquet is fast and why the gain is bounded to I/O and decoding rather than the whole query. It is also what makes plugins like Gluten comprehensible: they exist to push that boundary further up the plan.
+
+    Find `ColumnarToRowExec` in your `explain()` output — its position tells you exactly where the columnar advantage ended.
+
+!!! warning "Delta and Iceberg are not formats in this list — they are layers over Parquet"
+    Comparing "Parquet, Delta, Avro, JSON" as peers is a category error that this topic's own title invites. Parquet, ORC, Avro and JSON are **storage formats**: how bytes are laid out in one file. Delta and Iceberg are **table formats**: metadata describing which files constitute a table, layered on top of Parquet (I8, I15).
+
+    The practical question is therefore two questions. *Which storage format* — columnar for analytics, row for whole-record access and streaming payloads. *Which table format, if any* — none for immutable data, Delta or Iceberg once you need atomic updates, time travel or concurrent writers.
+
+**Milestone:** You can explain why `F.col("date") > '2024-01-01'` on a Parquet file can be resolved without reading any data, and why the same filter on a CSV cannot. Then, from a real plan: find `ColumnarToRowExec` and say what it tells you about where the columnar advantage stopped; and given a filter that was *not* pushed down, explain why the format is usually not the reason.
 
 !!! note "New in Spark 4.2.0 — geospatial and TIME types across file formats"
     Native `GEOMETRY` and `GEOGRAPHY` types with `ST_*` functions, WKB/WKT and Parquet I/O, and an SRID registry ([SPARK-51658]) — **enabled by default**, no extension needed. Spark 4.2.0 also lands the `TIME` type across file formats, and vectorized data loading ([SPARK-55722]). None of the books cover any of this; go to the 4.2.0 docs.
