@@ -1,6 +1,6 @@
 # Learning Path: Apache Spark / PySpark
 
-> **Last updated:** 2026-07-18 (Phase 4 review: verified Spark releases + all three Databricks cert pages against official sources; Spark stable moved 4.1.2 → 4.2.0; added exam question counts/time limits and the real DE Associate domain weights; folded Spark 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8 as callouts)
+> **Last updated:** 2026-07-18 (taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I15/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026)
 >
@@ -8,7 +8,13 @@
 >
 > **Status key.** ⬜ not started · ✅ done and current · 🔄 done, but written against an older Spark and now needs revisiting (the topic's callout says what drifted).
 >
-> **How to read this page.** Topics are grouped by level — Beginner → Intermediate → Advanced → Expert. Each topic lists what it is, why it matters, and exactly which resources to use and in what order. Books, MOOCs, university courses, official docs, and certifications are all included. Pick the level where you currently are and work through the topics in sequence within that level.
+> **How to read this page.** Topics are grouped by level — Beginner → Intermediate → Advanced → Expert. Each topic lists what it is, why it matters, and exactly which resources to use and in what order. Pick the level where you currently are and work through the topics in sequence within that level.
+
+**What this path is built around.** Apache Spark itself — the open-source engine, its APIs, and the open formats and tooling around it. Vendor platforms (Databricks, and the certifications built on it) appear as *optional milestones* at the end, not as the spine. Rationale: the transferable skill is the engine and the open ecosystem; platform-specific surfaces change with your employer, and a path organised around one vendor's exam quietly under-weights what the wider market asks for. If you decide to sit those exams, the [optional certification milestones](#optional-certification-milestones) section maps them back onto these topics.
+
+**How to actually use each topic.** Read the milestone *first*, and attempt it from memory before opening any resource. You will mostly fail early on — that is the point; the failed attempt is what makes the subsequent reading stick, and it tells you which parts you can skip. Then read, then attempt the milestone again in writing. Self-explanation and retrieval practice both carry roughly twice the effect size of rereading, and the book chapters in `docs/spark-book/` are where the self-explanation happens.
+
+> **Topic codes are stable identifiers, not an ordering.** They are referenced by the book index, the chapter files, and the source-map coverage matrix, so they are never renumbered when the taxonomy changes. A code with a gap or an out-of-sequence number (I15, the I12–I14 depth topics) is normal. Read the level headings for order, not the numbers.
 
 ---
 
@@ -36,20 +42,23 @@ These are the sources cited throughout this page. Abbreviations are used inline.
 
 ---
 
-## Certifications
+## What a 2026 Spark data engineer is actually asked for
 
-Three credentials worth knowing about — used as milestones at the end of each level.
+The taxonomy below is derived from three sources, not from what the available books happen to cover: the Spark 4.2.0 feature surface (what the engine now does), current job requirements, and the certification exam guides.
 
-All three are proctored, multiple-choice, $200, English-delivered (DE exams also in 日本語 / Português BR / 한국어), valid 2 years, no test aides. Facts below verified 2026-07-18 against the official certification pages.
+Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and performance tuning — the path spends most of its time. Where the market asks for something the books do not cover, that gap is marked rather than hidden:
 
-| Cert | Level | Domain weights | Questions / time | When to attempt |
-|---|---|---|---|---|
-| **Databricks Associate Developer for Apache Spark** | Intermediate→Advanced | DataFrame/DataSet API 30%, Architecture & Components 20%, Spark SQL 20%, Troubleshooting & Tuning 10%, Structured Streaming 10%, Spark Connect 5%, pandas API on Spark 5% | 45 scored / 90 min | After Intermediate |
-| **Databricks Data Engineer Associate** | Intermediate→Advanced | Data Transformation & Modeling 22%, Data Ingestion & Loading 21%, Lakeflow Jobs 16%, Governance & Security 15%, CI/CD 10%, Troubleshooting/Monitoring/Optimization 10%, Databricks Intelligence Platform 6% | 45 scored / 90 min | After Intermediate + Delta Lake |
-| **Databricks Data Engineer Professional** | Advanced→Expert | Code for Data Processing (Python & SQL) 22%, Cost & Performance Optimisation 13%, Data Transformation/Cleansing/Quality 10%, Monitoring & Alerting 10%, Security & Compliance 10%, Debugging & Deploying 10%, Data Ingestion 7%, Data Governance 7%, Data Modelling 6%, Data Sharing & Federation 5% | 59 scored / 120 min | After Advanced |
+| Market signal | Where it lands here |
+|---|---|
+| Open table formats (Iceberg increasingly the default; Delta where Databricks is in play) | I8 fundamentals, I15 depth and interop |
+| Kafka as the standard event backbone | A12, and as a source throughout A7/A8 |
+| Semi-structured data at scale (`VARIANT`, new in Spark 4.0) | I1 |
+| Kubernetes as the deployment target | E2 |
+| Spark Connect as the default client architecture in 4.x | B2 basics, E9 depth |
+| Declarative pipelines replacing hand-rolled orchestration glue | A11 |
+| SQL fluency weighted at least as heavily as Python | B8, I11 |
 
-!!! info "Spark Associate is Python-only; DE exams lead with SQL"
-    Every code snippet on the Spark Developer Associate exam is Python. On both Data Engineer exams, data-manipulation code is given in SQL where possible and Python otherwise — so B8 (Spark SQL) and I9 (Medallion) carry more exam weight than their position in this path suggests.
+---
 
 ---
 
@@ -251,7 +260,14 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **SDG Ch 6** — working with all data types; the most complete reference
 4. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) + **Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the array/map/struct function catalogue, including the higher-order functions (`transform`, `filter`, `aggregate`) that replace an explode/re-group round trip
 
-**Milestone:** You can flatten a JSON array-of-structs into rows, extract fields from nested structs, build an array column from grouped rows, and apply a lambda transform to every element of an array column.
+**Milestone:** You can flatten a JSON array-of-structs into rows, extract fields from nested structs, build an array column from grouped rows, and apply a lambda transform to every element of an array column. You can also state when `VARIANT` is the better choice than a declared `StructType`, and why.
+
+!!! warning "`VARIANT` is missing from every book — and it changes this topic"
+    Spark 4.0 introduced `VARIANT`, a first-class type for semi-structured data (JSON and friends) that stores values in a binary encoded form and lets you query into them without declaring a schema up front. It went GA with *shredding* — physically splitting frequently-accessed fields into columnar storage for fast reads — and Parquet has since adopted the type natively.
+
+    This matters because the books teach exactly two options for messy JSON: declare a full `StructType`, or keep it as a string and parse repeatedly. `VARIANT` is a third, and it is usually the right one when the schema is genuinely unstable or wide. Rioux, LS2e and SDG all predate it.
+
+    Learn it from **Spark-docs → [Variant data type](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)** and the [Parquet VARIANT announcement](https://parquet.apache.org/blog/2026/02/27/variant-type-in-apache-parquet-for-semi-structured-data/); verify behaviour on your own 4.2.0 stack. Do the declared-schema work in this topic first — knowing what `VARIANT` saves you from requires having done it the manual way once.
 
 ---
 
@@ -445,7 +461,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Learn it with:**
 
-1. **Iceberg-DG Ch 2–4** — *Apache Iceberg: The Definitive Guide*, Shiran, Hughes & Merced (O'Reilly, 2024) — the architecture and metadata tree, then the Spark integration chapters; the clearest treatment of why the manifest layout enables the planning that Hive-style partitioning cannot
+1. **Iceberg-DG Ch 2–3** — *Apache Iceberg: The Definitive Guide*, Shiran, Hughes & Merced (O'Reilly, 2024) — the architecture and metadata tree, then the read/write query lifecycle; the clearest treatment of why the manifest layout enables planning that Hive-style partitioning cannot. **Ch 5** covers catalogs (see E5). The publisher (Dremio) hosts a [free full PDF](https://www.dremio.com/wp-content/uploads/2023/02/apache-iceberg-TDG_ER1.pdf)
 2. **DLDG Ch 1** — re-read the Delta transaction log chapter *after* the Iceberg metadata tree; the contrast is what makes both stick
 3. **Iceberg-docs → Spark Getting Started** ([iceberg.apache.org/docs/latest/spark-getting-started/](https://iceberg.apache.org/docs/latest/spark-getting-started/)) — catalog configuration and the runtime jar, which is the part that actually blocks beginners
 4. **Iceberg-docs → Multi-Engine Support** ([iceberg.apache.org/multi-engine-support/](https://iceberg.apache.org/multi-engine-support/)) — the authoritative Spark-version support matrix; check it before choosing a runtime jar
@@ -458,7 +474,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ✅ Intermediate Checkpoint + Certification
+### ✅ Intermediate Checkpoint
 
 You are ready to leave this level when you can:
 
@@ -467,7 +483,7 @@ You are ready to leave this level when you can:
 - Read a Spark UI physical plan and locate the bottleneck
 - Write and test a pandas UDF
 
-**Certification target:** Databricks Certified Associate Developer for Apache Spark — validates topics B1–I7.
+*Optional:* this is the natural point for the Databricks Associate Developer exam if you want it — see [optional certification milestones](#optional-certification-milestones). Not a prerequisite for continuing.
 
 ---
 
@@ -484,9 +500,12 @@ You are ready to leave this level when you can:
 
 **Learn it with:**
 
-1. **SDG Ch 20** — job scheduling and concurrent job submission; the context in which async actions make sense
-2. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — scheduling *within* an application, the FAIR scheduler, and pools; async actions are how you get concurrent jobs from one driver thread
+1. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — scheduling *within* an application, the FAIR scheduler, and pools; async actions are how you get concurrent jobs from one driver thread
+2. **SDG Ch 15** — how Spark runs on a cluster; the job/stage/task model that concurrent submission operates on
 3. **Source** — `core/src/main/scala/org/apache/spark/rdd/AsyncRDDActions.scala`; trace `takeAsync` for the recursive scale-up
+
+!!! info "No book covers this — docs and source only"
+    No book in the resources table covers `AsyncRDDActions` directly. SDG Ch 15 gives the execution model it builds on, but the async API itself is docs-and-source territory.
 
 **Milestone:** You can submit two Spark jobs concurrently from one driver, explain what a `FutureAction` gives you that a blocking action does not, and describe how `takeAsync` decides how many partitions to scan next.
 
@@ -732,7 +751,27 @@ You are ready to leave this level when you can:
 
 ---
 
-### ✅ Advanced Checkpoint + Certification
+### ⬜ A12 — Kafka and Streaming Ingestion
+
+**What it is:** Apache Kafka as an event backbone — topics, partitions, consumer groups, offsets, and delivery semantics; Spark's Kafka source and sink (`startingOffsets`, `maxOffsetsPerTrigger`, offset commitment via checkpoints); schema handling on the wire (Avro/Protobuf and a schema registry); and where exactly-once actually comes from in a Kafka → Spark → table pipeline.
+
+**Why you need it:** Kafka is the standard event backbone, and streaming job descriptions name it directly — usually alongside Spark. A7 and A8 teach the streaming engine using files as a source, which is the right way to learn the semantics but not what production looks like. This topic is where Structured Streaming meets the queue it is normally attached to, and where the delivery-guarantee reasoning has to become precise: Spark's checkpoint plus an idempotent sink is what gives you effectively-once, not anything Kafka does on its own.
+
+**Learn it with:**
+
+1. **SDG Ch 21** — the streaming source/sink model and how Kafka fits it (predates the current connector's options; use for the model, not the parameters)
+2. **Spark-docs → Structured Streaming + Kafka** ([structured-streaming-kafka-integration.html](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)) — the authoritative option list, offset handling, and the deployment note about the connector jar
+3. **Kafka docs → Design and Semantics** ([kafka.apache.org/documentation/#design](https://kafka.apache.org/documentation/#design)) — partitions, consumer groups, and the delivery-guarantee section; you cannot reason about Spark's guarantees without Kafka's
+4. **Local stack** — run a single-broker Kafka in Docker, produce a synthetic event stream, and consume it with a Structured Streaming job writing to a table
+
+**Milestone:** You can read a Kafka topic into Structured Streaming with an explicit `startingOffsets` and a rate limit, write to a Delta or Iceberg table, kill the job mid-stream and restart it without losing or duplicating rows — and explain precisely which component provided that guarantee. You can say what happens when the checkpoint is deleted but the sink table is not.
+
+!!! info "Prerequisites: A7 and A8"
+    Do not start here. The watermark, trigger and state-store semantics from A7/A8 are what make Kafka's offset model comprehensible; taken first, this topic degrades into copying connector options without understanding what they do.
+
+---
+
+### ✅ Advanced Checkpoint
 
 You are ready to leave this level when you can:
 
@@ -741,7 +780,7 @@ You are ready to leave this level when you can:
 - Implement MERGE INTO with SCD Type 2 logic
 - Build and evaluate an ML pipeline with cross-validation
 
-**Certification target:** Databricks Certified Data Engineer Associate — validates I8–A6 plus orchestration.
+*Optional:* the Databricks Data Engineer Associate exam maps to roughly I8–A6 plus orchestration, if you are working on that platform.
 
 ---
 
@@ -829,20 +868,21 @@ You are ready to leave this level when you can:
 
 ---
 
-### ⬜ E5 — Data Governance: Unity Catalog, Lineage, and Security
+### ⬜ E5 — Catalogs, Governance, and Data Security
 
-**What it is:** Unity Catalog three-level namespace (`catalog.schema.table`); column-level access control; row filters; audit logs; data lineage (table-level and column-level); Delta Sharing.
+**What it is:** The catalog layer: the three-level namespace (`catalog.schema.table`), what a catalog owns versus what the table format owns, and the competing implementations — Unity Catalog, the Iceberg REST Catalog specification, Hive Metastore as the legacy baseline. On top of that: column-level access control, row filters, audit logs, table- and column-level lineage, and cross-organisation sharing.
 
-**Why you need it:** Governance requirements are now a baseline in regulated industries. Unity Catalog is the Databricks/OSS answer — and it's in your local stack.
+**Why you need it:** Governance is a baseline requirement in regulated industries, and the catalog is where multi-engine interoperability is actually decided — the REST Catalog spec is why an Iceberg table can be read by Spark, Trino and a warehouse at once. Learn the *shape* of the problem (namespace, grants, lineage, sharing) rather than one vendor's console, because that is what transfers.
 
 **Learn it with:**
 
-1. **DLDG Ch 12–13** — governance, security, and lineage
-2. **ADEB Module 2** — data privacy, PII handling, pseudonymisation, CDF for data deletion propagation
-3. **DEB Module 4** — Unity Catalog governance patterns
-4. **Databricks Unity Catalog docs** ([docs.databricks.com/data-governance/unity-catalog/](https://docs.databricks.com/data-governance/unity-catalog/))
+1. **DLDG Ch 12–13** — governance, security, and lineage, in the Delta/Unity Catalog framing
+2. **Iceberg-DG Ch 5** — catalogs as a first-class concept; the clearest treatment of why the catalog, not the file layout, is the interoperability boundary
+3. **Iceberg-docs → REST Catalog spec** ([iceberg.apache.org/concepts/catalog/](https://iceberg.apache.org/concepts/catalog/)) — the de-facto interoperability standard
+4. **Databricks Unity Catalog docs** ([docs.databricks.com/data-governance/unity-catalog/](https://docs.databricks.com/data-governance/unity-catalog/)) — the most complete governance implementation; the reference for row filters and column masks
+5. **ADEB Module 2** — PII handling, pseudonymisation, CDF for deletion propagation (platform-specific, but the patterns generalise)
 
-**Milestone:** You can create a Unity Catalog row filter that restricts a table to rows matching the current user's region, set column-level masking on a PII field, and query the lineage graph to trace which source tables contributed to a gold table.
+**Milestone:** You can explain what a catalog is responsible for versus the table format, name the trade-off between Unity Catalog and a REST-catalog implementation, create a row filter restricting a table to the current user's region, set column-level masking on a PII field, and trace a lineage graph from a gold table back to its sources.
 
 ---
 
@@ -878,7 +918,10 @@ You are ready to leave this level when you can:
 3. **SDG Ch 16** — developing Spark applications; packaging and submission
 4. **Spark-docs → Submitting Applications** ([submitting-applications.html](https://spark.apache.org/docs/latest/submitting-applications.html)) — what your CI actually invokes: `spark-submit` semantics, dependency packaging, and deploy modes. The DABs layer sits on top of this, and knowing which is which is what lets you debug a failing deploy
 
-**Milestone:** You can set up a GitHub Actions workflow that runs pytest on every PR, blocks merge if tests fail, and deploys the validated pipeline to a staging environment using DABs.
+**Milestone:** You can set up a GitHub Actions workflow that runs pytest on every PR, blocks merge if tests fail, and promotes the validated pipeline to a staging environment — using whichever deployment mechanism your target platform provides (DABs on Databricks; a packaged wheel plus `spark-submit`, or a container image, elsewhere).
+
+!!! info "Keep the mechanism and the principle separate"
+    DABs is one implementation of environment promotion, and the Databricks courses teach it as though it were the concept. The transferable parts are: pipeline code versioned in Git, tests gating the merge, environment-specific config injected rather than hardcoded, and deployment reduced to a single reproducible command. Everything else is a vendor's packaging of that. Learn `spark-submit` and the wheel/container path at least once so you can tell which layer broke when a deploy fails.
 
 ---
 
@@ -924,13 +967,13 @@ You are ready to leave this level when you can:
 
 ---
 
-### ✅ Expert Checkpoint + Certification
+### ✅ Expert Checkpoint
 
-**Certification target:** Databricks Certified Data Engineer Professional — validates A6–E8.
+*Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
 
 You are operating at Expert level when you can:
 
-- Design a governed lakehouse from scratch (medallion + Unity Catalog + lineage)
+- Design a governed lakehouse from scratch (medallion + a catalog with lineage — Unity Catalog, an Iceberg REST catalog, or equivalent)
 - Debug a production incident using Spark metrics + History Server without the live UI
 - Implement CI/CD for a multi-environment pipeline with automated tests
 - Architect a streaming CDC pipeline with SCD Type 2 history and exactly-once guarantees
@@ -980,24 +1023,46 @@ You are operating at Expert level when you can:
 ## Suggested Study Sequence
 
 ```
-Beginner (B1–B9)              →  9 topics · 30–40 hrs
+Beginner (B1–B9)              →  9 topics · 30–40 hrs   write correct Spark
     ↓
-Intermediate (I1–I11, I15)    → 12 topics · 38–54 hrs
-    ↓  [Certification: Associate Developer for Apache Spark]
-Advanced (A1–A11)             → 11 topics · 40–60 hrs
-    ↓  [Certification: Data Engineer Associate]
-Expert (E1–E9)                →  9 topics · 40–60+ hrs
-    ↓  [Certification: Data Engineer Professional]
+Intermediate (I1–I11, I15)    → 12 topics · 38–54 hrs   real data, real formats, read a plan
+    ↓
+Advanced (A1–A12)             → 12 topics · 44–66 hrs   make it fast, make it stream
+    ↓
+Expert (E1–E9)                →  9 topics · 40–60+ hrs  run it in production
 
 Optional depth (I12–I14, E10–E11) → 5 topics, source-sweep derived; not on the main line
+Optional milestones: three Databricks certifications — see the section below
 ```
 
-**You are currently here:** B1–B9 + I1–I5 done (**14 of 41** main-line topics; 46 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
+**You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. Only I3 and the B1 install chapter contain claims that are actually *wrong*; B7 and B8 are merely missing new surface. Clearing them is a smaller job than a new topic, and worth doing before the Associate Developer exam, which weights DataFrame API (30%) and Spark SQL (20%) most heavily.
+**Carrying 🔄:** B1, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. Only I3 and the B1 install chapter contain claims that are actually *wrong*; B7 and B8 are merely missing new surface. Clearing them is a smaller job than starting a new topic.
+
+**If you only do three things next:** clear I3 (it teaches a now-false performance model), do I6–I7 (caching and the Spark UI — everything in Advanced depends on being able to read a plan), then I8 with both table formats rather than Delta alone.
 
 !!! info "About the optional-depth topics (I12–I14, E10–E11)"
     These five were derived from Spark source sweeps rather than from books, courses, or exam guides. They sit outside the main study line, still carry `Milestone: TBD`, and their only listed resource is the official docs. Treat them as reading prompts when you hit the underlying problem in practice (a `Task not serializable` error, a `groupByKey` OOM), not as sequential coursework.
+
+---
+
+## Optional certification milestones
+
+These are **side-goals, not gates**. Nothing in this path requires them, and no topic is ordered around them. They are worth sitting if you work on Databricks or want a credential an employer recognises; they are worth ignoring otherwise, and skipping them costs you nothing on this path.
+
+All three are proctored, multiple-choice, $200, English-delivered (the DE exams also in 日本語 / Português BR / 한국어), valid 2 years, no test aides. Verified 2026-07-18 against the official certification pages.
+
+| Cert | Maps to | Domain weights | Questions / time |
+|---|---|---|---|
+| **Databricks Associate Developer for Apache Spark** | B1–I7 | DataFrame/DataSet API 30%, Architecture & Components 20%, Spark SQL 20%, Troubleshooting & Tuning 10%, Structured Streaming 10%, Spark Connect 5%, pandas API on Spark 5% | 45 scored / 90 min |
+| **Databricks Data Engineer Associate** | I8–A6 + orchestration | Data Transformation & Modeling 22%, Data Ingestion & Loading 21%, Lakeflow Jobs 16%, Governance & Security 15%, CI/CD 10%, Troubleshooting/Monitoring/Optimization 10%, Databricks Intelligence Platform 6% | 45 scored / 90 min |
+| **Databricks Data Engineer Professional** | A6–E8 | Code for Data Processing (Python & SQL) 22%, Cost & Performance Optimisation 13%, Data Transformation/Cleansing/Quality 10%, Monitoring & Alerting 10%, Security & Compliance 10%, Debugging & Deploying 10%, Data Ingestion 7%, Data Governance 7%, Data Modelling 6%, Data Sharing & Federation 5% | 59 scored / 120 min |
+
+!!! info "Spark Associate is Python-only; the DE exams lead with SQL"
+    Every code snippet on the Spark Developer Associate exam is Python. On both Data Engineer exams, data-manipulation code is given in SQL where possible and Python otherwise — so B8 and I11 carry more exam weight than their position here suggests.
+
+!!! warning "The DE exams test the platform, not the engine"
+    Only the Spark Developer Associate is really an Apache Spark exam. The two Data Engineer exams weight Lakeflow Jobs, Unity Catalog and the Databricks platform heavily — roughly a third of the DE Associate exam is platform surface with no open-source equivalent. That is a fine thing to study deliberately; it is a poor thing to let quietly reshape a Spark learning path, which is what the previous version of this page did.
 
 ---
 
@@ -1010,4 +1075,6 @@ Optional depth (I12–I14, E10–E11) → 5 topics, source-sweep derived; not on
 - [Apache Spark documentation](https://spark.apache.org/docs/latest/), [downloads page](https://spark.apache.org/downloads.html) *(re-fetched 2026-07-18)*
 - [Spark 4.2.0 release notes](https://spark.apache.org/releases/spark-release-4-2-0.html) *(fetched 2026-07-18)*
 - [ProjectPro PySpark roadmap](https://www.projectpro.io/learning-paths/pyspark-roadmap), [DataCamp PySpark guide](https://www.datacamp.com/blog/learn-pyspark)
+- Taxonomy re-derivation (2026-07-18): [Iceberg multi-engine support matrix](https://iceberg.apache.org/multi-engine-support/) *(fetched — Spark 4.1 is newest supported)*, [Iceberg releases](https://iceberg.apache.org/releases/), [Dataquest — data engineering skills 2026](https://www.dataquest.io/blog/data-engineering-skills/), [InterviewStack — data engineer skills 2026](https://interviewstack.io/blog/data-engineer-skills-companies-want-2026), [Parquet VARIANT announcement](https://parquet.apache.org/blog/2026/02/27/variant-type-in-apache-parquet-for-semi-structured-data/)
+- Learning-method evidence: [Dunlosky, *Strengthening the Student Toolbox*](https://www.aft.org/ae/fall2013/dunlosky) — self-explanation and retrieval practice both ≈ g 0.55, rereading rated low utility; drives the "attempt the milestone first" instruction in the header
 - IBM Spark courses: [edX](https://www.edx.org/learn/apache-spark/ibm-apache-spark-for-data-engineering-and-machine-learning), [Coursera ML](https://www.coursera.org/learn/machine-learning-big-data-apache-spark)

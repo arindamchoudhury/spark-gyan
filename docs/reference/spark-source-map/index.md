@@ -45,11 +45,12 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A9 | ML Pipelines with Spark MLlib | — | — | ⬜ |
 | A10 | Testing PySpark Pipelines | — | — | ⬜ |
 | A11 | Spark Declarative Pipelines | — | — | ⬜ |
+| A12 | Kafka and Streaming Ingestion | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
 | E4 | Delta Lake Internals: Transaction Log, MVCC, and Concurrency | — | — | ⬜ |
-| E5 | Data Governance: Unity Catalog, Lineage, and Security | — | — | ⬜ |
+| E5 | Catalogs, Governance, and Data Security | — | — | ⬜ |
 | E6 | Pipeline Orchestration with Dagster | — | — | ⬜ |
 | E7 | CI/CD for Data Engineering | — | — | ⬜ |
 | E8 | Change Data Capture (CDC) and Slowly Changing Dimensions | — | — | ⬜ |

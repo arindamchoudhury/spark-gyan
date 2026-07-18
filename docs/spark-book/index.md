@@ -50,3 +50,4 @@ Personal book written as I work through the [learning path](../learning-path.md)
 | ⬜ | 39 | E8 | Change Data Capture and Slowly Changing Dimensions | — |
 | ⬜ | 40 | E9 | Spark Connect and the Modern Client Architecture | — |
 | ⬜ | 41 | I15 | Apache Iceberg and Table-Format Interoperability | — |
+| ⬜ | 42 | A12 | Kafka and Streaming Ingestion | — |
