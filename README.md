@@ -1,6 +1,14 @@
-# PySpark — Reading Notes
+# The Spark Book
 
 A [Zensical](https://zensical.org/) static site built from personal study notes on Apache Spark and PySpark.
+
+Three layers, in dependency order:
+
+- `docs/learning-path.md` — the topic taxonomy (B/I/A/E codes), what to read for each, and where I am
+- `docs/books/<slug>/` — source-faithful reading notes, one directory per external book
+- `docs/spark-book/` — the synthesis: one chapter per learning-path topic, blending every source read on it
+
+Targets **Spark 4.2.0**. Chapters 01–16 were written against 4.1.x; those with real drift are marked 🔄 in `docs/spark-book/index.md`.
 
 ## Run with Docker (recommended)
 
@@ -43,16 +51,20 @@ python tools/spark_source_map/gen_coverage.py
 python -m pytest tools/spark_source_map/test_gen_configs.py
 ```
 
-Both scripts work from any directory. The `--source` flag overrides the default Spark source path (`C:/opt/learn/spark/spark`). Never hand-edit generated files — re-run the generator instead.
+Both scripts work from any directory. Never hand-edit generated files — re-run the generator instead.
 
-**Available subsystems for sweeping** (Spark 4.1.2 config counts):
+The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--source` or the `SPARK_SRC` environment variable.
+
+> **Check the checkout before regenerating.** The catalog records whatever it parsed in `meta.spark_version`, with no warning if that isn't what you meant. A checkout left on `master` yields a `5.0.0-SNAPSHOT` catalog that looks perfectly valid. To target a release: `git -C C:/opt/learn/spark/repos/spark checkout v4.2.0`.
+
+**Available subsystems for sweeping** (Spark 4.2.0 config counts):
 
 | Subsystem | Configs | Groups |
 |---|---|---|
-| `sql/catalyst` | 656 | analysis, optimizer, planner, expressions, types-parser |
-| `core` | 533 | rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra |
-| `resource-managers/kubernetes` | 81 | driver-executor, auth-networking |
-| `resource-managers/yarn` | 59 | am-executor |
+| `sql/catalyst` | 721 | analysis, optimizer, planner, expressions, types-parser |
+| `core` | 546 | rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra |
+| `resource-managers/kubernetes` | 89 | driver-executor, auth-networking |
+| `resource-managers/yarn` | 61 | am-executor |
 | `streaming` | 28 | structured-streaming, dstream |
 | `sql/connect` | 14 | client-server, declarative-pipelines |
 | `sql/hive` | 11 | hive-metastore |
@@ -60,12 +72,29 @@ Both scripts work from any directory. The `--source` flag overrides the default 
 | `connector/kafka-0-10-sql` | 8 | source-sink |
 | `connector/profiler` | 7 | async-profiler |
 
+Totals **1493 configs** across the repo at 4.2.0 (3 unparsed — known dynamic-key cases in the Kubernetes `Config.scala`).
+
 Topic traces and source sweeps (LLM-driven, one unit at a time) are done via the `spark-source-map` Claude Code skill.
 
+## Fetching vendor pages
+
+Certification pages, training catalogs, and release notes are JavaScript-rendered; a plain fetch returns a login shell or silently drops the exact numbers (question counts, domain weights, versions). `scripts/fetch_page.py` drives system Chrome via Playwright and saves verbatim text:
+
+```bash
+python scripts/fetch_page.py "<url>" --slug <slug> --timeout 45000
+# Output: cache/web/<slug>.txt  (gitignored scratch)
+```
+
+Needs `pip install playwright` once — no browser download, it uses the installed Chrome. Used when re-verifying the learning path against current cert and release facts.
+
 ## Adding a new chapter's notes
+
+Reading notes for an external book:
 
 1. Edit `docs/books/<slug>/chapters/<NN>-<slug>.md`.
 2. Nav is already wired in `zensical.toml`.
 3. Flip the row to ✅ in `docs/books/<slug>/index.md`.
 4. Update `docs/topics/index.md` backlog with any topics the chapter touches.
 5. Append new terms to `docs/reference/glossary.md` with source attribution.
+
+A synthesized chapter in the book itself is a different job — it blends every source read on one learning-path topic. Use the `spark-book` skill; it handles the chapter arc, the index and nav wiring, and the glossary sync. Zensical has no page auto-discovery, so **any** new page must be added to `nav` in `zensical.toml` or it won't appear.
