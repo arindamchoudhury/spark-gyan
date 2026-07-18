@@ -388,7 +388,12 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Goal:** Work confidently with complex data structures, window functions, UDFs, and the Delta Lake table format. Begin reading Spark execution plans. Write pipelines that don't fall over on real data.
 
-**Estimated time to complete this level:** 35–50 hrs
+**Estimated time to complete this level:** 38–54 hrs
+
+**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I15** (the storage-and-table-format run) → I11, then the checkpoint. The optional-depth topics (I12–I14) come after it and are read on demand, not in sequence.
+
+!!! info "Why the numbering jumps"
+    I15 is a main-line topic that sits at the end of the format run; I12–I14 are optional-depth topics from a source sweep. Codes are permanent identifiers — the book index, chapter files and coverage matrix all reference them — so they are never renumbered when the taxonomy changes. Follow the reading order above, not the numbers.
 
 ---
 
@@ -768,25 +773,6 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ⬜ I11 — SQL Scripting
-
-**What it is:** Multi-statement SQL scripts with procedural constructs: `BEGIN...END` compound bodies, local variable declarations (`DECLARE`, `SET`), `IF...THEN...ELSIF...ELSE`, `CASE` (searched and simple), `WHILE`, `FOR`, `LOOP`, `REPEAT...UNTIL`, and `LEAVE`/`ITERATE` for loop control. New in Spark 4.0.
-
-**Why you need it:** SQL scripting lets you express multi-step procedural logic — conditional branches, loops, intermediate variables — entirely in SQL without switching to Python. Useful for complex ETL stored as SQL scripts and for interoperability with data warehouses that already use procedural SQL.
-
-**Learn it with:**
-
-1. **Spark-docs → SQL Scripting** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — the canonical reference; covers all statement types with examples
-2. **Spark 4.0 release notes** — understand which constructs were added in 4.0 vs 4.1
-3. **Source** — `sql/catalyst/.../parser/SqlBaseParser.g4` for the grammar; the scripting execution lives under `sql/core/.../scripting/`
-
-!!! info "No book covers this — docs and source only"
-    SQL scripting landed in Spark 4.0, after every book in the resources table. Rioux (2022), LS2e (2020) and SDG (2018) have nothing on it. Treat the docs page as primary and verify behaviour against your own 4.2.0 stack rather than waiting for a book to catch up.
-
-**Milestone:** You can write a SQL script that declares a variable, iterates over a cursor with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline.
-
----
-
 ### ⬜ I15 — Apache Iceberg and Table-Format Interoperability
 
 **What it is:** The Iceberg table format — metadata tree (catalog → metadata file → manifest list → manifests), snapshots, hidden partitioning and partition evolution, schema evolution, the REST Catalog specification; how it compares to Delta Lake, and the interoperability layers (Delta UniForm, Iceberg's own catalog spec) that let one copy of the data serve several engines.
@@ -822,6 +808,25 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
+### ⬜ I11 — SQL Scripting
+
+**What it is:** Multi-statement SQL scripts with procedural constructs: `BEGIN...END` compound bodies, local variable declarations (`DECLARE`, `SET`), `IF...THEN...ELSIF...ELSE`, `CASE` (searched and simple), `WHILE`, `FOR`, `LOOP`, `REPEAT...UNTIL`, and `LEAVE`/`ITERATE` for loop control. New in Spark 4.0.
+
+**Why you need it:** SQL scripting lets you express multi-step procedural logic — conditional branches, loops, intermediate variables — entirely in SQL without switching to Python. Useful for complex ETL stored as SQL scripts and for interoperability with data warehouses that already use procedural SQL.
+
+**Learn it with:**
+
+1. **Spark-docs → SQL Scripting** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — the canonical reference; covers all statement types with examples
+2. **Spark 4.0 release notes** — understand which constructs were added in 4.0 vs 4.1
+3. **Source** — `sql/catalyst/.../parser/SqlBaseParser.g4` for the grammar; the scripting execution lives under `sql/core/.../scripting/`
+
+!!! info "No book covers this — docs and source only"
+    SQL scripting landed in Spark 4.0, after every book in the resources table. Rioux (2022), LS2e (2020) and SDG (2018) have nothing on it. Treat the docs page as primary and verify behaviour against your own 4.2.0 stack rather than waiting for a book to catch up.
+
+**Milestone:** You can write a SQL script that declares a variable, iterates over a cursor with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline.
+
+---
+
 ### ✅ Intermediate Checkpoint
 
 You are ready to leave this level when you can:
@@ -838,46 +843,11 @@ You are ready to leave this level when you can:
 ---
 
 
-### ⬜ I14 — AsyncRDDActions: Non-Blocking Job Submission
+### Optional depth — source-derived topics
 
-> Discovered from source sweep (refinement): `core: async-rdd-actions`
-
-**What it is:** AsyncRDDActions wraps countAsync, collectAsync, takeAsync, foreachAsync, and foreachPartitionAsync, each returning a FutureAction backed by SparkContext.submitJob rather than runJob.
-
-**Why you need it:** Relevant for workloads that interleave Spark jobs with I/O; takeAsync implements a recursive-future scan with configurable scale-up, making its partition-scan behavior non-obvious.
-
-**Learn it with:**
-
-1. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — scheduling *within* an application, the FAIR scheduler, and pools; async actions are how you get concurrent jobs from one driver thread
-2. **SDG Ch 15** — how Spark runs on a cluster; the job/stage/task model that concurrent submission operates on
-3. **Source** — `core/src/main/scala/org/apache/spark/rdd/AsyncRDDActions.scala`; trace `takeAsync` for the recursive scale-up
-
-!!! info "No book covers this — docs and source only"
-    No book in the resources table covers `AsyncRDDActions` directly. SDG Ch 15 gives the execution model it builds on, but the async API itself is docs-and-source territory.
-
-**Milestone:** You can submit two Spark jobs concurrently from one driver, explain what a `FutureAction` gives you that a blocking action does not, and describe how `takeAsync` decides how many partitions to scan next.
+These three came from a source sweep of `core`, not from a book, course or exam guide. They sit outside the main line: read one when you hit the underlying problem in practice — a `Task not serializable` error, a `groupByKey` OOM, a job that needs concurrent submission — rather than in sequence. Codes are non-contiguous because topic codes are stable identifiers (see the header note).
 
 ---
-
-
-### ⬜ I13 — Closure Cleaning and the Task-Not-Serializable Problem
-
-> Discovered from source sweep (refinement): `core: closure-cleaning`
-
-**What it is:** SparkContext.clean() delegates to ClosureCleaner (ASM 9 bytecode analysis) to null out unreferenced outer-object fields in Scala closures before they are serialized to executors.
-
-**Why you need it:** Every transformation lambda passes through closure cleaning; failures here produce the ubiquitous Task not serializable error, and understanding the mechanism is required to reason about what driver-side state leaks into tasks.
-
-**Learn it with:**
-
-1. **Spark-docs → Understanding closures** ([rdd-programming-guide.html#understanding-closures](https://spark.apache.org/docs/latest/rdd-programming-guide.html#understanding-closures)) — the canonical explanation of why mutating a driver variable inside a transformation silently does nothing
-2. **SDG Ch 14** — distributed shared variables; broadcast and accumulators as the correct alternatives to capturing driver state
-3. **Source** — `core/src/main/scala/org/apache/spark/util/ClosureCleaner.scala`
-
-**Milestone:** You can explain why a counter incremented inside `foreach` stays zero on the driver, predict whether a given lambda will raise `Task not serializable` before running it, and name the two fixes (broadcast the value, or move construction inside the closure).
-
----
-
 
 ### ⬜ I12 — Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey
 
@@ -911,11 +881,54 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ I13 — Closure Cleaning and the Task-Not-Serializable Problem
+
+> Discovered from source sweep (refinement): `core: closure-cleaning`
+
+**What it is:** SparkContext.clean() delegates to ClosureCleaner (ASM 9 bytecode analysis) to null out unreferenced outer-object fields in Scala closures before they are serialized to executors.
+
+**Why you need it:** Every transformation lambda passes through closure cleaning; failures here produce the ubiquitous Task not serializable error, and understanding the mechanism is required to reason about what driver-side state leaks into tasks.
+
+**Learn it with:**
+
+1. **Spark-docs → Understanding closures** ([rdd-programming-guide.html#understanding-closures](https://spark.apache.org/docs/latest/rdd-programming-guide.html#understanding-closures)) — the canonical explanation of why mutating a driver variable inside a transformation silently does nothing
+2. **SDG Ch 14** — distributed shared variables; broadcast and accumulators as the correct alternatives to capturing driver state
+3. **Source** — `core/src/main/scala/org/apache/spark/util/ClosureCleaner.scala`
+
+**Milestone:** You can explain why a counter incremented inside `foreach` stays zero on the driver, predict whether a given lambda will raise `Task not serializable` before running it, and name the two fixes (broadcast the value, or move construction inside the closure).
+
+---
+
+
+### ⬜ I14 — AsyncRDDActions: Non-Blocking Job Submission
+
+> Discovered from source sweep (refinement): `core: async-rdd-actions`
+
+**What it is:** AsyncRDDActions wraps countAsync, collectAsync, takeAsync, foreachAsync, and foreachPartitionAsync, each returning a FutureAction backed by SparkContext.submitJob rather than runJob.
+
+**Why you need it:** Relevant for workloads that interleave Spark jobs with I/O; takeAsync implements a recursive-future scan with configurable scale-up, making its partition-scan behavior non-obvious.
+
+**Learn it with:**
+
+1. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — scheduling *within* an application, the FAIR scheduler, and pools; async actions are how you get concurrent jobs from one driver thread
+2. **SDG Ch 15** — how Spark runs on a cluster; the job/stage/task model that concurrent submission operates on
+3. **Source** — `core/src/main/scala/org/apache/spark/rdd/AsyncRDDActions.scala`; trace `takeAsync` for the recursive scale-up
+
+!!! info "No book covers this — docs and source only"
+    No book in the resources table covers `AsyncRDDActions` directly. SDG Ch 15 gives the execution model it builds on, but the async API itself is docs-and-source territory.
+
+**Milestone:** You can submit two Spark jobs concurrently from one driver, explain what a `FutureAction` gives you that a blocking action does not, and describe how `takeAsync` decides how many partitions to scan next.
+
+---
+
+
 ## Advanced
 
 **Goal:** Write high-performance, production-grade pipelines. Understand Spark's optimiser deeply enough to fix it when it makes wrong decisions. Handle streaming workloads. Build ML pipelines.
 
-**Estimated time to complete this level:** 40–60 hrs
+**Estimated time to complete this level:** 44–66 hrs
+
+**Reading order:** A1 → A2 → A3 → A4 (the optimiser and tuning run) → A5 → A6 → **A7 → A8 → A12** (streaming, in that order — A12 assumes the semantics from A7/A8) → A9 → A10 → A11.
 
 ---
 
@@ -1154,6 +1167,8 @@ You are ready to leave this level when you can:
 
 **Estimated time to complete this level:** 40–60+ hrs (ongoing)
 
+**Reading order:** E1 → E2 → E3 → E4 → E5 → E6 → E7 → E8 → E9, then the checkpoint. E10–E11 are optional-depth topics after it, read on demand.
+
 ---
 
 ### ⬜ E1 — Spark Internals: Memory, Execution, and Serialisation
@@ -1361,24 +1376,11 @@ You are operating at Expert level when you can:
 ---
 
 
-### ⬜ E11 — Serialization: KryoSerializer vs JavaSerializer
+### Optional depth — source-derived topics
 
-> Discovered from source sweep (refinement): `core: serialization`
-
-**What it is:** KryoSerializer uses the Kryo library with a KryoPool, unsafe I/O, and optional class registration; JavaSerializer (default) uses Java object streams with periodic reset to bound stream-table memory.
-
-**Why you need it:** Serializer choice determines shuffle and broadcast throughput; Kryo requires explicit class registration for production determinism, and misconfiguration produces cryptic NotSerializableException or data-corruption failures.
-
-**Learn it with:**
-
-1. **Spark-docs → Data Serialization** ([tuning.html#data-serialization](https://spark.apache.org/docs/latest/tuning.html#data-serialization)) — the official Kryo recommendation, registration, and buffer sizing
-2. **SDG Ch 19** — performance tuning; serialization in the context of everything else that makes a job slow. Treat its JVM-flag specifics as dated (see E1 — 4.2.0 runs on Java 25)
-3. **Source** — `core/src/main/scala/org/apache/spark/serializer/KryoSerializer.scala`
-
-**Milestone:** You can enable Kryo with class registration, explain what `spark.kryo.registrationRequired=true` protects you from, and describe why this matters far less for pure DataFrame work than for RDDs of custom objects.
+As with the Intermediate pair above: derived from the `core` sweep, read on demand rather than in order.
 
 ---
-
 
 ### ⬜ E10 — AccumulatorV2: Distributed Side-Effect Counters
 
@@ -1397,6 +1399,25 @@ You are operating at Expert level when you can:
 **Milestone:** You can write a custom `AccumulatorV2`, explain why an accumulator updated inside a `map` may double-count after a task retry or speculative execution while one inside `foreach` does not, and say what `countFailedValues` changes.
 
 ---
+
+### ⬜ E11 — Serialization: KryoSerializer vs JavaSerializer
+
+> Discovered from source sweep (refinement): `core: serialization`
+
+**What it is:** KryoSerializer uses the Kryo library with a KryoPool, unsafe I/O, and optional class registration; JavaSerializer (default) uses Java object streams with periodic reset to bound stream-table memory.
+
+**Why you need it:** Serializer choice determines shuffle and broadcast throughput; Kryo requires explicit class registration for production determinism, and misconfiguration produces cryptic NotSerializableException or data-corruption failures.
+
+**Learn it with:**
+
+1. **Spark-docs → Data Serialization** ([tuning.html#data-serialization](https://spark.apache.org/docs/latest/tuning.html#data-serialization)) — the official Kryo recommendation, registration, and buffer sizing
+2. **SDG Ch 19** — performance tuning; serialization in the context of everything else that makes a job slow. Treat its JVM-flag specifics as dated (see E1 — 4.2.0 runs on Java 25)
+3. **Source** — `core/src/main/scala/org/apache/spark/serializer/KryoSerializer.scala`
+
+**Milestone:** You can enable Kryo with class registration, explain what `spark.kryo.registrationRequired=true` protects you from, and describe why this matters far less for pure DataFrame work than for RDDs of custom objects.
+
+---
+
 
 ## Suggested Study Sequence
 

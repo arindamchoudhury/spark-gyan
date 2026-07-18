@@ -29,11 +29,11 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I8 | Delta Lake Basics | — | delta-io/delta, apache/spark | ✅ complete |
 | I9 | The Medallion Architecture | — | delta-io/delta, apache/spark | ✅ complete |
 | I10 | Data Formats: Parquet, Delta, Avro, JSON | — | apache/spark | ✅ complete |
-| I11 | SQL Scripting | — | — | ⬜ |
 | I15 | Apache Iceberg and Table-Format Interoperability | — | apache/iceberg, delta-io/delta, apache/spark | ✅ complete |
-| I14 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
-| I13 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
+| I11 | SQL Scripting | — | — | ⬜ |
 | I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | apache/spark | ✅ complete |
+| I13 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
+| I14 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -55,8 +55,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E7 | CI/CD for Data Engineering | — | — | ⬜ |
 | E8 | Change Data Capture (CDC) and Slowly Changing Dimensions | — | — | ⬜ |
 | E9 | Spark Connect and the Modern Client Architecture | — | — | ⬜ |
-| E11 | Serialization: KryoSerializer vs JavaSerializer | — | — | ⬜ |
 | E10 | AccumulatorV2: Distributed Side-Effect Counters | — | — | ⬜ |
+| E11 | Serialization: KryoSerializer vs JavaSerializer | — | — | ⬜ |
 
 ## Source concept map
 
