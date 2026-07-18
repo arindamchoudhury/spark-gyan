@@ -17,7 +17,7 @@ Personal book written as I work through the [learning path](../learning-path.md)
 | 🔄 | 06 | B3 | [The DataFrame API: Basics](ch06-dataframe-basics.md) | 2026-05-31 |
 | 🔄 | 07 | B4 | [Reading and Writing Data](ch07-reading-writing-data.md) | 2026-05-31 |
 | 🔄 | 08 | B5 | [Schema: StructType, DDL, and Type Safety](ch08-schema-type-safety.md) | 2026-05-31 |
-| ✅ | 09 | B6 | [Aggregations and GroupBy](ch09-aggregations-groupby.md) | 2026-05-31 |
+| 🔄 | 09 | B6 | [Aggregations and GroupBy](ch09-aggregations-groupby.md) | 2026-05-31 |
 | 🔄 | 10 | B7 | [Joins: Types and Mechanics](ch10-joins.md) | 2026-05-31 |
 | 🔄 | 11 | B8 | [Spark SQL](ch11-spark-sql.md) | 2026-05-31 |
 | ✅ | 12 | B9 | [Null Handling](ch12-null-handling.md) | 2026-05-31 |

@@ -231,7 +231,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 ---
 
-### ✅ B6 — Basic Aggregations and GroupBy
+### 🔄 B6 — Basic Aggregations and GroupBy
 
 **What it is:** `groupBy().agg()`, built-in aggregate functions (`F.count`, `F.sum`, `F.avg`, `F.min`, `F.max`, `F.countDistinct`), `GroupedData`.
 
@@ -242,6 +242,26 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 1. **Rioux Ch 3, 5** — covers groupby, agg, and the GroupedData intermediate object
 2. **LS2e Ch 4** — adds `F.expr()`, SQL aggregations, and the full function catalogue
 3. **Spark-docs → Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the complete aggregate-function list; skim the aggregate section once so you stop reaching for a UDF when a built-in exists
+4. **Spark-docs → GROUP BY syntax** ([sql-ref-syntax-qry-select-groupby.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-groupby.html)) — `HAVING`, and the `ROLLUP` / `CUBE` / `GROUPING SETS` forms that the DataFrame `rollup()` and `cube()` methods map onto
+5. **Spark-docs → Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `spark.sql.shuffle.partitions` is *the* knob governing a `groupBy`'s cost, since it sets the partition count between the partial and final aggregate
+6. **Source trace — [B6 in the source map](reference/spark-source-map/topics/b6.md)** — why one `groupBy` becomes two operators in the plan, what `countDistinct` actually costs, and which of the three aggregate operators your functions select
+
+**Milestone:** You can compute multiple aggregations in a single `agg()` call, use `F.when()` for conditional counting, and write a query equivalent to a SQL `GROUP BY ... HAVING`. Then, from the plan: run `explain()` on a `groupBy().sum()` and explain why `HashAggregateExec` appears twice, and predict how the plan changes when you add a single `countDistinct`.
+
+!!! info "One `groupBy` becomes two aggregates — that is map-side combine"
+    Spark plans a `Partial` aggregate before the shuffle and a `Final` aggregate after it. Seeing `HashAggregateExec` twice in an `EXPLAIN` is that pair, not a duplicated plan, and it is why `groupBy().count()` over a billion rows does not ship a billion rows across the network — each partition sends one partial result per key.
+
+    The shuffle between them is sized by `spark.sql.shuffle.partitions` (default 200), which makes it the main cost lever for any aggregation.
+
+!!! warning "`countDistinct` is a different plan shape, and several of them multiply your data"
+    A single distinct aggregate expands to **four** aggregate stages instead of two. Multiple distinct aggregates are rewritten into an `Expand` that emits one row per distinct group *per input row* before aggregating — so three `countDistinct`s over a large table can triple the rows entering the shuffle.
+
+    That is the mechanism behind the usual advice to avoid stacking `countDistinct`s. When an approximation is acceptable, `F.approx_count_distinct` avoids the rewrite entirely.
+
+!!! info "Which aggregate operator you get is decided by your functions, not by config"
+    `HashAggregateExec` (the fast path) requires mutable fixed-width buffers. Add one `collect_list` or `percentile` and the buffer is no longer mutable, so Spark switches to `ObjectHashAggregateExec` — which falls back to sorting after just **128 groups** by default (`spark.sql.objectHashAggregate.sortBased.fallbackThreshold`, a group *count*, not a memory size). `SortAggregateExec` is the final fallback.
+
+    Both hash operators can spill. The `numTasksFallBacked` metric in the Spark UI tells you whether yours did, which beats guessing.
 
 **Milestone:** You can compute multiple aggregations in a single `agg()` call, use `F.when()` for conditional counting, and write a query equivalent to a SQL `GROUP BY ... HAVING`.
 
@@ -1113,7 +1133,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1, B2, B3, B4, B5, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
+**Carrying 🔄:** B1, B2, B3, B4, B5, B6, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 

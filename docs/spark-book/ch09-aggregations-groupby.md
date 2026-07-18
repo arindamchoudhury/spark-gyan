@@ -3,6 +3,17 @@
 > *Learning-path topic: B6 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+!!! warning "🔄 Needs revisiting — B6 source trace (flagged 2026-07-18)"
+    Incomplete rather than wrong: the API coverage holds, but the chapter teaches `groupBy().agg()` without the plan it produces, which is where all the cost lives.
+
+    **One `Aggregate` becomes two physical operators.** Spark plans a `Partial` aggregate before the shuffle and a `Final` one after — map-side combine, and the reason `groupBy().count()` on a billion rows is cheap. It also explains why `HashAggregateExec` legitimately appears twice in an `EXPLAIN`, which otherwise reads as a bug.
+
+    **`countDistinct` is a different plan shape.** One distinct aggregate expands to four stages; several are rewritten into an `Expand` that emits one row per distinct group per input row *before* aggregating. That is the actual cost model behind avoiding stacked `countDistinct`s, and the chapter presents it as just another function.
+
+    **Three aggregate operators exist, selected by your functions rather than by config.** Adding a single `collect_list` makes the buffer non-mutable, switching from `HashAggregateExec` to `ObjectHashAggregateExec` — which falls back to sorting after 128 *groups* by default, a count rather than a memory size.
+
+    Also missing: `spark.sql.shuffle.partitions` as the governing knob for any `groupBy`; the `numTasksFallBacked` UI metric for confirming a spill; that `pivot()` without an explicit value list runs a hidden distinct-collect job; that `rollup`/`cube`/`groupingSets` return the same builder type; aggregate pushdown into Parquet/ORC footers; and that `avg` and `mean` are the same registry entry. Full list in the [B6 source trace](../reference/spark-source-map/topics/b6.md).
+
 Aggregation is where distributed computing earns its keep. Counting, summing, and averaging across millions of records is the core of analytical work, and `groupBy().agg()` is the pattern you will write hundreds of times.
 
 ---
