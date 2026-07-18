@@ -641,8 +641,22 @@ You are ready to leave this level when you can build a complete end-to-end batch
 2. **LS2e Ch 7** — Spark UI walkthrough with a concrete slow-job example
 3. **ADEB Module 3** (Databricks Performance Optimization) — Spark UI analysis section; practise reading plans on Databricks
 4. **Spark-docs → Web UI** ([web-ui.html](https://spark.apache.org/docs/latest/web-ui.html)) — every tab and what each column means; the reference to keep open while the books teach you what to look for. Note the UI was rebuilt in 4.2.0, so this page matches your screen and the book screenshots do not
+5. **Spark-docs → Monitoring** ([monitoring.html](https://spark.apache.org/docs/latest/monitoring.html)) — the History Server, event logging, and the [REST API](https://spark.apache.org/docs/latest/monitoring.html#rest-api). Everything the UI renders is available as JSON at `/api/v1`, which turns "check the UI" into something you can automate
+6. **Source trace — [I7 in the source map](reference/spark-source-map/topics/i7.md)** — the UI is a read model over an event stream, and the stream drops events under load. Read this before trusting a number the UI shows you on a busy job
 
-**Milestone:** You can open the Spark UI on a running job, locate the most expensive stage, identify whether it involves a sort-merge join or a broadcast join, and read a physical plan to find a pushed-down filter.
+!!! warning "The UI is derived from an event stream that drops events under load — by design"
+    Nothing in the UI is measured directly. The scheduler emits listener events onto a **bounded** asynchronous queue; when it fills, events are discarded so the scheduler is never blocked. The only evidence is one log line — *"Dropping event from queue … one of the listeners is too slow"* — and a counter.
+
+    So on a busy job, missing tasks, totals that do not add up, and stages that never appear to finish are expected rather than mysterious. `spark.scheduler.listenerbus.eventqueue.capacity` (10000) is the knob when you need the UI to be complete.
+
+    Retention compounds it: `spark.ui.retainedJobs`/`retainedStages` (1000) and `retainedTasks` (100000) mean a long or wide application loses its early history entirely.
+
+!!! info "Enable event logging *before* you need it, and read the SQL tab for the real plan"
+    `spark.eventLog.enabled` is **off by default**, and the History Server can only replay what was logged — so turning it on after an incident gives you nothing. `spark.eventLog.logStageExecutorMetrics` is separately off and is what you need for memory forensics after the fact.
+
+    On plans: the SQL tab shows the **post-AQE** plan, while `df.explain()` prints the pre-AQE one. They legitimately disagree (see B3 and B7), and the SQL tab is the one that reflects what actually ran. No action means no SQL-tab entry at all, since executions register through `withNewExecutionId`.
+
+**Milestone:** You can open the Spark UI on a running job, locate the most expensive stage, identify whether it involves a sort-merge join or a broadcast join, and read a physical plan to find a pushed-down filter. Then the part that makes the UI trustworthy rather than merely readable: say how you would tell whether the numbers on screen are complete, and fetch the same stage's metrics from `/api/v1` as JSON.
 
 !!! warning "The Spark UI was rebuilt in 4.2.0 — book screenshots are stale"
     Spark 4.2.0 ships a modernized Web UI ([SPARK-55760]) with dark mode and searchable, zoomable, side-by-side SQL plan visualisation. Rioux Ch 11 and LS2e Ch 7 show the old layout. The tabs and the metrics behind them are the same — read the chapters for *what to look for*, then find it in the new UI yourself. The side-by-side plan view makes the A1 milestone (comparing plans before/after a change) substantially easier.

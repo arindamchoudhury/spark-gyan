@@ -25,7 +25,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) 🔄 | apache/spark | ✅ complete |
 | I5 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) 🔄 | apache/spark | ✅ complete |
 | I6 | Caching and Persistence | — | apache/spark | ✅ complete |
-| I7 | The Spark UI: Reading Plans and Diagnosing Jobs | — | — | ⬜ |
+| I7 | The Spark UI: Reading Plans and Diagnosing Jobs | — | apache/spark | ✅ complete |
 | I8 | Delta Lake Basics | — | — | ⬜ |
 | I9 | The Medallion Architecture | — | — | ⬜ |
 | I10 | Data Formats: Parquet, Delta, Avro, JSON | — | — | ⬜ |

@@ -29,6 +29,7 @@ nav = [
             { "I4 — RDD Fundamentals" = "reference/spark-source-map/topics/i4.md" },
             { "I5 — Partitioning" = "reference/spark-source-map/topics/i5.md" },
             { "I6 — Caching and Persistence" = "reference/spark-source-map/topics/i6.md" },
+            { "I7 — The Spark UI" = "reference/spark-source-map/topics/i7.md" },
         ]},
         { "Sweeps" = [
             { "core (RDD layer)" = "reference/spark-source-map/sweeps/core.md" },
