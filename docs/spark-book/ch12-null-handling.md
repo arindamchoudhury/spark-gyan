@@ -3,6 +3,17 @@
 > *Learning-path topic: B9 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+!!! warning "🔄 Needs revisiting — B9 source trace (flagged 2026-07-18)"
+    Incomplete rather than wrong. The chapter covers the null API well; the trace opened nine gaps, and three of them are traps that produce wrong answers rather than errors — which is exactly what a chapter on null handling exists to prevent.
+
+    **`NOT IN` with a nullable subquery returns nothing.** A single null on the right makes the result unknown for every row, so the anti join yields zero rows — an empty result that reads as a legitimate answer. Spark has a dedicated null-aware anti join path for it.
+
+    **Descending order is not the reverse of ascending.** Default null ordering is `NULLS FIRST` for `ASC` and `NULLS LAST` for `DESC`, so nulls sit at the same end either way. A "top N" built by flipping sort direction can silently return N nulls.
+
+    **`NaN` is not null.** `isNull` is false for it, `dropna()` keeps it, `coalesce` returns it — only `nanvl` handles it. A float column can carry both, so cleaning nulls does not clean the data.
+
+    Also missing: that `how="any"`/`"all"` and `thresh` are the *same* parameter (`toMinNonNulls` maps both to `AtLeastNNonNulls`, making `dropna` an ordinary filter); that `count` is the only aggregate that cannot return null; that "null behaves like false" is true inside a `WHERE` and nowhere else (`ReplaceNullWithFalseInPredicate` applies it only there); that nullity is a bit in `UnsafeRow`'s bitmap rather than a value — which links to Ch08's finding that a wrong `nullable=false` yields wrong results; that ANSI mode turns several null-producing paths into errors; and that writing JSON drops null fields by default. Full list in the [B9 source trace](../reference/spark-source-map/topics/b9.md).
+
 Null values are everywhere in real data. They propagate silently through expressions, behave differently from Python's `None` in comparisons, and interact with joins and aggregations in ways that surprise almost every beginner. Getting null semantics right prevents a class of bugs that produces wrong results with no error messages.
 
 ---

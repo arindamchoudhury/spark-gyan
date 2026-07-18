@@ -338,7 +338,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 ---
 
-### ✅ B9 — Null Handling
+### 🔄 B9 — Null Handling
 
 **What it is:** `dropna`, `fillna`, `coalesce`, null-safe equality (`<=>` / `eqNullSafe`), how nulls propagate through aggregations and joins.
 
@@ -349,8 +349,25 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 1. **Rioux Ch 5** — `dropna`/`fillna` with `how`, `thresh`, and `subset`
 2. **SDG Ch 6** — null semantics, null-safe joins, and null coercion rules
 3. **Spark-docs → NULL Semantics** ([sql-ref-null-semantics.html](https://spark.apache.org/docs/latest/sql-ref-null-semantics.html)) — the authoritative page: how NULL behaves in comparisons, `IN`/`EXISTS`, aggregates, joins, and `GROUP BY`. Settles the cases where the books disagree with intuition
+4. **Spark-docs → ORDER BY** ([sql-ref-syntax-qry-select-orderby.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-orderby.html)) — `NULLS FIRST` / `NULLS LAST`, and the defaults that make descending order not a mirror of ascending
+5. **Spark-docs → Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the conditional-function section: `coalesce`, `nvl`, `nullif`, and `nanvl`, which is the only one that handles `NaN`
+6. **Source trace — [B9 in the source map](reference/spark-source-map/topics/b9.md)** — how a null is actually stored, the two optimizer rules that rewrite nulls before execution, and where three-valued logic changes a result rather than just a filter
 
-**Milestone:** You can explain why `F.count("col")` and `F.count("*")` return different results for a column with nulls.
+**Milestone:** You can explain why `F.count("col")` and `F.count("*")` return different results for a column with nulls. Then three that catch experienced people: predict what `NOT IN (subquery containing a null)` returns; predict whether `orderBy(c.desc())` puts nulls where `orderBy(c)` did; and say whether a `NaN` in a float column survives `dropna()`.
+
+!!! warning "Three null traps that produce wrong answers, not errors"
+    Each follows from three-valued logic, and none announces itself.
+
+    **`NOT IN` with a nullable subquery returns nothing.** If the right-hand side contains a single null, SQL says the result is *unknown* for every row, so the anti join yields zero rows. Not an error, not a warning — an empty result that looks like a legitimate answer. Use `NOT EXISTS` or a left-anti join on a null-safe condition.
+
+    **Descending order is not the reverse of ascending.** The default null ordering is `NULLS FIRST` for `ASC` and `NULLS LAST` for `DESC`, so nulls stay at the same end in both. A "top N" query built by flipping the sort direction can silently return N nulls. Say `NULLS LAST` explicitly when it matters.
+
+    **`NaN` is not null.** A float column can hold both. `isNull` is false for `NaN`, `dropna()` keeps it, and `coalesce` returns it happily — only `nanvl` handles it. If your numeric pipeline can produce `0/0` or a failed cast under non-ANSI settings, cleaning nulls has not cleaned your data.
+
+!!! info "Null behaves like false in a `WHERE` — and nowhere else"
+    Inside a filter or join condition, Spark makes this explicit: the `ReplaceNullWithFalseInPredicate` optimizer rule substitutes `false` for a null predicate, because a row is kept only when the predicate is literally `true`.
+
+    Outside a predicate the two are entirely different — `null` in an arithmetic expression propagates, in an aggregate is skipped, in a `GROUP BY` forms its own group, and in an equality yields null rather than false. The "null acts like false" shorthand is safe only in the one place the optimizer applies it.
 
 ---
 
@@ -1165,7 +1182,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1, B2, B3, B4, B5, B6, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
+**Carrying 🔄:** B1–B9 and I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 
