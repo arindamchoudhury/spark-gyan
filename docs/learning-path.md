@@ -554,7 +554,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ✅ I5 — Partitioning: Concepts and Control
+### 🔄 I5 — Partitioning: Concepts and Control
 
 **What it is:** Physical partitions vs logical partitions; `repartition(n)`, `coalesce(n)`, `partitionBy(col)` on writes; default shuffle partition count; how partition count affects file output.
 
@@ -564,9 +564,28 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 1. **Rioux Ch 3** — `coalesce` and `repartition` basics
 2. **LS2e Ch 7** — scaling Spark for large workloads; partition tuning
-3. **Spark-docs → Performance Tuning** ([spark.apache.org/docs/latest/sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `spark.sql.shuffle.partitions` and AQE partition coalescing
+3. **Spark-docs → Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `spark.sql.shuffle.partitions`, and the [coalescing post-shuffle partitions](https://spark.apache.org/docs/latest/sql-performance-tuning.html#coalescing-post-shuffle-partitions) section, which is what actually decides your partition count once AQE is on
+4. **Spark-docs → SQL Hints** ([sql-ref-syntax-qry-select-hints.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-hints.html)) — the partitioning hints (`COALESCE`, `REPARTITION`, `REPARTITION_BY_RANGE`, `REBALANCE`), including `REBALANCE`, which asks AQE to size partitions instead of you picking a number
+5. **Source trace — [I5 in the source map](reference/spark-source-map/topics/i5.md)** — why `coalesce` is contagious upstream, why a bare `repartition` does a hidden sort, and how partitionings are negotiated rather than commanded
 
-**Milestone:** You can explain the difference between `repartition` and `coalesce`, set `spark.sql.shuffle.partitions` appropriately for your data volume, and write a DataFrame to exactly N files.
+**Milestone:** You can explain the difference between `repartition` and `coalesce`, set `spark.sql.shuffle.partitions` appropriately for your data volume, and write a DataFrame to exactly N files. Then the one that separates knowing the API from understanding it: explain why `df.transform(...).coalesce(1).write(...)` can be dramatically slower than the same pipeline with `repartition(1)`, and say what `explain()` would show in each case.
+
+!!! warning "`coalesce` is cheaper *and* contagious — it slows everything upstream in the stage"
+    `coalesce` avoids a shuffle by grouping existing partitions through a narrow dependency. But a narrow dependency means **no stage boundary**, so the upstream computation runs with the coalesced task count. `coalesce(1)` before a write does not just produce one file — it makes every transformation in that stage single-threaded.
+
+    `repartition(1)` inserts a shuffle, which sounds worse and is often much faster: the expensive work upstream keeps its parallelism, and only the final write is serialized. "Coalesce avoids a shuffle" is true and, taken alone, actively misleading.
+
+    Related: `CoalesceExec` advertises `UnknownPartitioning`, so coalescing before a join or `groupBy` does not save the shuffle those would need anyway.
+
+!!! info "Partitionings are negotiated, not commanded — and AQE has the last word"
+    Operators advertise an `outputPartitioning` and demand a `requiredChildDistribution`; `EnsureRequirements` inserts a shuffle only where the two disagree. So `repartition(n, "k")` immediately before `groupBy("k")` is usually redundant — the aggregate would have requested that layout itself. Same machinery as the join exchanges in B7.
+
+    With AQE on, `spark.sql.shuffle.partitions` is a *starting point*: `CoalesceShufflePartitions` merges post-shuffle partitions toward `advisoryPartitionSizeInBytes` with a 1MB floor. Tuning the static number matters far less than it did pre-3.0, and `REBALANCE` (or `RebalancePartitions`) lets you stop guessing a count altogether — the direct fix for "my job wrote 10,000 tiny files".
+
+!!! info "A bare `repartition(n)` does a hidden local sort — for correctness, not speed"
+    Round-robin partitioning must be deterministic: if a retried task assigned rows differently, rows would be **lost**, not merely reshuffled (SPARK-23207). Spark guarantees determinism with a local sort before partitioning, controlled by `spark.sql.execution.sortBeforeRepartition` (default `true`).
+
+    So `repartition(n)` costs more than it appears to, and that cost is buying correctness under task retry. Disabling the flag to speed it up trades away data integrity. Also worth knowing: round-robin is implemented as a hash over a synthetic key, which is why partition sizes come out approximately rather than exactly equal.
 
 ---
 
@@ -1279,7 +1298,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1–B9 and I1–I4 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
+**Carrying 🔄:** B1–B9 and I1–I5 — every topic with a written chapter — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 
