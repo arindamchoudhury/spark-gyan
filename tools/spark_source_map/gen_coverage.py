@@ -58,6 +58,19 @@ def load_catalog_subsystems(catalog: Path) -> dict[str, int]:
     return counts
 
 
+def load_group_subsystems(groups_file: Path) -> dict[str, list[str]]:
+    """Sweepable subsystems from groups.yaml -> their group names.
+
+    Some subsystems declare no configs of their own (Spark puts nearly every SQL
+    config in sql/catalyst's SQLConf.scala), so the catalog alone cannot list
+    them — sql/core and sql/pipelines among them. They are still sweepable.
+    """
+    if not groups_file.exists():
+        return {}
+    data = yaml.safe_load(groups_file.read_text(encoding="utf-8")) or {}
+    return {sub: [g["name"] for g in groups] for sub, groups in data.items()}
+
+
 def load_topic_pages(topics_dir: Path) -> dict[str, dict]:
     """Load topic-first trace pages; returns {topic-code -> front matter}."""
     pages: dict[str, dict] = {}
@@ -175,6 +188,7 @@ def build_index(root: Path) -> str:
     topics = parse_topics(root / "docs" / "learning-path.md")
     chapters = parse_book_chapters(root / "docs" / "spark-book" / "index.md")
     sub_counts = load_catalog_subsystems(base / "configs" / "catalog.yaml")
+    group_subs = load_group_subsystems(base / "groups.yaml")
     topic_pages = load_topic_pages(base / "topics")
     swept = load_sweep_pages(base / "sweeps")
 
@@ -302,10 +316,14 @@ def build_index(root: Path) -> str:
     L.append("")
     L.append("| Subsystem | Configs | Status | Spark version | When |")
     L.append("|---|---|---|---|---|")
-    for sub in sorted(sub_counts, key=lambda s: (-sub_counts[s], s)):
+    # Union with groups.yaml so config-free but sweepable subsystems still get a
+    # row; they sort last, since the sort key is config count.
+    all_subs = set(sub_counts) | set(group_subs)
+    for sub in sorted(all_subs, key=lambda s: (-sub_counts.get(s, 0), s)):
+        count_col = str(sub_counts[sub]) if sub in sub_counts else "—"
         if sub in grouped_subs:
             for i, g in enumerate(all_groups_by_sub[sub]):
-                configs_col = str(sub_counts[sub]) if i == 0 else "—"
+                configs_col = count_col if i == 0 else "—"
                 if (sub, g) in group_meta:
                     m = group_meta[(sub, g)]
                     st = "✅ " + m["status"]
@@ -319,9 +337,9 @@ def build_index(root: Path) -> str:
             st = "✅ " + m.get("status", "complete")
             ver = m.get("spark_version", "—")
             when = m.get("swept_at", "—")
-            L.append(f"| {sub} | {sub_counts[sub]} | {st} | {ver} | {when} |")
+            L.append(f"| {sub} | {count_col} | {st} | {ver} | {when} |")
         else:
-            L.append(f"| {sub} | {sub_counts[sub]} | ⬜ pending | — | — |")
+            L.append(f"| {sub} | {count_col} | ⬜ pending | — | — |")
     L.append("")
 
     return "\n".join(L) + "\n"

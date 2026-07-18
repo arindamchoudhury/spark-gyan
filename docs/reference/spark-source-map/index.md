@@ -108,4 +108,6 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | connector/kafka-0-10 | 8 | ⬜ pending | — | — |
 | connector/kafka-0-10-sql | 8 | ⬜ pending | — | — |
 | connector/profiler | 7 | ⬜ pending | — | — |
+| sql/core | — | ⬜ pending | — | — |
+| sql/pipelines | — | ⬜ pending | — | — |
 

@@ -143,3 +143,72 @@ sql/hive:
     topics: [B4]
     scope: "hive/ (HiveSessionCatalog, HiveExternalCatalog, HiveClientImpl)"
     description: "Hive metastore connectivity, DDL compatibility, and SerDe/UDF bridging"
+
+# Subsystems below define no configs of their own — Spark declares nearly every
+# SQL config in sql/catalyst's SQLConf.scala regardless of where the feature
+# executes. They are therefore absent from the config catalog's subsystem counts
+# but are very much sweepable; sql/core in particular holds the physical
+# execution for most of the book's topics.
+sql/core:
+  - number: 1
+    name: query-execution
+    title: "Query execution & planning"
+    topics: [A1, I7]
+    scope: "execution/ (QueryExecution, SparkPlan, SQLExecution, SparkOptimizer, ExplainUtils, WholeStageCodegenExec)"
+    description: "Physical planning entry point, the plan lifecycle behind EXPLAIN, and whole-stage code generation"
+  - number: 2
+    name: joins-exec
+    title: "Join execution"
+    topics: [B7, A3]
+    scope: "execution/joins/ (BroadcastHashJoinExec, SortMergeJoinExec, ShuffledHashJoinExec)"
+    description: "Physical join operators and the strategy selection the planner resolves to"
+  - number: 3
+    name: adaptive
+    title: "Adaptive query execution"
+    topics: [A2, A4]
+    scope: "execution/adaptive/ (AdaptiveSparkPlanExec, coalescing, skew join, dynamic broadcast)"
+    description: "Runtime replanning: partition coalescing, skew splitting, and join-strategy upgrades"
+  - number: 4
+    name: datasources
+    title: "Data sources & scans"
+    topics: [B4, I10]
+    scope: "execution/datasources/ (FileSourceScanExec, parquet/, v2/), DataSourceScanExec"
+    description: "File format readers/writers, predicate pushdown, column pruning, and the DSv2 API"
+  - number: 5
+    name: agg-window-exchange
+    title: "Aggregation, window & exchange"
+    topics: [B6, I2, I5]
+    scope: "execution/aggregate/, execution/window/, execution/exchange/, execution/bucketing/, execution/dynamicpruning/"
+    description: "Hash and sort aggregation, window operators, and the shuffle/broadcast exchange boundary"
+  - number: 6
+    name: python-arrow
+    title: "Python & Arrow execution"
+    topics: [I3, A5]
+    scope: "execution/python/ (ArrowEvalPythonExec, BatchEvalPythonExec), execution/arrow/"
+    description: "The PySpark UDF execution path, Arrow batch serialization, and the worker protocol"
+  - number: 7
+    name: streaming-exec
+    title: "Streaming execution"
+    topics: [A7, A8]
+    scope: "execution/streaming/ (MicroBatchExecution, state store, watermark tracking)"
+    description: "Micro-batch execution loop, checkpointing, and stateful operator storage"
+
+sql/pipelines:
+  - number: 1
+    name: graph
+    title: "Dataflow graph"
+    topics: [A11]
+    scope: "pipelines/graph/ (dataflow graph construction, resolution, execution ordering)"
+    description: "How declarative dataset definitions become a dependency graph the engine can order and run"
+  - number: 2
+    name: autocdc
+    title: "Auto CDC"
+    topics: [A11, E8]
+    scope: "pipelines/autocdc/"
+    description: "Declarative SCD Type 1 upserts driven by the change-data-capture support added in Spark 4.2.0"
+  - number: 3
+    name: pipeline-runtime
+    title: "Pipeline runtime & logging"
+    topics: [A11, E3]
+    scope: "pipelines/common/, pipelines/logging/, pipelines/util/, Language.scala"
+    description: "Pipeline event logging, run state, and the Python/SQL language bindings"

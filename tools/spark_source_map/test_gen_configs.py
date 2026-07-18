@@ -188,7 +188,9 @@ def test_subsystem_derivation():
     assert g.subsystem_of("mllib/src/main/scala/X.scala") == "mllib"
 
 
-SPARK_SRC = Path(os.environ.get("SPARK_SRC", r"C:/opt/learn/spark/spark"))
+# Keep in step with gen_configs.py's --source default; when these drift the
+# floor test below skips instead of failing, which is the opposite of its job.
+SPARK_SRC = Path(os.environ.get("SPARK_SRC", r"C:/opt/learn/spark/repos/spark"))
 
 
 @pytest.mark.skipif(not SPARK_SRC.exists(), reason="local Spark source not present")

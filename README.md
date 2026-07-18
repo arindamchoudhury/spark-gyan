@@ -57,7 +57,7 @@ The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--
 
 > **Check the checkout before regenerating.** The catalog records whatever it parsed in `meta.spark_version`, with no warning if that isn't what you meant. A checkout left on `master` yields a `5.0.0-SNAPSHOT` catalog that looks perfectly valid. To target a release: `git -C C:/opt/learn/spark/repos/spark checkout v4.2.0`.
 
-**Available subsystems for sweeping** (Spark 4.2.0 config counts):
+**Subsystems by config density** (Spark 4.2.0). These counts say where each config is *declared*, which is not where the feature runs — Spark declares nearly every SQL config in `sql/catalyst`'s `SQLConf.scala`, so that 721 covers all of Spark SQL:
 
 | Subsystem | Configs | Groups |
 |---|---|---|
@@ -73,6 +73,15 @@ The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--
 | `connector/profiler` | 7 | async-profiler |
 
 Totals **1493 configs** across the repo at 4.2.0 (3 unparsed — known dynamic-key cases in the Kubernetes `Config.scala`).
+
+**Sweepable but config-free.** A subsystem with no configs of its own is invisible to the table above while still being worth sweeping — `sql/core` holds the physical execution for most of the book's topics, and `sql/pipelines` backs topic A11:
+
+| Subsystem | Groups |
+|---|---|
+| `sql/core` | query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec |
+| `sql/pipelines` | graph, autocdc, pipeline-runtime |
+
+Group definitions for every subsystem live in `docs/reference/spark-source-map/groups.yaml`.
 
 Topic traces and source sweeps (LLM-driven, one unit at a time) are done via the `spark-source-map` Claude Code skill.
 
