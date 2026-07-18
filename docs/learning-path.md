@@ -674,8 +674,24 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **DLUR Ch 1–4** — architecture + all basic operations; the best hands-on introduction
 2. **LS2e Ch 9** — lakehouse overview; positions Delta Lake alongside Hudi and Iceberg
 3. **Delta-docs Quickstart** ([docs.delta.io/latest/quick-start.html](https://docs.delta.io/latest/quick-start.html)) — run against your local stack first
+4. **Delta-docs → Table protocol** ([PROTOCOL.md](https://github.com/delta-io/delta/blob/master/PROTOCOL.md)) — the actual on-disk contract: action types, commit-file naming, checkpoint format, reader/writer versions. Shorter and more concrete than the prose docs, and it settles anything the books leave ambiguous
+5. **Source trace — [I8 in the source map](reference/spark-source-map/topics/i8.md)** — how Delta installs itself as a plugin, why a delete is an append, and the single filesystem operation the whole ACID story rests on
 
-**Milestone:** You can create a Delta table, insert/update/delete rows, query a past version, run `OPTIMIZE`, and explain what the `_delta_log/` directory contains.
+!!! warning "Delta 4.3.1 does not support Spark 4.2.0 — check before starting this topic"
+    Delta's build targets exactly two Spark versions, **4.0.1 and 4.1.0**, with 4.1 as the default (`project/CrossSparkVersions.scala`, `ALL_SPECS`). There is no 4.2 target.
+
+    So I8 — along with I9, A6 and E4, which all build on it — cannot be practised on the 4.2.0 stack the rest of this path targets. Run a separate Spark 4.1 environment for the Delta topics, or take them after the rest.
+
+    This is now the **second** table format in this position: [I15](#i15-apache-iceberg-and-table-format-interoperability) has the same gap for the same reason. Both lag the Spark release by design — a table format has to be built and tested against a released Spark, so a new Spark minor is always ahead of its connectors. Worth planning around rather than treating as a surprise: pin your learning stack to the newest Spark that *your table format* supports, not the newest Spark.
+
+!!! info "Delta is a plugin, and its whole ACID story is one filesystem operation"
+    Delta is not built into Spark. It installs through `spark.sql.extensions` plus a catalog implementation, then intercepts planning for directories containing a `_delta_log`. That config is **static** (see B2), so setting it after the session exists silently gives you no Delta at all — the most common setup failure, and it presents as "my Delta SQL isn't recognised".
+
+    Once installed, the mechanism is simpler than the vocabulary suggests. The log is a numbered sequence of JSON commits; a transaction reads a snapshot and then tries to create file `N+1.json`. **Atomicity is exactly that: exactly one writer can create a given filename.** No lock service, no coordinator.
+
+    Two consequences worth carrying: a losing writer is not automatically failed — the `ConflictChecker` retries against the newer snapshot when the transactions are logically compatible, so concurrent appends normally both succeed. And a delete is an *append* (a `RemoveFile` tombstone), which is why time travel exists at all and why `VACUUM` is the operation that destroys it.
+
+**Milestone:** You can create a Delta table, insert/update/delete rows, query a past version, run `OPTIMIZE`, and explain what the `_delta_log/` directory contains. Then, from the log itself: delete a row, then show which action was appended and which file is still physically present — and say what `VACUUM` would do to your ability to time-travel past that point.
 
 ---
 
