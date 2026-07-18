@@ -786,9 +786,23 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **Iceberg-docs → Spark Getting Started** ([iceberg.apache.org/docs/latest/spark-getting-started/](https://iceberg.apache.org/docs/latest/spark-getting-started/)) — catalog configuration and the runtime jar, which is the part that actually blocks beginners
 4. **Iceberg-docs → Multi-Engine Support** ([iceberg.apache.org/multi-engine-support/](https://iceberg.apache.org/multi-engine-support/)) — the authoritative Spark-version support matrix; check it before choosing a runtime jar
 5. **Local stack** — create the same dataset as both a Delta and an Iceberg table, then diff the on-disk metadata directories
+6. **Source trace — [I15 in the source map](reference/spark-source-map/topics/i15.md)** — the one-sentence design difference from Delta, why the catalog rather than the filesystem provides atomicity, and how pruning happens twice
 
-!!! warning "Iceberg does not support Spark 4.2 yet — check before you start"
-    As of Iceberg 1.11.0 (May 2026), the newest supported Spark is **4.1** (`iceberg-spark-runtime-4.1_2.13`); 3.5 and 4.0 are also Maintained. There is no 4.2 runtime jar, so this topic cannot be practised on the 4.2.0 stack the rest of this path targets. Either run a separate Spark 4.1 environment for this topic, or defer it until an Iceberg release adds 4.2. Re-check the multi-engine support page rather than assuming — this is the fastest-moving fact on this page.
+!!! info "Delta replays a log; Iceberg follows a pointer to a tree"
+    That single sentence explains most of the differences, and it is the way to learn both rather than memorising two systems.
+
+    **Delta** keeps ordered JSON commits; current state is the log replayed, and atomicity is *exactly one writer being able to create `N.json`*. **Iceberg** keeps a catalog pointer → metadata file → snapshot → manifest list → manifests → data files, and atomicity is a **compare-and-swap of that pointer, performed by the catalog**.
+
+    Three consequences worth carrying:
+
+    - **The catalog is Iceberg's first architectural decision** (`rest`, `hive`, `hadoop`, `glue`), because it is the coordination point for commits. For Delta it barely arises. This is also why the REST Catalog spec is what enables cross-engine writes — coordination lives in a service, not in filesystem semantics.
+    - **Pruning happens twice.** Whole manifests are skipped on partition bounds *before being opened*, then surviving manifests prune data files on column stats. That extra indirection is why planning stays cheap on very large tables.
+    - **Hidden partitioning means queries never name partition columns.** A spec maps a source column through a transform, so filtering the source column is enough — no derived `dt` column, no directory layout leaking into SQL. And because the metadata holds a *list* of specs, partitioning evolves without rewriting data.
+
+    Columns are identified by **field ID**, not name — so rename is metadata-only and drop-then-add cannot resurrect old data.
+
+!!! warning "Iceberg does not support Spark 4.2 yet — confirmed at source"
+    Verified in the Iceberg 1.11.0 checkout: the repo contains `spark/v3.4`, `v3.5`, `v4.0` and `v4.1` modules and nothing newer. The newest supported Spark is **4.1** (`iceberg-spark-runtime-4.1_2.13`); 3.5 and 4.0 are also Maintained. There is no 4.2 runtime jar, so this topic cannot be practised on the 4.2.0 stack the rest of this path targets. Either run a separate Spark 4.1 environment for this topic, or defer it until an Iceberg release adds 4.2. Re-check the multi-engine support page rather than assuming — this is the fastest-moving fact on this page.
 
 **Milestone:** You can create an Iceberg table from Spark, evolve its partitioning without rewriting the data, query a previous snapshot, and explain — pointing at the actual files — how Iceberg's manifest tree and Delta's `_delta_log` differ in how a reader discovers which data files belong to the current snapshot. You can state what UniForm does and does not solve.
 
