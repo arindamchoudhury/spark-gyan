@@ -23,7 +23,7 @@ concepts:
   - name: pair-rdd-functions
     topics: [I4, A4]
     propose:
-      code: I12
+      code: I13
       level: Intermediate
       title: "Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey"
       what: "PairRDDFunctions adds key-value operations to RDD[(K,V)] via implicit conversion; all aggregations bottom out in combineByKeyWithClassTag, which either applies in-place or routes through ShuffledRDD."
@@ -31,7 +31,7 @@ concepts:
   - name: closure-cleaning
     topics: [I4, E1]
     propose:
-      code: I13
+      code: I14
       level: Intermediate
       title: "Closure Cleaning and the Task-Not-Serializable Problem"
       what: "SparkContext.clean() delegates to ClosureCleaner (ASM 9 bytecode analysis) to null out unreferenced outer-object fields in Scala closures before they are serialized to executors."
@@ -47,7 +47,7 @@ concepts:
   - name: async-rdd-actions
     topics: [I4]
     propose:
-      code: I14
+      code: I15
       level: Intermediate
       title: "AsyncRDDActions: Non-Blocking Job Submission"
       what: "AsyncRDDActions wraps countAsync, collectAsync, takeAsync, foreachAsync, and foreachPartitionAsync, each returning a FutureAction backed by SparkContext.submitJob rather than runJob."

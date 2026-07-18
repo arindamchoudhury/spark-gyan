@@ -29,11 +29,11 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I8 | Delta Lake Basics | — | delta-io/delta, apache/spark | ✅ complete |
 | I9 | The Medallion Architecture | — | delta-io/delta, apache/spark | ✅ complete |
 | I10 | Data Formats: Parquet, Delta, Avro, JSON | — | apache/spark | ✅ complete |
-| I15 | Apache Iceberg and Table-Format Interoperability | — | apache/iceberg, delta-io/delta, apache/spark | ✅ complete |
-| I11 | SQL Scripting | — | — | ⬜ |
-| I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | apache/spark | ✅ complete |
-| I13 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
-| I14 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
+| I11 | Apache Iceberg and Table-Format Interoperability | — | apache/iceberg, delta-io/delta, apache/spark | ✅ complete |
+| I12 | SQL Scripting | — | — | ⬜ |
+| I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | apache/spark | ✅ complete |
+| I14 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
+| I15 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -84,9 +84,9 @@ flowchart LR
 | Concept | Subsystem | Kind | Proposed code | Proposed title |
 |---|---|---|---|---|
 | accumulator-v2 | core | refinement | E10 | AccumulatorV2: Distributed Side-Effect Counters |
-| async-rdd-actions | core | refinement | I14 | AsyncRDDActions: Non-Blocking Job Submission |
-| closure-cleaning | core | refinement | I13 | Closure Cleaning and the Task-Not-Serializable Problem |
-| pair-rdd-functions | core | refinement | I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
+| async-rdd-actions | core | refinement | I15 | AsyncRDDActions: Non-Blocking Job Submission |
+| closure-cleaning | core | refinement | I14 | Closure Cleaning and the Task-Not-Serializable Problem |
+| pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
 
 

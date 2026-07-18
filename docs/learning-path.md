@@ -1,6 +1,6 @@
 # Learning Path: Apache Spark / PySpark
 
-> **Last updated:** 2026-07-18 (taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I15/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
+> **Last updated:** 2026-07-18 (taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I11/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026)
 >
@@ -17,10 +17,14 @@
 
 **How to actually use each topic.** Read the milestone *first*, and attempt it from memory before opening any resource. You will mostly fail early on — that is the point; the failed attempt is what makes the subsequent reading stick, and it tells you which parts you can skip. Then read, then attempt the milestone again in writing. Self-explanation and retrieval practice both carry roughly twice the effect size of rereading, and the book chapters in `docs/spark-book/` are where the self-explanation happens.
 
-!!! warning "Topic codes are stable identifiers, not an ordering"
-    They are referenced by the book index, the chapter files, and the source-map coverage matrix, so they are never renumbered when the taxonomy changes. A code with a gap or an out-of-sequence number (I15, the I12–I14 depth topics) is normal. Read the level headings for order, not the numbers.
+!!! note "Topic codes track reading order within a level"
 
----
+    Codes run in ascending order inside each level, so the numbers and the reading order agree.
+    They are referenced by the book index, chapter files and the coverage matrix, so renumbering
+    is a cross-file change and is avoided — but it is not forbidden. The I-block was renumbered
+    on 2026-07-19 so that Iceberg joined the storage run as I11 instead of trailing as I15.
+    Codes are stable between such changes, not permanently frozen; check the refresh logs if an
+    external note references an old code.
 
 ## Resources at a glance
 
@@ -54,13 +58,13 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 | Market signal | Where it lands here |
 |---|---|
-| Open table formats (Iceberg increasingly the default; Delta where Databricks is in play) | I8 fundamentals, I15 depth and interop |
+| Open table formats (Iceberg increasingly the default; Delta where Databricks is in play) | I8 fundamentals, I11 depth and interop |
 | Kafka as the standard event backbone | A12, and as a source throughout A7/A8 |
 | Semi-structured data at scale (`VARIANT`, new in Spark 4.0) | I1 |
 | Kubernetes as the deployment target | E2 |
 | Spark Connect as the default client architecture in 4.x | B2 basics, E9 depth |
 | Declarative pipelines replacing hand-rolled orchestration glue | A11 |
-| SQL fluency weighted at least as heavily as Python | B8, I11 |
+| SQL fluency weighted at least as heavily as Python | B8, I12 |
 
 ---
 
@@ -198,7 +202,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
     `df.write.insertInto(table)` ignores column names entirely and matches by ordinal, while `saveAsTable` resolves by name. A DataFrame with the *right* column names in the wrong order writes silently corrupted data. None of the three books above covers this distinction; it is the highest-consequence trap in the writer API.
 
 !!! info "Writes are not atomic on object storage"
-    Spark writes into a `_temporary` directory and *moves* files on job commit. On HDFS that rename is atomic and cheap; on S3 and other object stores it is a copy — slow, and not atomic, so a failed job can leave partial output. This is the gap that Delta and Iceberg exist to close, and it is worth understanding here rather than treating those formats as magic later (see I8, I15).
+    Spark writes into a `_temporary` directory and *moves* files on job commit. On HDFS that rename is atomic and cheap; on S3 and other object stores it is a copy — slow, and not atomic, so a failed job can leave partial output. This is the gap that Delta and Iceberg exist to close, and it is worth understanding here rather than treating those formats as magic later (see I8, I11).
 
 ---
 
@@ -388,10 +392,10 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Estimated time to complete this level:** 38–54 hrs
 
-**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I15** (the storage-and-table-format run) → I11. The level then ends with its checkpoint. I12–I14 sit just above that gate as optional depth — they are not required to pass it, and are read on demand rather than in sequence.
+**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I11** (the storage-and-table-format run) → I12. The level then ends with its checkpoint. I13–I15 sit just above that gate as optional depth — they are not required to pass it, and are read on demand rather than in sequence.
 
 !!! info "Why the numbering jumps"
-    I15 is a main-line topic that sits at the end of the format run; I12–I14 are optional-depth topics from a source sweep. Codes are permanent identifiers — the book index, chapter files and coverage matrix all reference them — so they are never renumbered when the taxonomy changes. Follow the reading order above, not the numbers.
+    I11 (Iceberg) closes the storage-and-table-format run; I13–I15 are optional-depth topics from a source sweep, numbered last because they sit outside the main line.
 
 ---
 
@@ -685,7 +689,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
     So I8 — along with I9, A6 and E4, which all build on it — cannot be practised on the 4.2.0 stack the rest of this path targets. Run a separate Spark 4.1 environment for the Delta topics, or take them after the rest.
 
-    This is now the **second** table format in this position: [I15](#i15-apache-iceberg-and-table-format-interoperability) has the same gap for the same reason. Both lag the Spark release by design — a table format has to be built and tested against a released Spark, so a new Spark minor is always ahead of its connectors. Worth planning around rather than treating as a surprise: pin your learning stack to the newest Spark that *your table format* supports, not the newest Spark.
+    This is now the **second** table format in this position: [I11](#i11-apache-iceberg-and-table-format-interoperability) has the same gap for the same reason. Both lag the Spark release by design — a table format has to be built and tested against a released Spark, so a new Spark minor is always ahead of its connectors. Worth planning around rather than treating as a surprise: pin your learning stack to the newest Spark that *your table format* supports, not the newest Spark.
 
 !!! info "Delta is a plugin, and its whole ACID story is one filesystem operation"
     Delta is not built into Spark. It installs through `spark.sql.extensions` plus a catalog implementation, then intercepts planning for directories containing a `_delta_log`. That config is **static** (see B2), so setting it after the session exists silently gives you no Delta at all — the most common setup failure, and it presents as "my Delta SQL isn't recognised".
@@ -760,7 +764,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
     Find `ColumnarToRowExec` in your `explain()` output — its position tells you exactly where the columnar advantage ended.
 
 !!! warning "Delta and Iceberg are not formats in this list — they are layers over Parquet"
-    Comparing "Parquet, Delta, Avro, JSON" as peers is a category error that this topic's own title invites. Parquet, ORC, Avro and JSON are **storage formats**: how bytes are laid out in one file. Delta and Iceberg are **table formats**: metadata describing which files constitute a table, layered on top of Parquet (I8, I15).
+    Comparing "Parquet, Delta, Avro, JSON" as peers is a category error that this topic's own title invites. Parquet, ORC, Avro and JSON are **storage formats**: how bytes are laid out in one file. Delta and Iceberg are **table formats**: metadata describing which files constitute a table, layered on top of Parquet (I8, I11).
 
     The practical question is therefore two questions. *Which storage format* — columnar for analytics, row for whole-record access and streaming payloads. *Which table format, if any* — none for immutable data, Delta or Iceberg once you need atomic updates, time travel or concurrent writers.
 
@@ -771,7 +775,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ⬜ I15 — Apache Iceberg and Table-Format Interoperability
+### ⬜ I11 — Apache Iceberg and Table-Format Interoperability
 
 **What it is:** The Iceberg table format — metadata tree (catalog → metadata file → manifest list → manifests), snapshots, hidden partitioning and partition evolution, schema evolution, the REST Catalog specification; how it compares to Delta Lake, and the interoperability layers (Delta UniForm, Iceberg's own catalog spec) that let one copy of the data serve several engines.
 
@@ -784,7 +788,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **Iceberg-docs → Spark Getting Started** ([iceberg.apache.org/docs/latest/spark-getting-started/](https://iceberg.apache.org/docs/latest/spark-getting-started/)) — catalog configuration and the runtime jar, which is the part that actually blocks beginners
 4. **Iceberg-docs → Multi-Engine Support** ([iceberg.apache.org/multi-engine-support/](https://iceberg.apache.org/multi-engine-support/)) — the authoritative Spark-version support matrix; check it before choosing a runtime jar
 5. **Local stack** — create the same dataset as both a Delta and an Iceberg table, then diff the on-disk metadata directories
-6. **Source trace — [I15 in the source map](reference/spark-source-map/topics/i15.md)** — the one-sentence design difference from Delta, why the catalog rather than the filesystem provides atomicity, and how pruning happens twice
+6. **Source trace — [I11 in the source map](reference/spark-source-map/topics/i11.md)** — the one-sentence design difference from Delta, why the catalog rather than the filesystem provides atomicity, and how pruning happens twice
 
 !!! info "Delta replays a log; Iceberg follows a pointer to a tree"
     That single sentence explains most of the differences, and it is the way to learn both rather than memorising two systems.
@@ -806,7 +810,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ⬜ I11 — SQL Scripting
+### ⬜ I12 — SQL Scripting
 
 **What it is:** Multi-statement SQL scripts with procedural constructs: `BEGIN...END` compound bodies, local variable declarations (`DECLARE`, `SET`), `IF...THEN...ELSIF...ELSE`, `CASE` (searched and simple), `WHILE`, `FOR`, `LOOP`, `REPEAT...UNTIL`, and `LEAVE`/`ITERATE` for loop control. New in Spark 4.0.
 
@@ -827,11 +831,11 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ### Optional depth — source-derived topics
 
-**Not required for the checkpoint below.** These three came from a source sweep of `core`, not from a book, course or exam guide. Read one when you hit the underlying problem in practice — a `Task not serializable` error, a `groupByKey` OOM, a job that needs concurrent submission — rather than in sequence. Codes are non-contiguous because topic codes are stable identifiers (see the header note).
+**Not required for the checkpoint below.** These three came from a source sweep of `core`, not from a book, course or exam guide. Read one when you hit the underlying problem in practice — a `Task not serializable` error, a `groupByKey` OOM, a job that needs concurrent submission — rather than in sequence. They are numbered last in the level (I13–I15) because they sit outside the main line.
 
 ---
 
-### ⬜ I12 — Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey
+### ⬜ I13 — Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey
 
 > Discovered from source sweep (refinement): `core: pair-rdd-functions`
 
@@ -843,7 +847,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 1. **SDG Ch 13** — advanced RDDs; key-value operations and the aggregation family in full
 2. **Spark-docs → Shuffle operations** ([rdd-programming-guide.html#shuffle-operations](https://spark.apache.org/docs/latest/rdd-programming-guide.html#shuffle-operations)) — what a shuffle costs and which operations trigger one
-3. **Source trace — [I12 in the source map](reference/spark-source-map/topics/i12.md)** — the one implementation behind five API names, the boolean that separates the fast case from the slow one, and why the two fail differently rather than merely differing in speed
+3. **Source trace — [I13 in the source map](reference/spark-source-map/topics/i13.md)** — the one implementation behind five API names, the boolean that separates the fast case from the slow one, and why the two fail differently rather than merely differing in speed
 
 **Milestone:** You can explain why `reduceByKey` beats `groupByKey().mapValues(sum)` in terms of what crosses the network, and express both as a `combineByKey` call with its three functions. Then the sharper version: say what happens to each under a single hot key, and name the one argument that differs between them in the source.
 
@@ -863,7 +867,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ⬜ I13 — Closure Cleaning and the Task-Not-Serializable Problem
+### ⬜ I14 — Closure Cleaning and the Task-Not-Serializable Problem
 
 > Discovered from source sweep (refinement): `core: closure-cleaning`
 
@@ -882,7 +886,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 ---
 
 
-### ⬜ I14 — AsyncRDDActions: Non-Blocking Job Submission
+### ⬜ I15 — AsyncRDDActions: Non-Blocking Job Submission
 
 > Discovered from source sweep (refinement): `core: async-rdd-actions`
 
@@ -1419,13 +1423,13 @@ You are operating at Expert level when you can:
 ```
 Beginner (B1–B9)              →  9 topics · 30–40 hrs   write correct Spark
     ↓
-Intermediate (I1–I11, I15)    → 12 topics · 38–54 hrs   real data, real formats, read a plan
+Intermediate (I1–I12, I11)    → 12 topics · 38–54 hrs   real data, real formats, read a plan
     ↓
 Advanced (A1–A12)             → 12 topics · 44–66 hrs   make it fast, make it stream
     ↓
 Expert (E1–E9)                →  9 topics · 40–60+ hrs  run it in production
 
-Optional depth (I12–I14, E10–E11) → 5 topics, source-sweep derived; not on the main line
+Optional depth (I13–I15, E10–E11) → 5 topics, source-sweep derived; not on the main line
 Optional milestones: three Databricks certifications — see the section below
 ```
 
@@ -1437,7 +1441,7 @@ Three contain claims that are actually *wrong* and should be cleared first: **B3
 
 **If you only do three things next:** clear I3 (it teaches a now-false performance model), do I6–I7 (caching and the Spark UI — everything in Advanced depends on being able to read a plan), then I8 with both table formats rather than Delta alone.
 
-!!! info "About the optional-depth topics (I12–I14, E10–E11)"
+!!! info "About the optional-depth topics (I13–I15, E10–E11)"
     These five were derived from Spark source sweeps rather than from books, courses, or exam guides. They sit outside the main study line, still carry `Milestone: TBD`, and their only listed resource is the official docs. Treat them as reading prompts when you hit the underlying problem in practice (a `Task not serializable` error, a `groupByKey` OOM), not as sequential coursework.
 
 ---
@@ -1455,7 +1459,7 @@ All three are proctored, multiple-choice, $200, English-delivered (the DE exams 
 | **Databricks Data Engineer Professional** | A6–E8 | Code for Data Processing (Python & SQL) 22%, Cost & Performance Optimisation 13%, Data Transformation/Cleansing/Quality 10%, Monitoring & Alerting 10%, Security & Compliance 10%, Debugging & Deploying 10%, Data Ingestion 7%, Data Governance 7%, Data Modelling 6%, Data Sharing & Federation 5% | 59 scored / 120 min |
 
 !!! info "Spark Associate is Python-only; the DE exams lead with SQL"
-    Every code snippet on the Spark Developer Associate exam is Python. On both Data Engineer exams, data-manipulation code is given in SQL where possible and Python otherwise — so B8 and I11 carry more exam weight than their position here suggests.
+    Every code snippet on the Spark Developer Associate exam is Python. On both Data Engineer exams, data-manipulation code is given in SQL where possible and Python otherwise — so B8 and I12 carry more exam weight than their position here suggests.
 
 !!! warning "The DE exams test the platform, not the engine"
     Only the Spark Developer Associate is really an Apache Spark exam. The two Data Engineer exams weight Lakeflow Jobs, Unity Catalog and the Databricks platform heavily — roughly a third of the DE Associate exam is platform surface with no open-source equivalent. That is a fine thing to study deliberately; it is a poor thing to let quietly reshape a Spark learning path, which is what the previous version of this page did.
