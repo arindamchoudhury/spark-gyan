@@ -202,7 +202,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 ---
 
-### ✅ B5 — Schema: StructType, DDL Strings, and Type Safety
+### 🔄 B5 — Schema: StructType, DDL Strings, and Type Safety
 
 **What it is:** `StructType` / `StructField` schema objects; DDL shorthand strings; `inferSchema` trade-offs; checking schema at runtime.
 
@@ -212,9 +212,22 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 1. **Rioux Ch 4** — introduces schema definition in context of CSV ingestion
 2. **Rioux Ch 6** — `StructType` for JSON and nested schemas
-3. **Spark-docs → SQL Data Types** ([spark.apache.org/docs/latest/sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) — canonical type reference
+3. **Spark-docs → SQL Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) — canonical type reference; note `CHAR`/`VARCHAR` and the `VARIANT` type added in 4.0
+4. **Spark-docs → ANSI Compliance** ([sql-ref-ansi-compliance.html](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html)) — the [type-coercion](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html#type-coercion) and [store-assignment](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html#store-assignment) sections. Store assignment is the rule set that governs writing into an existing table, and it is stricter than what a `select` allows
+5. **Spark-docs → `pyspark.sql.types` reference** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/data_types.html)) — every type class with its Python-value mapping; the table to check before assuming a Python type maps the way you expect
+6. **Source trace — [B5 in the source map](reference/spark-source-map/topics/b5.md)** — the three input surfaces converging on one `DataType` tree, the three separate "is this cast allowed" rules, and — the one to read first — exactly where Spark does and does not enforce a schema
 
-**Milestone:** You can define a schema without `inferSchema`, validate that incoming data matches it, and explain the cost of `inferSchema` on large files.
+**Milestone:** You can define a schema without `inferSchema`, validate that incoming data matches it, and explain the cost of `inferSchema` on large files. Then the part that changes how you write pipelines: declare a column `nullable=False`, read a file containing nulls in it, and predict what happens before you run it.
+
+!!! warning "`nullable=False` is a hint, not a constraint — nothing enforces it on read"
+    This is the most consequential thing about schemas in Spark, and it is the opposite of what the word suggests. No part of the file-read path validates nullability. Declaring a column non-nullable tells the **optimizer** it may skip null checks; if the data then contains nulls, you get nulls in a column the plan believes cannot hold them — which produces wrong results rather than an error.
+
+    Spark does enforce in two narrower places, with different rules in each: `createDataFrame` on local Python data with `verifySchema=True` checks type *and* range per row on the driver, and writing into an existing table applies `spark.sql.storeAssignmentPolicy`. Reading a file is checked by neither. If you need a guarantee, assert it yourself after the read.
+
+!!! info "Three different rules answer 'is this cast allowed'"
+    `canCast` governs an explicit `.cast()` and is permissive. `canUpCast` governs *implicit* coercion during analysis and allows only safe widening. `canANSIStoreAssign` governs writing into an existing table and sits between the two.
+
+    Practical consequence: an expression that resolves fine in a `select` can fail on `INSERT INTO` — not a bug, a different rule set. Also note `spark.sql.ansi.enabled` selects between two *complete* coercion rule sets (`TypeCoercion` vs `AnsiTypeCoercion`), so the same query can resolve to different result types on either side of that flag.
 
 ---
 
@@ -1100,7 +1113,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1, B2, B3, B4, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
+**Carrying 🔄:** B1, B2, B3, B4, B5, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 

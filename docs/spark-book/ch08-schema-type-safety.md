@@ -3,6 +3,15 @@
 > *Learning-path topic: B5 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+!!! warning "🔄 Needs revisiting — B5 source trace (flagged 2026-07-18)"
+    One correction and eight additions.
+
+    **The chapter presents `nullable` as a constraint. It is not.** Nothing in the file-read path validates nullability — it is a hint that lets the optimizer skip null checks. Declaring `nullable=False` and then reading a file containing nulls gives you nulls in a column the plan believes cannot hold them, which yields wrong results rather than an error. Since this chapter's premise is that explicit schemas prevent silent corruption, this needs correcting rather than appending: explicit schemas prevent *some* classes of corruption and quietly enable another.
+
+    Spark does enforce in two narrower places with different rules — `createDataFrame` with `verifySchema=True` (per-row type *and* range, on the driver) and writes into an existing table (`spark.sql.storeAssignmentPolicy`). That asymmetry is worth teaching directly.
+
+    Also missing: the three separate cast rules (`canCast` for explicit casts, `canUpCast` for implicit coercion, `canANSIStoreAssign` for table writes — why a `select` can succeed where an `INSERT` fails); that `spark.sql.ansi.enabled` selects between two complete coercion rule sets rather than tightening one; `spark.sql.caseSensitive` defaulting to `false`; `CHAR`/`VARCHAR` being erased to `StringType` with padding reapplied at plan time; `StructType.merge` behind `mergeSchema`; DDL strings going through the real SQL grammar; and the `schema.json()` round-trip. Full list in the [B5 source trace](../reference/spark-source-map/topics/b5.md).
+
 Schema is the contract between your data and your code. An explicit schema catches corrupt data at ingestion time, prevents silent type coercions, and makes pipelines self-documenting. A missing schema turns bugs into mysteries.
 
 ---

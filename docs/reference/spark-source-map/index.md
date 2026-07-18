@@ -14,7 +14,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | B2 | SparkSession and Entry Points | [04](../../spark-book/ch04-sparksession.md) 🔄 | apache/spark | ✅ complete |
 | B3 | The DataFrame API: Basics | [06](../../spark-book/ch06-dataframe-basics.md) 🔄 | apache/spark | ✅ complete |
 | B4 | Reading and Writing Data | [07](../../spark-book/ch07-reading-writing-data.md) 🔄 | apache/spark | ✅ complete |
-| B5 | Schema: StructType, DDL Strings, and Type Safety | [08](../../spark-book/ch08-schema-type-safety.md) ✅ | — | ⬜ |
+| B5 | Schema: StructType, DDL Strings, and Type Safety | [08](../../spark-book/ch08-schema-type-safety.md) 🔄 | apache/spark | ✅ complete |
 | B6 | Basic Aggregations and GroupBy | [09](../../spark-book/ch09-aggregations-groupby.md) ✅ | — | ⬜ |
 | B7 | Joins: Types and Mechanics | [10](../../spark-book/ch10-joins.md) 🔄 | — | ⬜ |
 | B8 | Spark SQL | [11](../../spark-book/ch11-spark-sql.md) 🔄 | — | ⬜ |
