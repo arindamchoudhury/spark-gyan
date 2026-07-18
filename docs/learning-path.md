@@ -314,9 +314,24 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 1. **Rioux Ch 7** — dedicated chapter on PySpark/SQL bilingual programming
 2. **LS2e Ch 4** — SQL tables, views, and the catalog API
-3. **Spark-docs → SQL Guide** ([spark.apache.org/docs/latest/sql-programming-guide.html](https://spark.apache.org/docs/latest/sql-programming-guide.html))
+3. **Spark-docs → SQL Guide** ([sql-programming-guide.html](https://spark.apache.org/docs/latest/sql-programming-guide.html)) — start here; the [Getting Started](https://spark.apache.org/docs/latest/sql-getting-started.html) page covers temp views and the catalog
+4. **Spark-docs → SQL Syntax reference** ([sql-ref-syntax.html](https://spark.apache.org/docs/latest/sql-ref-syntax.html)) — the full statement grammar. Worth knowing this exists as a reference rather than reading through: `selectExpr` and `F.expr` use the same parser, so anything documented here works inside them
+5. **Spark-docs → Identifiers and name resolution** ([sql-ref-identifier.html](https://spark.apache.org/docs/latest/sql-ref-identifier.html), [sql-ref-name-resolution.html](https://spark.apache.org/docs/latest/sql-ref-name-resolution.html)) — how a bare name becomes a table, view or column, and the qualification rules behind the temp-view shadowing described below
+6. **Source trace — [B8 in the source map](reference/spark-source-map/topics/b8.md)** — the three parser entry points, parameter binding as an analyzer rule, and `lookupRelation`'s branch order, which is where temp-view surprises come from
 
-**Milestone:** You can register a DataFrame as a temp view, query it with `spark.sql()`, and mix SQL expressions into a method-chained DataFrame pipeline.
+**Milestone:** You can register a DataFrame as a temp view, query it with `spark.sql()`, and mix SQL expressions into a method-chained DataFrame pipeline. Then, with a user-supplied value in hand: write the query so the value can never be parsed as SQL, and say why your approach guarantees that rather than merely making it unlikely.
+
+!!! warning "Use parameterized SQL — string interpolation is the injection bug, not a style issue"
+    Since Spark 3.4, `spark.sql` takes arguments: `spark.sql("SELECT * FROM t WHERE dt = :dt", {"dt": value})` for named parameters, or `?` with a list for positional.
+
+    This is a *structural* fix rather than escaping. The query is parsed first, then the `BindParameters` analyzer rule substitutes each argument as a literal expression into the already-built plan — so a value cannot become SQL syntax no matter what it contains. And `spark.sql(text)` is literally defined as `spark.sql(text, Map.empty)`, so there is no cost to always using the parameterized form.
+
+    Retreating to the DataFrame API to avoid injection concedes the SQL surface for no reason; parameters keep both.
+
+!!! info "An unqualified name prefers a temp view; a qualified one cannot see temp views at all"
+    `SessionCatalog.lookupRelation` resolves in a fixed order, and the asymmetry catches people. A bare `events` finds a temp view **before** a real table of the same name — so a temp view silently shadows a table. But `mydb.events` skips temp views entirely, so a qualified reference can never reach one.
+
+    Two consequences: name your temp views distinctly to avoid shadowing production tables, and do not expect a database prefix to disambiguate *toward* a temp view — it disambiguates away from it. Global temp views are different again: they live in the `global_temp` database on the shared state, which is why they outlive the session that created them (see B2).
 
 !!! note "New in Spark 4.2.0 — QUALIFY, search paths, metric views"
     Three additions the books predate: `QUALIFY` ([SPARK-31561]) filters on window-function results without a wrapping subquery — worth learning alongside I2; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]) changes how unqualified names resolve; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]) add a declarative semantic-modelling surface. Learn the classic catalog model first — it's what the exam tests.

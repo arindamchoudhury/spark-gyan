@@ -3,8 +3,16 @@
 > *Learning-path topic: B8 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-!!! warning "🔄 Needs revisiting — Spark 4.2.0 (flagged 2026-07-18)"
-    Incomplete rather than wrong. Spark 4.2.0 adds three things this chapter should cover: `QUALIFY` ([SPARK-31561]) for filtering on window-function results without a wrapping subquery; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]), which changes how unqualified names resolve and therefore affects the catalog section directly; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]). The catalog/temp-view material as written still holds.
+!!! warning "🔄 Needs revisiting — Spark 4.2.0 + B8 source trace (flagged 2026-07-18)"
+    The B8 trace opened seven gaps. Two matter enough to fix before this chapter is relied on.
+
+    **The chapter raises SQL injection and does not give the fix.** It recommends retreating to the DataFrame API, but since 3.4 `spark.sql` accepts arguments — `spark.sql("… WHERE dt = :dt", {"dt": value})`. `BindParameters` substitutes them as literal expressions into the already-parsed plan, so a value structurally cannot become SQL syntax. That is a real guarantee rather than escaping, and `sql(text)` is defined as `sql(text, Map.empty)`, so parameters cost nothing.
+
+    **Name resolution is asymmetric, and it is the sharp edge of temp views.** `lookupRelation` prefers a temp view over a real table for an *unqualified* name — so a temp view silently shadows a table — while any qualification (`db.name`) skips temp views entirely. The chapter's advice to use unique view names is right; this is the mechanism that makes it matter.
+
+    Also missing: temp views being a `HashMap` on `SessionState` (which is *why* they are session-scoped, and why the global variant on `SharedState` outlives the session — see Ch04); views storing SQL text and re-analyzing on use, plus 4.x view schema binding modes; that `F.expr`/`selectExpr` call the same parser as `spark.sql` rather than a subset; `spark.sql.parser.quotedRegexColumnNames`; and the rest of the `spark.catalog` API. Full list in the [B8 source trace](../reference/spark-source-map/topics/b8.md).
+
+    The originally-noted gap: Spark 4.2.0 adds three things this chapter should cover: `QUALIFY` ([SPARK-31561]) for filtering on window-function results without a wrapping subquery; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]), which changes how unqualified names resolve and therefore affects the catalog section directly; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]). The catalog/temp-view material as written still holds.
 
 Spark SQL is not a separate system — it is the same Catalyst engine that runs the DataFrame API, exposed through SQL strings. Knowing both lets you choose the most readable form for each situation and mix them freely in the same pipeline.
 
