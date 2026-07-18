@@ -483,8 +483,26 @@ You are ready to leave this level when you can build a complete end-to-end batch
 4. **IBM-Spark Module 3** — practical ETL + ML pipeline UDFs; hands-on lab
 5. **Spark-docs → UDFs & UDTFs** ([user_guide/udfandudtf.html](https://spark.apache.org/docs/latest/api/python/user_guide/udfandudtf.html)) — the current taxonomy: scalar Python UDFs, pandas UDFs, and Arrow UDFs (`pyarrow.Array` in and out). This page reflects the 4.2.0 defaults the books predate; read it before trusting any book's performance claim
 6. **Spark-docs → Apache Arrow in PySpark** ([tutorial/sql/arrow_pandas.html](https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html)) — all four pandas UDF shapes plus the function APIs (`applyInPandas`, `mapInPandas`, `cogroup`)
+7. **Source trace — [I3 in the source map](reference/spark-source-map/topics/i3.md)** — the eval-type integer that identifies every UDF flavour, why a UDF's output is permanently nullable, and what worker reuse actually buys you
 
-**Milestone:** You can replace a Python UDF with a pandas UDF and measure the speedup; you can load an ML model once per partition using an Iterator UDF; you can test a UDF locally without a SparkSession.
+**Milestone:** You can replace a Python UDF with a pandas UDF and measure the speedup **on 4.2.0** — not quote a book's figure; you can load an ML model once per partition using an Iterator UDF and say which config makes that pay off; you can test a UDF locally without a SparkSession. Then, from `explain()`: name which eval operator your UDF ran under, and explain why chaining a plain UDF and a pandas UDF in one `select` costs more than chaining two of the same kind.
+
+!!! warning "The Arrow default flipped in 4.2.0 — re-measure rather than trusting the books"
+    `spark.sql.execution.pythonUDF.arrow.enabled` now defaults to **`true`**, so a plain `@F.udf` is Arrow-serialized instead of pickled row by row. The "pandas UDFs are 5–10× faster" figures in Rioux and LS2e were measured against per-row pickle, which is no longer what you get by default.
+
+    The hierarchy still holds directionally — built-ins beat UDFs, vectorised beats scalar — but the *gaps* have narrowed and the reason to prefer a pandas UDF is now more about expressing vectorised logic than about escaping pickle. Measure on your own 4.2.0 stack.
+
+    One trap while benchmarking: if PyArrow or pandas is missing, Spark **silently falls back** to the non-Arrow path with only a `RuntimeWarning`. Identical code can run at very different speeds in two environments.
+
+!!! info "A UDF's output is always nullable, and mixing UDF types costs an extra round trip"
+    `PythonUDF.nullable` is `true` unconditionally, whatever return type you declare — so downstream null checks can never be optimized away. That is a permanent optimizer cost on top of serialization, and it is why a UDF in a hot path hurts more than its own runtime suggests.
+
+    Separately, `ExtractPythonUDFs` batches UDFs of the **same eval type** into one plan node. A plain UDF and a pandas UDF in the same `select` therefore produce two nodes and two crossings of the Python boundary. Keeping a chain to one flavour is a free win, and `explain()` shows it as `BatchEvalPython` versus `ArrowEvalPython` nodes.
+
+!!! info "Python worker memory is not part of executor memory"
+    Python workers are separate OS processes, so their footprint is outside `spark.executor.memory` and governed by `spark.executor.pyspark.memory`. Heavy pandas UDFs that exhaust container memory usually show up as a killed container rather than a JVM OOM, which sends people tuning the wrong knob.
+
+    Worker reuse (`spark.python.worker.reuse`, on by default) is what makes the Iterator-UDF pattern worthwhile — the process survives across tasks, so a model loaded once stays loaded.
 
 !!! warning "Spark 4.2.0 changes the UDF performance hierarchy the books teach"
     Arrow-optimized Python UDFs and Arrow-based PySpark IPC are now **on by default** ([SPARK-54555]). Rioux and LS2e were written when plain `@F.udf` meant row-by-row pickle serialisation, so the "pandas UDF is dramatically faster" gap they measure is narrower on 4.2.0. Learn the hierarchy anyway — it explains *why* Arrow helps, and the exam still tests it — but re-run the speedup measurement in the milestone on your own 4.2.0 stack rather than trusting the book's numbers. Spark 4.2.0 also adds Arrow and pandas grouped-aggregation UDFs, which belong with A5.

@@ -25,6 +25,7 @@ nav = [
             { "B9 — Null Handling" = "reference/spark-source-map/topics/b9.md" },
             { "I1 — Complex Column Types" = "reference/spark-source-map/topics/i1.md" },
             { "I2 — Window Functions" = "reference/spark-source-map/topics/i2.md" },
+            { "I3 — User-Defined Functions" = "reference/spark-source-map/topics/i3.md" },
             { "I4 — RDD Fundamentals" = "reference/spark-source-map/topics/i4.md" },
         ]},
         { "Sweeps" = [
