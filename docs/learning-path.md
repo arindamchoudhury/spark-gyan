@@ -591,7 +591,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ### ⬜ I6 — Caching and Persistence
 
-**What it is:** `df.cache()`, `df.persist(StorageLevel.*)`, `df.unpersist()`; storage levels; when caching helps vs hurts; `MEMORY_AND_DISK_DESER` as the default.
+**What it is:** `df.cache()`, `df.persist(StorageLevel.*)`, `df.unpersist()`; storage levels; when caching helps vs hurts; the default level (`MEMORY_AND_DISK_DESER` in PySpark's naming) and how cache entries are matched and evicted.
 
 **Why you need it:** Caching an intermediate DataFrame used multiple times avoids recomputing it. Caching the wrong thing wastes memory and slows everything down.
 
@@ -601,8 +601,31 @@ You are ready to leave this level when you can build a complete end-to-end batch
 2. **SDG Ch 19** — performance tuning; caching strategy
 3. **Spark-docs → RDD Persistence** ([rdd-programming-guide.html#rdd-persistence](https://spark.apache.org/docs/latest/rdd-programming-guide.html#rdd-persistence)) — the storage-level table and the eviction rules; the DataFrame `cache()` you use daily is this mechanism underneath
 4. **Spark-docs → CACHE TABLE** ([sql-ref-syntax-aux-cache-cache-table.html](https://spark.apache.org/docs/latest/sql-ref-syntax-aux-cache-cache-table.html)) — the SQL side, including `LAZY` and why `CACHE TABLE` is eager while `df.cache()` is not
+5. **Spark-docs → Memory Management** ([tuning.html#memory-management-overview](https://spark.apache.org/docs/latest/tuning.html#memory-management-overview)) — `spark.memory.fraction` and `storageFraction`; the key point being that storage and execution *share* one region, so cached blocks can be evicted by a shuffle
+6. **Spark-docs → `pyspark.StorageLevel`** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.StorageLevel.html)) — the Python constants, which do **not** map one-to-one onto the Scala ones (see the warning below)
+7. **Source trace — [I6 in the source map](reference/spark-source-map/topics/i6.md)** — why a cache hit depends on plan equivalence rather than on your variable, and why `storageFraction` is a floor rather than a reservation
 
-**Milestone:** You can identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower.
+**Milestone:** You can identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower. Then two the source settles: explain why `cached_df.filter(...)` may recompute from source, and say which storage level `df.cache()` actually gives you — spelled the way PySpark spells it.
+
+!!! warning "`MEMORY_AND_DISK` does not mean the same thing in PySpark as in Scala"
+    Storage levels are `(useDisk, useMemory, useOffHeap, deserialized)`, and the two APIs disagree on one flag under the same name:
+
+    | Constant | Flags | Deserialized? |
+    |---|---|---|
+    | Scala `MEMORY_AND_DISK` | `(true, true, false, true)` | yes |
+    | PySpark `MEMORY_AND_DISK` | `(True, True, False, False)` | **no** |
+    | PySpark `MEMORY_AND_DISK_DESER` | `(True, True, False, True)` | yes |
+
+    `df.cache()` resolves to the deserialized level — which PySpark spells `MEMORY_AND_DISK_DESER`. So calling `df.persist(StorageLevel.MEMORY_AND_DISK)` in Python does **not** reproduce the default; it selects a serialized level instead. Same name, different behaviour, no warning.
+
+!!! warning "Caching is registered by plan, and it is not a guarantee"
+    Three things about `cache()` that the API hides:
+
+    **It computes nothing.** `cache()` registers the plan with the `CacheManager` and returns; data appears on the next action. The first read after caching is no faster — the standard benchmarking mistake. `CACHE TABLE` is the opposite, materializing eagerly, with `CACHE LAZY TABLE` to opt out.
+
+    **Hits are matched by plan equivalence, not by your variable.** `lookupCachedData` compares plans with `sameResult`, so two independently-built identical plans share one entry, while `cached_df.filter(...)` is a *different* plan and recomputes from source. This is the most useful fact in the topic and is invisible from the API.
+
+    **Cached data can be evicted mid-job.** `spark.memory.storageFraction` (0.5) is the floor below which storage cannot be evicted, not a reservation — above it, execution wins. With a memory-only level an evicted block is silently recomputed: correct results, unexplained slowness. The Storage tab (I7) is how you see it.
 
 ---
 

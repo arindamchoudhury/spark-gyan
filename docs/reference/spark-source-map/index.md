@@ -24,7 +24,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) 🔄 | apache/spark | ✅ complete |
 | I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) 🔄 | apache/spark | ✅ complete |
 | I5 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) 🔄 | apache/spark | ✅ complete |
-| I6 | Caching and Persistence | — | — | ⬜ |
+| I6 | Caching and Persistence | — | apache/spark | ✅ complete |
 | I7 | The Spark UI: Reading Plans and Diagnosing Jobs | — | — | ⬜ |
 | I8 | Delta Lake Basics | — | — | ⬜ |
 | I9 | The Medallion Architecture | — | — | ⬜ |
