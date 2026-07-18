@@ -19,9 +19,14 @@ from pathlib import Path
 
 import yaml
 
-TOPIC_RE = re.compile(r"^###\s+(?:✅|⬜)\s+([BIAE]\d+)\s+—\s+(.+?)\s*$", re.MULTILINE)
+# Status markers used in learning-path.md headings and spark-book/index.md rows.
+# 🔄 means written but needing revisiting against a newer Spark; it must parse as
+# a real topic/chapter, otherwise those rows silently vanish from the matrix.
+STATUS_MARK = "✅|⬜|🔄"
+TOPIC_RE = re.compile(rf"^###\s+(?:{STATUS_MARK})\s+([BIAE]\d+)\s+—\s+(.+?)\s*$", re.MULTILINE)
 BOOK_ROW_RE = re.compile(
-    r"^\|\s*(✅|⬜)\s*\|\s*(\d+)\s*\|\s*([BIAE]\d+)\s*\|\s*\[([^\]]+)\]\(([^)]+)\)", re.MULTILINE)
+    rf"^\|\s*({STATUS_MARK})\s*\|\s*(\d+)\s*\|\s*([BIAE]\d+)\s*\|\s*\[([^\]]+)\]\(([^)]+)\)",
+    re.MULTILINE)
 FRONT_MATTER_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
 
 
@@ -39,7 +44,7 @@ def parse_book_chapters(book_index: Path) -> dict[str, dict]:
     for m in BOOK_ROW_RE.finditer(text):
         done, chapter, code, title, link = m.groups()
         out[code] = {"chapter": chapter, "title": title, "link": link,
-                     "done": done == "✅"}
+                     "done": done in ("✅", "🔄"), "mark": done}
     return out
 
 
@@ -115,7 +120,10 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
     """Append proposed topic sections to learning-path.md. Returns list of appended codes."""
     lp = root / "docs" / "learning-path.md"
     text = lp.read_text(encoding="utf-8")
-    existing_codes = {m.group(1) for m in re.finditer(r"###\s+[✅⬜]\s+([BIAE]\d+)\s+—", text)}
+    # Must accept every status marker, or a 🔄 topic reads as non-existent and a
+    # sweep proposal reuses its code, producing two topics with the same code.
+    existing_codes = {m.group(1)
+                      for m in re.finditer(rf"###\s+(?:{STATUS_MARK})\s+([BIAE]\d+)\s+—", text)}
     appended: list[str] = []
 
     insert_point = SUGGESTED_RE.search(text)
@@ -208,7 +216,7 @@ def build_index(root: Path) -> str:
             link = ch["link"]
             chap_link = f"../../spark-book/{link}" if not link.startswith("http") else link
             chap = f"[{ch['chapter']}]({chap_link})"
-            chap += " ✅" if ch["done"] else " ⬜"
+            chap += f" {ch.get('mark', '✅' if ch['done'] else '⬜')}"
         else:
             chap = "—"
         tp = topic_pages.get(code)

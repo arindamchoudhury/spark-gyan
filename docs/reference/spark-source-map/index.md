@@ -10,18 +10,18 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 
 | Topic | Title | Chapter | Repos | Status |
 |---|---|---|---|---|
-| B1 | Spark Architecture & the Execution Model | [03](../../spark-book/ch03-spark-installation.md) ✅ | apache/spark | ✅ complete |
+| B1 | Spark Architecture & the Execution Model | [03](../../spark-book/ch03-spark-installation.md) 🔄 | apache/spark | ✅ complete |
 | B2 | SparkSession and Entry Points | [04](../../spark-book/ch04-sparksession.md) ✅ | apache/spark | ✅ complete |
 | B3 | The DataFrame API: Basics | [06](../../spark-book/ch06-dataframe-basics.md) ✅ | apache/spark | ✅ complete |
 | B4 | Reading and Writing Data | [07](../../spark-book/ch07-reading-writing-data.md) ✅ | — | ⬜ |
 | B5 | Schema: StructType, DDL Strings, and Type Safety | [08](../../spark-book/ch08-schema-type-safety.md) ✅ | — | ⬜ |
 | B6 | Basic Aggregations and GroupBy | [09](../../spark-book/ch09-aggregations-groupby.md) ✅ | — | ⬜ |
-| B7 | Joins: Types and Mechanics | [10](../../spark-book/ch10-joins.md) ✅ | — | ⬜ |
-| B8 | Spark SQL | [11](../../spark-book/ch11-spark-sql.md) ✅ | — | ⬜ |
+| B7 | Joins: Types and Mechanics | [10](../../spark-book/ch10-joins.md) 🔄 | — | ⬜ |
+| B8 | Spark SQL | [11](../../spark-book/ch11-spark-sql.md) 🔄 | — | ⬜ |
 | B9 | Null Handling | [12](../../spark-book/ch12-null-handling.md) ✅ | — | ⬜ |
 | I1 | Complex Column Types: Arrays, Maps, Structs | [13](../../spark-book/ch13-complex-types.md) ✅ | — | ⬜ |
 | I2 | Window Functions | [14](../../spark-book/ch14-window-functions.md) ✅ | — | ⬜ |
-| I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) ✅ | — | ⬜ |
+| I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) 🔄 | — | ⬜ |
 | I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) ✅ | apache/spark | ✅ complete |
 | I5 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) ✅ | — | ⬜ |
 | I6 | Caching and Persistence | — | — | ⬜ |
@@ -94,14 +94,14 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
-| sql/catalyst | 656 | ⬜ pending | — | — |
-| core — rdd-layer | 533 | ✅ complete | 4.1.2 | 2026-06-06 |
+| sql/catalyst | 721 | ⬜ pending | — | — |
+| core — rdd-layer | 546 | ✅ complete | 4.1.2 | 2026-06-06 |
 | core — execution-engine | — | ⬜ pending | — | — |
 | core — shuffle-memory | — | ⬜ pending | — | — |
 | core — storage-serializer | — | ⬜ pending | — | — |
 | core — infra | — | ⬜ pending | — | — |
-| resource-managers/kubernetes | 81 | ⬜ pending | — | — |
-| resource-managers/yarn | 59 | ⬜ pending | — | — |
+| resource-managers/kubernetes | 89 | ⬜ pending | — | — |
+| resource-managers/yarn | 61 | ⬜ pending | — | — |
 | streaming | 28 | ⬜ pending | — | — |
 | sql/connect | 14 | ⬜ pending | — | — |
 | sql/hive | 11 | ⬜ pending | — | — |
