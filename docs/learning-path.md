@@ -88,6 +88,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 
 1. **Rioux Ch 2** — covers setup, configuration, and the SparkSession builder pattern
 2. **FKane** — first two sections; shows the setup in a runnable environment you can follow along
+3. **Spark-docs → Starting Point: SparkSession** ([sql-getting-started.html#starting-point-sparksession](https://spark.apache.org/docs/latest/sql-getting-started.html#starting-point-sparksession)) — the builder pattern from the source of truth; pair with [Configuration](https://spark.apache.org/docs/latest/configuration.html) for the precedence rules (`spark-defaults.conf` vs `spark-submit` flags vs `SparkConf`) that decide which setting actually wins
 
 **Milestone:** You can create a SparkSession with custom config, set the log level, and run a script with `spark-submit`.
 
@@ -104,6 +105,7 @@ All three are proctored, multiple-choice, $200, English-delivered (DE exams also
 1. **Rioux Ch 2, 4** — the clearest beginner introduction to the DataFrame API
 2. **LS2e Ch 3** — adds the Catalyst/Tungsten context; explains *why* the API works the way it does
 3. **DataCamp: Introduction to PySpark** ([datacamp.com](https://www.datacamp.com/courses/introduction-to-pyspark)) — ~4 hrs; interactive browser exercises; good for checking comprehension
+4. **Spark-docs → Getting Started** ([sql-getting-started.html](https://spark.apache.org/docs/latest/sql-getting-started.html)) — untyped Dataset operations with the Python tab selected; the shortest correct reference for the core verbs
 
 **Milestone:** You can take a raw CSV, select specific columns, filter rows, add derived columns, and write the result to Parquet — all in a single method-chained program.
 
@@ -280,6 +282,8 @@ You are ready to leave this level when you can build a complete end-to-end batch
 2. **Rioux Ch 9** — pandas UDF full treatment (Series→Series, Iterator variants, group aggregate, group map)
 3. **LS2e Ch 5** — UDF section with Python and SQL interop
 4. **IBM-Spark Module 3** — practical ETL + ML pipeline UDFs; hands-on lab
+5. **Spark-docs → UDFs & UDTFs** ([user_guide/udfandudtf.html](https://spark.apache.org/docs/latest/api/python/user_guide/udfandudtf.html)) — the current taxonomy: scalar Python UDFs, pandas UDFs, and Arrow UDFs (`pyarrow.Array` in and out). This page reflects the 4.2.0 defaults the books predate; read it before trusting any book's performance claim
+6. **Spark-docs → Apache Arrow in PySpark** ([tutorial/sql/arrow_pandas.html](https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html)) — all four pandas UDF shapes plus the function APIs (`applyInPandas`, `mapInPandas`, `cogroup`)
 
 **Milestone:** You can replace a Python UDF with a pandas UDF and measure the speedup; you can load an ML model once per partition using an Iterator UDF; you can test a UDF locally without a SparkSession.
 
@@ -300,6 +304,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 2. **LS2e Ch 3** — RDD vs DataFrame trade-offs explained
 3. **SDG Ch 12–13** — the deepest treatment of RDDs and advanced patterns (accumulators, broadcast variables)
 4. **FKane** — Spark Basics and the RDD Interface section (~2 hrs, hands-on)
+5. **Spark-docs → RDD Programming Guide** ([rdd-programming-guide.html](https://spark.apache.org/docs/latest/rdd-programming-guide.html)) — the canonical reference, and the one place that explains closures (why a driver variable mutated inside a transformation stays unchanged) before it bites you
 
 **Milestone:** You can explain in one sentence why `reduce` requires a commutative and associative function, and name two real tasks where you would use an RDD instead of a DataFrame.
 
@@ -349,6 +354,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **Rioux Ch 11** — dedicated chapter walking through every tab of the Spark UI
 2. **LS2e Ch 7** — Spark UI walkthrough with a concrete slow-job example
 3. **ADEB Module 3** (Databricks Performance Optimization) — Spark UI analysis section; practise reading plans on Databricks
+4. **Spark-docs → Web UI** ([web-ui.html](https://spark.apache.org/docs/latest/web-ui.html)) — every tab and what each column means; the reference to keep open while the books teach you what to look for. Note the UI was rebuilt in 4.2.0, so this page matches your screen and the book screenshots do not
 
 **Milestone:** You can open the Spark UI on a running job, locate the most expensive stage, identify whether it involves a sort-merge join or a broadcast join, and read a physical plan to find a pushed-down filter.
 
@@ -384,6 +390,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **DLUR Ch 1** — introduces the medallion concept in the lakehouse context
 2. **DEB Module 1** — data ingestion into bronze with Auto Loader; CTAS, COPY INTO, MERGE INTO patterns
 3. **DLDG Ch 9** — architecting a lakehouse; design decisions at each layer
+4. **Delta-docs → Best practices** ([best-practices.html](https://docs.delta.io/latest/best-practices.html)) — partition-column choice, the ≥1 GB per partition guidance, compaction with `dataChange=false`, and why caching a Delta table defeats data skipping. Short, and it prevents the two mistakes that make a bronze layer unusable
 
 **Milestone:** You can build a three-layer pipeline from raw Parquet files to a Gold aggregation table, with schema enforcement on silver, using your local Unity Catalog stack.
 
@@ -419,6 +426,10 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 1. **Spark-docs → SQL Scripting** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — the canonical reference; covers all statement types with examples
 2. **Spark 4.0 release notes** — understand which constructs were added in 4.0 vs 4.1
+3. **Source** — `sql/catalyst/.../parser/SqlBaseParser.g4` for the grammar; the scripting execution lives under `sql/core/.../scripting/`
+
+!!! info "No book covers this — docs and source only"
+    SQL scripting landed in Spark 4.0, after every book in the resources table. Rioux (2022), LS2e (2020) and SDG (2018) have nothing on it. Treat the docs page as primary and verify behaviour against your own 4.2.0 stack rather than waiting for a book to catch up.
 
 **Milestone:** You can write a SQL script that declares a variable, iterates over a cursor with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline.
 
@@ -515,7 +526,7 @@ You are ready to leave this level when you can:
 1. **LS2e Ch 3** — Catalyst and Tungsten overview
 2. **SDG Ch 4** — Structured API internals; how plans are built
 3. **Rioux Ch 11** — the SQL tab of the Spark UI shows the physical plan; reading it after Ch 11's walkthrough makes both stick
-4. **Spark-docs → SQL Performance Tuning** — `EXPLAIN EXTENDED`, join hints, AQE config
+4. **Spark-docs → SQL Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `EXPLAIN EXTENDED`, join hints, AQE config; pair with the [EXPLAIN syntax reference](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html) for what each mode prints
 
 **Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan.
 
@@ -568,6 +579,7 @@ You are ready to leave this level when you can:
 1. **ADEB Module 3** — managing skew and shuffles; the most practical treatment
 2. **LS2e Ch 7** — scaling for large workloads; shuffle management
 3. **SDG Ch 19** — performance tuning; shuffle configuration
+4. **Spark-docs → Optimizing Skew Join** ([sql-performance-tuning.html#optimizing-skew-join](https://spark.apache.org/docs/latest/sql-performance-tuning.html#optimizing-skew-join)) — what AQE now handles for you, with the thresholds that decide when it kicks in; read alongside [Splitting skewed shuffle partitions](https://spark.apache.org/docs/latest/sql-performance-tuning.html#splitting-skewed-shuffle-partitions) before reaching for manual salting
 
 **Milestone:** You can diagnose a skewed stage from the Spark UI task-time histogram, apply a salting strategy, and measure the improvement.
 
@@ -583,7 +595,7 @@ You are ready to leave this level when you can:
 
 1. **Rioux Ch 9–10** — pandas UDFs + window functions; the combination in §10.4
 2. **LS2e Ch 11** — distributed ML inference using pandas UDFs
-3. **Spark-docs → pandas UDF** ([spark.apache.org/docs/latest/api/python/user_guide/sql/arrow_pandas.html](https://spark.apache.org/docs/latest/api/python/user_guide/sql/arrow_pandas.html))
+3. **Spark-docs → Apache Arrow in PySpark** ([tutorial/sql/arrow_pandas.html](https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html)) — Series→Scalar and the grouped-map function APIs; note 4.2.0 adds an iterator API for `GROUPED_AGG`
 
 **Milestone:** You can apply a custom rolling-median UDF over an ordered window using a pandas UDF, and load an ML model once per executor partition using an Iterator UDF.
 
@@ -601,6 +613,7 @@ You are ready to leave this level when you can:
 2. **DLDG Ch 8** — advanced features: deletion vectors, row-level concurrency, column mapping
 3. **DLDG Ch 10** — performance tuning: liquid clustering internals and when to use it vs Z-order
 4. **DEB Module 1** — CDC using `AUTO CDC INTO`; SCD Type 1 and Type 2 via Lakeflow Declarative Pipelines
+5. **Delta-docs → Table deletes, updates, and merges** ([delta-update.html](https://docs.delta.io/latest/delta-update.html)) — the full `MERGE` reference including `WHEN NOT MATCHED BY SOURCE`, automatic schema evolution, and a worked SCD Type 2 example; the authoritative version of what the books paraphrase
 
 **Milestone:** You can implement a full SCD Type 2 merge, enable liquid clustering on a table, and explain the difference between deletion vectors and copy-on-write for point deletes.
 
@@ -632,7 +645,7 @@ You are ready to leave this level when you can:
 
 1. **SDG Ch 22** — event-time and stateful processing; the most rigorous treatment of watermark semantics
 2. **SDG Ch 23** — streaming in production; checkpointing, restart strategies, triggers
-3. **Spark-docs → Streaming** — watermark section and state store configuration
+3. **Spark-docs → Structured Streaming** ([streaming/index.html](https://spark.apache.org/docs/latest/streaming/index.html)) — the watermark and state-store sections; reorganised into modular pages in Spark 4.0, so older bookmarks land on the wrong page
 4. **LS2e Ch 8** — stateful aggregations and streaming joins
 
 **Milestone:** You can implement a session-windowed aggregate with a watermark, explain what happens to a late event that arrives after the watermark threshold, and describe what is stored in the checkpoint directory.
@@ -666,7 +679,8 @@ You are ready to leave this level when you can:
 
 1. **DEB Module 4** — unit tests with pytest for PySpark; integration tests with DLT
 2. **SDG Ch 16** — developing Spark applications; testing patterns
-3. `chispa` library docs ([github.com/MrPowers/chispa](https://github.com/MrPowers/chispa)) — DataFrame equality assertions
+3. **Spark-docs → Testing PySpark** ([getting_started/testing_pyspark.html](https://spark.apache.org/docs/latest/api/python/getting_started/testing_pyspark.html)) — the built-in `pyspark.testing` utilities: `assertDataFrameEqual` (with `rtol` for float comparison), `assertSchemaEqual`, and worked `unittest` and `pytest` fixtures. Built in since 3.5, so reach for this before adding a dependency
+4. `chispa` library docs ([github.com/MrPowers/chispa](https://github.com/MrPowers/chispa)) — the third-party alternative; still useful for its column-level assertions
 
 **Milestone:** You can write a pytest test that creates a local SparkSession, runs a transformation function, and asserts the output DataFrame matches an expected schema and row set.
 
@@ -682,7 +696,11 @@ You are ready to leave this level when you can:
 
 1. **Spark-docs → Declarative Pipelines Programming Guide** ([declarative-pipelines-programming-guide.html](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html)) — the primary reference; covers `@table`, `@materialized_view`, flows, and `AutoCdcFlow`
 2. **Spark 4.1 release notes** — feature scope and current limitations
-3. **Local stack** — run a pipeline against your Delta Lake + Unity Catalog setup; the `pyspark.pipelines` module is available in Spark 4.1.x
+3. **Local stack** — run a pipeline against your Delta Lake + Unity Catalog setup; the `pyspark.pipelines` module is available in Spark 4.1.x and later
+4. **Source** — `sql/pipelines/src/main/scala/org/apache/spark/sql/pipelines/` (graph construction, `autocdc`); see the `sql/pipelines` sweep groups in the source map
+
+!!! info "No book covers this — docs and source only"
+    Declarative Pipelines is new in Spark 4.1 and has no book treatment. The closest published material is Databricks DLT documentation, which describes the proprietary predecessor: concepts transfer, but API names do not. Prefer the Apache docs and the source.
 
 **Milestone:** You can define a three-node pipeline (raw ingest → cleaned materialized view → aggregated streaming table) using Declarative Pipelines, add an `AutoCdcFlow` for CDC ingestion, and explain how the engine determines execution order from the dependency graph.
 
@@ -726,6 +744,7 @@ You are ready to leave this level when you can:
 2. **SDG Ch 19** — performance tuning; full section on serialisation and memory
 3. **ADEB Module 3** — serialisation best practices; cluster instance selection
 4. **LS2e Ch 3** — Tungsten and WSCG overview
+5. **Spark-docs → Memory Tuning** ([tuning.html#memory-tuning](https://spark.apache.org/docs/latest/tuning.html#memory-tuning)) — the unified memory model, GC tuning, and the serialization section; the current numbers, against which the books' JVM-flag advice should be treated as dated
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
@@ -816,6 +835,9 @@ You are ready to leave this level when you can:
 2. **Dagster docs → dagster-spark / dagster-pyspark** ([docs.dagster.io](https://docs.dagster.io)) — integration docs for wrapping Spark jobs as assets
 3. **DEB Module 2** — Lakeflow Jobs for Databricks-native orchestration (conceptual parallel to Dagster)
 
+!!! info "No book covers this — course and docs only"
+    Dagster has no established book. The Essentials course plus the official docs are the primary material; the asset model is enough of a departure from task-based orchestrators that Airflow books actively mislead here.
+
 **Milestone:** You can wire the entire medallion pipeline (bronze → silver → gold → ML training) as Dagster assets with monthly partition keys, set up a sensor that triggers the silver asset when new bronze files land, and backfill a specific month's data.
 
 ---
@@ -831,6 +853,7 @@ You are ready to leave this level when you can:
 1. **DEB Module 4** — DevOps for data engineering; unit testing with pytest; Git integration; DABs
 2. **ADEB Module 4** — advanced CI/CD with DABs, multi-environment variable substitution, GitHub Actions
 3. **SDG Ch 16** — developing Spark applications; packaging and submission
+4. **Spark-docs → Submitting Applications** ([submitting-applications.html](https://spark.apache.org/docs/latest/submitting-applications.html)) — what your CI actually invokes: `spark-submit` semantics, dependency packaging, and deploy modes. The DABs layer sits on top of this, and knowing which is which is what lets you debug a failing deploy
 
 **Milestone:** You can set up a GitHub Actions workflow that runs pytest on every PR, blocks merge if tests fail, and deploys the validated pipeline to a staging environment using DABs.
 
@@ -847,6 +870,7 @@ You are ready to leave this level when you can:
 1. **ADEB Module 1** — CDC review; SCD Type 2 with `AUTO CDC INTO`; quarantine pipelines
 2. **DLDG Ch 7** — streaming CDC in and out of Delta Lake; CDF for downstream propagation
 3. **DEB Module 1** — MERGE INTO patterns; incremental ingestion strategies
+4. **Delta-docs → Change Data Feed** ([delta-change-data-feed.html](https://docs.delta.io/latest/delta-change-data-feed.html)) — enabling CDF, what lands in `_change_data`, the `_change_type` / `_commit_version` / `_commit_timestamp` columns, and the retention caveats. Contrast with Spark 4.2.0's engine-level `CHANGES` clause (see the callout above) — two mechanisms, different scopes
 
 **Milestone:** You can implement a full SCD Type 2 merge that adds `effective_start`, `effective_end`, and `is_current` columns, process deletes via Delta CDF, and explain the difference between `UPDATE` and `MERGE INTO` from a transaction-log perspective.
 
@@ -865,6 +889,10 @@ You are ready to leave this level when you can:
 
 1. **Spark-docs → Spark Connect** ([spark.apache.org/docs/latest/spark-connect-overview.html](https://spark.apache.org/docs/latest/spark-connect-overview.html))
 2. **Databricks Spark Associate Cert** — Spark Connect is 5% of the exam; a good forcing function to study it
+3. **Spark-docs → Connect gotchas** ([spark-connect-gotchas.html](https://spark.apache.org/docs/latest/spark-connect-gotchas.html)) and [app development with Connect](https://spark.apache.org/docs/latest/app-dev-spark-connect.html) — the behavioural differences that bite in practice, including what JVM access is unavailable
+
+!!! info "No book covers this — docs only"
+    Spark Connect arrived in 3.4 and became the default `pyspark` REPL mode in 4.x, after all four books. LS2e and SDG describe classic mode exclusively and never flag the distinction, which makes them quietly wrong about what a UDF can reach. Docs and your own local server are the sources here.
 
 **Milestone:** You can explain the difference between classic mode and Connect mode, start a local Spark Connect server, connect to it from a Python client, and describe what changes in a UDF when running over Connect.
 
