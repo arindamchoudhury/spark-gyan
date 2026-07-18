@@ -3,6 +3,14 @@
 > *Learning-path topic: B4 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+> 🔄 **Needs revisiting — Spark 4.2.0 source trace (flagged 2026-07-18).** Incomplete rather than wrong: nothing here is false, but the trace opened eight gaps, two of which matter enough to fix before relying on this chapter.
+>
+> **`insertInto` matches columns by position, not name.** Neither `insertInto` nor `saveAsTable` appears in this chapter, and the difference is the highest-consequence one in the writer API — a DataFrame with correct column *names* in the wrong order writes silently corrupted data through `insertInto`.
+>
+> **The read-parallelism formula is missing.** `maxSplitBytes = min(maxPartitionBytes, max(openCostInBytes, totalBytes / cores))` is what decides how many tasks a read produces; neither config is mentioned, which leaves "why did my read only get two tasks" unanswerable and the small-files problem unexplained.
+>
+> Also missing: `maxRecordsPerFile` as the output-file-size lever, *why* inference is costly (it reads the data twice), ORC defaulting to `zstd` while Parquet uses `snappy`, `ignoreCorruptFiles`/`ignoreMissingFiles`, and that writing JSON drops null fields by default. Full list in the [B4 source trace](../reference/spark-source-map/topics/b4.md).
+
 Every Spark pipeline starts with a read and ends with a write. The format you choose and how you configure the reader/writer determines whether your pipeline reads 100% of the data or 5% of it — before any transformation runs.
 
 ---
