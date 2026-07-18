@@ -530,6 +530,21 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
     The 4.2.0 release notes are actively misleading here: the heading "RDD API compatibility ([SPARK-55227])" sits above `DataFrame.zipWithIndex`, `Dataset.zipWithIndex` and `DataFrame.toJSON` — DataFrame methods that *remove reasons* to drop to RDDs under Connect. That is the opposite of RDD support. Verified against the 4.2.0 source, not the notes.
 
+!!! info "Porting RDD code to Connect: rewrite to DataFrame, do not look for an RDD escape hatch"
+    Since there is no RDD execution in a remote session, code that leans on RDDs has to be refactored into DataFrame transformations *before* it can move to Connect. There is no compatibility shim to wait for — the direction of travel is to remove the reasons people reached for RDDs, and several of those reasons were closed in 4.2.0:
+
+    | Why you reached for an RDD | DataFrame equivalent |
+    |---|---|
+    | Add a row index | `DataFrame.zipWithIndex` ([SPARK-55229]; Scala `Dataset.zipWithIndex`, [SPARK-55228]) |
+    | Serialize rows to JSON strings | `DataFrame.toJSON` ([SPARK-55090]) |
+    | Parse a column of JSON/CSV/XML text | `spark.read.json` / `.csv` / `.xml` now accept a DataFrame ([SPARK-56253]–[SPARK-56255]) |
+    | Build an empty dataset | `SparkSession.emptyDataFrame` ([SPARK-56256]) |
+    | Arbitrary per-row Python logic | a UDF or pandas UDF (I3) |
+    | Per-partition setup (connections, models) | `mapInPandas` / `mapPartitions` on a DataFrame (I3) |
+    | Custom partitioning | `repartition(col)` / bucketing (I5) |
+
+    Learn the RDD model anyway — it is what the DataFrame API compiles down to, and B1's stage/shuffle material only makes sense in these terms. Just do not build new production code on it if Connect is your target.
+
 !!! info "`repartition` is `coalesce` with one boolean flipped"
     `repartition(n)` is defined as `coalesce(n, shuffle = true)`. One method, one argument — which turns "coalesce avoids a shuffle, repartition forces one" from two APIs to memorise into a single fact about a parameter. Carries directly into I5.
 
@@ -1171,7 +1186,16 @@ You are ready to leave this level when you can:
 !!! info "No book covers this — docs only"
     Spark Connect arrived in 3.4 and became the default `pyspark` REPL mode in 4.x, after all four books. LS2e and SDG describe classic mode exclusively and never flag the distinction, which makes them quietly wrong about what a UDF can reach. Docs and your own local server are the sources here.
 
-**Milestone:** You can explain the difference between classic mode and Connect mode, start a local Spark Connect server, connect to it from a Python client, and describe what changes in a UDF when running over Connect.
+**Milestone:** You can explain the difference between classic mode and Connect mode, start a local Spark Connect server, connect to it from a Python client, and describe what changes in a UDF when running over Connect. Then the migration question: given a codebase, identify which parts cannot move to Connect as written, and say what each would have to become.
+
+!!! info "Assessing a codebase for Connect: what actually blocks a migration"
+    Three categories, in descending order of effort:
+
+    1. **RDD usage — must be rewritten.** No RDD execution exists in a remote session and none is planned; the strategy is to close the *gaps that made people use RDDs* rather than to support them remotely. See the porting table under [I4](#i4-rdd-fundamentals).
+    2. **Direct JVM access — must be removed.** `df._jdf`, `sc._jsc`, `spark.sparkContext` and anything reaching through Py4J. There is no JVM on the client side to reach.
+    3. **Everything else — usually works unchanged.** DataFrame, SQL, Structured Streaming and MLlib are the surfaces receiving active parity work.
+
+    A cheap way to find category 2 early: run the code against `local[*]` in Connect mode before pointing it at a real server. It fails on the same JVM-access violations without needing a cluster.
 
 !!! warning "Correction — 'RDD API compatibility' in the 4.2.0 notes does not mean df.rdd works over Connect"
     Checked against the 4.2.0 source while tracing I4: `pyspark.sql.connect.dataframe.DataFrame.rdd` still raises `PySparkNotImplementedError`. There is no `RDD` class in the Connect client at all.
