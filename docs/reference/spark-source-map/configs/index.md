@@ -2,7 +2,7 @@
 
 > Auto-generated from Apache Spark **4.2.0** source by `tools/spark_source_map/gen_configs.py`. Do not edit by hand — re-run the generator instead.
 
-**1493 configs** across the repo · 3 unparsed · generated 2026-07-18.
+**1558 configs** across the repo · 4 unparsed · generated 2026-07-18.
 
 ## Contents
 
@@ -23,16 +23,16 @@
     - **Group 2 — Auth & networking** (topics E2): k8s/ (authentication, service account, node affinity, executor env)
 - [resource-managers/yarn](#resource-managersyarn) — 61 configs
     - **Group 1 — AM & executor allocation** (topics E2): yarn/ (ApplicationMaster, YarnAllocator, executor containers)
-- [sql/catalyst](#sqlcatalyst) — 721 configs
+- [sql/catalyst](#sqlcatalyst) — 750 configs
     - **Group 1 — Analysis** (topics A1, B1): analysis/ (Analyzer, resolution rules, catalog)
     - **Group 2 — Optimizer** (topics A1, A2): optimizer/ (logical rules, CBO, statistics)
     - **Group 3 — Planner & physical operators** (topics A1, A3, E1): planning/ (SparkPlanner, strategies), execution/ (physical operators)
     - **Group 4 — Expressions & codegen** (topics E1): expressions/ (Expression hierarchy, codegen, Whole-Stage CodeGen)
     - **Group 5 — Types & SQL parser** (topics B5): types/ (DataType hierarchy), parser/ (Antlr4, AbstractSqlParser)
-- [sql/connect](#sqlconnect) — 14 configs
+- [sql/connect](#sqlconnect) — 44 configs
     - **Group 1 — Client-server protocol** (topics E9): connect/ (gRPC service, proto definitions, session management)
     - **Group 2 — Declarative Pipelines** (topics A11): connect/pipelines/ (PipelinesHandler, DataflowGraphRegistry, PipelineEventSender); configs: spark.sql.pipelines.* in sql/catalyst
-- [sql/hive](#sqlhive) — 11 configs
+- [sql/hive](#sqlhive) — 17 configs
     - **Group 1 — Hive metastore & DDL** (topics B4): hive/ (HiveSessionCatalog, HiveExternalCatalog, HiveClientImpl)
 - [streaming](#streaming) — 28 configs
     - **Group 1 — Structured Streaming** (topics A7, A8): sql/streaming/ (StreamExecution, MicroBatchExecution, TriggerExecutor)
@@ -2931,6 +2931,12 @@
 
 ## sql/catalyst
 
+### `spark.python.sql.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.python.sql.dataFrameDebugging.enabled` | boolean | `true` | 4.0.0 | Enable the DataFrame debugging. This feature is enabled by default, but has a non-trivial performance overhead because of the stack trace collection. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L309) |
+
 ### `spark.sql.adaptive.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -3059,6 +3065,12 @@
 |---|---|---|---|---|---|
 | `spark.sql.binaryOutputStyle` | enum | _(optional)_ | 4.0.0 | The output style used display binary data. Valid values are 'UTF-8', 'BASIC', 'BASE64', 'HEX', and 'HEX_DISCRETE'. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2130) |
 
+### `spark.sql.broadcastExchange.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.broadcastExchange.maxThreadThreshold` | int | `128` | 3.0.0 | The maximum degree of parallelism to fetch and broadcast the table. If we encounter memory issue like frequently full GC or OOM when broadcast table we can decrease this number in order to reduce memory usage. Notice the number should be carefully chosen since decreasing parallelism might cause longer waiting for other broadcasting. Also, increasing parallelism may cause memory problem. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L191) |
+
 ### `spark.sql.broadcastTimeout.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -3071,6 +3083,12 @@
 |---|---|---|---|---|---|
 | `spark.sql.bucketing.coalesceBucketsInJoin.enabled` | boolean | `false` | 3.1.0 | When true, if two bucketed tables with the different number of buckets are joined, the side with a bigger number of buckets will be coalesced to have the same number of buckets as the other side. Bigger number of buckets is divisible by the smaller number of buckets. Bucket coalescing is applied to sort-merge joins and shuffled hash join. Note: Coalescing bucketed table can avoid unnecessary shuffling in join, but it also reduces parallelism and could possibly cause OOM for shuffled hash join. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L6435) |
 | `spark.sql.bucketing.coalesceBucketsInJoin.maxBucketRatio` | int | `4` | 3.1.0 | The ratio of the number of two buckets being coalesced should be less than or equal to this value for bucket coalescing to be applied. This configuration only has an effect when '${COALESCE_BUCKETS_IN_JOIN_ENABLED.key}' is set to true. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L6448) |
+
+### `spark.sql.cache.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.cache.serializer` | string | `org.apache.spark.sql.execution.columnar.DefaultCachedBatchSerializer` | 3.1.0 | The name of a class that implements org.apache.spark.sql.columnar.CachedBatchSerializer. It will be used to translate SQL data into a format that can more efficiently be cached. The underlying API is subject to change so use with caution. Multiple classes cannot be specified. The class must have a no-arg constructor. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L145) |
 
 ### `spark.sql.cartesianProductExec.*`
 
@@ -3085,6 +3103,12 @@
 | Config | Type | Default | Since | Description | Source |
 |---|---|---|---|---|---|
 | `spark.sql.caseSensitive` | boolean | `false` | 1.4.0 | Whether the query analyzer should be case sensitive or not. Default to case insensitive. It is highly discouraged to turn on case sensitive mode. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1384) |
+
+### `spark.sql.catalogImplementation.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.catalogImplementation` | string | `in-memory` | 2.0.0 |  | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L48) |
 
 ### `spark.sql.cbo.*`
 
@@ -3134,6 +3158,8 @@
 | `spark.sql.codegen.aggregate.sortAggregate.enabled` | boolean | `true` | 3.3.0 | When true, enable code-gen for sort aggregate. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3599) |
 | `spark.sql.codegen.aggregate.splitAggregateFunc.enabled` | boolean | `true` | 3.0.0 | When true, the code generator would split aggregate code into individual methods instead of a single big method. This can be used to avoid oversized function that can miss the opportunity of JIT optimization. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3589) |
 | `spark.sql.codegen.broadcastCleanedSourceThreshold` | int | `-1` | 4.0.0 | A threshold (in string length) to determine if we should make the generated code a broadcast variable in whole stage codegen. To disable this, set the threshold to < 0; otherwise if the size is above the threshold, it'll use broadcast variable. Note that maximum string length allowed in Java is Integer.MAX_VALUE, so anything above it would be meaningless. The default value is set to -1 (disabled by default). | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2680) |
+| `spark.sql.codegen.cache.maxEntries` | int | `100` | 2.4.0 | When nonzero, enable caching of generated classes for operators and expressions. All jobs share the cache that can use up to the specified number for generated classes. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L89) |
+| `spark.sql.codegen.comments` | boolean | `false` | 2.0.0 | When true, put comment in the generated code. Since computing huge comments can be extremely expensive in certain cases, such as deeply-nested expressions which operate over inputs with wide schemas, default is false. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L98) |
 | `spark.sql.codegen.factoryMode` | enum | `CodegenObjectFactoryMode.FALLBACK` | 2.4.0 | This config determines the fallback behavior of several codegen generators during tests. `FALLBACK` means trying codegen first and then falling back to interpreted if any compile error happens. Disabling fallback if `CODEGEN_ONLY`. `NO_CODEGEN` skips codegen and goes interpreted path always. Note that this configuration is only for the internal usage, and NOT supposed to be set by end users. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2607) |
 | `spark.sql.codegen.fallback` | boolean | `true` | 2.0.0 | When true, (whole stage) codegen could be temporary disabled for the part of query that fail to compile generated code | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2619) |
 | `spark.sql.codegen.hugeMethodLimit` | int | `65535` | 2.3.0 | The maximum bytecode size of a single compiled Java function generated by whole-stage codegen. When the compiled function exceeds this threshold, the whole-stage codegen is deactivated for this subtree of the current query plan. The default value is 65535, which is the largest bytecode size possible for a valid Java method. When running on HotSpot, it may be preferable to set the value to ${CodeGenerator.DEFAULT_JVM_HUGE_METHOD_LIMIT} to match HotSpot's implementation. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2644) |
@@ -3250,6 +3276,7 @@
 
 | Config | Type | Default | Since | Description | Source |
 |---|---|---|---|---|---|
+| `spark.sql.debug` | boolean | `false` | 2.1.0 | Only used for internal debugging. Not all functions are supported when it is enabled. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L109) |
 | `spark.sql.debug.maxToStringFields` | int | `25` | 3.0.0 | Maximum number of fields of sequence-like entries can be converted to strings in debug output. Any elements beyond the limit will be dropped and replaced by a placeholder. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5811) |
 
 ### `spark.sql.decimalOperations.*`
@@ -3290,6 +3317,12 @@
 |---|---|---|---|---|---|
 | `spark.sql.defaultSizeInBytes` | bytes | `Long.MaxValue` | 1.1.0 | The default table size used in query planning. By default, it is set to Long.MaxValue which is larger than `${AUTO_BROADCASTJOIN_THRESHOLD.key}` to be more conservative. That is to say by default the optimizer will not choose to broadcast a table unless it knows for sure its size is small enough. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L4012) |
 
+### `spark.sql.defaultUrlStreamHandlerFactory.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.defaultUrlStreamHandlerFactory.enabled` | boolean | `true` | 3.0.0 | When true, register Hadoop's FsUrlStreamHandlerFactory to support ADD JAR against HDFS locations. It should be disabled when a different stream protocol handler should be registered to support a particular protocol type, or if Hadoop's FsUrlStreamHandlerFactory conflicts with other protocol types such as `http` or `https`. See also SPARK-25694 and HADOOP-14598. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L240) |
+
 ### `spark.sql.dropTableOnView.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -3307,6 +3340,12 @@
 | Config | Type | Default | Since | Description | Source |
 |---|---|---|---|---|---|
 | `spark.sql.error.messageFormat` | enum | `ErrorMessageFormat.PRETTY` | 3.4.0 | When PRETTY, the error message consists of textual representation of error class, message and query context. Stack traces are only shown for internal errors (SQLSTATE XX***). When DEBUG, the output is the same as PRETTY but stack traces are always included. The MINIMAL and STANDARD formats are pretty JSON formats where STANDARD includes an additional JSON field `message`. This configuration property influences on error messages of Thrift Server and SQL CLI while running queries. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L6796) |
+
+### `spark.sql.event.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.event.truncate.length` | int | `Int.MaxValue` | 3.0.0 | Threshold of SQL length beyond which it will be truncated before adding to event. Defaults to no truncation. If set to 0, callsite will be logged instead. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L222) |
 
 ### `spark.sql.exchange.*`
 
@@ -3382,6 +3421,13 @@
 |---|---|---|---|---|---|
 | `spark.sql.extendedExplainProviders` | string | _(optional)_ | 4.0.0 | A comma-separated list of classes that implement the org.apache.spark.sql.ExtendedExplainGenerator trait. If provided, Spark will print extended plan information from the providers in explain plan and in the UI | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L684) |
 
+### `spark.sql.extensions.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.extensions` | string | _(optional)_ | 2.2.0 | A comma-separated list of classes that implement Function1[SparkSessionExtensions, Unit] used to configure Spark Session extensions. The classes must have a no-args constructor. If multiple extensions are specified, they are applied in the specified order. For the case of rules and planner strategies, they are applied in the specified order. For the case of parsers, the last parser is used and each parser can delegate to its predecessor. For the case of function name conflicts, the last registered function name is used. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L125) |
+| `spark.sql.extensions.test.loadFromCp` | boolean | `true` | — | Flag that determines if we should load extensions from the classpath using the SparkSessionExtensionsProvider mechanism. This is a test only flag. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L139) |
+
 ### `spark.sql.fileSource.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -3402,6 +3448,12 @@
 | `spark.sql.files.openCostInBytes` | bytes | `4MB` | 2.0.0 | The estimated cost to open a file, measured by the number of bytes could be scanned in the same time. This is used when putting multiple files into a partition. It's better to over estimated, then the partitions with small files will be faster than partitions with bigger files (which is scheduled first). This configuration is effective only when using file-based sources such as Parquet, JSON and ORC. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2714) |
 | `spark.sql.files.supportSecondOffsetFormat` | boolean | `true` | 4.0.0 | When set to true, datetime formatter used for csv, json and xml will support zone offsets that have seconds in it. e.g. LA timezone offset prior to 1883 was -07:52:58. When this flag is not set we lose seconds information. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L7035) |
 
+### `spark.sql.filesourceTableRelationCacheSize.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.filesourceTableRelationCacheSize` | int | `1000` | 2.2.0 | The maximum size of the cache that maps qualified table names to table relation plans. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L81) |
+
 ### `spark.sql.function.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -3421,6 +3473,12 @@
 | Config | Type | Default | Since | Description | Source |
 |---|---|---|---|---|---|
 | `spark.sql.geospatial.enabled` | boolean | `true` | 4.1.0 | When true, enables geospatial types (GEOGRAPHY/GEOMETRY) and ST functions. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L667) |
+
+### `spark.sql.globalTempDatabase.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.globalTempDatabase` | string | `global_temp` | 2.1.0 |  | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L55) |
 
 ### `spark.sql.groupByAliases.*`
 
@@ -3450,6 +3508,7 @@
 | `spark.sql.hive.metastorePartitionPruningFastFallback` | boolean | `false` | 3.3.0 | When this config is enabled, if the predicates are not supported by Hive or Spark does fallback due to encountering MetaException from the metastore, Spark will instead prune partitions by getting the partition names first and then evaluating the filter expressions on the client side. Note that the predicates with TimeZoneAwareExpression is not supported. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1895) |
 | `spark.sql.hive.metastorePartitionPruningInSetThreshold` | int | `1000` | 3.1.0 | The threshold of set size for InSet predicate when pruning partitions through Hive Metastore. When the set size exceeds the threshold, we rewrite the InSet predicate to be greater than or equal to the minimum value in set and less than or equal to the maximum value in set. Larger values may cause Hive Metastore stack overflow. But for InSet inside Not with values exceeding the threshold, we won't push it to Hive Metastore. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1871) |
 | `spark.sql.hive.tablePropertyLengthThreshold` | int | _(optional)_ | 3.2.0 | The maximum length allowed in a single cell when storing Spark-specific information in Hive's metastore as table properties. Currently it covers 2 things: the schema's JSON string, the histogram of column statistics. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1942) |
+| `spark.sql.hive.thriftServer.singleSession` | boolean | `false` | 1.6.0 | When set to true, Hive Thrift server is running in a single session mode. All the JDBC/ODBC connections share the temporary views, function registries, SQL configuration and the current database. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L117) |
 
 ### `spark.sql.icu.*`
 
@@ -3633,6 +3692,7 @@
 | `spark.sql.legacy.respectNullabilityInTextDatasetConversion` | boolean | `false` | 3.3.0 | When true, the nullability in the user-specified schema for `DataFrameReader.schema(schema).json(jsonDataset)` and `DataFrameReader.schema(schema).csv(csvDataset)` is respected. Otherwise, they are turned to a nullable schema forcibly. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5539) |
 | `spark.sql.legacy.scalarSubqueryAllowGroupByNonEqualityCorrelatedPredicate` | boolean | `false` | 4.0.0 | When set to true, use incorrect legacy behavior for checking whether a scalar subquery with a group-by on correlated columns is allowed. See SPARK-48503 | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L6998) |
 | `spark.sql.legacy.scalarSubqueryCountBugBehavior` | boolean | `false` | 4.0.0 | When set to true, restores legacy behavior of potential incorrect count bug handling for scalar subqueries. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L6989) |
+| `spark.sql.legacy.sessionInitWithConfigDefaults` | boolean | `false` | 3.0.0 | Flag to revert to legacy behavior where a cloned SparkSession receives SparkConf defaults, dropping any overrides in its parent SparkSession. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L231) |
 | `spark.sql.legacy.setCommandRejectsSparkCoreConfs` | boolean | `true` | 3.0.0 | If it is set to true, SET command will fail when the key is registered as a SparkConf entry. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5840) |
 | `spark.sql.legacy.setopsPrecedence.enabled` | boolean | `false` | 2.4.0 | When set to true and the order of evaluation is not specified by parentheses, the set operations are performed from left to right as they appear in the query. When set to false and order of evaluation is not specified by parentheses, INTERSECT operations are performed before any UNION, EXCEPT and MINUS operations. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5696) |
 | `spark.sql.legacy.sizeOfNull` | boolean | `true` | 2.4.0 | If it is set to false, or ${ANSI_ENABLED.key} is true, then size of null returns null. Otherwise, it returns -1, which was inherited from Hive. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5658) |
@@ -3722,6 +3782,12 @@
 | Config | Type | Default | Since | Description | Source |
 |---|---|---|---|---|---|
 | `spark.sql.mergeNestedTypeCoercion.enabled` | boolean | `false` | 4.1.0 | If enabled, allow MERGE INTO to coerce source nested types if they have lessnested fields than the target table's nested types. This is experimental andthe semantics may change. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L7382) |
+
+### `spark.sql.metadataCacheTTLSeconds.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.metadataCacheTTLSeconds` | time | `-1` | 3.1.0 | Time-to-live (TTL) value for the metadata caches: partition file metadata cache and session catalog cache. This configuration only has an effect when this value having a positive value (> 0). It also requires setting '${StaticSQLConf.CATALOG_IMPLEMENTATION.key}' to `hive`, setting '${SQLConf.HIVE_FILESOURCE_PARTITION_FILE_CACHE_SIZE.key}' > 0 and setting '${SQLConf.HIVE_MANAGE_FILESOURCE_PARTITIONS.key}' to `true` to be applied to the partition file metadata cache. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L276) |
 
 ### `spark.sql.nameResolutionLog.*`
 
@@ -3966,6 +4032,12 @@
 |---|---|---|---|---|---|
 | `spark.sql.python.filterPushdown.enabled` | boolean | `false` | 4.1.0 | When true, enable filter pushdown to Python datasource, at the cost of running Python worker one additional time during planning. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L6149) |
 
+### `spark.sql.queryExecutionListeners.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.queryExecutionListeners` | string | _(optional)_ | 2.3.0 | List of class names implementing QueryExecutionListener that will be automatically added to newly created sessions. The classes should have either a no-arg constructor, or a constructor that expects a SparkConf argument. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L155) |
+
 ### `spark.sql.readSideCharPadding.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -3998,6 +4070,12 @@
 | Config | Type | Default | Since | Description | Source |
 |---|---|---|---|---|---|
 | `spark.sql.requireAllClusterKeysForDistribution` | boolean | `false` | 3.3.0 | When true, the planner requires all the clustering keys as the partition keys (with same ordering) of the children, to eliminate the shuffle for the operator that requires its children be clustered distributed, such as AGGREGATE and WINDOW node. This is to avoid data skews which can lead to significant performance regression if shuffle is eliminated. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L922) |
+
+### `spark.sql.resultQueryStage.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.resultQueryStage.maxThreadThreshold` | int | `1024` | 4.0.0 | The maximum degree of parallelism to execute ResultQueryStageExec in AQE | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L214) |
 
 ### `spark.sql.retainGroupColumns.*`
 
@@ -4073,6 +4151,12 @@
 | `spark.sql.shuffleDependency.fileCleanup.enabled` | boolean | `Utils.isTesting` | 4.0.0 | (Deprecated since Spark 4.1, please set 'spark.sql.connect.shuffleDependency.fileCleanup.enabled'.) | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L4285) |
 | `spark.sql.shuffleDependency.skipMigration.enabled` | boolean | `Utils.isTesting` | 4.0.0 | When enabled, shuffle dependencies for a Spark Connect SQL execution are marked at the end of the execution, and they will not be migrated during decommissions. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L4277) |
 
+### `spark.sql.shuffleExchange.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.shuffleExchange.maxThreadThreshold` | int | `1024` | 4.0.0 | The maximum degree of parallelism for doing preparation of shuffle exchange, which includes subquery execution, file listing, etc. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L181) |
+
 ### `spark.sql.shuffledHashJoinFactor.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -4103,6 +4187,7 @@
 | `spark.sql.sources.bucketing.maxBuckets` | int | `100000` | 2.4.0 | The maximum number of buckets allowed. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2282) |
 | `spark.sql.sources.commitProtocolClass` | string | `org.apache.spark.sql.execution.datasources.SQLHadoopMapReduceCommitProtocol` | 2.1.1 |  | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2390) |
 | `spark.sql.sources.default` | string | `parquet` | 1.3.0 | The default data source to use in input/output. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2073) |
+| `spark.sql.sources.disabledJdbcConnProviderList` | string | — | 3.1.0 | Configures a list of JDBC connection providers, which are disabled. The list contains the name of the JDBC connection providers separated by comma. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L301) |
 | `spark.sql.sources.fileCompressionFactor` | double | `1.0` | 2.3.1 | When estimating the output data size of a table scan, multiply the file size with this factor as the estimated data size, in case the data is compressed in the file and lead to a heavily underestimated result. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1485) |
 | `spark.sql.sources.ignoreDataLocality` | boolean | `false` | 3.0.0 | If true, Spark will not fetch the block locations for each file on listing files. This speeds up file listing, but the scheduler cannot schedule tasks to take advantage of data locality. It can be particularly useful if data is read from a remote cluster so the scheduler could never take advantage of locality anyway. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2421) |
 | `spark.sql.sources.outputCommitterClass` | string | _(optional)_ | 1.4.0 |  | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2381) |
@@ -4110,6 +4195,7 @@
 | `spark.sql.sources.parallelPartitionDiscovery.threshold` | int | `32` | 1.5.0 | The maximum number of paths allowed for listing files at driver side. If the number of detected paths exceeds this value during partition discovery, it tries to list the files with another Spark distributed job. This configuration is effective only when using file-based sources such as Parquet, JSON and ORC. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2400) |
 | `spark.sql.sources.partitionColumnTypeInference.enabled` | boolean | `true` | 1.5.0 | When true, automatically infer the data types for partitioned columns. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2138) |
 | `spark.sql.sources.partitionOverwriteMode` | enum | `PartitionOverwriteMode.STATIC` | 2.3.0 | When INSERT OVERWRITE a partitioned data source table, we currently support 2 modes: static and dynamic. In static mode, Spark deletes all the partitions that match the partition specification(e.g. PARTITION(a=1,b)) in the INSERT statement, before overwriting. In dynamic mode, Spark doesn't delete partitions ahead, and only overwrite those partitions that have data written into it at runtime. By default we use static mode to keep the same behavior of Spark prior to 2.3. Note that this config doesn't affect Hive serde tables, as they are always overwritten with dynamic mode. This can also be set as an output option for a data source using key partitionOverwriteMode (which takes precedence over this setting), e.g. dataframe.write.option("partitionOverwriteMode", "dynamic").save(path). | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5089) |
+| `spark.sql.sources.schemaStringLengthThreshold` | int | `4000` | 1.3.1 | The maximum length allowed in a single cell when storing additional schema information in Hive's metastore. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L72) |
 | `spark.sql.sources.useListFilesFileSystemList` | string | `s3a` | 4.0.0 | A comma-separated list of file system schemes to use FileSystem.listFiles API for a single root path listing | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2433) |
 | `spark.sql.sources.useV1SourceList` | string | `avro,csv,json,kafka,orc,parquet,text` | 3.0.0 | A comma-separated list of data source short names or fully qualified data source implementation class names for which Data Source V2 code path is disabled. These data sources will fallback to Data Source V1 code path. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5025) |
 | `spark.sql.sources.v2.bucketing.allowCompatibleTransforms.enabled` | boolean | `false` | 4.0.0 | Whether to allow storage-partition join in the case where the partition transforms are compatible but not identical. This config requires both ${V2_BUCKETING_ENABLED.key} and ${V2_BUCKETING_PUSH_PART_VALUES_ENABLED.key} to be enabled and ${V2_BUCKETING_PARTIALLY_CLUSTERED_DISTRIBUTION_ENABLED.key} to be disabled. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L2207) |
@@ -4249,8 +4335,13 @@
 | `spark.sql.streaming.statefulOperator.useStrictDistribution` | boolean | `true` | 3.3.0 | The purpose of this config is only compatibility; DO NOT MANUALLY CHANGE THIS!!! When true, the stateful operator for streaming query will use StatefulOpClusteredDistribution which guarantees stable state partitioning as long as the operator provides consistent grouping keys across the lifetime of query. When false, the stateful operator for streaming query will use ClusteredDistribution which is not sufficient to guarantee stable state partitioning despite the operator provides consistent grouping keys across the lifetime of query. This config will be set to true for new streaming queries to guarantee stable state partitioning, and set to false for existing streaming queries to not break queries which are restored from existing checkpoints. Please refer SPARK-38204 for details. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3456) |
 | `spark.sql.streaming.stopActiveRunOnRestart` | boolean | `true` | 3.0.0 | Running multiple runs of the same streaming query concurrently is not supported. If we find a concurrent active run for a streaming query (in the same or different SparkSessions on the same cluster) and this flag is true, we will stop the old streaming query run to start the new one. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3351) |
 | `spark.sql.streaming.stopTimeout` | time | `0` | 3.0.0 | How long to wait in milliseconds for the streaming execution thread to stop when calling the streaming query's stop() method. 0 or negative values wait indefinitely. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3914) |
+| `spark.sql.streaming.streamingQueryListeners` | string | _(optional)_ | 2.4.0 | List of class names implementing StreamingQueryListener that will be automatically added to newly created sessions. The classes should have either a no-arg constructor, or a constructor that expects a SparkConf argument. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L164) |
 | `spark.sql.streaming.transformWithState.stateSchemaVersion` | int | `3` | 4.0.0 | The version of the state schema used by the transformWithState operator | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3165) |
 | `spark.sql.streaming.triggerAvailableNowWrapper.enabled` | boolean | `false` | — | Whether to use the wrapper implementation of Trigger.AvailableNow if the source does not support Trigger.AvailableNow. Enabling this allows the benefits of Trigger.AvailableNow with sources which don't support it, but some sources may show unexpected behavior including duplication, data loss, etc. So use with extreme care! The ideal direction is to persuade developers of source(s) to support Trigger.AvailableNow. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3515) |
+| `spark.sql.streaming.ui.enabled` | boolean | `true` | 3.0.0 | Whether to run the Structured Streaming Web UI for the Spark application when the Spark Web UI is enabled. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L254) |
+| `spark.sql.streaming.ui.enabledCustomMetricList` | string | `Nil` | 3.1.0 | Configures a list of custom metrics on Structured Streaming UI, which are enabled. The list contains the name of the custom metrics separated by comma. In aggregation only sum used. The list of supported custom metrics is state store provider specific and it can be found out for example from query progress log entry. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L289) |
+| `spark.sql.streaming.ui.retainedProgressUpdates` | int | `100` | 3.0.0 | The number of progress updates to retain for a streaming query for Structured Streaming UI. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L262) |
+| `spark.sql.streaming.ui.retainedQueries` | int | `100` | 3.0.0 | The number of inactive queries to retain for Structured Streaming UI. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L270) |
 | `spark.sql.streaming.unsupportedOperationCheck` | boolean | `true` | 2.0.0 | When true, the logical plan for streaming query will be checked for unsupported operations. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3405) |
 | `spark.sql.streaming.validateEventTimeWatermarkColumn` | boolean | `true` | 4.2.0 | When true, check that eventTime in withWatermark is a top-level column. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3765) |
 | `spark.sql.streaming.verifyCheckpointDirectoryEmptyOnStart` | boolean | `true` | 4.1.0 | When true, verifies that the checkpoint directory (offsets, state, commits) is empty when first starting a streaming query. This prevents prevents sharing checkpoint directories between different queries. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3217) |
@@ -4263,6 +4354,12 @@
 | `spark.sql.subexpressionElimination.enabled` | boolean | `true` | 1.6.0 | When true, common subexpressions will be eliminated. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1345) |
 | `spark.sql.subexpressionElimination.filterExec.enabled` | boolean | `true` | 4.2.0 | When true (and subexpression elimination is enabled), FilterExec whole-stage codegen eliminates common subexpressions shared across its predicates. When false, FilterExec falls back to the predicate codegen that loads input columns lazily and short-circuits, avoiding eager materialization of all predicate-referenced columns on every row. Only affects FilterExec; subexpression elimination elsewhere is unaffected. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1372) |
 | `spark.sql.subexpressionElimination.skipForShortcutExpr` | boolean | `false` | 3.5.0 | When true, shortcut eliminate subexpression with `AND`, `OR`. The subexpression may not need to eval even if it appears more than once. e.g., `if(or(a, and(b, b)))`, the expression `b` would be skipped if `a` is true. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L1362) |
+
+### `spark.sql.subquery.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.subquery.maxThreadThreshold` | int | `16` | 2.4.6 | The maximum degree of parallelism to execute the subquery. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L205) |
 
 ### `spark.sql.thriftServer.*`
 
@@ -4341,6 +4438,7 @@
 | Config | Type | Default | Since | Description | Source |
 |---|---|---|---|---|---|
 | `spark.sql.ui.explainMode` | string | `formatted` | 3.1.0 | Configures the query explain mode used in the Spark SQL UI. The value can be 'simple', 'extended', 'codegen', 'cost', or 'formatted'. The default value is 'formatted'. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5874) |
+| `spark.sql.ui.retainedExecutions` | int | `1000` | 1.5.0 | Number of executions to retain in the Spark UI. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L174) |
 
 ### `spark.sql.unionOutputPartitioning.*`
 
@@ -4380,6 +4478,12 @@
 |---|---|---|---|---|---|
 | `spark.sql.view.maxNestedViewDepth` | int | `100` | 2.2.0 | The maximum depth of a view reference in a nested view. A nested view may reference other nested views, the dependencies are organized in a directed acyclic graph (DAG). However the DAG depth may become too large and cause unexpected behavior. This configuration puts a limit on this: when the depth of a view exceeds this value during analysis, we terminate the resolution to avoid potential errors. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L3640) |
 
+### `spark.sql.warehouse.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.sql.warehouse.dir` | string | `Utils.resolveURI("spark-warehouse").toString` | 2.0.0 | The default location for managed databases and tables. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L35) |
+
 ### `spark.sql.window.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -4405,6 +4509,64 @@
 
 ## sql/connect
 
+### `spark.connect.authenticate.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.connect.authenticate.token` | string | _(optional)_ | 4.0.0 | A pre-shared token that will be used to authenticate clients. This secret must be passed as a bearer token by for clients to connect. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L356) |
+
+### `spark.connect.copyFromLocalToFs.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.connect.copyFromLocalToFs.allowDestLocal` | boolean | `false` | 3.5.0 | \|(Deprecated since Spark 4.0, please set \|'${SQLConf.ARTIFACT_COPY_FROM_LOCAL_TO_FS_ALLOW_DEST_LOCAL.key}' instead. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L263) |
+
+### `spark.connect.execute.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.connect.execute.manager.abandonedTombstonesSize` | int | `10000` | 3.5.0 | Maximum size of the cache of abandoned executions. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L134) |
+| `spark.connect.execute.manager.detachedTimeout` | time | `5m` | 3.5.0 | Timeout after which executions without an attached RPC will be removed. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L118) |
+| `spark.connect.execute.manager.maintenanceInterval` | time | `30s` | 3.5.0 | Interval at which execution manager will search for abandoned executions to remove. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L126) |
+| `spark.connect.execute.reattachable.enabled` | boolean | `true` | 3.5.0 | Enables reattachable execution on the server. If disabled and a client requests it, non-reattachable execution will follow and should run until query completion. This will work, unless there is a GRPC stream error, in which case the client will discover that execution is not reattachable when trying to reattach fails. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L142) |
+| `spark.connect.execute.reattachable.observerRetryBufferSize` | bytes | `10m` | 3.5.0 | For reattachable execution, the total size of responses that were already sent to be kept in the buffer in case of connection error and client needing to retry. Set 0 to don't buffer anything (even last sent response).With any value greater than 0, the last sent response will always be buffered. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L174) |
+| `spark.connect.execute.reattachable.senderMaxStreamDuration` | time | `2m` | 3.5.0 | For reattachable execution, after this amount of time the response stream will be automatically completed and client needs to send a new ReattachExecute RPC to continue. Set to 0 for unlimited. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L153) |
+| `spark.connect.execute.reattachable.senderMaxStreamSize` | bytes | `1g` | 3.5.0 | For reattachable execution, after total responses size exceeds this value, the response stream will be automatically completed and client needs to send a new ReattachExecute RPC to continue. Set to 0 for unlimited. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L163) |
+
+### `spark.connect.extensions.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.connect.extensions.command.classes` | string | `Nil` | 3.4.0 | \|Comma separated list of classes that implement the trait \|org.apache.spark.sql.connect.plugin.CommandPlugin to support custom \|Command types in proto. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L210) |
+| `spark.connect.extensions.expression.classes` | string | `Nil` | 3.4.0 | \|Comma separated list of classes that implement the trait \|org.apache.spark.sql.connect.plugin.ExpressionPlugin to support custom \|Expression types in proto. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L198) |
+| `spark.connect.extensions.getStatus.classes` | string | `Nil` | 4.1.0 | \|Comma separated list of classes that implement the trait \|org.apache.spark.sql.connect.plugin.GetStatusPlugin to support custom \|GetStatus extensions in proto. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L222) |
+| `spark.connect.extensions.relation.classes` | string | `Nil` | 3.4.0 | \|Comma separated list of classes that implement the trait \|org.apache.spark.sql.connect.plugin.RelationPlugin to support custom \|Relation types in proto. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L186) |
+
+### `spark.connect.grpc.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.connect.grpc.arrow.maxBatchSize` | bytes | `ConnectCommon.CONNECT_GRPC_MAX_MESSAGE_SIZE` | 3.4.0 | When using Apache Arrow, limit the maximum size of one arrow batch, in bytes unless otherwise specified, that can be sent from server side to client side. Currently, we conservatively use 70% of it because the size is not accurate but estimated. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L63) |
+| `spark.connect.grpc.binding.address` | string | _(optional)_ | 4.0.0 | The address for Spark Connect server to bind. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L32) |
+| `spark.connect.grpc.binding.port` | int | `ConnectCommon.CONNECT_GRPC_BINDING_PORT` | 3.4.0 | The port for Spark Connect server to bind. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L39) |
+| `spark.connect.grpc.interceptor.classes` | string | _(optional)_ | 3.4.0 | Comma separated list of class names that must implement the io.grpc.ServerInterceptor interface. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L54) |
+| `spark.connect.grpc.marshallerRecursionLimit` | int | `ConnectCommon.CONNECT_GRPC_MARSHALLER_RECURSION_LIMIT` | 3.5.0 | \|Sets the recursion limit to grpc protobuf messages. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L81) |
+| `spark.connect.grpc.maxInboundMessageSize` | bytes | `ConnectCommon.CONNECT_GRPC_MAX_MESSAGE_SIZE` | 3.4.0 | Sets the maximum inbound message in bytes size for the gRPC requests.Requests with a larger payload will fail. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L73) |
+| `spark.connect.grpc.maxMetadataSize` | bytes | `1024` | 4.0.0 | Sets the maximum size of metadata fields. For instance, it restricts metadata fields in `ErrorInfo`. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L297) |
+| `spark.connect.grpc.port.maxRetries` | int | `ConnectCommon.CONNECT_GRPC_PORT_MAX_RETRIES` | 4.0.0 | The max port retry attempts for the gRPC server binding.By default, it's set to 0, and the server will fail fast in case of port conflicts. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L46) |
+
+### `spark.connect.jvmStacktrace.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.connect.jvmStacktrace.maxSize` | int | `1024` | 3.5.0 | \|Sets the maximum stack trace size to display when \|`spark.sql.pyspark.jvmStacktrace.enabled` is true. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L246) |
+
+### `spark.connect.maxPlanSize.*`
+
+| Config | Type | Default | Since | Description | Source |
+|---|---|---|---|---|---|
+| `spark.connect.maxPlanSize` | bytes | `512 * 1024 * 1024` | 4.1.0 | The maximum size of a (decompressed) proto plan that can be executed in Spark Connect. If the size of the plan exceeds this limit, an error will be thrown. The size is in bytes. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L436) |
+
 ### `spark.connect.ml.*`
 
 | Config | Type | Default | Since | Description | Source |
@@ -4426,8 +4588,13 @@
 | `spark.connect.session.connectML.mlCache.memoryControl.maxModelSize` | bytes | `1g` | 4.1.0 | Maximum size of a single SparkML model. The size is in bytes. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L404) |
 | `spark.connect.session.connectML.mlCache.memoryControl.maxStorageSize` | bytes | `10g` | 4.1.0 | Maximum total size (including in-memory and offloaded data) of the ml cache. The size is in bytes. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L412) |
 | `spark.connect.session.connectML.mlCache.memoryControl.offloadingTimeout` | time | `15` | 4.1.0 | Timeout of model offloading in MLCache. Models will be offloaded to Spark driver local disk if they are not used for this amount of time. The timeout is in minutes. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L394) |
+| `spark.connect.session.inactiveOperations.cacheExpiration` | time | `30` | 4.1.0 | Expiration time for inactive operation IDs cache in Spark Connect Session. Operations are cached after completion for a period of time to detect duplicates. The time should allow for network late arrivals, at least several minutes. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L345) |
+| `spark.connect.session.manager.closedSessionsTombstonesSize` | int | `1000` | 4.0.0 | Maximum size of the cache of sessions after which sessions that did not receive any requests will be removed. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L100) |
+| `spark.connect.session.manager.defaultSessionTimeout` | time | `60m` | 4.0.0 | Timeout after which sessions without any new incoming RPC will be removed. Setting it to -1 indicates that sessions should be kept forever. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L91) |
+| `spark.connect.session.manager.maintenanceInterval` | time | `30s` | 4.0.0 | Interval at which session manager will search for expired sessions to remove. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L110) |
 | `spark.connect.session.planCache.alwaysCacheDataSourceReadsEnabled` | boolean | `true` | 4.1.0 | When true, always cache the translation of Read.DataSource plans in the plan cache. This massively improves the performance of queries that reuse the same Read.DataSource within the same session, since these translations/analyses are usually quite costly. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L334) |
 | `spark.connect.session.planCache.enabled` | boolean | `true` | 4.0.0 | When true, the cache of resolved logical plans is enabled if '${CONNECT_SESSION_PLAN_CACHE_SIZE.key}' is greater than zero. When false, the cache is disabled even if '${CONNECT_SESSION_PLAN_CACHE_SIZE.key}' is greater than zero. The caching is best-effort and not guaranteed. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L323) |
+| `spark.connect.session.planCache.maxSize` | int | `32` | 4.0.0 | Sets the maximum number of cached resolved logical plans in Spark Connect Session. If set to a value less or equal than zero will disable the plan cache. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L314) |
 | `spark.connect.session.planCompression.defaultAlgorithm` | string | `ConnectPlanCompressionAlgorithm.ZSTD.toString` | 4.1.0 | The default algorithm of proto plan compression. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L457) |
 | `spark.connect.session.planCompression.threshold` | int | `10 * 1024 * 1024` | 4.1.0 | The threshold in bytes for the size of proto plan to be compressed. If the size of proto plan is smaller than this threshold, it will not be compressed. Set to -1 to disable plan compression. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L447) |
 | `spark.connect.session.resultChunking.maxChunkSize` | bytes | `(ConnectCommon.CONNECT_GRPC_MAX_MESSAGE_SIZE * 0.9).toInt` | 4.1.0 | The max size of a chunk in responses for a result batch. Result chunking is enabled if this config is set to a value greater than 0 and if the client allows it in ResultChunkingOptions. Otherwise, for example if set to -1, this feature is disabled. While spark.connect.grpc.arrow.maxBatchSize determines the max size of a result batch, maxChunkSize defines the max size of each individual chunk that is part of the batch that will be sent in a response. This allows the server to send large rows to clients. The size is in bytes. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L421) |
@@ -4438,6 +4605,8 @@
 |---|---|---|---|---|---|
 | `spark.sql.connect.enrichError.enabled` | boolean | `true` | 4.0.0 | \|When true, it enriches errors with full exception messages and optionally server-side \|stacktrace on the client side via an additional RPC. \| | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L280) |
 | `spark.sql.connect.serverStacktrace.enabled` | boolean | `true` | 4.0.0 | When true, it sets the server-side stacktrace in the user-facing Spark exception. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L290) |
+| `spark.sql.connect.ui.retainedSessions` | int | `200` | 3.5.0 | The number of client sessions kept in the Spark Connect UI history. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L273) |
+| `spark.sql.connect.ui.retainedStatements` | int | `200` | 3.5.0 | The number of statements kept in the Spark Connect UI history. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala#L256) |
 
 ## sql/hive
 
@@ -4453,8 +4622,14 @@
 | `spark.sql.hive.convertMetastoreOrc` | boolean | `true` | 2.0.0 | When set to true, the built-in ORC reader and writer are used to process ORC tables created by using the HiveQL syntax, instead of Hive serde. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L143) |
 | `spark.sql.hive.convertMetastoreParquet` | boolean | `true` | 1.1.1 | When set to true, the built-in Parquet reader and writer are used to process parquet tables created by using the HiveQL syntax, instead of Hive serde. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L126) |
 | `spark.sql.hive.convertMetastoreParquet.mergeSchema` | boolean | `false` | 1.3.1 | When true, also tries to merge possibly different but compatible Parquet schemas in different Parquet data files. This configuration is only effective when "spark.sql.hive.convertMetastoreParquet" is true. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L135) |
+| `spark.sql.hive.metastore.barrierPrefixes` | string | `Nil` | 1.4.0 | A comma separated list of class prefixes that should explicitly be reloaded for each version of Hive that Spark SQL is communicating with. For example, Hive UDFs that are declared in a prefix that typically would be shared (i.e. <code>org.apache.spark.*</code>). | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L216) |
+| `spark.sql.hive.metastore.jars` | string | `builtin` | 1.4.0 | \| Location of the jars that should be used to instantiate the HiveMetastoreClient. \| This property can be one of four options: \| 1. \| Use Hive ${builtinHiveVersion}, which is bundled with the Spark assembly when \| <code>-Phive</code> is enabled. When this option is chosen, \| <code>spark.sql.hive.metastore.version</code> must be either \| <code>${builtinHiveVersion}</code> or not defined. \| 2. \| Use Hive jars of specified version downloaded from Maven repositories. \| 3. \| Use Hive jars configured by `spark.sql.hive.metastore.jars.path` \| in comma separated format. Support both local or remote paths.The provided jars \| should be the same version as `${HIVE_METASTORE_VERSION.key}`. \| 4. A classpath in the standard format for both Hive and Hadoop. The provided jars \| should be the same version as `${HIVE_METASTORE_VERSION.key}`. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L86) |
+| `spark.sql.hive.metastore.jars.path` | string | `Nil` | 3.1.0 | \| Comma-separated paths of the jars that used to instantiate the HiveMetastoreClient. \| This configuration is useful only when `${HIVE_METASTORE_JARS.key}` is set as `path`. \| The paths can be any of the following format: \| 1. file://path/to/jar/foo.jar \| 2. hdfs://nameservice/path/to/jar/foo.jar \| 3. /path/to/jar/ (path without URI scheme follow conf `fs.defaultFS`'s URI schema) \| 4. [http/https/ftp]://path/to/jar/foo.jar \| Note that 1, 2, and 3 support wildcard. For example: \| 1. file://path/to/jar/*,file://path2/to/jar/*/*.jar \| 2. hdfs://nameservice/path/to/jar/*,hdfs://nameservice2/path/to/jar/*/*.jar | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L108) |
+| `spark.sql.hive.metastore.sharedPrefixes` | string | `jdbcPrefixes` | 1.4.0 | A comma separated list of class prefixes that should be loaded using the classloader that is shared between Spark SQL and a specific version of Hive. An example of classes that should be shared is JDBC drivers that are needed to talk to the metastore. Other classes that need to be shared are those that interact with classes that are already shared. For example, custom appenders that are used by log4j. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L202) |
+| `spark.sql.hive.metastore.version` | string | `builtinHiveVersion` | 1.4.0 | Version of the Hive metastore. Available options are <code>2.0.0</code> through <code>2.3.10</code>, <code>3.0.0</code> through <code>3.1.3</code> and <code>4.0.0</code> through <code>4.1.0</code>. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L76) |
 | `spark.sql.hive.thriftServer.async` | boolean | `true` | 1.5.0 | When set to true, Hive Thrift server executes SQL queries in an asynchronous way. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L225) |
 | `spark.sql.hive.useDelegateForSymlinkTextInputFormat` | boolean | `true` | 3.4.0 | When true, SymlinkTextInputFormat is replaced with a similar delegate class during table scan in order to fix the issue of empty splits | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L240) |
+| `spark.sql.hive.version` | string | `builtinHiveVersion` | 1.1.1 | The compiled, a.k.a, builtin Hive version of the Spark distribution bundled with. Note that, this a read-only conf and only used to report the built-in hive version. If you want a different metastore client for Spark to call, please refer to spark.sql.hive.metastore.version. | [src](https://github.com/apache/spark/blob/v4.2.0/sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala#L61) |
 
 ### `spark.sql.legacy.*`
 
@@ -4561,4 +4736,5 @@
 | dynamic-key | [resource-managers/kubernetes/core/src/main/scala/org/apache/spark/deploy/k8s/Config.scala:331](https://github.com/apache/spark/blob/v4.2.0/resource-managers/kubernetes/core/src/main/scala/org/apache/spark/deploy/k8s/Config.scala#L331) | `ConfigBuilder(s"$KUBERNETES_AUTH_DRIVER_CONF_PREFIX.serviceAccountName")       .` |
 | dynamic-key | [resource-managers/kubernetes/core/src/main/scala/org/apache/spark/deploy/k8s/Config.scala:341](https://github.com/apache/spark/blob/v4.2.0/resource-managers/kubernetes/core/src/main/scala/org/apache/spark/deploy/k8s/Config.scala#L341) | `ConfigBuilder(s"$KUBERNETES_AUTH_EXECUTOR_CONF_PREFIX.serviceAccountName")      ` |
 | dynamic-key | [sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala:5911](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala#L5911) | `buildConf(s"spark.sql.catalog.$SESSION_CATALOG_NAME")       .doc("A catalog impl` |
+| dynamic-key | [sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala:42](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala#L42) | `buildStaticConf(s"spark.sql.catalog.$SESSION_CATALOG_NAME.defaultDatabase")     ` |
 

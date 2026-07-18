@@ -96,7 +96,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
-| sql/catalyst | 721 | ⬜ pending | — | — |
+| sql/catalyst | 750 | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.1.2 | 2026-06-06 |
 | core — execution-engine | — | ⬜ pending | — | — |
 | core — shuffle-memory | — | ⬜ pending | — | — |
@@ -104,9 +104,9 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | core — infra | — | ⬜ pending | — | — |
 | resource-managers/kubernetes | 89 | ⬜ pending | — | — |
 | resource-managers/yarn | 61 | ⬜ pending | — | — |
+| sql/connect | 44 | ⬜ pending | — | — |
 | streaming | 28 | ⬜ pending | — | — |
-| sql/connect | 14 | ⬜ pending | — | — |
-| sql/hive | 11 | ⬜ pending | — | — |
+| sql/hive | 17 | ⬜ pending | — | — |
 | connector/kafka-0-10 | 8 | ⬜ pending | — | — |
 | connector/kafka-0-10-sql | 8 | ⬜ pending | — | — |
 | connector/profiler | 7 | ⬜ pending | — | — |

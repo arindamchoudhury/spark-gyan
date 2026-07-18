@@ -29,7 +29,11 @@ import yaml
 
 # --- builder grammar ---------------------------------------------------------
 
-BUILDER_RE = re.compile(r"\b(?:buildConf|ConfigBuilder)\s*\(")
+# Entry points of a config builder chain. `buildConf` / `buildStaticConf` are the
+# SQLConf.scala wrappers (grep `def build.*Conf` in the Spark tree — those two are
+# the only ones); everything else calls `ConfigBuilder` directly.
+BUILDER_NAMES = ("buildConf", "buildStaticConf", "ConfigBuilder")
+BUILDER_RE = re.compile(r"\b(?:%s)\s*\(" % "|".join(BUILDER_NAMES))
 # Terminal builder calls that close a config chain.
 TERMINAL_RE = re.compile(
     r"\.(createWithDefaultString|createWithDefaultFunction|createWithDefault"
@@ -342,7 +346,7 @@ def build_catalog(source_root: Path) -> Catalog:
     for path in iter_scala_main(source_root):
         rel = path.relative_to(source_root).as_posix()
         text = path.read_text(encoding="utf-8", errors="ignore")
-        if "buildConf(" not in text and "ConfigBuilder(" not in text:
+        if not any(f"{name}(" in text for name in BUILDER_NAMES):
             continue
         c, u = parse_file(text, rel, symbols)
         configs.extend(c)
