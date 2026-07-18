@@ -30,6 +30,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I9 | The Medallion Architecture | — | — | ⬜ |
 | I10 | Data Formats: Parquet, Delta, Avro, JSON | — | — | ⬜ |
 | I11 | SQL Scripting | — | — | ⬜ |
+| I15 | Apache Iceberg and Table-Format Interoperability | — | — | ⬜ |
 | I14 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
 | I13 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
 | I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | — | ⬜ |

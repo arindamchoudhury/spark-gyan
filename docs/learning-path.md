@@ -23,6 +23,7 @@ These are the sources cited throughout this page. Abbreviations are used inline.
 | **SDG** | *Spark: The Definitive Guide* — Chambers & Zaharia (O'Reilly, 2018) | Book | [O'Reilly](https://www.oreilly.com/library/view/spark-the-definitive/9781491912201/) |
 | **DLUR** | *Delta Lake: Up and Running* — Haelen & Davis (O'Reilly, 2023) | Book | [O'Reilly](https://www.oreilly.com/library/view/delta-lake-up/9781098139711/) |
 | **DLDG** | *Delta Lake: The Definitive Guide* — Lee et al. (O'Reilly, 2024) | Book | [O'Reilly](https://www.oreilly.com/library/view/delta-lake-the/9781098151935/) |
+| **Iceberg-DG** | *Apache Iceberg: The Definitive Guide* — Shiran, Hughes & Merced (O'Reilly, 2024) | Book | [O'Reilly](https://www.oreilly.com/library/view/apache-iceberg-the/9781098148614/) |
 | **FKane** | *Taming Big Data with Apache Spark 4 and Python — Hands On!* — Frank Kane | Udemy | [Udemy](https://www.udemy.com/course/taming-big-data-with-apache-spark-hands-on/) |
 | **IBM-Spark** | *Apache Spark for Data Engineering and ML* — IBM | edX / Coursera | [edX](https://www.edx.org/learn/apache-spark/ibm-apache-spark-for-data-engineering-and-machine-learning) |
 | **IBM-ML** | *Scalable Machine Learning on Big Data using Apache Spark* — IBM | Coursera | [Coursera](https://www.coursera.org/learn/machine-learning-big-data-apache-spark) |
@@ -31,6 +32,7 @@ These are the sources cited throughout this page. Abbreviations are used inline.
 | **DagEss** | *Dagster Essentials* — Dagster Academy | Free course | [dagster.io](https://courses.dagster.io/courses/dagster-essentials) |
 | **Spark-docs** | Apache Spark 4.2.0 official documentation | Official docs | [spark.apache.org](https://spark.apache.org/docs/latest/) |
 | **Delta-docs** | Delta Lake official documentation | Official docs | [docs.delta.io](https://docs.delta.io/latest/) |
+| **Iceberg-docs** | Apache Iceberg official documentation (1.11.0) | Official docs | [iceberg.apache.org](https://iceberg.apache.org/docs/latest/) |
 
 ---
 
@@ -432,6 +434,27 @@ You are ready to leave this level when you can build a complete end-to-end batch
     SQL scripting landed in Spark 4.0, after every book in the resources table. Rioux (2022), LS2e (2020) and SDG (2018) have nothing on it. Treat the docs page as primary and verify behaviour against your own 4.2.0 stack rather than waiting for a book to catch up.
 
 **Milestone:** You can write a SQL script that declares a variable, iterates over a cursor with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline.
+
+---
+
+### ⬜ I15 — Apache Iceberg and Table-Format Interoperability
+
+**What it is:** The Iceberg table format — metadata tree (catalog → metadata file → manifest list → manifests), snapshots, hidden partitioning and partition evolution, schema evolution, the REST Catalog specification; how it compares to Delta Lake, and the interoperability layers (Delta UniForm, Iceberg's own catalog spec) that let one copy of the data serve several engines.
+
+**Why you need it:** This path teaches Delta everywhere else, which reflects the Databricks certification track. The wider market has moved: Iceberg is the default choice for new open lakehouses, its REST Catalog is the de-facto interoperability standard, and every major platform — AWS, Snowflake, Google, and Databricks itself via UniForm — now reads and writes it. Delta fluency alone increasingly reads as Databricks-specific fluency. The concepts transfer (both are metadata-over-Parquet with snapshot isolation); the file layouts, catalog models, and operational commands do not.
+
+**Learn it with:**
+
+1. **Iceberg-DG Ch 2–4** — *Apache Iceberg: The Definitive Guide*, Shiran, Hughes & Merced (O'Reilly, 2024) — the architecture and metadata tree, then the Spark integration chapters; the clearest treatment of why the manifest layout enables the planning that Hive-style partitioning cannot
+2. **DLDG Ch 1** — re-read the Delta transaction log chapter *after* the Iceberg metadata tree; the contrast is what makes both stick
+3. **Iceberg-docs → Spark Getting Started** ([iceberg.apache.org/docs/latest/spark-getting-started/](https://iceberg.apache.org/docs/latest/spark-getting-started/)) — catalog configuration and the runtime jar, which is the part that actually blocks beginners
+4. **Iceberg-docs → Multi-Engine Support** ([iceberg.apache.org/multi-engine-support/](https://iceberg.apache.org/multi-engine-support/)) — the authoritative Spark-version support matrix; check it before choosing a runtime jar
+5. **Local stack** — create the same dataset as both a Delta and an Iceberg table, then diff the on-disk metadata directories
+
+!!! warning "Iceberg does not support Spark 4.2 yet — check before you start"
+    As of Iceberg 1.11.0 (May 2026), the newest supported Spark is **4.1** (`iceberg-spark-runtime-4.1_2.13`); 3.5 and 4.0 are also Maintained. There is no 4.2 runtime jar, so this topic cannot be practised on the 4.2.0 stack the rest of this path targets. Either run a separate Spark 4.1 environment for this topic, or defer it until an Iceberg release adds 4.2. Re-check the multi-engine support page rather than assuming — this is the fastest-moving fact on this page.
+
+**Milestone:** You can create an Iceberg table from Spark, evolve its partitioning without rewriting the data, query a previous snapshot, and explain — pointing at the actual files — how Iceberg's manifest tree and Delta's `_delta_log` differ in how a reader discovers which data files belong to the current snapshot. You can state what UniForm does and does not solve.
 
 ---
 
@@ -959,7 +982,7 @@ You are operating at Expert level when you can:
 ```
 Beginner (B1–B9)              →  9 topics · 30–40 hrs
     ↓
-Intermediate (I1–I11)         → 11 topics · 35–50 hrs
+Intermediate (I1–I11, I15)    → 12 topics · 38–54 hrs
     ↓  [Certification: Associate Developer for Apache Spark]
 Advanced (A1–A11)             → 11 topics · 40–60 hrs
     ↓  [Certification: Data Engineer Associate]
@@ -969,7 +992,7 @@ Expert (E1–E9)                →  9 topics · 40–60+ hrs
 Optional depth (I12–I14, E10–E11) → 5 topics, source-sweep derived; not on the main line
 ```
 
-**You are currently here:** B1–B9 + I1–I5 done (**14 of 40** main-line topics; 45 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
+**You are currently here:** B1–B9 + I1–I5 done (**14 of 41** main-line topics; 46 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
 **Carrying 🔄:** B1, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. Only I3 and the B1 install chapter contain claims that are actually *wrong*; B7 and B8 are merely missing new surface. Clearing them is a smaller job than a new topic, and worth doing before the Associate Developer exam, which weights DataFrame API (30%) and Spark SQL (20%) most heavily.
 

@@ -49,3 +49,4 @@ Personal book written as I work through the [learning path](../learning-path.md)
 | ⬜ | 38 | E7 | CI/CD for Data Engineering | — |
 | ⬜ | 39 | E8 | Change Data Capture and Slowly Changing Dimensions | — |
 | ⬜ | 40 | E9 | Spark Connect and the Modern Client Architecture | — |
+| ⬜ | 41 | I15 | Apache Iceberg and Table-Format Interoperability | — |

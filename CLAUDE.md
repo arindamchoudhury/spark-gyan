@@ -44,6 +44,8 @@ extra_javascript = ["javascripts/sidebar-toggle.js"]
 
 ## Adding a chapter
 
+This section covers **reading notes** for the Rioux book. Synthesized chapters of the personal book (`docs/spark-book/`) are a different job — use the `spark-book` skill, which owns the chapter arc, index, nav, and glossary sync.
+
 1. Fill in `docs/books/rioux/chapters/<NN>-<slug>.md` (all 14 files already exist as placeholders, and nav is already wired in `zensical.toml`).
 2. Flip the chapter row from ⬜ to ✅ in `docs/books/rioux/index.md`.
 3. Append new terms to `docs/reference/glossary.md` with source attribution (column: "Rioux Ch N").
@@ -51,7 +53,9 @@ extra_javascript = ["javascripts/sidebar-toggle.js"]
 
 ## Chapter content conventions
 
-- Open with a source citation line and a 📌 callout noting version differences from Spark 3.2 (book) to current Spark 4.1.1 / Python 3.10+.
+- Open with a source citation line and a 📌 callout noting version differences from Spark 3.2 (book) to current Spark 4.2.0 / Python 3.10+.
+- **Check the current stable version before writing** rather than trusting this line — it drifts. `docs/learning-path.md`'s header records what was last verified, and `docs/reference/spark-source-map/configs/catalog.yaml` records the version the config catalog was parsed from.
+- Chapters 01–16 were written against Spark 4.1.x; four carry a 🔄 revisit banner (see `docs/spark-book/index.md`). When touching any pre-4.2.0 chapter, bump its header version line as you go.
 - Exceptions moved in Spark 4.x live under `pyspark.errors`, not the old paths.
 - Use `❓` to mark open questions inline.
 - PySpark import aliases — always use these exactly:
