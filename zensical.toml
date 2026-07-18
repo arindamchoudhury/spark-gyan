@@ -31,6 +31,7 @@ nav = [
             { "I6 — Caching and Persistence" = "reference/spark-source-map/topics/i6.md" },
             { "I7 — The Spark UI" = "reference/spark-source-map/topics/i7.md" },
             { "I8 — Delta Lake Basics" = "reference/spark-source-map/topics/i8.md" },
+            { "I9 — The Medallion Architecture" = "reference/spark-source-map/topics/i9.md" },
         ]},
         { "Sweeps" = [
             { "core (RDD layer)" = "reference/spark-source-map/sweeps/core.md" },

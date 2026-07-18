@@ -707,8 +707,30 @@ You are ready to leave this level when you can build a complete end-to-end batch
 2. **DEB Module 1** — data ingestion into bronze with Auto Loader; CTAS, COPY INTO, MERGE INTO patterns
 3. **DLDG Ch 9** — architecting a lakehouse; design decisions at each layer
 4. **Delta-docs → Best practices** ([best-practices.html](https://docs.delta.io/latest/best-practices.html)) — partition-column choice, the ≥1 GB per partition guidance, compaction with `dataChange=false`, and why caching a Delta table defeats data skipping. Short, and it prevents the two mistakes that make a bronze layer unusable
+5. **Delta-docs → Table streaming reads and writes** ([delta-streaming.html](https://docs.delta.io/latest/delta-streaming.html)) — `maxFilesPerTrigger`, `startingVersion`, and schema-change handling; this is the mechanism the bronze layer's "incremental processing" actually is
+6. **Source trace — [I9 in the source map](reference/spark-source-map/topics/i9.md)** — the four mechanisms the pattern is assembled from, and why a `MERGE` updating ten rows can rewrite five hundred files
 
-**Milestone:** You can build a three-layer pipeline from raw Parquet files to a Gold aggregation table, with schema enforcement on silver, using your local Unity Catalog stack.
+!!! info "Medallion is a convention, not a feature — the value is in the four mechanisms under it"
+    There is no `MedallionTable`, no config, no API. Bronze/Silver/Gold is a naming discipline for *where you spend correctness effort*. What makes it worth a topic is that each transition rests on a mechanism with real semantics:
+
+    | Transition | Mechanism | The thing to understand |
+    |---|---|---|
+    | source → bronze | streaming read | offsets are `(version, index)`, so a huge commit splits across batches and a restart resumes mid-commit |
+    | bronze → silver | schema enforcement | every write passes through `updateMetadata`; `autoMerge` decides evolve-vs-fail, `isReadCompatible` decides what is legal at all |
+    | bronze → silver | `MERGE INTO` | two jobs plus a full file rewrite (see below) |
+    | any → gold | Change Data Feed | read what changed instead of rescanning — but it must be enabled *before* the changes happen |
+
+    And the layers exist so failures are recoverable: bronze keeps raw data so silver can be rebuilt, silver keeps cleaned history so gold can be recomputed. That is the justification for the storage cost, and it is the part the three-box diagram never conveys.
+
+!!! warning "`MERGE` cost scales with files touched, not rows changed"
+    A `MERGE INTO` is **two passes and a rewrite**: `findTouchedFiles` joins source against target to find which data files contain matches, then `writeAllChanges` rewrites each of those files in full.
+
+    So updating 10 rows scattered across 500 files rewrites 500 files. The row count is almost irrelevant; the *spread* is everything. This is why partitioning, clustering and file sizing matter more in the silver layer than anywhere else, and it turns "partition thoughtfully" from advice into arithmetic you can do in advance. An insert-only merge skips the rewrite path entirely, which is why append-only bronze ingestion is cheap by comparison.
+
+!!! warning "This topic needs Spark 4.1 — it is Delta all the way down"
+    Every mechanism here is a Delta feature, and Delta 4.3.1 does not build against Spark 4.2.0 (see [I8](#i8-delta-lake-basics)). Plan I8, I9, A6 and E4 as a group on a Spark 4.1 environment.
+
+**Milestone:** You can build a three-layer pipeline from raw Parquet files to a Gold aggregation table, with schema enforcement on silver, using your local Unity Catalog stack. Then two that show you understand the mechanisms rather than the diagram: send a record with an unexpected column into silver and predict whether the write evolves the schema or fails, naming the setting that decides it; and estimate how many files a `MERGE` updating a handful of rows will rewrite, before running it.
 
 ---
 
