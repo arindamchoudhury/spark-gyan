@@ -2,8 +2,8 @@ meta:
   spark_version: 4.2.0
   source_root: C:/opt/learn/spark/repos/spark
   generated_at: '2026-07-18'
-  entry_count: 1493
-  unparsed_count: 3
+  entry_count: 1558
+  unparsed_count: 4
 configs:
 - key: spark.acls.enable
   type: boolean
@@ -351,6 +351,256 @@ configs:
   source_line: 2005
   prefix: spark.cleaner.referenceTracking
   subsystem: core
+- key: spark.connect.authenticate.token
+  type: string
+  default: null
+  default_kind: optional
+  version: 4.0.0
+  doc: A pre-shared token that will be used to authenticate clients. This secret must be passed as a bearer
+    token by for clients to connect.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 356
+  prefix: spark.connect.authenticate
+  subsystem: sql/connect
+- key: spark.connect.copyFromLocalToFs.allowDestLocal
+  type: boolean
+  default: false
+  default_kind: literal
+  version: 3.5.0
+  doc: '|(Deprecated since Spark 4.0, please set |''${SQLConf.ARTIFACT_COPY_FROM_LOCAL_TO_FS_ALLOW_DEST_LOCAL.key}''
+    instead. |'
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 263
+  prefix: spark.connect.copyFromLocalToFs
+  subsystem: sql/connect
+- key: spark.connect.execute.manager.abandonedTombstonesSize
+  type: int
+  default: '10000'
+  default_kind: string
+  version: 3.5.0
+  doc: Maximum size of the cache of abandoned executions.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 134
+  prefix: spark.connect.execute
+  subsystem: sql/connect
+- key: spark.connect.execute.manager.detachedTimeout
+  type: time
+  default: 5m
+  default_kind: string
+  version: 3.5.0
+  doc: Timeout after which executions without an attached RPC will be removed.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 118
+  prefix: spark.connect.execute
+  subsystem: sql/connect
+- key: spark.connect.execute.manager.maintenanceInterval
+  type: time
+  default: 30s
+  default_kind: string
+  version: 3.5.0
+  doc: Interval at which execution manager will search for abandoned executions to remove.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 126
+  prefix: spark.connect.execute
+  subsystem: sql/connect
+- key: spark.connect.execute.reattachable.enabled
+  type: boolean
+  default: true
+  default_kind: literal
+  version: 3.5.0
+  doc: Enables reattachable execution on the server. If disabled and a client requests it, non-reattachable
+    execution will follow and should run until query completion. This will work, unless there is a GRPC
+    stream error, in which case the client will discover that execution is not reattachable when trying
+    to reattach fails.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 142
+  prefix: spark.connect.execute
+  subsystem: sql/connect
+- key: spark.connect.execute.reattachable.observerRetryBufferSize
+  type: bytes
+  default: 10m
+  default_kind: string
+  version: 3.5.0
+  doc: For reattachable execution, the total size of responses that were already sent to be kept in the
+    buffer in case of connection error and client needing to retry. Set 0 to don't buffer anything (even
+    last sent response).With any value greater than 0, the last sent response will always be buffered.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 174
+  prefix: spark.connect.execute
+  subsystem: sql/connect
+- key: spark.connect.execute.reattachable.senderMaxStreamDuration
+  type: time
+  default: 2m
+  default_kind: string
+  version: 3.5.0
+  doc: For reattachable execution, after this amount of time the response stream will be automatically
+    completed and client needs to send a new ReattachExecute RPC to continue. Set to 0 for unlimited.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 153
+  prefix: spark.connect.execute
+  subsystem: sql/connect
+- key: spark.connect.execute.reattachable.senderMaxStreamSize
+  type: bytes
+  default: 1g
+  default_kind: string
+  version: 3.5.0
+  doc: For reattachable execution, after total responses size exceeds this value, the response stream
+    will be automatically completed and client needs to send a new ReattachExecute RPC to continue. Set
+    to 0 for unlimited.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 163
+  prefix: spark.connect.execute
+  subsystem: sql/connect
+- key: spark.connect.extensions.command.classes
+  type: string
+  default: Nil
+  default_kind: expr
+  version: 3.4.0
+  doc: '|Comma separated list of classes that implement the trait |org.apache.spark.sql.connect.plugin.CommandPlugin
+    to support custom |Command types in proto. |'
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 210
+  prefix: spark.connect.extensions
+  subsystem: sql/connect
+- key: spark.connect.extensions.expression.classes
+  type: string
+  default: Nil
+  default_kind: expr
+  version: 3.4.0
+  doc: '|Comma separated list of classes that implement the trait |org.apache.spark.sql.connect.plugin.ExpressionPlugin
+    to support custom |Expression types in proto. |'
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 198
+  prefix: spark.connect.extensions
+  subsystem: sql/connect
+- key: spark.connect.extensions.getStatus.classes
+  type: string
+  default: Nil
+  default_kind: expr
+  version: 4.1.0
+  doc: '|Comma separated list of classes that implement the trait |org.apache.spark.sql.connect.plugin.GetStatusPlugin
+    to support custom |GetStatus extensions in proto. |'
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 222
+  prefix: spark.connect.extensions
+  subsystem: sql/connect
+- key: spark.connect.extensions.relation.classes
+  type: string
+  default: Nil
+  default_kind: expr
+  version: 3.4.0
+  doc: '|Comma separated list of classes that implement the trait |org.apache.spark.sql.connect.plugin.RelationPlugin
+    to support custom |Relation types in proto. |'
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 186
+  prefix: spark.connect.extensions
+  subsystem: sql/connect
+- key: spark.connect.grpc.arrow.maxBatchSize
+  type: bytes
+  default: ConnectCommon.CONNECT_GRPC_MAX_MESSAGE_SIZE
+  default_kind: expr
+  version: 3.4.0
+  doc: When using Apache Arrow, limit the maximum size of one arrow batch, in bytes unless otherwise specified,
+    that can be sent from server side to client side. Currently, we conservatively use 70% of it because
+    the size is not accurate but estimated.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 63
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.grpc.binding.address
+  type: string
+  default: null
+  default_kind: optional
+  version: 4.0.0
+  doc: The address for Spark Connect server to bind.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 32
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.grpc.binding.port
+  type: int
+  default: ConnectCommon.CONNECT_GRPC_BINDING_PORT
+  default_kind: expr
+  version: 3.4.0
+  doc: The port for Spark Connect server to bind.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 39
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.grpc.interceptor.classes
+  type: string
+  default: null
+  default_kind: optional
+  version: 3.4.0
+  doc: Comma separated list of class names that must implement the io.grpc.ServerInterceptor interface.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 54
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.grpc.marshallerRecursionLimit
+  type: int
+  default: ConnectCommon.CONNECT_GRPC_MARSHALLER_RECURSION_LIMIT
+  default_kind: expr
+  version: 3.5.0
+  doc: '|Sets the recursion limit to grpc protobuf messages. |'
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 81
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.grpc.maxInboundMessageSize
+  type: bytes
+  default: ConnectCommon.CONNECT_GRPC_MAX_MESSAGE_SIZE
+  default_kind: expr
+  version: 3.4.0
+  doc: Sets the maximum inbound message in bytes size for the gRPC requests.Requests with a larger payload
+    will fail.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 73
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.grpc.maxMetadataSize
+  type: bytes
+  default: 1024
+  default_kind: literal
+  version: 4.0.0
+  doc: Sets the maximum size of metadata fields. For instance, it restricts metadata fields in `ErrorInfo`.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 297
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.grpc.port.maxRetries
+  type: int
+  default: ConnectCommon.CONNECT_GRPC_PORT_MAX_RETRIES
+  default_kind: expr
+  version: 4.0.0
+  doc: The max port retry attempts for the gRPC server binding.By default, it's set to 0, and the server
+    will fail fast in case of port conflicts.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 46
+  prefix: spark.connect.grpc
+  subsystem: sql/connect
+- key: spark.connect.jvmStacktrace.maxSize
+  type: int
+  default: 1024
+  default_kind: literal
+  version: 3.5.0
+  doc: '|Sets the maximum stack trace size to display when |`spark.sql.pyspark.jvmStacktrace.enabled`
+    is true. |'
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 246
+  prefix: spark.connect.jvmStacktrace
+  subsystem: sql/connect
+- key: spark.connect.maxPlanSize
+  type: bytes
+  default: 512 * 1024 * 1024
+  default_kind: expr
+  version: 4.1.0
+  doc: The maximum size of a (decompressed) proto plan that can be executed in Spark Connect. If the size
+    of the plan exceeds this limit, an error will be thrown. The size is in bytes.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 436
+  prefix: spark.connect.maxPlanSize
+  subsystem: sql/connect
 - key: spark.connect.ml.backend.classes
   type: string
   default: Nil
@@ -439,6 +689,50 @@ configs:
   source_line: 394
   prefix: spark.connect.session
   subsystem: sql/connect
+- key: spark.connect.session.inactiveOperations.cacheExpiration
+  type: time
+  default: 30
+  default_kind: literal
+  version: 4.1.0
+  doc: Expiration time for inactive operation IDs cache in Spark Connect Session. Operations are cached
+    after completion for a period of time to detect duplicates. The time should allow for network late
+    arrivals, at least several minutes.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 345
+  prefix: spark.connect.session
+  subsystem: sql/connect
+- key: spark.connect.session.manager.closedSessionsTombstonesSize
+  type: int
+  default: '1000'
+  default_kind: string
+  version: 4.0.0
+  doc: Maximum size of the cache of sessions after which sessions that did not receive any requests will
+    be removed.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 100
+  prefix: spark.connect.session
+  subsystem: sql/connect
+- key: spark.connect.session.manager.defaultSessionTimeout
+  type: time
+  default: 60m
+  default_kind: string
+  version: 4.0.0
+  doc: Timeout after which sessions without any new incoming RPC will be removed. Setting it to -1 indicates
+    that sessions should be kept forever.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 91
+  prefix: spark.connect.session
+  subsystem: sql/connect
+- key: spark.connect.session.manager.maintenanceInterval
+  type: time
+  default: 30s
+  default_kind: string
+  version: 4.0.0
+  doc: Interval at which session manager will search for expired sessions to remove.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 110
+  prefix: spark.connect.session
+  subsystem: sql/connect
 - key: spark.connect.session.planCache.alwaysCacheDataSourceReadsEnabled
   type: boolean
   default: true
@@ -461,6 +755,17 @@ configs:
     is greater than zero. The caching is best-effort and not guaranteed.
   source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
   source_line: 323
+  prefix: spark.connect.session
+  subsystem: sql/connect
+- key: spark.connect.session.planCache.maxSize
+  type: int
+  default: 32
+  default_kind: literal
+  version: 4.0.0
+  doc: Sets the maximum number of cached resolved logical plans in Spark Connect Session. If set to a
+    value less or equal than zero will disable the plan cache.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 314
   prefix: spark.connect.session
   subsystem: sql/connect
 - key: spark.connect.session.planCompression.defaultAlgorithm
@@ -4379,6 +4684,17 @@ configs:
   source_line: 132
   prefix: spark.python.factory
   subsystem: core
+- key: spark.python.sql.dataFrameDebugging.enabled
+  type: boolean
+  default: true
+  default_kind: literal
+  version: 4.0.0
+  doc: Enable the DataFrame debugging. This feature is enabled by default, but has a non-trivial performance
+    overhead because of the stack trace collection.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 309
+  prefix: spark.python.sql
+  subsystem: sql/catalyst
 - key: spark.python.task.killTimeout
   type: time
   default: 2s
@@ -6671,6 +6987,19 @@ configs:
   source_line: 2130
   prefix: spark.sql.binaryOutputStyle
   subsystem: sql/catalyst
+- key: spark.sql.broadcastExchange.maxThreadThreshold
+  type: int
+  default: 128
+  default_kind: literal
+  version: 3.0.0
+  doc: The maximum degree of parallelism to fetch and broadcast the table. If we encounter memory issue
+    like frequently full GC or OOM when broadcast table we can decrease this number in order to reduce
+    memory usage. Notice the number should be carefully chosen since decreasing parallelism might cause
+    longer waiting for other broadcasting. Also, increasing parallelism may cause memory problem.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 191
+  prefix: spark.sql.broadcastExchange
+  subsystem: sql/catalyst
 - key: spark.sql.broadcastTimeout
   type: time
   default: ${5 * 60}
@@ -6707,6 +7036,19 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 6448
   prefix: spark.sql.bucketing
+  subsystem: sql/catalyst
+- key: spark.sql.cache.serializer
+  type: string
+  default: org.apache.spark.sql.execution.columnar.DefaultCachedBatchSerializer
+  default_kind: literal
+  version: 3.1.0
+  doc: The name of a class that implements org.apache.spark.sql.columnar.CachedBatchSerializer. It will
+    be used to translate SQL data into a format that can more efficiently be cached. The underlying API
+    is subject to change so use with caution. Multiple classes cannot be specified. The class must have
+    a no-arg constructor.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 145
+  prefix: spark.sql.cache
   subsystem: sql/catalyst
 - key: spark.sql.cartesianProductExec.buffer.in.memory.threshold
   type: int
@@ -6748,6 +7090,16 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 1384
   prefix: spark.sql.caseSensitive
+  subsystem: sql/catalyst
+- key: spark.sql.catalogImplementation
+  type: string
+  default: in-memory
+  default_kind: literal
+  version: 2.0.0
+  doc: ''
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 48
+  prefix: spark.sql.catalogImplementation
   subsystem: sql/catalyst
 - key: spark.sql.cbo.enabled
   type: boolean
@@ -6955,6 +7307,29 @@ configs:
     so anything above it would be meaningless. The default value is set to -1 (disabled by default).
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 2680
+  prefix: spark.sql.codegen
+  subsystem: sql/catalyst
+- key: spark.sql.codegen.cache.maxEntries
+  type: int
+  default: 100
+  default_kind: literal
+  version: 2.4.0
+  doc: When nonzero, enable caching of generated classes for operators and expressions. All jobs share
+    the cache that can use up to the specified number for generated classes.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 89
+  prefix: spark.sql.codegen
+  subsystem: sql/catalyst
+- key: spark.sql.codegen.comments
+  type: boolean
+  default: false
+  default_kind: literal
+  version: 2.0.0
+  doc: When true, put comment in the generated code. Since computing huge comments can be extremely expensive
+    in certain cases, such as deeply-nested expressions which operate over inputs with wide schemas, default
+    is false.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 98
   prefix: spark.sql.codegen
   subsystem: sql/catalyst
 - key: spark.sql.codegen.factoryMode
@@ -7225,6 +7600,26 @@ configs:
   source_line: 4302
   prefix: spark.sql.connect
   subsystem: sql/catalyst
+- key: spark.sql.connect.ui.retainedSessions
+  type: int
+  default: 200
+  default_kind: literal
+  version: 3.5.0
+  doc: The number of client sessions kept in the Spark Connect UI history.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 273
+  prefix: spark.sql.connect
+  subsystem: sql/connect
+- key: spark.sql.connect.ui.retainedStatements
+  type: int
+  default: 200
+  default_kind: literal
+  version: 3.5.0
+  doc: The number of statements kept in the Spark Connect UI history.
+  source_file: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/config/Connect.scala
+  source_line: 256
+  prefix: spark.sql.connect
+  subsystem: sql/connect
 - key: spark.sql.constraintPropagation.enabled
   type: boolean
   default: true
@@ -7382,6 +7777,16 @@ configs:
   source_line: 5865
   prefix: spark.sql.datetime
   subsystem: sql/catalyst
+- key: spark.sql.debug
+  type: boolean
+  default: false
+  default_kind: literal
+  version: 2.1.0
+  doc: Only used for internal debugging. Not all functions are supported when it is enabled.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 109
+  prefix: spark.sql.debug
+  subsystem: sql/catalyst
 - key: spark.sql.debug.maxToStringFields
   type: int
   default: 25
@@ -7493,6 +7898,19 @@ configs:
   source_line: 4012
   prefix: spark.sql.defaultSizeInBytes
   subsystem: sql/catalyst
+- key: spark.sql.defaultUrlStreamHandlerFactory.enabled
+  type: boolean
+  default: true
+  default_kind: literal
+  version: 3.0.0
+  doc: When true, register Hadoop's FsUrlStreamHandlerFactory to support ADD JAR against HDFS locations.
+    It should be disabled when a different stream protocol handler should be registered to support a particular
+    protocol type, or if Hadoop's FsUrlStreamHandlerFactory conflicts with other protocol types such as
+    `http` or `https`. See also SPARK-25694 and HADOOP-14598.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 240
+  prefix: spark.sql.defaultUrlStreamHandlerFactory
+  subsystem: sql/catalyst
 - key: spark.sql.dropTableOnView.enabled
   type: boolean
   default: true
@@ -7527,6 +7945,17 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 6796
   prefix: spark.sql.error
+  subsystem: sql/catalyst
+- key: spark.sql.event.truncate.length
+  type: int
+  default: Int.MaxValue
+  default_kind: expr
+  version: 3.0.0
+  doc: Threshold of SQL length beyond which it will be truncated before adding to event. Defaults to no
+    truncation. If set to 0, callsite will be logged instead.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 222
+  prefix: spark.sql.event
   subsystem: sql/catalyst
 - key: spark.sql.exchange.reuse
   type: boolean
@@ -8157,6 +8586,32 @@ configs:
   source_line: 684
   prefix: spark.sql.extendedExplainProviders
   subsystem: sql/catalyst
+- key: spark.sql.extensions
+  type: string
+  default: null
+  default_kind: optional
+  version: 2.2.0
+  doc: A comma-separated list of classes that implement Function1[SparkSessionExtensions, Unit] used to
+    configure Spark Session extensions. The classes must have a no-args constructor. If multiple extensions
+    are specified, they are applied in the specified order. For the case of rules and planner strategies,
+    they are applied in the specified order. For the case of parsers, the last parser is used and each
+    parser can delegate to its predecessor. For the case of function name conflicts, the last registered
+    function name is used.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 125
+  prefix: spark.sql.extensions
+  subsystem: sql/catalyst
+- key: spark.sql.extensions.test.loadFromCp
+  type: boolean
+  default: true
+  default_kind: literal
+  version: null
+  doc: Flag that determines if we should load extensions from the classpath using the SparkSessionExtensionsProvider
+    mechanism. This is a test only flag.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 139
+  prefix: spark.sql.extensions
+  subsystem: sql/catalyst
 - key: spark.sql.fileSource.insert.enforceNotNull
   type: boolean
   default: false
@@ -8278,6 +8733,16 @@ configs:
   source_line: 7035
   prefix: spark.sql.files
   subsystem: sql/catalyst
+- key: spark.sql.filesourceTableRelationCacheSize
+  type: int
+  default: 1000
+  default_kind: literal
+  version: 2.2.0
+  doc: The maximum size of the cache that maps qualified table names to table relation plans.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 81
+  prefix: spark.sql.filesourceTableRelationCacheSize
+  subsystem: sql/catalyst
 - key: spark.sql.function.concatBinaryAsString
   type: boolean
   default: false
@@ -8334,6 +8799,16 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 667
   prefix: spark.sql.geospatial
+  subsystem: sql/catalyst
+- key: spark.sql.globalTempDatabase
+  type: string
+  default: global_temp
+  default_kind: literal
+  version: 2.1.0
+  doc: ''
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 55
+  prefix: spark.sql.globalTempDatabase
   subsystem: sql/catalyst
 - key: spark.sql.groupByAliases
   type: boolean
@@ -8534,6 +9009,74 @@ configs:
   source_line: 1906
   prefix: spark.sql.hive
   subsystem: sql/catalyst
+- key: spark.sql.hive.metastore.barrierPrefixes
+  type: string
+  default: Nil
+  default_kind: expr
+  version: 1.4.0
+  doc: A comma separated list of class prefixes that should explicitly be reloaded for each version of
+    Hive that Spark SQL is communicating with. For example, Hive UDFs that are declared in a prefix that
+    typically would be shared (i.e. <code>org.apache.spark.*</code>).
+  source_file: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala
+  source_line: 216
+  prefix: spark.sql.hive
+  subsystem: sql/hive
+- key: spark.sql.hive.metastore.jars
+  type: string
+  default: builtin
+  default_kind: literal
+  version: 1.4.0
+  doc: '| Location of the jars that should be used to instantiate the HiveMetastoreClient. | This property
+    can be one of four options: | 1. | Use Hive ${builtinHiveVersion}, which is bundled with the Spark
+    assembly when | <code>-Phive</code> is enabled. When this option is chosen, | <code>spark.sql.hive.metastore.version</code>
+    must be either | <code>${builtinHiveVersion}</code> or not defined. | 2. | Use Hive jars of specified
+    version downloaded from Maven repositories. | 3. | Use Hive jars configured by `spark.sql.hive.metastore.jars.path`
+    | in comma separated format. Support both local or remote paths.The provided jars | should be the
+    same version as `${HIVE_METASTORE_VERSION.key}`. | 4. A classpath in the standard format for both
+    Hive and Hadoop. The provided jars | should be the same version as `${HIVE_METASTORE_VERSION.key}`.'
+  source_file: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala
+  source_line: 86
+  prefix: spark.sql.hive
+  subsystem: sql/hive
+- key: spark.sql.hive.metastore.jars.path
+  type: string
+  default: Nil
+  default_kind: expr
+  version: 3.1.0
+  doc: '| Comma-separated paths of the jars that used to instantiate the HiveMetastoreClient. | This configuration
+    is useful only when `${HIVE_METASTORE_JARS.key}` is set as `path`. | The paths can be any of the following
+    format: | 1. file://path/to/jar/foo.jar | 2. hdfs://nameservice/path/to/jar/foo.jar | 3. /path/to/jar/
+    (path without URI scheme follow conf `fs.defaultFS`''s URI schema) | 4. [http/https/ftp]://path/to/jar/foo.jar
+    | Note that 1, 2, and 3 support wildcard. For example: | 1. file://path/to/jar/*,file://path2/to/jar/*/*.jar
+    | 2. hdfs://nameservice/path/to/jar/*,hdfs://nameservice2/path/to/jar/*/*.jar'
+  source_file: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala
+  source_line: 108
+  prefix: spark.sql.hive
+  subsystem: sql/hive
+- key: spark.sql.hive.metastore.sharedPrefixes
+  type: string
+  default: jdbcPrefixes
+  default_kind: expr
+  version: 1.4.0
+  doc: A comma separated list of class prefixes that should be loaded using the classloader that is shared
+    between Spark SQL and a specific version of Hive. An example of classes that should be shared is JDBC
+    drivers that are needed to talk to the metastore. Other classes that need to be shared are those that
+    interact with classes that are already shared. For example, custom appenders that are used by log4j.
+  source_file: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala
+  source_line: 202
+  prefix: spark.sql.hive
+  subsystem: sql/hive
+- key: spark.sql.hive.metastore.version
+  type: string
+  default: builtinHiveVersion
+  default_kind: expr
+  version: 1.4.0
+  doc: Version of the Hive metastore. Available options are <code>2.0.0</code> through <code>2.3.10</code>,
+    <code>3.0.0</code> through <code>3.1.3</code> and <code>4.0.0</code> through <code>4.1.0</code>.
+  source_file: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala
+  source_line: 76
+  prefix: spark.sql.hive
+  subsystem: sql/hive
 - key: spark.sql.hive.metastorePartitionPruning
   type: boolean
   default: true
@@ -8607,6 +9150,17 @@ configs:
   source_line: 225
   prefix: spark.sql.hive
   subsystem: sql/hive
+- key: spark.sql.hive.thriftServer.singleSession
+  type: boolean
+  default: false
+  default_kind: literal
+  version: 1.6.0
+  doc: When set to true, Hive Thrift server is running in a single session mode. All the JDBC/ODBC connections
+    share the temporary views, function registries, SQL configuration and the current database.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 117
+  prefix: spark.sql.hive
+  subsystem: sql/catalyst
 - key: spark.sql.hive.useDelegateForSymlinkTextInputFormat
   type: boolean
   default: true
@@ -8616,6 +9170,18 @@ configs:
     order to fix the issue of empty splits
   source_file: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala
   source_line: 240
+  prefix: spark.sql.hive
+  subsystem: sql/hive
+- key: spark.sql.hive.version
+  type: string
+  default: builtinHiveVersion
+  default_kind: expr
+  version: 1.1.1
+  doc: The compiled, a.k.a, builtin Hive version of the Spark distribution bundled with. Note that, this
+    a read-only conf and only used to report the built-in hive version. If you want a different metastore
+    client for Spark to call, please refer to spark.sql.hive.metastore.version.
+  source_file: sql/hive/src/main/scala/org/apache/spark/sql/hive/HiveUtils.scala
+  source_line: 61
   prefix: spark.sql.hive
   subsystem: sql/hive
 - key: spark.sql.icu.caseMappings.enabled
@@ -9866,6 +10432,17 @@ configs:
   source_line: 6989
   prefix: spark.sql.legacy
   subsystem: sql/catalyst
+- key: spark.sql.legacy.sessionInitWithConfigDefaults
+  type: boolean
+  default: false
+  default_kind: literal
+  version: 3.0.0
+  doc: Flag to revert to legacy behavior where a cloned SparkSession receives SparkConf defaults, dropping
+    any overrides in its parent SparkSession.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 231
+  prefix: spark.sql.legacy
+  subsystem: sql/catalyst
 - key: spark.sql.legacy.setCommandRejectsSparkCoreConfs
   type: boolean
   default: true
@@ -10188,6 +10765,20 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 7382
   prefix: spark.sql.mergeNestedTypeCoercion
+  subsystem: sql/catalyst
+- key: spark.sql.metadataCacheTTLSeconds
+  type: time
+  default: -1
+  default_kind: literal
+  version: 3.1.0
+  doc: 'Time-to-live (TTL) value for the metadata caches: partition file metadata cache and session catalog
+    cache. This configuration only has an effect when this value having a positive value (> 0). It also
+    requires setting ''${StaticSQLConf.CATALOG_IMPLEMENTATION.key}'' to `hive`, setting ''${SQLConf.HIVE_FILESOURCE_PARTITION_FILE_CACHE_SIZE.key}''
+    > 0 and setting ''${SQLConf.HIVE_MANAGE_FILESOURCE_PARTITIONS.key}'' to `true` to be applied to the
+    partition file metadata cache.'
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 276
+  prefix: spark.sql.metadataCacheTTLSeconds
   subsystem: sql/catalyst
 - key: spark.sql.nameResolutionLog.level
   type: enum
@@ -11853,6 +12444,18 @@ configs:
   source_line: 6149
   prefix: spark.sql.python
   subsystem: sql/catalyst
+- key: spark.sql.queryExecutionListeners
+  type: string
+  default: null
+  default_kind: optional
+  version: 2.3.0
+  doc: List of class names implementing QueryExecutionListener that will be automatically added to newly
+    created sessions. The classes should have either a no-arg constructor, or a constructor that expects
+    a SparkConf argument.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 155
+  prefix: spark.sql.queryExecutionListeners
+  subsystem: sql/catalyst
 - key: spark.sql.readSideCharPadding
   type: boolean
   default: true
@@ -11952,6 +12555,16 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 922
   prefix: spark.sql.requireAllClusterKeysForDistribution
+  subsystem: sql/catalyst
+- key: spark.sql.resultQueryStage.maxThreadThreshold
+  type: int
+  default: 1024
+  default_kind: literal
+  version: 4.0.0
+  doc: The maximum degree of parallelism to execute ResultQueryStageExec in AQE
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 214
+  prefix: spark.sql.resultQueryStage
   subsystem: sql/catalyst
 - key: spark.sql.retainGroupColumns
   type: boolean
@@ -12228,6 +12841,17 @@ configs:
   source_line: 4277
   prefix: spark.sql.shuffleDependency
   subsystem: sql/catalyst
+- key: spark.sql.shuffleExchange.maxThreadThreshold
+  type: int
+  default: 1024
+  default_kind: literal
+  version: 4.0.0
+  doc: The maximum degree of parallelism for doing preparation of shuffle exchange, which includes subquery
+    execution, file listing, etc.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 181
+  prefix: spark.sql.shuffleExchange
+  subsystem: sql/catalyst
 - key: spark.sql.shuffledHashJoinFactor
   type: int
   default: 3
@@ -12346,6 +12970,17 @@ configs:
   source_line: 2073
   prefix: spark.sql.sources
   subsystem: sql/catalyst
+- key: spark.sql.sources.disabledJdbcConnProviderList
+  type: string
+  default: ''
+  default_kind: literal
+  version: 3.1.0
+  doc: Configures a list of JDBC connection providers, which are disabled. The list contains the name
+    of the JDBC connection providers separated by comma.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 301
+  prefix: spark.sql.sources
+  subsystem: sql/catalyst
 - key: spark.sql.sources.fileCompressionFactor
   type: double
   default: 1.0
@@ -12430,6 +13065,17 @@ configs:
     over this setting), e.g. dataframe.write.option("partitionOverwriteMode", "dynamic").save(path).'
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 5089
+  prefix: spark.sql.sources
+  subsystem: sql/catalyst
+- key: spark.sql.sources.schemaStringLengthThreshold
+  type: int
+  default: 4000
+  default_kind: literal
+  version: 1.3.1
+  doc: The maximum length allowed in a single cell when storing additional schema information in Hive's
+    metastore.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 72
   prefix: spark.sql.sources
   subsystem: sql/catalyst
 - key: spark.sql.sources.useListFilesFileSystemList
@@ -13760,6 +14406,18 @@ configs:
   source_line: 3914
   prefix: spark.sql.streaming
   subsystem: sql/catalyst
+- key: spark.sql.streaming.streamingQueryListeners
+  type: string
+  default: null
+  default_kind: optional
+  version: 2.4.0
+  doc: List of class names implementing StreamingQueryListener that will be automatically added to newly
+    created sessions. The classes should have either a no-arg constructor, or a constructor that expects
+    a SparkConf argument.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 164
+  prefix: spark.sql.streaming
+  subsystem: sql/catalyst
 - key: spark.sql.streaming.transformWithState.stateSchemaVersion
   type: int
   default: 3
@@ -13782,6 +14440,50 @@ configs:
     Trigger.AvailableNow.
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 3515
+  prefix: spark.sql.streaming
+  subsystem: sql/catalyst
+- key: spark.sql.streaming.ui.enabled
+  type: boolean
+  default: true
+  default_kind: literal
+  version: 3.0.0
+  doc: Whether to run the Structured Streaming Web UI for the Spark application when the Spark Web UI
+    is enabled.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 254
+  prefix: spark.sql.streaming
+  subsystem: sql/catalyst
+- key: spark.sql.streaming.ui.enabledCustomMetricList
+  type: string
+  default: Nil
+  default_kind: expr
+  version: 3.1.0
+  doc: Configures a list of custom metrics on Structured Streaming UI, which are enabled. The list contains
+    the name of the custom metrics separated by comma. In aggregation only sum used. The list of supported
+    custom metrics is state store provider specific and it can be found out for example from query progress
+    log entry.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 289
+  prefix: spark.sql.streaming
+  subsystem: sql/catalyst
+- key: spark.sql.streaming.ui.retainedProgressUpdates
+  type: int
+  default: 100
+  default_kind: literal
+  version: 3.0.0
+  doc: The number of progress updates to retain for a streaming query for Structured Streaming UI.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 262
+  prefix: spark.sql.streaming
+  subsystem: sql/catalyst
+- key: spark.sql.streaming.ui.retainedQueries
+  type: int
+  default: 100
+  default_kind: literal
+  version: 3.0.0
+  doc: The number of inactive queries to retain for Structured Streaming UI.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 270
   prefix: spark.sql.streaming
   subsystem: sql/catalyst
 - key: spark.sql.streaming.unsupportedOperationCheck
@@ -13861,6 +14563,16 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 1362
   prefix: spark.sql.subexpressionElimination
+  subsystem: sql/catalyst
+- key: spark.sql.subquery.maxThreadThreshold
+  type: int
+  default: 16
+  default_kind: literal
+  version: 2.4.6
+  doc: The maximum degree of parallelism to execute the subquery.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 205
+  prefix: spark.sql.subquery
   subsystem: sql/catalyst
 - key: spark.sql.thriftServer.incrementalCollect
   type: boolean
@@ -14064,6 +14776,16 @@ configs:
   source_line: 5874
   prefix: spark.sql.ui
   subsystem: sql/catalyst
+- key: spark.sql.ui.retainedExecutions
+  type: int
+  default: 1000
+  default_kind: literal
+  version: 1.5.0
+  doc: Number of executions to retain in the Spark UI.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 174
+  prefix: spark.sql.ui
+  subsystem: sql/catalyst
 - key: spark.sql.unionOutputPartitioning
   type: boolean
   default: true
@@ -14208,6 +14930,16 @@ configs:
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 3640
   prefix: spark.sql.view
+  subsystem: sql/catalyst
+- key: spark.sql.warehouse.dir
+  type: string
+  default: Utils.resolveURI("spark-warehouse").toString
+  default_kind: expr
+  version: 2.0.0
+  doc: The default location for managed databases and tables.
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 35
+  prefix: spark.sql.warehouse
   subsystem: sql/catalyst
 - key: spark.sql.window.segmentTree.blockSize
   type: int
@@ -16679,4 +17411,9 @@ unparsed:
     will be used as the v2 interface to Spark''s built-in " +        '
   source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
   source_line: 5911
+  reason: dynamic-key
+- raw: buildStaticConf(s"spark.sql.catalog.$SESSION_CATALOG_NAME.defaultDatabase")     .doc("The default
+    database for session catalog.")     .version("3.4.0")     .str
+  source_file: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala
+  source_line: 42
   reason: dynamic-key

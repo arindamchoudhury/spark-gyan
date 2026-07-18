@@ -105,6 +105,38 @@ def test_config_builder_core_no_version():
     assert c.default == 1 and c.subsystem == "core"
 
 
+def test_build_static_conf_wrapper():
+    # StaticSQLConf.scala declares its configs via buildStaticConf, not buildConf.
+    src = '''
+  val WAREHOUSE_PATH = buildStaticConf("spark.sql.warehouse.dir")
+    .doc("The default location for managed databases and tables.")
+    .version("2.0.0")
+    .stringConf
+    .createWithDefault(Utils.resolveURI("spark-warehouse").toString)
+'''
+    configs, unparsed = _one(
+        src, rel="sql/catalyst/src/main/scala/org/apache/spark/sql/internal/StaticSQLConf.scala")
+    assert len(configs) == 1 and not unparsed
+    c = configs[0]
+    assert c.key == "spark.sql.warehouse.dir"
+    assert c.type == "string" and c.version == "2.0.0"
+    assert c.default_kind == "expr"
+    assert c.subsystem == "sql/catalyst"
+
+
+def test_build_static_conf_definition_is_skipped():
+    src = '''
+  def buildStaticConf(key: String): ConfigBuilder = {
+    ConfigBuilder(key).onCreate { entry =>
+      SQLConf.registerStaticConfigKey(entry.key)
+      SQLConf.register(entry)
+    }
+  }
+'''
+    configs, unparsed = _one(src)
+    assert not configs and not unparsed
+
+
 def test_dynamic_key_is_flagged_not_dropped():
     src = '''
   def dynamic(name: String) = buildConf(s"spark.sql.$name.enabled")
@@ -204,5 +236,10 @@ def test_real_source_floor():
     # constant-keyed configs must be resolved, not left unparsed
     assert "spark.sql.ansi.enabled" in keys
     assert "spark.sql.session.timeZone" in keys
+    # buildStaticConf wrapper (StaticSQLConf.scala) must be parsed too
+    assert "spark.sql.catalogImplementation" in keys
+    wh = next(c for c in cat.configs if c["key"] == "spark.sql.warehouse.dir")
+    assert wh["source_file"].endswith("internal/StaticSQLConf.scala")
+    assert wh["version"] == "2.0.0" and wh["subsystem"] == "sql/catalyst"
     sp = next(c for c in cat.configs if c["key"] == "spark.sql.shuffle.partitions")
     assert sp["default"] == 200 and sp["version"] == "1.1.0"

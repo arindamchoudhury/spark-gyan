@@ -61,18 +61,18 @@ The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--
 
 | Subsystem | Configs | Groups |
 |---|---|---|
-| `sql/catalyst` | 721 | analysis, optimizer, planner, expressions, types-parser |
+| `sql/catalyst` | 750 | analysis, optimizer, planner, expressions, types-parser |
 | `core` | 546 | rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra |
 | `resource-managers/kubernetes` | 89 | driver-executor, auth-networking |
 | `resource-managers/yarn` | 61 | am-executor |
 | `streaming` | 28 | structured-streaming, dstream |
-| `sql/connect` | 14 | client-server, declarative-pipelines |
-| `sql/hive` | 11 | hive-metastore |
+| `sql/connect` | 44 | client-server, declarative-pipelines |
+| `sql/hive` | 17 | hive-metastore |
 | `connector/kafka-0-10` | 8 | consumer |
 | `connector/kafka-0-10-sql` | 8 | source-sink |
 | `connector/profiler` | 7 | async-profiler |
 
-Totals **1493 configs** across the repo at 4.2.0 (3 unparsed — known dynamic-key cases in the Kubernetes `Config.scala`).
+Totals **1558 configs** across the repo at 4.2.0 (4 unparsed — known dynamic-key cases in the Kubernetes `Config.scala` and the two `s"spark.sql.catalog.$SESSION_CATALOG_NAME..."` entries in `SQLConf.scala` / `StaticSQLConf.scala`).
 
 **Sweepable but config-free.** A subsystem with no configs of its own is invisible to the table above while still being worth sweeping — `sql/core` holds the physical execution for most of the book's topics, and `sql/pipelines` backs topic A11:
 
