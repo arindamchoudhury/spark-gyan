@@ -158,8 +158,17 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 2. **LS2e Ch 4** — comprehensive treatment of all built-in sources (Parquet, JSON, CSV, Avro, ORC, binary, images)
 3. **SDG Ch 9** — the deepest coverage of every data source option
 4. **Spark-docs → Data Sources** ([sql-data-sources.html](https://spark.apache.org/docs/latest/sql-data-sources.html)) — per-format option tables (the [generic options](https://spark.apache.org/docs/latest/sql-data-sources-generic-options.html) page covers path globbing, `recursiveFileLookup`, and `modifiedBefore/After`); the canonical answer for "what options does this reader take"
+5. **Spark-docs → Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — where `spark.sql.files.maxPartitionBytes` and `openCostInBytes` are documented; these decide how many tasks your read gets, and no book covers the formula
+6. **Spark-docs → Parquet** ([sql-data-sources-parquet.html](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html)) and [generic file options](https://spark.apache.org/docs/latest/sql-data-sources-generic-options.html) — partition discovery, schema merging, and the `ignoreCorruptFiles` / `ignoreMissingFiles` behaviour that decides whether a concurrent rewrite fails your read
+7. **Source trace — [B4 in the source map](reference/spark-source-map/topics/b4.md)** — the full path from `spark.read` through format registration, driver-side file listing, splitting and parsing, to the commit protocol on the write side. Read it for the two things no book states: what actually decides read parallelism, and where write atomicity comes from
 
-**Milestone:** You can read multi-file datasets with glob patterns, declare a schema programmatically with `StructType`, write in append/overwrite mode, and explain why Parquet is preferred for analytical workloads.
+**Milestone:** You can read multi-file datasets with glob patterns, declare a schema programmatically with `StructType`, write in append/overwrite mode, and explain why Parquet is preferred for analytical workloads. Then two the source makes checkable: predict how many tasks a read of N files will produce and say which config capped it, and explain what happens to already-written files when a write fails halfway.
+
+!!! warning "`insertInto` matches columns by position, not by name"
+    `df.write.insertInto(table)` ignores column names entirely and matches by ordinal, while `saveAsTable` resolves by name. A DataFrame with the *right* column names in the wrong order writes silently corrupted data. None of the three books above covers this distinction; it is the highest-consequence trap in the writer API.
+
+!!! info "Writes are not atomic on object storage"
+    Spark writes into a `_temporary` directory and *moves* files on job commit. On HDFS that rename is atomic and cheap; on S3 and other object stores it is a copy — slow, and not atomic, so a failed job can leave partial output. This is the gap that Delta and Iceberg exist to close, and it is worth understanding here rather than treating those formats as magic later (see I8, I15).
 
 ---
 
