@@ -3,7 +3,8 @@
 > *Learning-path topic: B8 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-> 🔄 **Needs revisiting — Spark 4.2.0 (flagged 2026-07-18).** Incomplete rather than wrong. Spark 4.2.0 adds three things this chapter should cover: `QUALIFY` ([SPARK-31561]) for filtering on window-function results without a wrapping subquery; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]), which changes how unqualified names resolve and therefore affects the catalog section directly; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]). The catalog/temp-view material as written still holds.
+!!! warning "🔄 Needs revisiting — Spark 4.2.0 (flagged 2026-07-18)"
+    Incomplete rather than wrong. Spark 4.2.0 adds three things this chapter should cover: `QUALIFY` ([SPARK-31561]) for filtering on window-function results without a wrapping subquery; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]), which changes how unqualified names resolve and therefore affects the catalog section directly; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]). The catalog/temp-view material as written still holds.
 
 Spark SQL is not a separate system — it is the same Catalyst engine that runs the DataFrame API, exposed through SQL strings. Knowing both lets you choose the most readable form for each situation and mix them freely in the same pipeline.
 

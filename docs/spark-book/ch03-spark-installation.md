@@ -3,7 +3,8 @@
 > *Learning-path topic: Setup (prerequisite)*
 > *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
-> 🔄 **Needs revisiting — Spark 4.2.0 (flagged 2026-07-18).** This chapter states that "Spark 4.x supports only these two LTS releases" (Java 17 and 21). That is **no longer true**: Spark 4.2.0 builds and runs on Java 25 ([SPARK-51167]). The install instructions themselves still work, but the Java-version claim must be corrected and the pinned Spark version bumped before this chapter is trusted again.
+!!! warning "🔄 Needs revisiting — Spark 4.2.0 (flagged 2026-07-18)"
+    This chapter states that "Spark 4.x supports only these two LTS releases" (Java 17 and 21). That is **no longer true**: Spark 4.2.0 builds and runs on Java 25 ([SPARK-51167]). The install instructions themselves still work, but the Java-version claim must be corrected and the pinned Spark version bumped before this chapter is trusted again.
 
 ---
 

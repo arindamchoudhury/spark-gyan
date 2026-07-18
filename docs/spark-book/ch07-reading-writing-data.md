@@ -3,17 +3,18 @@
 > *Learning-path topic: B4 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-> 🔄 **Needs revisiting — Spark 4.2.0 source trace (flagged 2026-07-18).** Incomplete rather than wrong: nothing here is false, but the trace opened eight gaps, two of which matter enough to fix before relying on this chapter.
->
-> **`insertInto` matches columns by position, not name.** Neither `insertInto` nor `saveAsTable` appears in this chapter, and the difference is the highest-consequence one in the writer API — a DataFrame with correct column *names* in the wrong order writes silently corrupted data through `insertInto`.
->
-> **The read-parallelism formula is missing.** `maxSplitBytes = min(maxPartitionBytes, max(openCostInBytes, totalBytes / cores))` is what decides how many tasks a read produces; neither config is mentioned, which leaves "why did my read only get two tasks" unanswerable and the small-files problem unexplained.
->
-> **The commit protocol is absent, and it is where write correctness lives.** Spark writes into `_temporary` and *moves* files on job commit. On HDFS that rename is atomic; on object storage it is a non-atomic copy — the reason cloud writes are slow, occasionally leave partial output, and ultimately the reason Delta and Iceberg exist. A chapter on writing data that never mentions commit leaves the reader unable to reason about what happens when a write fails halfway.
->
-> **`DROPMALFORMED` discards rows silently.** The parse modes are not covered. `DROPMALFORMED` drops bad records with no count and no log; `PERMISSIVE` (the default) emits them as all-null rows that are indistinguishable from ordinary missing data unless you select `columnNameOfCorruptRecord`.
->
-> Also missing: `maxRecordsPerFile` as the output-file-size lever, *why* inference is costly (it reads the data twice), ORC defaulting to `zstd` while Parquet uses `snappy`, `ignoreCorruptFiles`/`ignoreMissingFiles`, JSON writes dropping null fields by default, predicate pushdown being best-effort per filter rather than a property of the format, driver-side file listing as the cause of long pre-task stalls, `PartitionedFile` being a slice rather than a whole file, `DataFrameWriterV2`, and `bucketBy` being silently ineffective outside table writes. Full list in the [B4 source trace](../reference/spark-source-map/topics/b4.md).
+!!! warning "🔄 Needs revisiting — Spark 4.2.0 source trace (flagged 2026-07-18)"
+    Incomplete rather than wrong: nothing here is false, but the trace opened eight gaps, two of which matter enough to fix before relying on this chapter.
+
+    **`insertInto` matches columns by position, not name.** Neither `insertInto` nor `saveAsTable` appears in this chapter, and the difference is the highest-consequence one in the writer API — a DataFrame with correct column *names* in the wrong order writes silently corrupted data through `insertInto`.
+
+    **The read-parallelism formula is missing.** `maxSplitBytes = min(maxPartitionBytes, max(openCostInBytes, totalBytes / cores))` is what decides how many tasks a read produces; neither config is mentioned, which leaves "why did my read only get two tasks" unanswerable and the small-files problem unexplained.
+
+    **The commit protocol is absent, and it is where write correctness lives.** Spark writes into `_temporary` and *moves* files on job commit. On HDFS that rename is atomic; on object storage it is a non-atomic copy — the reason cloud writes are slow, occasionally leave partial output, and ultimately the reason Delta and Iceberg exist. A chapter on writing data that never mentions commit leaves the reader unable to reason about what happens when a write fails halfway.
+
+    **`DROPMALFORMED` discards rows silently.** The parse modes are not covered. `DROPMALFORMED` drops bad records with no count and no log; `PERMISSIVE` (the default) emits them as all-null rows that are indistinguishable from ordinary missing data unless you select `columnNameOfCorruptRecord`.
+
+    Also missing: `maxRecordsPerFile` as the output-file-size lever, *why* inference is costly (it reads the data twice), ORC defaulting to `zstd` while Parquet uses `snappy`, `ignoreCorruptFiles`/`ignoreMissingFiles`, JSON writes dropping null fields by default, predicate pushdown being best-effort per filter rather than a property of the format, driver-side file listing as the cause of long pre-task stalls, `PartitionedFile` being a slice rather than a whole file, `DataFrameWriterV2`, and `bucketBy` being silently ineffective outside table writes. Full list in the [B4 source trace](../reference/spark-source-map/topics/b4.md).
 
 Every Spark pipeline starts with a read and ends with a write. The format you choose and how you configure the reader/writer determines whether your pipeline reads 100% of the data or 5% of it — before any transformation runs.
 
