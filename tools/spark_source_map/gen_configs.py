@@ -504,7 +504,7 @@ def write_markdown(cat: Catalog, path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Generate the Spark config catalog.")
-    ap.add_argument("--source", default=os.environ.get("SPARK_SRC", r"C:/opt/learn/spark/spark"),
+    ap.add_argument("--source", default=os.environ.get("SPARK_SRC", r"C:/opt/learn/spark/repos/spark"),
                     help="Spark source root.")
     _repo_root = Path(__file__).resolve().parents[2]
     ap.add_argument("--out-dir", default=str(_repo_root / "docs/reference/spark-source-map/configs"),
