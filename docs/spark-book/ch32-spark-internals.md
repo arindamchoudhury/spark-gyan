@@ -3,7 +3,7 @@
 > *Learning-path topic: E1 (Expert)*
 > *Status: ⬜ Not yet written*
 
-> **Note "📌 Topics deferred here from Chapter 1"
+!!! note "📌 Topics deferred here from Chapter 1"
     The following DAGScheduler internals are introduced conceptually in [Chapter 2](ch02-spark-architecture.md) and covered in full implementation detail here:
 
     - **`handleJobSubmitted → createResultStage → submitStage → submitMissingTasks`** — the full call chain from job submission to task launch, including how `createResultStage` recursively calls `getOrCreateShuffleMapStage` to build the stage graph bottom-up
@@ -13,7 +13,7 @@
     - **Barrier execution mode** — all tasks in a barrier stage must launch simultaneously; used for distributed ML frameworks (e.g. Horovod) that need a global synchronization point before proceeding
     - **Stage and job cancellation** — how `cancelJob`, `cancelStage`, and `killTaskAttempt` propagate through the event loop and interrupt running tasks on executors
 
-> **Note "📌 Additional topics deferred here from Chapter 1"
+!!! note "📌 Additional topics deferred here from Chapter 1"
     - **DataFrame → RDD lineage translation** — how `QueryExecution` compiles a DataFrame into an `RDD[InternalRow]`: the `Dataset.withAction()` entry point; the four compilation phases (Analyzer → Optimizer → SparkPlanner → PrepareForExecution); how `executedPlan.execute()` walks the `SparkPlan` tree recursively via `executeRDD = LazyTry { doExecute() }`; how each operator's `doExecute()` calls `child.execute()` bottom-up; how `ShuffleExchangeExec` embeds a `ShuffleDependency` into the RDD lineage (via `ShuffledRowRDD.getDependencies`), which is what the DAGScheduler detects as a stage boundary; `QueryExecution.toRdd` as the bridge: `new SQLExecutionRDD(executedPlan.execute(), conf)` (source-verified v4.1.2). The recursive execution tree:
       ```
       root.execute()
@@ -42,34 +42,34 @@
     - **Executor exclusions (`HealthTracker`)** — when an executor accumulates too many task failures (`MAX_FAILURES_PER_EXEC`), `HealthTracker` marks it excluded and `TaskSchedulerImpl` skips it during slot assignment (`isExecutorExcluded`); exclusion expires after `EXCLUDE_ON_FAILURE_TIMEOUT_MILLIS`; whole nodes can also be excluded via `MAX_FAILED_EXEC_PER_NODE`; `EXCLUDE_ON_FAILURE_KILL_ENABLED` can decommission the executor immediately
     - **Serialization in the shuffle data path** — how `UnsafeRow` binary format avoids extra serialization during shuffle for SQL/DataFrame operations; when Java vs Kryo serialization applies to shuffle data for raw RDD operations
 
-> **Note "✍️ Writing reminder — DAGScheduler internals"
+!!! note "✍️ Writing reminder — DAGScheduler internals"
     Chapter 1 covered DAGScheduler behaviour (what it decides and why). This chapter must cover the full implementation: the `handleJobSubmitted → createResultStage → submitStage → submitMissingTasks` call chain; the `activeJobs` / `waitingStages` / `runningStages` / `failedStages` state machine and how `CompletionEvent` drives it; stage deduplication via `getOrCreateParentStages`; barrier execution mode; and stage/job cancellation propagation. See the first deferred-topics note above for the full list.
 
-> **Note "✍️ Writing reminder — DataFrame → RDD translation"
+!!! note "✍️ Writing reminder — DataFrame → RDD translation"
     Chapter 1 introduces `QueryExecution` conceptually. This chapter must cover the full implementation: `Dataset.withAction()`, the recursive `execute()` / `doExecute()` tree, how `ShuffleExchangeExec` embeds `ShuffleDependency` into the RDD lineage via `ShuffledRowRDD`, `FileScanRDD` as the leaf, and `QueryExecution.toRdd` as the bridge to `SparkContext.runJob()`. See the deferred-topics note above for the source-verified detail.
 
     - **Python worker lifecycle (`pyspark/daemon.py` and `PythonWorkerFactory`)** — daemon.py listens on a socket and forks a new child process **on demand** each time the executor JVM opens a connection (no pre-warmed pool in daemon.py itself); if `SPARK_REUSE_WORKER` is set, the forked child loops on the same socket and handles the next task without exiting (`daemon.py` L232–243: `while True: code = worker(sock, ...); if not reuse or code: break`); the **idle worker pool** is JVM-side (`PythonWorkerFactory.idleWorkers` queue in `PythonWorkerFactory.scala`) — it holds open sockets to alive worker processes between tasks; `releaseWorker()` returns a socket to the pool; the next task dequeues an idle worker rather than asking daemon.py for a new fork; on non-UNIX (Windows), daemon mode is unavailable and workers are spawned directly per connection via `worker.py`
 
-> **Note "✍️ Writing reminder — Python worker lifecycle"**
->
-> Cover `pyspark/daemon.py` and `PythonWorkerFactory.scala` together. Key points verified against v4.1.2 source:
->
-> - daemon.py forks on demand (one fork per new JVM connection) — it has no pre-warmed pool
-> - Worker reuse requires `SPARK_REUSE_WORKER` env var; the forked child loops on the socket (`daemon.py` L232–243)
-> - The idle pool is JVM-side: `PythonWorkerFactory.idleWorkers` (a `mutable.Queue`) holds open sockets to alive workers between tasks; `releaseWorker()` enqueues, `create()` dequeues
-> - Non-UNIX (Windows): daemon mode unavailable; workers spawned directly via `worker.py` per connection
-> - Contrast with Chapter 2's two-sentence summary — this chapter gives the full implementation detail
+!!! note "✍️ Writing reminder — Python worker lifecycle"
 
-> **Note "✍️ Writing reminder — Stage 1 internals deferred from Chapter 2"**
->
-> Chapter 2's "Stage 1: action triggers a job — and DataFrame becomes RDD" was deliberately kept at beginner level (the arc: action → optimize in driver → `RDD[InternalRow]` → DAGScheduler). The mechanism it deferred here must be covered in full:
->
-> - **The full `QueryExecution` pipeline** — the six phases (Unresolved → Analyzed → cache-aware/`withCachedData` → Optimized → `sparkPlan` → `executedPlan`) and the **13 PrepareForExecution rules in order** (`CoalesceBucketsInJoin`, `PlanDynamicPruningFilters`, `PlanSubqueries`, `RemoveRedundantProjects`, `EnsureRequirements`, `InsertSortForLimitAndOffset`, `ReplaceHashWithSortAgg`, `RemoveRedundantSorts`, `RemoveRedundantWindowGroupLimits`, `DisableUnnecessaryBucketedScan`, `ApplyColumnarRulesAndInsertTransitions`, `CollapseCodegenStages` → Tungsten codegen, `ReuseExchangeAndSubquery`). (Catalyst *rule batches and rewriting* are Chapter 22's job; the *execution-pipeline plumbing* is here.)
-> - **`SparkPlan` tree and `doExecute()`** — the physical plan is a tree of `SparkPlan` nodes (`FileScanExec`, `FilterExec`, `HashAggregateExec`, `SortMergeJoinExec`, …), each producing an `RDD[InternalRow]` via `doExecute()`; `QueryExecution.toRdd` returns `SQLExecutionRDD(executedPlan.execute(), conf)` as the SQL→Core boundary (overlaps the "DataFrame → RDD translation" reminder above).
-> - **`executeTake` vs `executeCollect`** — see the deferred-topics bullet above; the incremental partition-scan vs full-scan distinction.
-> - **Spark 4.x `QueryExecution` phases** — `commandExecuted`, `tableVersionsRefreshed`, `normalized`; see the deferred-topics bullet above.
-> - **The Python `DataFrame` ↔ JVM `Dataset[Row]` boundary at action time** — classic mode: `self._jdf` Py4J proxy, `withAction()` fires in the driver JVM; Connect mode: protobuf `LogicalPlan` shipped via gRPC `ExecutePlan`, runs on the server, results streamed back as Arrow batches; where `AnalysisException` surfaces in each mode. (The two-process *overview* is in Chapter 2's Driver section; the *action-time protocol detail* belongs here.)
->
-> Note: the **Catalog** (in-memory vs Hive metastore vs Unity Catalog) is *not* deferred here — Chapter 2 points it to **Chapter 11 (Spark SQL)** and **Chapter 34 (Unity Catalog)**.
+    Cover `pyspark/daemon.py` and `PythonWorkerFactory.scala` together. Key points verified against v4.1.2 source:
+
+    - daemon.py forks on demand (one fork per new JVM connection) — it has no pre-warmed pool
+    - Worker reuse requires `SPARK_REUSE_WORKER` env var; the forked child loops on the socket (`daemon.py` L232–243)
+    - The idle pool is JVM-side: `PythonWorkerFactory.idleWorkers` (a `mutable.Queue`) holds open sockets to alive workers between tasks; `releaseWorker()` enqueues, `create()` dequeues
+    - Non-UNIX (Windows): daemon mode unavailable; workers spawned directly via `worker.py` per connection
+    - Contrast with Chapter 2's two-sentence summary — this chapter gives the full implementation detail
+
+!!! warning "✍️ Writing reminder — Stage 1 internals deferred from Chapter 2"
+
+    Chapter 2's "Stage 1: action triggers a job — and DataFrame becomes RDD" was deliberately kept at beginner level (the arc: action → optimize in driver → `RDD[InternalRow]` → DAGScheduler). The mechanism it deferred here must be covered in full:
+
+    - **The full `QueryExecution` pipeline** — the six phases (Unresolved → Analyzed → cache-aware/`withCachedData` → Optimized → `sparkPlan` → `executedPlan`) and the **13 PrepareForExecution rules in order** (`CoalesceBucketsInJoin`, `PlanDynamicPruningFilters`, `PlanSubqueries`, `RemoveRedundantProjects`, `EnsureRequirements`, `InsertSortForLimitAndOffset`, `ReplaceHashWithSortAgg`, `RemoveRedundantSorts`, `RemoveRedundantWindowGroupLimits`, `DisableUnnecessaryBucketedScan`, `ApplyColumnarRulesAndInsertTransitions`, `CollapseCodegenStages` → Tungsten codegen, `ReuseExchangeAndSubquery`). (Catalyst *rule batches and rewriting* are Chapter 22's job; the *execution-pipeline plumbing* is here.)
+    - **`SparkPlan` tree and `doExecute()`** — the physical plan is a tree of `SparkPlan` nodes (`FileScanExec`, `FilterExec`, `HashAggregateExec`, `SortMergeJoinExec`, …), each producing an `RDD[InternalRow]` via `doExecute()`; `QueryExecution.toRdd` returns `SQLExecutionRDD(executedPlan.execute(), conf)` as the SQL→Core boundary (overlaps the "DataFrame → RDD translation" reminder above).
+    - **`executeTake` vs `executeCollect`** — see the deferred-topics bullet above; the incremental partition-scan vs full-scan distinction.
+    - **Spark 4.x `QueryExecution` phases** — `commandExecuted`, `tableVersionsRefreshed`, `normalized`; see the deferred-topics bullet above.
+    - **The Python `DataFrame` ↔ JVM `Dataset[Row]` boundary at action time** — classic mode: `self._jdf` Py4J proxy, `withAction()` fires in the driver JVM; Connect mode: protobuf `LogicalPlan` shipped via gRPC `ExecutePlan`, runs on the server, results streamed back as Arrow batches; where `AnalysisException` surfaces in each mode. (The two-process *overview* is in Chapter 2's Driver section; the *action-time protocol detail* belongs here.)
+
+    Note: the **Catalog** (in-memory vs Hive metastore vs Unity Catalog) is *not* deferred here — Chapter 2 points it to **Chapter 11 (Spark SQL)** and **Chapter 34 (Unity Catalog)**.
 
 *This chapter is not yet written. The above topics will form its core.*

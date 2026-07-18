@@ -4,14 +4,15 @@
 >
 > Where Chapter 8 introduced Python UDFs (record-by-record), this chapter introduces **pandas UDFs** — UDFs that operate on batches of rows serialised as pandas Series or DataFrames. The result is faster execution (vectorised operations), tight integration with the Python ML ecosystem (scikit-learn, scipy), and a clean split-apply-combine story via `GroupedData`.
 >
-> 📌 **Notes adapted to Spark 4.1.1 / PySpark 4.1.1.** The book targets Spark 3.2. Key changes in Spark 4.x:
->
-> - **PyArrow** is required and used for all pandas/Spark data transfer. No `ARROW_PRE_0_15` workarounds needed — those were for Spark 2.x and are long obsolete.
-> - **pandas ≥ 2.2.0** required (Spark 4.1). Book examples use pandas 1.x style; `.iteritems()` and `.append()` were deprecated in pandas 1.5 and **removed** in pandas 2.0 — nothing that affects UDF internals, but any book code that calls them will error.
-> - **`spark.sql.execution.pandas.convertToArrowArraySafely` is on by default** (Spark 4.1): Arrow raises errors for unsafe casts (int overflow, float truncation) rather than silently coercing.
-> - **Spark 4.1 adds Arrow-native UDFs** that bypass pandas conversion entirely — not covered by the book; see the references section.
-> - **Iterator API now supported in GROUPED_MAP** (Spark 4.1) — book shows `applyInPandas` with a plain function; the new iterator variant allows memory-efficient streaming over large groups.
-> - **Keyword arguments** in SCALAR and GROUPED_AGG pandas UDFs added in Spark 4.0.
+!!! info "📌 Notes adapted to Spark 4.1.1 / PySpark 4.1.1"
+    The book targets Spark 3.2. Key changes in Spark 4.x:
+
+    - **PyArrow** is required and used for all pandas/Spark data transfer. No `ARROW_PRE_0_15` workarounds needed — those were for Spark 2.x and are long obsolete.
+    - **pandas ≥ 2.2.0** required (Spark 4.1). Book examples use pandas 1.x style; `.iteritems()` and `.append()` were deprecated in pandas 1.5 and **removed** in pandas 2.0 — nothing that affects UDF internals, but any book code that calls them will error.
+    - **`spark.sql.execution.pandas.convertToArrowArraySafely` is on by default** (Spark 4.1): Arrow raises errors for unsafe casts (int overflow, float truncation) rather than silently coercing.
+    - **Spark 4.1 adds Arrow-native UDFs** that bypass pandas conversion entirely — not covered by the book; see the references section.
+    - **Iterator API now supported in GROUPED_MAP** (Spark 4.1) — book shows `applyInPandas` with a plain function; the new iterator variant allows memory-efficient streaming over large groups.
+    - **Keyword arguments** in SCALAR and GROUPED_AGG pandas UDFs added in Spark 4.0.
 
 ---
 
@@ -72,7 +73,8 @@ import pyspark.sql.functions as F
 import pyspark.sql.types as T
 ```
 
-> 💡 **Tip** — The book's Spark 2.x workarounds (`PandasUDFType.SCALAR`, the IPC format env var) are dead. On Spark 3.0+ you use Python type hints in the function signature; Spark infers the UDF kind from the types.
+!!! info "💡 Tip"
+    — The book's Spark 2.x workarounds (`PandasUDFType.SCALAR`, the IPC format env var) are dead. On Spark 3.0+ you use Python type hints in the function signature; Spark infers the UDF kind from the types.
 
 ### Batch size
 
@@ -105,7 +107,8 @@ gsod = (
 )
 ```
 
-> 💡 **Tip** — On a local Spark instance, limit to a single year (e.g., 2018) to keep execution fast.
+!!! info "💡 Tip"
+    — On a local Spark instance, limit to a single year (e.g., 2018) to keep execution fast.
 
 The cleaned `gsod` DataFrame has 31 columns. Key ones used in this chapter:
 
@@ -123,18 +126,20 @@ The cleaned `gsod` DataFrame has 31 columns. Key ones used in this chapter:
 | `sndp` | double | Snow depth; `999.9` = missing |
 | `fog`, `rain_drizzle`, `snow_ice_pellets`, `hail`, `thunder`, `tornado_funnel_cloud` | int | Binary weather indicators (0/1) |
 
-> 💡 **Sentinel pattern** — missing values are encoded as out-of-range numbers (`9999.9`, `999.9`, `99.99`), not `null`. The `.where(F.col("temp") != 9999.9)` filter in the ingestion code is handling exactly this — always check for sentinels before aggregating.
+!!! info "💡 Sentinel pattern"
+    — missing values are encoded as out-of-range numbers (`9999.9`, `999.9`, `99.99`), not `null`. The `.where(F.col("temp") != 9999.9)` filter in the ingestion code is handling exactly this — always check for sentinels before aggregating.
 
-> ⚠️ **Expected warning with this dataset** — loading the 31-column GSOD schema triggers:
-> ```
-> WARN SparkStringUtils - Truncated the string representation of a plan since it was too large.
-> This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
-> ```
-> Spark truncates plan strings at **25 fields** by default; GSOD has 31. No data is lost — it's cosmetic. Fix by raising the limit on the session:
-> ```python
-> spark.conf.set("spark.sql.debug.maxToStringFields", 50)
-> ```
-> Or set it at `SparkSession` creation time via `.config("spark.sql.debug.maxToStringFields", 50)`.
+!!! warning "⚠️ Expected warning with this dataset"
+    — loading the 31-column GSOD schema triggers:
+    ```
+    WARN SparkStringUtils - Truncated the string representation of a plan since it was too large.
+    This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+    ```
+    Spark truncates plan strings at **25 fields** by default; GSOD has 31. No data is lost — it's cosmetic. Fix by raising the limit on the session:
+    ```python
+    spark.conf.set("spark.sql.debug.maxToStringFields", 50)
+    ```
+    Or set it at `SparkSession` creation time via `.config("spark.sql.debug.maxToStringFields", 50)`.
 
 ### Libraries that "play well with pandas"
 
@@ -178,22 +183,24 @@ gsod.select("temp", "temp_c").distinct().show(5)
 - **Why faster than Python UDF?** One vectorised pandas operation per batch vs. one Python call per row.
 - Accepts multiple Series: `def my_udf(a: pd.Series, b: pd.Series) -> pd.Series`.
 
-> ⚠️ **Pitfall** — Spark **does not guarantee batch composition or ordering**. Don't write logic that assumes records from the same group land in the same batch — use a grouped data UDF for that.
+!!! warning "⚠️ Pitfall"
+    — Spark **does not guarantee batch composition or ordering**. Don't write logic that assumes records from the same group land in the same batch — use a grouped data UDF for that.
 
-> ⚠️ **Type checker warning** — `@F.pandas_udf(T.DoubleType())` will produce a Pylance/pyright error:
-> ```
-> No overloads for "pandas_udf" match the provided arguments
-> Untyped function decorator obscures type of function
-> ```
-> This is a **known PySpark stub bug** ([SPARK-43189](https://issues.apache.org/jira/browse/SPARK-43189), filed April 2023, still open). The stubs were written for the old Spark 2.x API that required an explicit `functionType` argument (`PandasUDFType.SCALAR`). The modern Spark 3.0+ API infers the UDF type from Python type hints and needs only the return type — but no overload for that pattern exists in the stubs. The PySpark team's own codebase works around this with `# type: ignore[call-overload]`. Workarounds:
-> ```python
-> @F.pandas_udf(T.DoubleType())  # type: ignore[arg-type]
-> def f_to_c(degrees: pd.Series) -> pd.Series: ...
-> ```
-> Or suppress session-wide in `pyrightconfig.json`:
-> ```json
-> { "reportUntypedFunctionDecorator": "none", "reportCallIssue": "none" }
-> ```
+!!! warning "⚠️ Type checker warning"
+    — `@F.pandas_udf(T.DoubleType())` will produce a Pylance/pyright error:
+    ```
+    No overloads for "pandas_udf" match the provided arguments
+    Untyped function decorator obscures type of function
+    ```
+    This is a **known PySpark stub bug** ([SPARK-43189](https://issues.apache.org/jira/browse/SPARK-43189), filed April 2023, still open). The stubs were written for the old Spark 2.x API that required an explicit `functionType` argument (`PandasUDFType.SCALAR`). The modern Spark 3.0+ API infers the UDF type from Python type hints and needs only the return type — but no overload for that pattern exists in the stubs. The PySpark team's own codebase works around this with `# type: ignore[call-overload]`. Workarounds:
+    ```python
+    @F.pandas_udf(T.DoubleType())  # type: ignore[arg-type]
+    def f_to_c(degrees: pd.Series) -> pd.Series: ...
+    ```
+    Or suppress session-wide in `pyrightconfig.json`:
+    ```json
+    { "reportUntypedFunctionDecorator": "none", "reportCallIssue": "none" }
+    ```
 
 #### Working with complex types
 
@@ -253,32 +260,35 @@ The **split-apply-combine** pattern is a standard data analysis term coined by H
 2. **Apply** — a function runs on each batch independently (as a local pandas object).
 3. **Combine** — results are unioned back into a Spark DataFrame.
 
-> ⚠️ **Memory warning** — each batch must fit in executor memory. If one group is enormous, you get OOM. Spark 4.1 added an iterator API to `applyInPandas` as a safety valve for skewed data. **This is opt-in** — Spark detects which form you're using from the function's type hints:
->
-> ```python
-> # Normal: whole group loaded into memory at once
-> def my_func(df: pd.DataFrame) -> pd.DataFrame:
->     return df.transform(...)
->
-> # Iterator: Spark feeds the group as batches — avoids OOM on large groups
-> def my_func(batches: Iterator[pd.DataFrame]) -> Iterator[pd.DataFrame]:
->     for batch in batches:
->         yield batch.transform(...)
-> ```
->
-> Same `applyInPandas(my_func, schema="...")` call either way — the signature determines the behaviour.
+!!! warning "⚠️ Memory warning"
+    — each batch must fit in executor memory. If one group is enormous, you get OOM. Spark 4.1 added an iterator API to `applyInPandas` as a safety valve for skewed data. **This is opt-in** — Spark detects which form you're using from the function's type hints:
 
-> ⚠️ **PySpark 4.1.0+ noise (SPARK-54344)** — `BrokenPipeError: [Errno 32] Broken pipe` appears in notebook output when running pandas UDFs. **Queries actually succeed** — the error is cosmetic. The cause: SPARK-54344 changed worker recycling so idle workers flush output after the JVM has already closed the socket. Worker stderr goes unconditionally to JVM `System.err` with no config gate, so no Spark config flag silences it.
->
-> **Workaround** — redirect fd 2 before `SparkSession` initialisation:
-> ```python
-> import os
-> _errfd = os.open("/tmp/spark-stderr.log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-> os.dup2(_errfd, 2)
-> os.close(_errfd)
-> # now create SparkSession
-> ```
-> See [deep-dive article](https://medium.com/@arindam_62474/a-deep-dive-into-what-causes-it-why-every-config-knob-fails-and-how-to-actually-silence-it-17755d23e1ad) for full analysis.
+    ```python
+    # Normal: whole group loaded into memory at once
+    def my_func(df: pd.DataFrame) -> pd.DataFrame:
+        return df.transform(...)
+
+    # Iterator: Spark feeds the group as batches — avoids OOM on large groups
+    def my_func(batches: Iterator[pd.DataFrame]) -> Iterator[pd.DataFrame]:
+        for batch in batches:
+            yield batch.transform(...)
+    ```
+
+    Same `applyInPandas(my_func, schema="...")` call either way — the signature determines the behaviour.
+
+!!! warning "⚠️ PySpark 4.1.0+ noise (SPARK-54344)"
+    — `BrokenPipeError: [Errno 32] Broken pipe` appears in notebook output when running pandas UDFs. **Queries actually succeed** — the error is cosmetic. The cause: SPARK-54344 changed worker recycling so idle workers flush output after the JVM has already closed the socket. Worker stderr goes unconditionally to JVM `System.err` with no config gate, so no Spark config flag silences it.
+
+!!! warning "Workaround"
+    — redirect fd 2 before `SparkSession` initialisation:
+    ```python
+    import os
+    _errfd = os.open("/tmp/spark-stderr.log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    os.dup2(_errfd, 2)
+    os.close(_errfd)
+    # now create SparkSession
+    ```
+    See [deep-dive article](https://medium.com/@arindam_62474/a-deep-dive-into-what-causes-it-why-every-config-knob-fails-and-how-to-actually-silence-it-17755d23e1ad) for full analysis.
 
 ### 4.1 Group aggregate UDF (Series → scalar)
 
@@ -430,7 +440,8 @@ df1.groupby("id").cogroup(df2.groupby("id")).applyInPandas(
 
 Use case: time-series alignment, ordered merge, feature joining where group-level pandas logic is needed rather than a SQL join.
 
-> ⚠️ **Memory warning** — `maxRecordsPerBatch` is **not applied** to co-groups. All data for both sides of a co-group loads into memory at once. No iterator API escape hatch here — size your groups carefully.
+!!! warning "⚠️ Memory warning"
+    — `maxRecordsPerBatch` is **not applied** to co-groups. All data for both sides of a co-group loads into memory at once. No iterator API escape hatch here — size your groups carefully.
 
 ---
 
@@ -471,7 +482,8 @@ print(rate_of_change_temperature.func(gsod_local["da"], gsod_local["temp"]))
 - For grouped UDFs, filter to **one full group** so the local data matches what Spark would pass.
 - Build and validate locally first, then promote to a UDF.
 
-> 💡 **Tip** — pandas 2.1 renamed `DataFrame.applymap()` to `DataFrame.map()` for element-wise DataFrame operations. `Series.apply()` was not deprecated — it still works. If you see a `FutureWarning` mentioning `applymap`, switch to `df.map(...)`.
+!!! info "💡 Tip"
+    — pandas 2.1 renamed `DataFrame.applymap()` to `DataFrame.map()` for element-wise DataFrame operations. `Series.apply()` was not deprecated — it still works. If you see a `FutureWarning` mentioning `applymap`, switch to `df.map(...)`.
 
 ---
 

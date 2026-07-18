@@ -4,13 +4,13 @@
 >
 > PySpark's DataFrame API covers most data-manipulation needs, but sometimes you need to run arbitrary Python logic on your data. This chapter introduces two escape hatches: the **RDD** (a schema-free, object-level container) and **Python UDFs** (a way to promote any Python function to a DataFrame column transformer).
 >
-> 📌 **Notes adapted to PySpark 4.1.1 / Python 3.10+.**
->
-> - The RDD API is still fully present in 4.1.1 — it has not been deprecated. `SparkContext.parallelize()` and all RDD methods shown in the chapter work as documented.
-> - The `F.udf()` function and `@F.udf()` decorator are unchanged. Return type defaults to `StringType` if omitted (not new to 4.x).
-> - **Spark 4.1.0 new**: `udf()` now also accepts vectorized functions via type hints (same syntax as `pandas_udf`). The scalar Python UDF API in this chapter is unaffected.
-> - **Python 3.10+ typing**: `from typing import Tuple, Optional` still works, but modern Python prefers `tuple[int, int]` and `int | None`. The book's code is correct; both styles are valid.
-> - `Py4JJavaError` (used in the chapter's error-handling example) is still the correct catch for classic RDD operations in 4.1.1. `pyspark.errors.PythonException` applies to DataFrame/Spark Connect paths, not RDD — see §3 error-handling note.
+!!! info "📌 Notes adapted to PySpark 4.1.1 / Python 3.10+"
+
+    - The RDD API is still fully present in 4.1.1 — it has not been deprecated. `SparkContext.parallelize()` and all RDD methods shown in the chapter work as documented.
+    - The `F.udf()` function and `@F.udf()` decorator are unchanged. Return type defaults to `StringType` if omitted (not new to 4.x).
+    - **Spark 4.1.0 new**: `udf()` now also accepts vectorized functions via type hints (same syntax as `pandas_udf`). The scalar Python UDF API in this chapter is unaffected.
+    - **Python 3.10+ typing**: `from typing import Tuple, Optional` still works, but modern Python prefers `tuple[int, int]` and `int | None`. The book's code is correct; both styles are valid.
+    - `Py4JJavaError` (used in the chapter's error-handling example) is still the correct catch for classic RDD operations in 4.1.1. `pyspark.errors.PythonException` applies to DataFrame/Spark Connect paths, not RDD — see §3 error-handling note.
 
 ---
 
@@ -24,40 +24,40 @@
     - An unordered collection of arbitrary Python objects (picklable).
     - Unordered key-value pairs (like a Python dict).
 
-> 💡 **Default to DataFrames — but the "RDD is slower" claim needs context.**
->
-> **Where DataFrames are faster (structured/tabular data):**
-> - Catalyst can't see inside a lambda — predicate pushdown, projection pruning, and constant folding don't apply to RDD operations.
-> - Python RDDs add cloudpickle serialization + Python-JVM bridge overhead on every operation.
->
-> **Catalyst optimisations that RDDs miss:**
->
-> | Optimisation | What it does | RDD equivalent |
-> |---|---|---|
-> | **Predicate pushdown** | Moves `filter` as early as possible — ideally into the file reader so unmatched rows are never loaded | Lambda runs after all data is loaded |
-> | **Projection pruning** | Reads only the columns the query actually uses from Parquet/ORC | All columns always loaded |
-> | **Constant folding** | Evaluates constant sub-expressions at planning time — `salary * (100 + 10)` → `salary * 110` before any row is touched | Full expression re-evaluated for every element at runtime |
->
-> **Where RDDs are not slower (or are the right tool):**
-> - Unstructured data (text streams, arbitrary Python objects, binary blobs) — forcing it into a DataFrame schema adds overhead with no benefit.
-> - Custom algorithms with no relational equivalent (`reduce`, graph traversal, etc.).
-> - Scala/Java RDDs — the Python-JVM bridge cost doesn't apply; the gap vs DataFrames is much narrower.
->
-> **If you need RDDs, prefer Scala or Java over Python.**
->
-> PySpark RDD operations cross the Python↔JVM bridge on every operation: data is cloudpickled to the JVM, unpickled in a Python worker process, the function runs, then pickled back. This happens per partition, per operation.
->
-> Scala/Java RDD functions run natively inside the JVM executor — no serialization bridge, no Python worker. Typically **3–8× faster** for RDD-heavy code.
->
-> | | PySpark RDD | Scala/Java RDD | DataFrame (any language) |
-> |---|---|---|---|
-> | Execution | Python worker + JVM bridge | Native JVM | Native JVM + Catalyst/WSCG |
-> | Serialization overhead | Per partition, per op | None | None (UnsafeRow stays in JVM) |
-> | Catalyst optimizations | No | No | Yes |
->
-> For DataFrames, the language gap essentially disappears — Catalyst produces the same optimized physical plan regardless of whether you wrote it in Python, Scala, or Java.
->
-> Reach for the RDD only when the DataFrame is genuinely restrictive.
+!!! info "💡 Default to DataFrames — but the 'RDD is slower' claim needs context"
+
+!!! warning "Where DataFrames are faster (structured/tabular data)"
+    - Catalyst can't see inside a lambda — predicate pushdown, projection pruning, and constant folding don't apply to RDD operations.
+    - Python RDDs add cloudpickle serialization + Python-JVM bridge overhead on every operation.
+
+    **Catalyst optimisations that RDDs miss:**
+
+    | Optimisation | What it does | RDD equivalent |
+    |---|---|---|
+    | **Predicate pushdown** | Moves `filter` as early as possible — ideally into the file reader so unmatched rows are never loaded | Lambda runs after all data is loaded |
+    | **Projection pruning** | Reads only the columns the query actually uses from Parquet/ORC | All columns always loaded |
+    | **Constant folding** | Evaluates constant sub-expressions at planning time — `salary * (100 + 10)` → `salary * 110` before any row is touched | Full expression re-evaluated for every element at runtime |
+
+    **Where RDDs are not slower (or are the right tool):**
+    - Unstructured data (text streams, arbitrary Python objects, binary blobs) — forcing it into a DataFrame schema adds overhead with no benefit.
+    - Custom algorithms with no relational equivalent (`reduce`, graph traversal, etc.).
+    - Scala/Java RDDs — the Python-JVM bridge cost doesn't apply; the gap vs DataFrames is much narrower.
+
+    **If you need RDDs, prefer Scala or Java over Python.**
+
+    PySpark RDD operations cross the Python↔JVM bridge on every operation: data is cloudpickled to the JVM, unpickled in a Python worker process, the function runs, then pickled back. This happens per partition, per operation.
+
+    Scala/Java RDD functions run natively inside the JVM executor — no serialization bridge, no Python worker. Typically **3–8× faster** for RDD-heavy code.
+
+    | | PySpark RDD | Scala/Java RDD | DataFrame (any language) |
+    |---|---|---|---|
+    | Execution | Python worker + JVM bridge | Native JVM | Native JVM + Catalyst/WSCG |
+    | Serialization overhead | Per partition, per op | None | None (UnsafeRow stays in JVM) |
+    | Catalyst optimizations | No | No | Yes |
+
+    For DataFrames, the language gap essentially disappears — Catalyst produces the same optimized physical plan regardless of whether you wrote it in Python, Scala, or Java.
+
+    Reach for the RDD only when the DataFrame is genuinely restrictive.
 
 ### Creating an RDD
 
@@ -242,7 +242,8 @@ spark = SparkSession.builder \
 spark.conf.set("spark.rapids.sql.enabled", "true")   # or "false" to fall back to CPU
 ```
 
-> ⚠️ Requires NVIDIA GPU hardware + CUDA on every machine running executors. Local mode works if the local machine has a GPU; most dev machines don't, so it fails there in practice — not a local-mode restriction, a hardware one.
+!!! warning "⚠️ Requires NVIDIA GPU hardware + CUDA on every machine running executors"
+    Local mode works if the local machine has a GPU; most dev machines don't, so it fails there in practice — not a local-mode restriction, a hardware one.
 
 **Apache Gluten + Velox:**
 
@@ -390,7 +391,8 @@ collection_rdd.filter(lambda elem: isinstance(elem, (float, int))).collect()
 - `filter(f)` keeps only elements where `f(element)` is **truthy** (Python's truthy rules — not just `True`/`False`).
 - Lambda functions are convenient for simple one-use predicates.
 
-> 💡 **Lambda vs named function**: both are valid. A named function is easier to test; a lambda saves lines when the predicate is trivially short. Either is idiomatic.
+!!! info "💡 Lambda vs named function"
+    both are valid. A named function is easier to test; a lambda saves lines when the predicate is trivially short. Either is idiomatic.
 
 ### `reduce()` — fold the collection to a single value
 
@@ -526,7 +528,8 @@ They are class instances, not plain values — for three reasons:
 
 **Why `StringType()` isn't expensive despite the `()`:** parameterless types use a `DataTypeSingleton` metaclass — `StringType()` always returns the *same* object.
 
-> ⚠️ Python `int` is unbounded; PySpark's `LongType` is 64-bit. A Python `int` exceeding `pow(2, 63) - 1` will silently overflow or error. Always use the narrowest type that fits.
+!!! warning "⚠️ Python `int` is unbounded;"
+    PySpark's `LongType` is 64-bit. A Python `int` exceeding `pow(2, 63) - 1` will silently overflow or error. Always use the narrowest type that fits.
 
 ### 4.3 Two ways to create a UDF
 
@@ -545,23 +548,23 @@ frac_df = frac_df.withColumn(
 )
 ```
 
-> ⚠️ **Spark 4.x — "Cannot infer the eval type from type hints" warning.**
->
-> Spark 4.x added type-hint inference to `F.udf()`: it reads the function's return annotation (`-> Optional[Frac]`) to automatically pick Arrow-optimized execution. `Frac = Tuple[int, int]` is a custom alias it can't map to a Spark eval type, so the inference throws, the warning fires, and it falls back to `SQL_BATCHED_UDF`. The warning is just noise — **the UDF still works** with the explicit return type you provided.
->
-> The fallback is actually the **correct** outcome here. `infer_eval_type_for_udf` only returns pandas or Arrow UDF types (`SQL_SCALAR_PANDAS_UDF`, `SQL_ARROW_SCALAR_UDF`, etc.) — never `SQL_BATCHED_UDF`. If inference had *succeeded*, Spark would have classified the function as a vectorised UDF and called it with a `pandas.Series` or `pyarrow.Array` — which would fail at runtime because the function expects a plain `tuple`.
->
-> | Eval type | How triggered | Function receives |
-> |---|---|---|
-> | `SQL_BATCHED_UDF` | `useArrow=False` or fallback | one Python value per call |
-> | `SQL_ARROW_BATCHED_UDF` | `useArrow=True`, no pandas hints | Arrow array per batch |
-> | `SQL_SCALAR_PANDAS_UDF` | inferred from `Series → Series` hints | `pandas.Series` per batch |
-> | `SQL_ARROW_SCALAR_UDF` | inferred from `pa.Array → pa.Array` hints | `pyarrow.Array` per batch |
->
-> Fix: pass `useArrow` explicitly. Setting it to anything other than `None` skips inference entirely — no warning:
-> ```python
-> reduce_fraction = F.udf(py_reduce_fraction, SparkFrac, useArrow=False)
-> ```
+!!! warning "⚠️ Spark 4.x — 'Cannot infer the eval type from type hints' warning"
+
+    Spark 4.x added type-hint inference to `F.udf()`: it reads the function's return annotation (`-> Optional[Frac]`) to automatically pick Arrow-optimized execution. `Frac = Tuple[int, int]` is a custom alias it can't map to a Spark eval type, so the inference throws, the warning fires, and it falls back to `SQL_BATCHED_UDF`. The warning is just noise — **the UDF still works** with the explicit return type you provided.
+
+    The fallback is actually the **correct** outcome here. `infer_eval_type_for_udf` only returns pandas or Arrow UDF types (`SQL_SCALAR_PANDAS_UDF`, `SQL_ARROW_SCALAR_UDF`, etc.) — never `SQL_BATCHED_UDF`. If inference had *succeeded*, Spark would have classified the function as a vectorised UDF and called it with a `pandas.Series` or `pyarrow.Array` — which would fail at runtime because the function expects a plain `tuple`.
+
+    | Eval type | How triggered | Function receives |
+    |---|---|---|
+    | `SQL_BATCHED_UDF` | `useArrow=False` or fallback | one Python value per call |
+    | `SQL_ARROW_BATCHED_UDF` | `useArrow=True`, no pandas hints | Arrow array per batch |
+    | `SQL_SCALAR_PANDAS_UDF` | inferred from `Series → Series` hints | `pandas.Series` per batch |
+    | `SQL_ARROW_SCALAR_UDF` | inferred from `pa.Array → pa.Array` hints | `pyarrow.Array` per batch |
+
+    Fix: pass `useArrow` explicitly. Setting it to anything other than `None` skips inference entirely — no warning:
+    ```python
+    reduce_fraction = F.udf(py_reduce_fraction, SparkFrac, useArrow=False)
+    ```
 
 **Option B — `@F.udf()` decorator (preferred when defining a new function):**
 
@@ -584,7 +587,8 @@ assert fraction_to_float.func((1, 2)) == 0.5
 
 Both forms are equivalent. The decorator keeps the function definition and its UDF promotion in one place.
 
-> ⚠️ **UDFs are slower than built-in functions.** Every row crosses the Python–JVM boundary (serialisation + deserialisation). Use built-in `pyspark.sql.functions` whenever possible; reach for a UDF only when no built-in covers your logic. Chapter 9 introduces pandas UDFs which are significantly faster for column-level operations.
+!!! warning "⚠️ UDFs are slower than built-in functions"
+    Every row crosses the Python–JVM boundary (serialisation + deserialisation). Use built-in `pyspark.sql.functions` whenever possible; reach for a UDF only when no built-in covers your logic. Chapter 9 introduces pandas UDFs which are significantly faster for column-level operations.
 
 ### 4.4 Testing UDFs locally before distributing
 

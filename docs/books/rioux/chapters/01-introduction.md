@@ -4,7 +4,8 @@
 >
 > A scene-setting chapter: what PySpark is, why you'd choose it, how Spark distributes work across a cluster, and what you need to get started. Establishes the mental models — the data factory analogy, transformations vs. actions, lazy evaluation — that the rest of the book builds on.
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** The book targets Spark 3.2 (released October 2021); PySpark 4.1.1 is the current production release as of January 2026. Core concepts (lazy evaluation, the driver/executor model, transformations vs. actions) are unchanged. Version-specific details — Python requirements, Java runtime, install commands, language API status, and behavioral defaults — are updated below.
+!!! info "📌 Notes adapted to PySpark 4.1.1"
+    The book targets Spark 3.2 (released October 2021); PySpark 4.1.1 is the current production release as of January 2026. Core concepts (lazy evaluation, the driver/executor model, transformations vs. actions) are unchanged. Version-specific details — Python requirements, Java runtime, install commands, language API status, and behavioral defaults — are updated below.
 
 ---
 
@@ -29,7 +30,8 @@
 - The **DataFrame API** (the main way you'll use PySpark) maps Python calls to efficient Spark operations that run at the same speed regardless of whether you wrote Scala, Java, or Python. The performance gap between Python and Scala almost entirely disappears when using DataFrames.
 - Performance differences *do* remain with **RDDs** and pure **Python UDFs**, because those cross the Python-JVM boundary repeatedly (covered in Ch 8).
 
-> 📌 **Spark Connect (4.x).** Spark 4.x makes Spark Connect the primary client-server architecture. Python code runs in a separate process and communicates with the Spark driver over gRPC rather than in-process (classic mode). The `pyspark` REPL defaults to Connect mode — it attempts to connect to a local Spark Connect server on port 15002 at startup. Plain scripts using `SparkSession.builder` use classic mode unless the `SPARK_REMOTE` environment variable is set. Spark 4.0 added `spark.api.mode` (`"connect"` / `"classic"`) to switch between them. Spark Connect improves isolation and IDE support but is transparent for DataFrame API usage (RDD and SparkContext APIs are not supported in Connect mode).
+!!! info "📌 Spark Connect (4.x)"
+    Spark 4.x makes Spark Connect the primary client-server architecture. Python code runs in a separate process and communicates with the Spark driver over gRPC rather than in-process (classic mode). The `pyspark` REPL defaults to Connect mode — it attempts to connect to a local Spark Connect server on port 15002 at startup. Plain scripts using `SparkSession.builder` use classic mode unless the `SPARK_REMOTE` environment variable is set. Spark 4.0 added `spark.api.mode` (`"connect"` / `"classic"`) to switch between them. Spark Connect improves isolation and IDE support but is transparent for DataFrame API usage (RDD and SparkContext APIs are not supported in Connect mode).
 
 ### pyspark.pandas (formerly Koalas)
 
@@ -106,7 +108,8 @@ Each method returns a DataFrame; the chain reads almost like a sentence.
 | Floor manager | Receives your instructions, assigns work | Driver |
 | Factory owner | Allocates floor space and headcount | Cluster manager |
 
-> 📌 **"Master" terminology.** The book uses "master" to mean the resource allocator. Spark is actively retiring this term (SPARK-32333). In 4.x docs, the two separate roles are clearer: the **driver** orchestrates a specific job; the **cluster manager** (Standalone, YARN, Mesos, Kubernetes) allocates resources. "Master" now mainly appears in legacy config keys.
+!!! info "📌 'Master' terminology"
+    The book uses "master" to mean the resource allocator. Spark is actively retiring this term (SPARK-32333). In 4.x docs, the two separate roles are clearer: the **driver** orchestrates a specific job; the **cluster manager** (Standalone, YARN, Mesos, Kubernetes) allocates resources. "Master" now mainly appears in legacy config keys.
 
 ### The cluster manager's job (section 1.2.1)
 
@@ -127,7 +130,8 @@ Computing the average of a column across 12 rows with 4 executors:
 - One executor aggregates: total sum = 72, total count = 12 → average = 6.
 - Only the tiny intermediate results travel across the network, not the full data set.
 
-> 💡 **Tip** — In the cloud, many vendors (Databricks, EMR, Dataproc) offer auto-scaling: the cluster grows and shrinks during a job based on load. Fixed-size clusters require upfront capacity planning.
+!!! info "💡 Tip"
+    — In the cloud, many vendors (Databricks, EMR, Dataproc) offer auto-scaling: the cluster grows and shrinks during a job based on load. Fixed-size clusters require upfront capacity planning.
 
 ### Lazy evaluation (section 1.2.2)
 
@@ -142,7 +146,8 @@ Every Spark operation is one of two things:
 | **Transformation** | Describes a computation; records the intent; does no actual work | `select()`, `filter()` / `where()`, `groupBy()`, `withColumn()`, `join()`, `model.transform()` |
 | **Action** | Triggers the actual computation; produces a visible result | `show()`, `write()`, `count()` on a DataFrame, `collect()`, `estimator.fit()` (ML model training) |
 
-> ⚠️ **Pitfall** — `count()` has dual identity: as an aggregation *function* inside `groupBy().agg(F.count("*"))` it is a transformation; as a method called on a DataFrame (`df.count()`) it is an action that triggers full computation.
+!!! warning "⚠️ Pitfall"
+    — `count()` has dual identity: as an aggregation *function* inside `groupBy().agg(F.count("*"))` it is a transformation; as a method called on a DataFrame (`df.count()`) it is an action that triggers full computation.
 
 #### How laziness works in practice
 
@@ -163,7 +168,8 @@ spark.read.csv   ← transformation (even reading is lazy in Spark)
   .write.csv     ← ACTION — triggers everything above
 ```
 
-> 💡 **Tip** — Spark does not cache results automatically. If you trigger the same action twice, Spark re-executes the full chain twice. Use `.cache()` / `.persist()` to store a hot DataFrame across multiple actions (but see Ch 11 before caching eagerly — it's often not worth it).
+!!! info "💡 Tip"
+    — Spark does not cache results automatically. If you trigger the same action twice, Spark re-executes the full chain twice. Use `.cache()` / `.persist()` to store a hot DataFrame across multiple actions (but see Ch 11 before caching eagerly — it's often not worth it).
 
 #### Actors in a running job
 
@@ -195,7 +201,8 @@ And deeper topics:
 
 ### Versions
 
-> 📌 **Version update.** The book targets Spark 3.2. The current stable release is **PySpark 4.1.1** (January 9, 2026). Install with:
+!!! info "📌 Version update"
+    The book targets Spark 3.2. The current stable release is **PySpark 4.1.1** (January 9, 2026). Install with:
 
 ```bash
 pip install pyspark==4.1.1

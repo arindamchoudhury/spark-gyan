@@ -4,12 +4,13 @@
 >
 > Pushes the data frame model beyond flat rows/columns into hierarchical data. The chapter ingests a TV-show JSON document from TVMaze, introduces the three PySpark complex column types (array, map, struct), builds schemas programmatically, and shows how to expand and contract complex columns with explode/collect.
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** Core complex-type API (array, map, struct, StructType, explode, collect_list) is unchanged from 3.x. Key Spark 4.x additions:
->
-> - **`parse_json()` (4.0)** — parses a JSON string column into a semi-structured VARIANT column without a pre-declared schema. Modern alternative to `from_json()` when schema is unknown at write time.
-> - **VARIANT type GA (4.1)** — designed for schema-less JSON-like data; accessed with the `:` colon-sign operator (e.g., `variant_col:field_name`).
-> - **`StructType.toDDL()` and `DataType.fromDDL()` (4.0+)** — convert between StructType objects and DDL strings programmatically.
-> - **`MapType` now supported in `GROUP BY` (4.0+)** — previously raised an error.
+!!! info "📌 Notes adapted to PySpark 4.1.1"
+    Core complex-type API (array, map, struct, StructType, explode, collect_list) is unchanged from 3.x. Key Spark 4.x additions:
+
+    - **`parse_json()` (4.0)** — parses a JSON string column into a semi-structured VARIANT column without a pre-declared schema. Modern alternative to `from_json()` when schema is unknown at write time.
+    - **VARIANT type GA (4.1)** — designed for schema-less JSON-like data; accessed with the `:` colon-sign operator (e.g., `variant_col:field_name`).
+    - **`StructType.toDDL()` and `DataType.fromDDL()` (4.0+)** — convert between StructType objects and DDL strings programmatically.
+    - **`MapType` now supported in `GROUP BY` (4.0+)** — previously raised an error.
 
 ---
 
@@ -94,43 +95,45 @@ With a pretty-printed file, `multiLine=False` tries to parse each line as a stan
 
 Rule of thumb: API responses and programmatically generated files are usually minified (default works); human-edited or `jq`-formatted files need `multiLine=True`.
 
-> ⚠️ **Spark 4.x WARN — `FileStreamSink` glob false alarm**: passing a glob directly into `.json()` triggers a spurious warning on Spark 4.x:
-> ```
-> WARN FileStreamSink - Assume no metadata directory.
-> Error while looking for metadata directory in the path: .../shows-*.json
-> java.io.FileNotFoundException: File .../shows-*.json does not exist
-> ```
-> Spark's streaming layer tries to stat the literal glob string as a path (it doesn't exist as a file), logs a WARN, then continues normally. The read succeeds. To eliminate the warning, pass a directory and use `pathGlobFilter` instead:
->
-> ```python
-> # Preferred — no WARN, same result
-> three_shows = (
->     spark.read
->     .option("pathGlobFilter", "*.json")
->     .json("./data/shows/", multiLine=True)
-> )
-> ```
->
-> `pathGlobFilter` matches on filename only (not subdirectory names), so `"*.json"` works but `"subdir/*.json"` does not. For files spread across nested subdirectories, add `recursiveFileLookup`:
->
-> ```python
-> three_shows = (
->     spark.read
->     .option("pathGlobFilter", "*.json")
->     .option("recursiveFileLookup", "true")
->     .json("./data/shows/", multiLine=True)
-> )
-> ```
->
-> Alternatively, silence the logger in `log4j2.xml` (useful when you can't change the read call):
-> ```xml
-> <Logger name="org.apache.spark.sql.execution.streaming.sinks.FileStreamSink"
->         level="ERROR" additivity="false">
->     <AppenderRef ref="console"/>
-> </Logger>
-> ```
+!!! warning "⚠️ Spark 4.x WARN — `FileStreamSink` glob false alarm"
+    passing a glob directly into `.json()` triggers a spurious warning on Spark 4.x:
+    ```
+    WARN FileStreamSink - Assume no metadata directory.
+    Error while looking for metadata directory in the path: .../shows-*.json
+    java.io.FileNotFoundException: File .../shows-*.json does not exist
+    ```
+    Spark's streaming layer tries to stat the literal glob string as a path (it doesn't exist as a file), logs a WARN, then continues normally. The read succeeds. To eliminate the warning, pass a directory and use `pathGlobFilter` instead:
 
-> ⚠️ **Pitfall — mixed-type arrays**: PySpark won't raise an error if an array contains mixed types. It silently infers the lowest common denominator (usually `string`). You get a wrong type later, not an error at read time.
+    ```python
+    # Preferred — no WARN, same result
+    three_shows = (
+        spark.read
+        .option("pathGlobFilter", "*.json")
+        .json("./data/shows/", multiLine=True)
+    )
+    ```
+
+    `pathGlobFilter` matches on filename only (not subdirectory names), so `"*.json"` works but `"subdir/*.json"` does not. For files spread across nested subdirectories, add `recursiveFileLookup`:
+
+    ```python
+    three_shows = (
+        spark.read
+        .option("pathGlobFilter", "*.json")
+        .option("recursiveFileLookup", "true")
+        .json("./data/shows/", multiLine=True)
+    )
+    ```
+
+    Alternatively, silence the logger in `log4j2.xml` (useful when you can't change the read call):
+    ```xml
+    <Logger name="org.apache.spark.sql.execution.streaming.sinks.FileStreamSink"
+            level="ERROR" additivity="false">
+        <AppenderRef ref="console"/>
+    </Logger>
+    ```
+
+!!! warning "⚠️ Pitfall — mixed-type arrays"
+    PySpark won't raise an error if an array contains mixed types. It silently infers the lowest common denominator (usually `string`). You get a wrong type later, not an error at read time.
 
 ---
 
@@ -156,7 +159,8 @@ array_subset.genres[0]        # dot-accessor — avoid (see note below)
 array_subset.genres.getItem(0)
 ```
 
-> ⚠️ **Palantir style — avoid dot-accessor (`df.colName`)**: the book uses `array_subset.genres[0]`. Palantir discourages this form because it breaks for column names that contain spaces or clash with DataFrame method names. Prefer `F.col("genres")[0]`.
+!!! warning "⚠️ Palantir style — avoid dot-accessor (`df.colName`)"
+    the book uses `array_subset.genres[0]`. Palantir discourages this form because it breaks for column names that contain spaces or clash with DataFrame method names. Prefer `F.col("genres")[0]`.
 
 Key array functions (all in `pyspark.sql.functions`, most prefixed `array_`):
 
@@ -169,11 +173,12 @@ F.array_intersect(col1, col2)          # intersection
 F.array_position(col, value)           # position of value (1-based)
 ```
 
-> ⚠️ **Indexing inconsistency (confirmed PySpark 4.1.1)**: three schemes coexist in the same API:
->
-> - `col[0]` / `getItem(0)` / `F.get(col, 0)` — **0-based**
-> - `F.element_at(col, 1)` — **1-based**
-> - `F.array_position(col, value)` — **1-based** (returns `0` if not found); accepts a `Column` as `value` since 4.0
+!!! warning "⚠️ Indexing inconsistency (confirmed PySpark 4.1.1)"
+    three schemes coexist in the same API:
+
+    - `col[0]` / `getItem(0)` / `F.get(col, 0)` — **0-based**
+    - `F.element_at(col, 1)` — **1-based**
+    - `F.array_position(col, value)` — **1-based** (returns `0` if not found); accepts a `Column` as `value` since 4.0
 
 **Creating array literals from Python lists:**
 
@@ -184,7 +189,8 @@ The book (Spark 3.2) says `F.lit()` won't accept a Python list and requires the 
 F.array(F.lit(1), F.lit(2), F.lit(3))
 ```
 
-> 📌 **PySpark 3.4+ — `F.lit()` accepts Python lists directly**, returning an `ArrayType` column equivalent to `F.array(F.lit(v1), F.lit(v2), ...)`. Both work in `select()` and produce the same result.
+!!! info "📌 PySpark 3.4+ — `F.lit()` accepts Python lists directly"
+    , returning an `ArrayType` column equivalent to `F.array(F.lit(v1), F.lit(v2), ...)`. Both work in `select()` and produce the same result.
 
 **Three forms compared — different output types:**
 
@@ -222,7 +228,8 @@ array_subset_repeated = array_subset.select(
 )
 ```
 
-> ⚠️ **ONS style — `F.size()` returns `-1` for null**: `F.size()` on a null array column returns `-1`, not `0` or `null`. A comparison like `F.size("col") > 0` silently passes null rows (because `-1 > 0` is false, not an error, but the intent is wrong). Since the return is `-1` and not `null`, `F.coalesce()` won't help. Prefer `F.array_size()` (Spark 3.5+) which returns `null` for null input and is safe with standard null-handling patterns, or guard explicitly: `F.when(F.col("col").isNull(), 0).otherwise(F.size("col"))`.
+!!! warning "⚠️ ONS style — `F.size()` returns `-1` for null"
+    `F.size()` on a null array column returns `-1`, not `0` or `null`. A comparison like `F.size("col") > 0` silently passes null rows (because `-1 > 0` is false, not an error, but the intent is wrong). Since the return is `-1` and not `null`, `F.coalesce()` won't help. Prefer `F.array_size()` (Spark 3.5+) which returns `null` for null input and is safe with standard null-handling patterns, or guard explicitly: `F.when(F.col("col").isNull(), 0).otherwise(F.size("col"))`.
 
 ### 2.2 Map
 
@@ -270,7 +277,8 @@ F.col("mapped").getItem("key_name")  # equivalent
 
 Other useful map functions: `map_values()`, `map_keys()`, `map_entries()`.
 
-> 📌 **Spark 4.0+**: `MapType` is now supported in `GROUP BY`. Previously this raised an error.
+!!! info "📌 Spark 4.0+"
+    `MapType` is now supported in `GROUP BY`. Previously this raised an error.
 
 ---
 
@@ -311,7 +319,8 @@ shows.select(F.col("schedule.*"))  # → one column per StructField in schedule
 - **Bracket notation** — field name is in a variable at runtime (`F.col("s")[var]`), or you're already writing array/map access and want visual consistency. Avoid using it for struct fields when dot notation would work — it misleads readers.
 - **`.*` wildcard** — only in `select()` to flatten one level of a struct. Cannot be chained (but `"outer.inner.*"` works for a doubly-nested struct).
 
-> ⚠️ **Dot vs `getField` for ambiguous names**: if a column is named `"a.b"` (the dot is part of the name, not a path separator), `F.col("a.b")` will raise `AnalysisException` — it tries to resolve `b` as a sub-field of `a`. Use backticks to escape: `` F.col("`a.b`") `` or use `getField` after resolving the top-level column.
+!!! warning "⚠️ Dot vs `getField` for ambiguous names"
+    if a column is named `"a.b"` (the dot is part of the name, not a path separator), `F.col("a.b")` will raise `AnalysisException` — it tries to resolve `b` as a sub-field of `a`. Use backticks to escape: `` F.col("`a.b`") `` or use `getField` after resolving the top-level column.
 
 Drilling into an `Array[Struct]` field returns an array of that field's values across all elements — useful for extracting all episode names without an explicit explode:
 
@@ -364,26 +373,30 @@ episode_schema = T.StructType([
 ])
 ```
 
-> 💡 **Tip (book)**: split schemas with more than ~3 fields into their own named variables. The code becomes self-documenting without comments and avoids one giant nested block.
+!!! info "💡 Tip (book)"
+    split schemas with more than ~3 fields into their own named variables. The code becomes self-documenting without comments and avoids one giant nested block.
 
-> 💡 **ONS style — DDL for simple schemas**: for flat schemas, DDL strings are terser and easier to read:
-> ```python
-> schema_ddl = "`incident_number` string, `cal_year` int, `fin_year` string"
-> df = spark.read.csv(path, schema=schema_ddl)
-> ```
-> Use `StructType`/`StructField` when you need programmatic construction, `ArrayType`, `MapType`, or deeply nested structs. Spark 4.0+ adds `DataType.fromDDL(ddl_string)` and `my_struct_type.toDDL()` to convert between the two representations freely.
+!!! info "💡 ONS style — DDL for simple schemas"
+    for flat schemas, DDL strings are terser and easier to read:
+    ```python
+    schema_ddl = "`incident_number` string, `cal_year` int, `fin_year` string"
+    df = spark.read.csv(path, schema=schema_ddl)
+    ```
+    Use `StructType`/`StructField` when you need programmatic construction, `ArrayType`, `MapType`, or deeply nested structs. Spark 4.0+ adds `DataType.fromDDL(ddl_string)` and `my_struct_type.toDDL()` to convert between the two representations freely.
 
-> 💡 **Partial schema**: passing a `StructType` that covers only a subset of fields makes PySpark read **only those fields** — a cheap way to avoid reading a wide document when you need just a few columns.
+!!! info "💡 Partial schema"
+    passing a `StructType` that covers only a subset of fields makes PySpark read **only those fields** — a cheap way to avoid reading a wide document when you need just a few columns.
 
-> 💡 **`F.schema_of_json(json_str)`** — infers a schema from a single JSON string literal at plan time and returns it as a DDL string. Useful for quickly bootstrapping a schema during development:
-> ```python
-> schema_ddl = spark.range(1).select(
->     F.schema_of_json(F.lit('{"name":"Silicon Valley","type":"Scripted"}'))
-> ).first()[0]
-> # → 'STRUCT<name: STRING, type: STRING>'
-> T.StructType.fromDDL(schema_ddl)  # convert to StructType if needed
-> ```
-> Do not use in production — it sees only the fields present in that one example (see best practices in §4.3).
+!!! info "💡 `F.schema_of_json(json_str)`"
+    — infers a schema from a single JSON string literal at plan time and returns it as a DDL string. Useful for quickly bootstrapping a schema during development:
+    ```python
+    schema_ddl = spark.range(1).select(
+        F.schema_of_json(F.lit('{"name":"Silicon Valley","type":"Scripted"}'))
+    ).first()[0]
+    # → 'STRUCT<name: STRING, type: STRING>'
+    T.StructType.fromDDL(schema_ddl)  # convert to StructType if needed
+    ```
+    Do not use in production — it sees only the fields present in that one example (see best practices in §4.3).
 
 ### 4.2 Reading with a strict schema
 
@@ -400,27 +413,29 @@ shows_with_schema = spark.read.json(
 - `mode="PERMISSIVE"` (default) — set malformed records to null silently.
 - `mode="DROPMALFORMED"` — silently drop any row that cannot be parsed; the row disappears from the output entirely.
 
-> ⚠️ **Prefer `FAILFAST` in production**: `PERMISSIVE` mode can silently turn bad records into null rows, which then propagate wrong results downstream. The earlier you surface a schema mismatch, the cheaper it is to fix. `FAILFAST` errors identify the type mismatch but not which field — narrow down by elimination.
+!!! warning "⚠️ Prefer `FAILFAST` in production"
+    `PERMISSIVE` mode can silently turn bad records into null rows, which then propagate wrong results downstream. The earlier you surface a schema mismatch, the cheaper it is to fix. `FAILFAST` errors identify the type mismatch but not which field — narrow down by elimination.
 
-> 📌 **Catching `FAILFAST` errors — Spark 4.x vs book**: Listing 6.20 catches the error with `from py4j.protocol import Py4JJavaError`. This reached directly into the py4j JVM bridge and is now considered an internal API. Use `pyspark.errors` instead:
->
-> ```python
-> # Book (Spark 3.2) — avoid
-> from py4j.protocol import Py4JJavaError
-> try:
->     spark.read.json(path, schema=my_schema, mode="FAILFAST").count()
-> except Py4JJavaError as e:
->     print(e.java_exception.getMessage())
->
-> # Current best practice (Spark 3.3+ / 4.x)
-> from pyspark.errors import SparkRuntimeException
-> try:
->     spark.read.json(path, schema=my_schema, mode="FAILFAST").count()
-> except SparkRuntimeException as e:
->     print(e.message)
-> ```
->
-> `pyspark.errors` exceptions are proper Python exceptions with a clean `message` attribute and correct `isinstance()` behaviour. Key classes: `PySparkException` (base), `AnalysisException` (bad column / unresolved reference), `ParseException` (malformed SQL/DDL), `SparkRuntimeException` (runtime errors including `FAILFAST` violations), `IllegalArgumentException` (bad function argument).
+!!! info "📌 Catching `FAILFAST` errors — Spark 4.x vs book"
+    Listing 6.20 catches the error with `from py4j.protocol import Py4JJavaError`. This reached directly into the py4j JVM bridge and is now considered an internal API. Use `pyspark.errors` instead:
+
+    ```python
+    # Book (Spark 3.2) — avoid
+    from py4j.protocol import Py4JJavaError
+    try:
+        spark.read.json(path, schema=my_schema, mode="FAILFAST").count()
+    except Py4JJavaError as e:
+        print(e.java_exception.getMessage())
+
+    # Current best practice (Spark 3.3+ / 4.x)
+    from pyspark.errors import SparkRuntimeException
+    try:
+        spark.read.json(path, schema=my_schema, mode="FAILFAST").count()
+    except SparkRuntimeException as e:
+        print(e.message)
+    ```
+
+    `pyspark.errors` exceptions are proper Python exceptions with a clean `message` attribute and correct `isinstance()` behaviour. Key classes: `PySparkException` (base), `AnalysisException` (bad column / unresolved reference), `ParseException` (malformed SQL/DDL), `SparkRuntimeException` (runtime errors including `FAILFAST` violations), `IllegalArgumentException` (bad function argument).
 
 **Full reader options reference (standard open-source PySpark)**
 
@@ -448,19 +463,21 @@ shows_with_schema = spark.read.json(
 | `prefersDecimal` | `false` | Infer floating-point numbers as `DecimalType` instead of `DoubleType` |
 | `dropFieldIfAllNull` | `false` | Exclude columns where every value is null during schema inference |
 
-> ⚠️ **`columnNameOfCorruptRecord` requires schema declaration**: the corrupt-record column must be present in the schema you pass to the reader, otherwise the raw string is silently discarded even in `PERMISSIVE` mode:
-> ```python
-> schema_with_corrupt = T.StructType([
->     T.StructField("name", T.StringType()),
->     T.StructField("type", T.StringType()),
->     T.StructField("corrupt_record", T.StringType()),  # must be here
-> ])
-> df = spark.read.json(path, schema=schema_with_corrupt,
->                      mode="PERMISSIVE",
->                      columnNameOfCorruptRecord="corrupt_record")
-> ```
+!!! warning "⚠️ `columnNameOfCorruptRecord` requires schema declaration"
+    the corrupt-record column must be present in the schema you pass to the reader, otherwise the raw string is silently discarded even in `PERMISSIVE` mode:
+    ```python
+    schema_with_corrupt = T.StructType([
+        T.StructField("name", T.StringType()),
+        T.StructField("type", T.StringType()),
+        T.StructField("corrupt_record", T.StringType()),  # must be here
+    ])
+    df = spark.read.json(path, schema=schema_with_corrupt,
+                         mode="PERMISSIVE",
+                         columnNameOfCorruptRecord="corrupt_record")
+    ```
 
-> ⚠️ **`schemaEvolutionMode` and `rescuedDataColumn` are not standard Spark options**: these are Databricks Runtime features. Passing them to a vanilla Spark reader silently has no effect.
+!!! warning "⚠️ `schemaEvolutionMode` and `rescuedDataColumn` are not standard Spark options"
+    these are Databricks Runtime features. Passing them to a vanilla Spark reader silently has no effect.
 
 ### 4.3 JSON-formatted schemas
 
@@ -498,7 +515,8 @@ A `StructField` always serialises to exactly four keys: `name`, `type`, `nullabl
  "nullable": true, "metadata": {}}
 ```
 
-> 💡 **Spark 4.0+ — `toDDL()` shortcut**: `df.schema.toDDL()` produces a DDL string which is more human-readable than the JSON representation and directly usable in SQL DDL statements.
+!!! info "💡 Spark 4.0+ — `toDDL()` shortcut"
+    `df.schema.toDDL()` produces a DDL string which is more human-readable than the JSON representation and directly usable in SQL DDL statements.
 
 **Best practices**
 
@@ -614,17 +632,19 @@ episodes = shows.select(
 - `F.explode(col)` — **silently drops rows where the array/map is null**. A show with no episodes disappears from the output entirely.
 - `F.explode_outer(col)` — same but **retains null rows**, producing `null` for the exploded column.
 
-> ⚠️ **ONS style — prefer `explode_outer()`**: unless you explicitly intend to discard records with null arrays, use `explode_outer()`. Silent row loss from `explode()` is one of the hardest data bugs to detect — it only shows up as unexpectedly low row counts, not an error.
+!!! warning "⚠️ ONS style — prefer `explode_outer()`"
+    unless you explicitly intend to discard records with null arrays, use `explode_outer()`. Silent row loss from `explode()` is one of the hardest data bugs to detect — it only shows up as unexpectedly low row counts, not an error.
 
 - `F.posexplode(col)` — explodes and prepends a 0-based **position** column. Returns **two columns** (`pos`, `col`).
 - `F.posexplode_outer(col)` — same but retains null rows.
 
-> ⚠️ **ONS style — `posexplode` requires `.select()`, not `.withColumn()`**: since the function produces two columns simultaneously, `.withColumn()` cannot wrap it. Use:
-> ```python
-> df.select("*", F.posexplode("array_col").alias("pos", "value"))
-> # adjust 0-based pos to 1-based ordinal if needed:
-> .withColumn("pos", F.col("pos") + 1)
-> ```
+!!! warning "⚠️ ONS style — `posexplode` requires `.select()`, not `.withColumn()`"
+    since the function produces two columns simultaneously, `.withColumn()` cannot wrap it. Use:
+    ```python
+    df.select("*", F.posexplode("array_col").alias("pos", "value"))
+    # adjust 0-based pos to 1-based ordinal if needed:
+    .withColumn("pos", F.col("pos") + 1)
+    ```
 
 **Collect** — aggregate rows back into an array column:
 

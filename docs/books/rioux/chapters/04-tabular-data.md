@@ -4,7 +4,8 @@
 >
 > Switches from unstructured text to structured tabular data, using a Canadian broadcast-log dataset. Covers reading delimited files, understanding star schemas, and the full toolkit for column-level manipulation: selecting, dropping, creating, renaming, reordering, and summarizing columns. The chapter's running question is: *which TV channels show the greatest proportion of commercials?*
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** Core DataFrame API (`select`, `drop`, `withColumn`, `cast`, `substr`) is unchanged in 4.x. **Important behavioral change:** Spark 4.x enables ANSI mode by default (`spark.sql.ansi.enabled = true`). In Spark 3.x, `cast("invalid_string", "int")` silently returned `null`; in Spark 4.x it raises a runtime exception — `SparkNumberFormatException` for invalid string-to-numeric casts, `SparkArithmeticException` for overflow. Validate data before casting, or use `try_cast()` for nullable semantics.
+!!! info "📌 Notes adapted to PySpark 4.1.1"
+    Core DataFrame API (`select`, `drop`, `withColumn`, `cast`, `substr`) is unchanged in 4.x. **Important behavioral change:** Spark 4.x enables ANSI mode by default (`spark.sql.ansi.enabled = true`). In Spark 3.x, `cast("invalid_string", "int")` silently returned `null`; in Spark 4.x it raises a runtime exception — `SparkNumberFormatException` for invalid string-to-numeric casts, `SparkArithmeticException` for overflow. Validate data before casting, or use `try_cast()` for nullable semantics.
 
 ---
 
@@ -74,11 +75,14 @@ logs = spark.read.csv(
 | `timestampFormat` | ISO 8601 | Date/time pattern string for timestamp columns |
 | `schema` | `None` | Explicit schema (`StructType` or DDL string); overrides inference |
 
-> ⚠️ **`inferSchema` in production** — Inferring schema requires a full pre-scan of the data. For large, repeatedly-read datasets, infer once, save the schema, and pass it explicitly on subsequent reads (see Ch 6).
+!!! warning "⚠️ `inferSchema` in production"
+    — Inferring schema requires a full pre-scan of the data. For large, repeatedly-read datasets, infer once, save the schema, and pass it explicitly on subsequent reads (see Ch 6).
 
-> 💡 **No schema at all?** Columns default to `_c0`, `_c1`, … and all types are `string`. Fine for a quick peek, useless for analysis.
+!!! info "💡 No schema at all?"
+    Columns default to `_c0`, `_c1`, … and all types are `string`. Fine for a quick peek, useless for analysis.
 
-> 📌 **ANSI mode & `cast()` in Spark 4.x** — With ANSI mode on by default, casting a malformed string to a numeric type raises an error rather than returning `null`. Use `F.col("x").try_cast(T.IntegerType())` (Column method, 4.0+) or the SQL `TRY_CAST` expression when the input is dirty. Note: `try_cast` is a method on `Column`, not a standalone function in `F`.
+!!! info "📌 ANSI mode & `cast()` in Spark 4.x"
+    — With ANSI mode on by default, casting a malformed string to a numeric type raises an error rather than returning `null`. Use `F.col("x").try_cast(T.IntegerType())` (Column method, 4.0+) or the SQL `TRY_CAST` expression when the input is dirty. Note: `try_cast` is a method on `Column`, not a standalone function in `F`.
 
 ### Delimiter variants in the wild
 
@@ -127,16 +131,18 @@ logs.select(*cols_to_keep)
 
 ```
 
-> ⚠️ **Avoid dot and bracket notation** (Palantir style guide, ONS guide)
->
-> `logs.LogDate` and `logs["LogDate"]` look convenient but break in common situations:
->
-> - **Chaining** — if you add a new column with `withColumn()` then immediately filter on it in the same chain, `df.new_col` raises `AttributeError` because the column doesn't exist on `df` yet. `F.col("new_col")` resolves at execution time and works correctly.
-> - **Stale values** — `df.col_name` captures the column reference at definition time. If you overwrite a column with `withColumn()`, the dot reference still points at the old values — a silent bug with no error.
-> - **Special characters** — column names with spaces or symbols (e.g. `"Cost(£)"`) cannot be accessed with dot notation at all.
-> - **Renamed variables** — if you rename the DataFrame variable, every `df.col_name` reference must be updated manually.
->
-> **Best practice:** use `"col_name"` (string) for simple column references passed to functions; use `F.col("col_name")` for filter conditions, `when()` expressions, and any chained operation where the column may have just been created or overwritten.
+!!! warning "⚠️ Avoid dot and bracket notation"
+    (Palantir style guide, ONS guide)
+
+    `logs.LogDate` and `logs["LogDate"]` look convenient but break in common situations:
+
+    - **Chaining** — if you add a new column with `withColumn()` then immediately filter on it in the same chain, `df.new_col` raises `AttributeError` because the column doesn't exist on `df` yet. `F.col("new_col")` resolves at execution time and works correctly.
+    - **Stale values** — `df.col_name` captures the column reference at definition time. If you overwrite a column with `withColumn()`, the dot reference still points at the old values — a silent bug with no error.
+    - **Special characters** — column names with spaces or symbols (e.g. `"Cost(£)"`) cannot be accessed with dot notation at all.
+    - **Renamed variables** — if you rename the DataFrame variable, every `df.col_name` reference must be updated manually.
+
+!!! note "Best practice"
+    use `"col_name"` (string) for simple column references passed to functions; use `F.col("col_name")` for filter conditions, `when()` expressions, and any chained operation where the column may have just been created or overwritten.
 
 **Peeking at many columns in groups of 3:**
 
@@ -150,7 +156,8 @@ for group in column_split:
 
 `logs.columns` is a plain Python list — treat it like one. `np.array_split` divides it into roughly equal chunks.
 
-> 💡 **Databricks tip** — `display(df)` renders an interactive table in a Databricks notebook; `show()` is for everything else.
+!!! info "💡 Databricks tip"
+    — `display(df)` renders an interactive table in a Databricks notebook; `show()` is for everything else.
 
 ### 4.2 Dropping columns — `drop()`
 
@@ -165,7 +172,8 @@ logs = logs.drop("BroadcastLogID", "SequenceNO")
 - Dropping a non-existent column is a **no-op** (no error). Watch your spelling.
 - Equivalent via `select()`: `logs.select(*[c for c in logs.columns if c not in ["BroadcastLogID", "SequenceNO"]])`
 
-> 💡 **When to use which:** use `drop()` when removing a small number of columns from a wide DataFrame; use `select()` when explicitly choosing a small subset to keep.
+!!! info "💡 When to use which"
+    use `drop()` when removing a small number of columns from a wide DataFrame; use `select()` when explicitly choosing a small subset to keep.
 
 ### Best practices for `drop()`
 
@@ -235,12 +243,12 @@ Breaking it down:
 
 Column arithmetic uses normal Python operators (`+`, `-`, `*`, `/`, `//`, `%`); PySpark respects operator precedence.
 
-> 💡 **When to use `F.col()` vs a plain string**
->
-> - **Plain string** — works as a shorthand inside PySpark functions: `F.lower("word")`, `F.split("value", " ")`. The function internally wraps it in `col()` for you.
-> - **`F.col()`** — required whenever you use Python operators (`==`, `!=`, `>`, `+`, `*`) or chain Column methods (`.substr()`, `.cast()`, `.alias()`). A plain string has no operators or methods — `"Duration" * 3600` is a Python string repetition, not a column expression.
->
-> Rule of thumb: if you are doing anything to the column beyond passing it as a name, use `F.col()`.
+!!! info "💡 When to use `F.col()` vs a plain string"
+
+    - **Plain string** — works as a shorthand inside PySpark functions: `F.lower("word")`, `F.split("value", " ")`. The function internally wraps it in `col()` for you.
+    - **`F.col()`** — required whenever you use Python operators (`==`, `!=`, `>`, `+`, `*`) or chain Column methods (`.substr()`, `.cast()`, `.alias()`). A plain string has no operators or methods — `"Duration" * 3600` is a Python string repetition, not a column expression.
+
+    Rule of thumb: if you are doing anything to the column beyond passing it as a name, use `F.col()`.
 
 **`withColumn()` vs `select()` for column creation:**
 
@@ -250,9 +258,11 @@ Column arithmetic uses normal Python operators (`+`, `-`, `*`, `/`, `//`, `%`); 
 | **Output columns** | Only what you list | All existing + the new column |
 | **Caveat** | Verbose for wide DataFrames | Slow with 100+ new columns — use `select()` instead |
 
-> ⚠️ **Pitfall** — `withColumn("name", expr)` silently overwrites any existing column named `"name"`. Use intentionally for in-place updates; unexpected if you typo a column name.
+!!! warning "⚠️ Pitfall"
+    — `withColumn("name", expr)` silently overwrites any existing column named `"name"`. Use intentionally for in-place updates; unexpected if you typo a column name.
 
-> ⚠️ **Performance** — Creating 100+ columns with chained `withColumn()` calls degrades query planning performance significantly. Batch them into a single `select()` call instead.
+!!! warning "⚠️ Performance"
+    — Creating 100+ columns with chained `withColumn()` calls degrades query planning performance significantly. Batch them into a single `select()` call instead.
 
 #### `distinct()` — de-duplicate rows
 
@@ -276,19 +286,20 @@ logs.toDF(*[c.lower() for c in logs.columns]).printSchema()
 - `withColumnRenamed(old, new)` — renames a single column; no-op if `old` doesn't exist.
 - `toDF(*new_names)` — replaces **all** column names at once; must pass exactly the right count.
 
-> ⚠️ **Prefer `select()` + `.alias()` over `withColumnRenamed()`** (Palantir style guide)
->
-> `withColumnRenamed()` adds an extra step to the plan. When you are already writing a `select()`, rename inline with `.alias()` instead:
->
-> ```python
-> # Discouraged — two operations when one will do
-> df.select("key", "comments").withColumnRenamed("comments", "num_comments")
->
-> # Preferred — rename in the select itself
-> df.select("key", F.col("comments").alias("num_comments"))
-> ```
->
-> `withColumnRenamed()` is still appropriate when you need to rename a column without writing a full `select()` — e.g. after a join to resolve a name collision, or when using `toDF()` for bulk renaming.
+!!! warning "⚠️ Prefer `select()` + `.alias()` over `withColumnRenamed()`"
+    (Palantir style guide)
+
+    `withColumnRenamed()` adds an extra step to the plan. When you are already writing a `select()`, rename inline with `.alias()` instead:
+
+    ```python
+    # Discouraged — two operations when one will do
+    df.select("key", "comments").withColumnRenamed("comments", "num_comments")
+
+    # Preferred — rename in the select itself
+    df.select("key", F.col("comments").alias("num_comments"))
+    ```
+
+    `withColumnRenamed()` is still appropriate when you need to rename a column without writing a full `select()` — e.g. after a join to resolve a name collision, or when using `toDF()` for bulk renaming.
 
 ### 4.5 Reordering columns
 
@@ -302,7 +313,8 @@ logs.select(sorted(logs.columns))
 logs.select("LogDate", "LogServiceID", "duration_seconds", ...)
 ```
 
-> 💡 Note that Python's `sorted()` puts uppercase before lowercase (ASCII order). Mixed-case column names will sort unexpectedly.
+!!! info "💡 Note that Python's `sorted()` puts uppercase before lowercase (ASCII order)"
+    Mixed-case column names will sort unexpectedly.
 
 ---
 
@@ -359,7 +371,8 @@ import matplotlib.pyplot as plt
 pandas_df.plot(...)
 ```
 
-> 💡 **Always alias `agg()` results.** Without `.alias()`, the output column is named `sum(duration_seconds)` — a raw function-name string that is awkward to reference downstream and inconsistent with the rest of the schema. Palantir style guide: every selected or aggregated column should have a meaningful name.
+!!! info "💡 Always alias `agg()` results"
+    Without `.alias()`, the output column is named `sum(duration_seconds)` — a raw function-name string that is awkward to reference downstream and inconsistent with the rest of the schema. Palantir style guide: every selected or aggregated column should have a meaningful name.
 
 `toPandas()` pulls the entire DataFrame to the driver node's RAM. Rules of thumb:
 
@@ -385,7 +398,8 @@ plot_df = (
 )
 ```
 
-> ⚠️ **Palantir and ONS guidance** — Both guides say to avoid `toPandas()` / `collect()` on unaggregated data entirely. Palantir: "eliminates the benefits of a distributed framework, resulting in lower performance or out-of-memory errors." ONS: "use `.limit()` to bring back only a small number of rows."
+!!! warning "⚠️ Palantir and ONS guidance"
+    — Both guides say to avoid `toPandas()` / `collect()` on unaggregated data entirely. Palantir: "eliminates the benefits of a distributed framework, resulting in lower performance or out-of-memory errors." ONS: "use `.limit()` to bring back only a small number of rows."
 
 **2. For distributional plots, sample or use approximate functions — never pull raw data**
 

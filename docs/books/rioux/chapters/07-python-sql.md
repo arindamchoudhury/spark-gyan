@@ -4,11 +4,12 @@
 >
 > Reveals the deep relationship between PySpark's DataFrame API and SQL. The chapter shows how to register DataFrames as Spark SQL views, query them with `spark.sql()`, reproduce the same transformations in pure SQL, and then blend both languages using `selectExpr()`, `F.expr()`, and SQL strings inside `where()`. The running dataset is Backblaze hard-drive statistics for 2019.
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** The SQL interop API (`spark.sql`, `createOrReplaceTempView`, `selectExpr`, `expr`) is unchanged from 3.x. Key Spark 4.x context:
->
-> - **ANSI SQL is now the default dialect (Spark 4.0+).** The book describes ANSI SQL support as experimental; it is now the standard. HiveQL compatibility is maintained but ANSI SQL behaviour takes precedence where they differ.
-> - **ANSI mode on by default** means integer division, overflow, and type-cast semantics changed — see Ch 4/5 notes.
-> - `AnalysisException` is now imported from `pyspark.errors` (Spark 3.4+), not `pyspark.sql.utils`.
+!!! info "📌 Notes adapted to PySpark 4.1.1"
+    The SQL interop API (`spark.sql`, `createOrReplaceTempView`, `selectExpr`, `expr`) is unchanged from 3.x. Key Spark 4.x context:
+
+    - **ANSI SQL is now the default dialect (Spark 4.0+).** The book describes ANSI SQL support as experimental; it is now the standard. HiveQL compatibility is maintained but ANSI SQL behaviour takes precedence where they differ.
+    - **ANSI mode on by default** means integer division, overflow, and type-cast semantics changed — see Ch 4/5 notes.
+    - `AnalysisException` is now imported from `pyspark.errors` (Spark 3.4+), not `pyspark.sql.utils`.
 
 ---
 
@@ -115,7 +116,8 @@ All four methods behave identically regardless of catalog backend (UC, Delta, Hi
 
 To persist a table permanently into Unity Catalog, use `saveAsTable()` with the full three-level name — not a view method.
 
-> ⚠️ **UC OSS 0.4.0 does not support persistent views.** `CREATE OR REPLACE VIEW unity.default.v AS ...` raises `AnalysisException: [MISSING_CATALOG_ABILITY.VIEWS] Catalog unity does not support views. SQLSTATE: 0A000`. Only tables are supported as persistent catalog objects. Use `createOrReplaceTempView()` for session-scoped views or `saveAsTable()` for persistent data.
+!!! warning "⚠️ UC OSS 0.4.0 does not support persistent views"
+    `CREATE OR REPLACE VIEW unity.default.v AS ...` raises `AnalysisException: [MISSING_CATALOG_ABILITY.VIEWS] Catalog unity does not support views. SQLSTATE: 0A000`. Only tables are supported as persistent catalog objects. Use `createOrReplaceTempView()` for session-scoped views or `saveAsTable()` for persistent data.
 
 ### 2.2 The Spark catalog
 
@@ -144,7 +146,8 @@ spark.sql("SELECT * FROM my_view").show()               # ❌ not found — miss
 - `listTables()` returns `Table` objects with `name`, `database`, `tableType`, `isTemporary`.
 - Caching is also managed through the catalog (covered in Ch 11).
 
-> ⚠️ **Spark 4.x bug — always pass the database name.** Calling `spark.catalog.listTables()` with no arguments triggers a `ParseException: [PARSE_EMPTY_STATEMENT]` because the no-arg path calls `currentDatabase()` internally, which can return an empty string that the JVM catalog then tries to parse as a SQL identifier. Pass the database name explicitly. Alternatively use SQL: `spark.sql("SHOW TABLES").show()`.
+!!! warning "⚠️ Spark 4.x bug — always pass the database name"
+    Calling `spark.catalog.listTables()` with no arguments triggers a `ParseException: [PARSE_EMPTY_STATEMENT]` because the no-arg path calls `currentDatabase()` internally, which can return an empty string that the JVM catalog then tries to parse as a SQL identifier. Pass the database name explicitly. Alternatively use SQL: `spark.sql("SHOW TABLES").show()`.
 
 #### With Unity Catalog + Delta (UCSingleCatalog as default catalog)
 
@@ -409,7 +412,8 @@ backblaze_2019.groupby(F.col("model")).agg(
 
 - `HAVING` is SQL-only — it filters aggregated columns post-`GROUP BY`. In PySpark, since every method returns a new DataFrame, a plain `.where()` after `.agg()` is equivalent.
 
-> ⚠️ **Avoid positional column references (`GROUP BY 1`, `ORDER BY 3`)**: if you add or reorder a column in `SELECT`, the positions shift silently and the query produces wrong results without any error. Use explicit names: `GROUP BY model`, `ORDER BY max_GB DESC`.
+!!! warning "⚠️ Avoid positional column references (`GROUP BY 1`, `ORDER BY 3`)"
+    if you add or reorder a column in `SELECT`, the positions shift silently and the query produces wrong results without any error. Use explicit names: `GROUP BY model`, `ORDER BY max_GB DESC`.
 
 ### 3.3 CREATE OR REPLACE TEMP VIEW
 
@@ -480,7 +484,8 @@ backblaze_2019 = (
 )
 ```
 
-> ⚠️ **`union()` ≠ SQL `UNION`**: PySpark's `union()` keeps duplicates — it is equivalent to SQL's `UNION ALL`. SQL's plain `UNION` deduplicates. To deduplicate after a PySpark union, call `.distinct()` explicitly (it is expensive in a distributed context).
+!!! warning "⚠️ `union()` ≠ SQL `UNION`"
+    PySpark's `union()` keeps duplicates — it is equivalent to SQL's `UNION ALL`. SQL's plain `UNION` deduplicates. To deduplicate after a PySpark union, call `.distinct()` explicitly (it is expensive in a distributed context).
 
 Before unioning, ensure all DataFrames have the same columns, in the same order, with the same types. In PySpark: `df.select(reference_df.columns)`. SQL has no column-list shorthand — you must list every column explicitly.
 
@@ -499,7 +504,8 @@ spark.sql("""
 drive_days.join(failures, on="model", how="left").show(5)
 ```
 
-> ⚠️ **SQL injection when building SQL strings from Python**: constructing `spark.sql()` arguments by interpolating user-controlled values is a SQL injection risk. Only interpolate trusted, internal data (e.g. `df.columns`). Never interpolate raw user input into SQL strings.
+!!! warning "⚠️ SQL injection when building SQL strings from Python"
+    constructing `spark.sql()` arguments by interpolating user-controlled values is a SQL injection risk. Only interpolate trusted, internal data (e.g. `df.columns`). Never interpolate raw user input into SQL strings.
 
 ### 3.5 Subqueries and CTEs
 
@@ -613,7 +619,8 @@ Type annotations are better for three reasons:
 
 This pattern is still the standard in Spark 4.x — no native CTE equivalent exists in the DataFrame API.
 
-> 💡 **Spark 4.1 — recursive CTEs are now GA.** Recursive `WITH` clauses (e.g. graph traversal, hierarchical data) were previously experimental; they are fully supported in Spark 4.1 via `spark.sql()`. The DataFrame API has no equivalent — use SQL for recursive logic.
+!!! info "💡 Spark 4.1 — recursive CTEs are now GA"
+    Recursive `WITH` clauses (e.g. graph traversal, hierarchical data) were previously experimental; they are fully supported in Spark 4.1 via `spark.sql()`. The DataFrame API has no equivalent — use SQL for recursive logic.
 
 **Recursive CTE anatomy — org-hierarchy example:**
 
@@ -761,9 +768,11 @@ full_data = full_data.select(
 )
 ```
 
-> ⚠️ **Palantir style — use explicit `.alias()`, not inline SQL aliases in `selectExpr`**: `"capacity_bytes / pow(1024,3) capacity_GB"` uses SQL's positional inline-alias syntax (name after expression, no `AS` keyword). This is non-obvious to readers unfamiliar with SQL alias conventions and bypasses IDE rename-refactoring. At minimum, use the `AS` keyword to make intent clear: `"capacity_bytes / pow(1024,3) AS capacity_GB"`. Better: use `select()` with `.alias()` so the output column name is explicit and consistent with the rest of the DataFrame API.
+!!! warning "⚠️ Palantir style — use explicit `.alias()`, not inline SQL aliases in `selectExpr`"
+    `"capacity_bytes / pow(1024,3) capacity_GB"` uses SQL's positional inline-alias syntax (name after expression, no `AS` keyword). This is non-obvious to readers unfamiliar with SQL alias conventions and bypasses IDE rename-refactoring. At minimum, use the `AS` keyword to make intent clear: `"capacity_bytes / pow(1024,3) AS capacity_GB"`. Better: use `select()` with `.alias()` so the output column name is explicit and consistent with the rest of the DataFrame API.
 
-> ⚠️ **Palantir style — `selectExpr` mixes two languages in the same chain**: Palantir's guide recommends keeping transformations in the DataFrame API where the full chain is type-checkable and navigable. `selectExpr` is convenient for one-off arithmetic but the output column contract lives inside a string — invisible to type checkers and refactoring tools. Prefer `select()` with `F.col()` and `.alias()` when the expression is non-trivial or the column name matters downstream.
+!!! warning "⚠️ Palantir style — `selectExpr` mixes two languages in the same chain"
+    Palantir's guide recommends keeping transformations in the DataFrame API where the full chain is type-checkable and navigable. `selectExpr` is convenient for one-off arithmetic but the output column contract lives inside a string — invisible to type checkers and refactoring tools. Prefer `select()` with `F.col()` and `.alias()` when the expression is non-trivial or the column name matters downstream.
 
 ### 4.2 `F.expr()`
 
@@ -775,7 +784,8 @@ failures = (
 )
 ```
 
-> ⚠️ **Palantir style — avoid embedded aliases in `F.expr()`**: `F.expr("count(*) failures")` hides the output column name inside a SQL string. Prefer `F.count("*").alias("failures")` — explicit, consistent with the DataFrame API, and refactorable.
+!!! warning "⚠️ Palantir style — avoid embedded aliases in `F.expr()`"
+    `F.expr("count(*) failures")` hides the output column name inside a SQL string. Prefer `F.count("*").alias("failures")` — explicit, consistent with the DataFrame API, and refactorable.
 
 ### 4.3 `where()` / `filter()` with SQL strings
 
@@ -786,15 +796,16 @@ full_data.where(F.col("failure") == 1)           # Column expression — equival
 
 Both forms are valid. The SQL string form is shorter for simple conditions involving literal values.
 
-> ⚠️ **SQL injection risk with f-string predicates**: the book uses:
-> ```python
-> data.where(f"capacity_GB between {capacity_min} and {capacity_max}")
-> ```
-> The book itself warns about this pattern (§7.4.5): if either variable came from user input, this is a SQL injection vector. The safe equivalent uses Column expressions only:
-> ```python
-> data.where(F.col("capacity_GB").between(capacity_min, capacity_max))
-> ```
-> Reserve SQL string predicates for **hard-coded, internal literal values only**. Never interpolate external or user-supplied data into SQL strings.
+!!! warning "⚠️ SQL injection risk with f-string predicates"
+    the book uses:
+    ```python
+    data.where(f"capacity_GB between {capacity_min} and {capacity_max}")
+    ```
+    The book itself warns about this pattern (§7.4.5): if either variable came from user input, this is a SQL injection vector. The safe equivalent uses Column expressions only:
+    ```python
+    data.where(F.col("capacity_GB").between(capacity_min, capacity_max))
+    ```
+    Reserve SQL string predicates for **hard-coded, internal literal values only**. Never interpolate external or user-supplied data into SQL strings.
 
 ---
 

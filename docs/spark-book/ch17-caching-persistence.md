@@ -3,7 +3,7 @@
 > *Learning-path topic: I6 (Intermediate)*
 > *Status: ⬜ Not yet written*
 
-> **Note "📌 Topics deferred here from Chapter 1"
+!!! note "📌 Topics deferred here from Chapter 1"
     Chapter 1 introduces the executor memory layout (storage memory region, LRU eviction) and notes that `.cache()` cuts the RDD lineage to avoid re-reading from source. The following are covered in full here:
 
     - **Caching as lineage management** — calling `.cache()` persists partitions in the storage memory region after first computation; subsequent actions reuse cached partitions instead of replaying the full lineage from source; the architectural reason is to trade memory for CPU time (avoiding re-reads of stable data)

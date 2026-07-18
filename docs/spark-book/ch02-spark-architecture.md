@@ -320,11 +320,11 @@ The first two paths decouple the client completely from cluster management. The 
 | `sc://host:port` | Connects directly to an existing remote Connect server |
 | `yarn`, `spark://…`, `k8s://…` | **Blocked** — setting both `spark.master` and `spark.remote` raises `CANNOT_CONFIGURE_SPARK_CONNECT_MASTER`; use `spark.api.mode=connect` with `--master` instead |
 
-> **When to use each URL form:**
->
-> - **`local[N]` / `local[*]`** — use when developing or testing Connect-compatible code on a machine with a full PySpark install. The main reason: Connect mode disallows `df._jdf`, `sc._jsc`, and any direct JVM-object access. Running locally with `local[*]` catches those violations before you deploy to a real server. Also useful in CI pipelines. Requires a full PySpark install — there must be a JVM available to start the server.
->
-> - **`sc://host:port`** — the normal production path: a Connect server is already running on a cluster (YARN, Kubernetes, Databricks) and you connect to it from a lightweight client. This is the **only** option when using `pyspark-client` (the JVM-free package introduced in Spark 4.0), since there is no JVM available to start a local server.
+!!! warning "When to use each URL form"
+
+    - **`local[N]` / `local[*]`** — use when developing or testing Connect-compatible code on a machine with a full PySpark install. The main reason: Connect mode disallows `df._jdf`, `sc._jsc`, and any direct JVM-object access. Running locally with `local[*]` catches those violations before you deploy to a real server. Also useful in CI pipelines. Requires a full PySpark install — there must be a JVM available to start the server.
+
+    - **`sc://host:port`** — the normal production path: a Connect server is already running on a cluster (YARN, Kubernetes, Databricks) and you connect to it from a lightweight client. This is the **only** option when using `pyspark-client` (the JVM-free package introduced in Spark 4.0), since there is no JVM available to start a local server.
 
 `spark.remote` and `spark.master` cannot be combined — they represent incompatible execution models. `spark.master` means "I am starting Spark infrastructure; negotiate with this cluster manager." `spark.remote` means "I am a thin client; connect me to an already-running server." Setting both raises `CANNOT_CONFIGURE_SPARK_CONNECT_MASTER` at session creation. If a Spark Connect server is already deployed on a real cluster, `spark.remote = "sc://cluster-host:15002"` works fine without `spark.master` — the client has no cluster management role. If you want Spark to manage cluster resources itself and also use the Connect API, use `spark.api.mode=connect` with `--master`.
 
@@ -696,7 +696,8 @@ The DAGScheduler walks the RDD lineage backwards from the final operation, ident
 - **Narrow dependency** — each partition of the child depends on at most one partition of the parent (e.g. `filter`, `select`, `map`). These can be pipelined: one executor processes the full chain on its partition without any data movement. All consecutive narrow transformations are collapsed into a single stage. (This is distinct from `CollapseCodegenStages` in Stage 1, which fused *operators* within a partition for speed; here the DAGScheduler is grouping *RDDs* into a scheduling unit.)
 - **Wide dependency** — each partition of the child depends on multiple partitions of the parent (e.g. `groupBy`, `join`, `repartition`). This requires a shuffle: data must move across executors before the next operation can proceed. Wide dependencies become **stage boundaries**. (The `ShuffleExchangeExec` nodes that mark these boundaries were already inserted by `EnsureRequirements` in Stage 1; the DAGScheduler now encounters them in the RDD lineage and uses them to split the graph into scheduling stages.)
 
-> **Two uses of the word "stage."** Tungsten's whole-stage code generation (Stage 1 above) fuses *adjacent physical operators* into one generated Java source function (compiled to JVM bytecode by the executor) for speed. The DAGScheduler's stages (here) are scheduling units split at *shuffle boundaries* — about which work must wait for which. Both use shuffle boundaries as a dividing line, but they answer different questions: Tungsten asks how fast a stage runs; the DAGScheduler asks when a stage is allowed to start.
+!!! warning "Two uses of the word 'stage.'"
+    Tungsten's whole-stage code generation (Stage 1 above) fuses *adjacent physical operators* into one generated Java source function (compiled to JVM bytecode by the executor) for speed. The DAGScheduler's stages (here) are scheduling units split at *shuffle boundaries* — about which work must wait for which. Both use shuffle boundaries as a dividing line, but they answer different questions: Tungsten asks how fast a stage runs; the DAGScheduler asks when a stage is allowed to start.
 
 The result is a DAG of stages: each node is a stage, each edge is a shuffle dependency. A stage cannot start until all its parent stages have completed and written their shuffle output to disk.
 
@@ -705,7 +706,8 @@ There are two types of stage:
 - **ShuffleMapStage** — a stage whose output is written to shuffle files on disk, to be consumed by the next stage. Tasks write partitioned user data to local disk and return a `MapStatus` to the driver — metadata recording which BlockManager holds each output partition, used by `MapOutputTrackerMaster` so downstream reducers know where to fetch.
 - **ResultStage** — the final stage in a job. Its tasks apply the user function to their partition and send the result back to the driver (the rows that `.show(10)` prints). May run on a subset of partitions — `first()` runs on one partition only and stops early.
 
-> **`ShuffleMapStage` / `ResultStage` vs `ShuffleQueryStage` / `ResultQueryStage`:** `explain()` shows the physical plan layer. `ShuffleQueryStage` (and `BroadcastQueryStage`) wrap an `Exchange` operator; `ResultQueryStage` wraps the final result subtree — it has no exchange to wrap. All three are AQE plan-level objects created when AQE executes, and they appear in `explain()` output. `ShuffleMapStage` and `ResultStage` are DAGScheduler objects, created at runtime when the DAGScheduler walks the RDD lineage — they are not plan nodes and never appear in `explain()` output. The mapping is 1-to-1: each `ShuffleQueryStage` in the plan becomes a `ShuffleMapStage` in the scheduler; the `ResultQueryStage` becomes the `ResultStage`.
+!!! warning "`ShuffleMapStage` / `ResultStage` vs `ShuffleQueryStage` / `ResultQueryStage`"
+    `explain()` shows the physical plan layer. `ShuffleQueryStage` (and `BroadcastQueryStage`) wrap an `Exchange` operator; `ResultQueryStage` wraps the final result subtree — it has no exchange to wrap. All three are AQE plan-level objects created when AQE executes, and they appear in `explain()` output. `ShuffleMapStage` and `ResultStage` are DAGScheduler objects, created at runtime when the DAGScheduler walks the RDD lineage — they are not plan nodes and never appear in `explain()` output. The mapping is 1-to-1: each `ShuffleQueryStage` in the plan becomes a `ShuffleMapStage` in the scheduler; the `ResultQueryStage` becomes the `ResultStage`.
 
 For the word count program:
 
@@ -726,9 +728,10 @@ flowchart LR
 
 Every shuffle has two sides — a **write side** (each map task hashes every output row by key to determine which reducer owns it, then writes all output into a single sorted file on local disk — one file per map task, with a separate index file recording the byte offset for each reducer's slice) and a **read side** (each reduce task fetches its slice from every map task's file using that index). The two sides cannot run simultaneously, so every shuffle boundary produces two stages.
 
-> **Why one file per map task, not one file per reducer?** The original Spark shuffle (Hash Shuffle Writer, removed in Spark 2.0) did write one file per reducer. With M map tasks and R reducers that produced M × R files — 200,000 files at 1,000 maps and 200 reducers — which stressed the OS and distributed file system and became the primary scaling bottleneck. Each map task also had to hold R file handles open simultaneously and write to all of them as rows arrived, producing interleaved random I/O.
->
-> `SortShuffleWriter` (the default since Spark 1.2) pays an explicit sort cost — sorting all output rows by `(partition_id, key)` before writing — to earn two things: one sequential write per map task (rows already in partition order), and only 2 × M total files regardless of R (one data file + one index file per map task). The sort cost (O(n log n) per map task) is small compared to the I/O savings at scale. When there is no map-side aggregation and R ≤ `spark.shuffle.sort.bypassMergeThreshold` (default 200), Spark uses `BypassMergeSortShuffleWriter` instead: it opens R temporary files simultaneously (one per reducer), writes each row directly to its reducer's file without sorting, then merges all R temporaries into one data file + one index file and deletes the intermediates. The final output is the same structure as `SortShuffleWriter` — 1 data + 1 index per map task — but the sort cost is avoided at the expense of R simultaneous file handles during writing. This is why it is only used for small R.
+!!! note "Why one file per map task, not one file per reducer?"
+    The original Spark shuffle (Hash Shuffle Writer, removed in Spark 2.0) did write one file per reducer. With M map tasks and R reducers that produced M × R files — 200,000 files at 1,000 maps and 200 reducers — which stressed the OS and distributed file system and became the primary scaling bottleneck. Each map task also had to hold R file handles open simultaneously and write to all of them as rows arrived, producing interleaved random I/O.
+
+    `SortShuffleWriter` (the default since Spark 1.2) pays an explicit sort cost — sorting all output rows by `(partition_id, key)` before writing — to earn two things: one sequential write per map task (rows already in partition order), and only 2 × M total files regardless of R (one data file + one index file per map task). The sort cost (O(n log n) per map task) is small compared to the I/O savings at scale. When there is no map-side aggregation and R ≤ `spark.shuffle.sort.bypassMergeThreshold` (default 200), Spark uses `BypassMergeSortShuffleWriter` instead: it opens R temporary files simultaneously (one per reducer), writes each row directly to its reducer's file without sorting, then merges all R temporaries into one data file + one index file and deletes the intermediates. The final output is the same structure as `SortShuffleWriter` — 1 data + 1 index per map task — but the sort cost is avoided at the expense of R simultaneous file handles during writing. This is why it is only used for small R.
 
 `groupBy("word").count()` therefore produces two stages, not one:
 
@@ -774,15 +777,16 @@ When an executor signals it has a free slot, the TaskScheduler picks the best ta
 
 If no executor with better locality is available, the TaskScheduler waits up to `spark.locality.wait` (default **3s**) before falling back to the next-worse locality level. Each level gets its own wait budget: `spark.locality.wait.process`, `spark.locality.wait.node`, and `spark.locality.wait.rack` all default to the same `spark.locality.wait` value. Set a level to `0` to skip it entirely.
 
-> **Data locality does not apply to cloud object storage (S3, GCS, ADLS).** The locality model assumes data is co-located with compute — HDFS blocks live on the same physical machines as Spark executors. Cloud object stores are remote HTTP services; every read is a network request regardless of which executor runs the task. `FileScanRDD.getPreferredLocations()` returns block locations for HDFS but returns an empty list for S3 — the TaskScheduler sees `NO_PREF` for every task and assigns them to any available slot. The locality wait (`spark.locality.wait = 3s`) adds scheduling delay for no benefit; set it to `0` when reading exclusively from object storage.
->
-> The optimization levers shift entirely:
->
-> - **Partition pruning** — skipping S3 key prefixes based on partition column filters avoids HTTP requests entirely; the savings are large
-> - **Parallelism** — more concurrent S3 GET requests mean higher throughput; tune `spark.sql.files.maxPartitionBytes` to control how much each task reads
-> - **Pushdown** — column pruning and filter pushdown (e.g. S3 Select for CSV/JSON, Parquet metadata for column skipping) reduce bytes transferred over the network
-> - **Local caching** — Alluxio and Databricks Disk Cache (formerly Delta Cache) transparently cache S3 objects on executor-local NVMe/SSD, restoring `NODE_LOCAL` locality for repeated reads; Databricks Disk Cache is automatic for Parquet and Delta files on Databricks Runtime 14.2+
-> - **Region colocation** — run compute in the same AWS region as the S3 bucket; cross-region reads add latency and egress cost
+!!! note "Data locality does not apply to cloud object storage (S3, GCS, ADLS)"
+    The locality model assumes data is co-located with compute — HDFS blocks live on the same physical machines as Spark executors. Cloud object stores are remote HTTP services; every read is a network request regardless of which executor runs the task. `FileScanRDD.getPreferredLocations()` returns block locations for HDFS but returns an empty list for S3 — the TaskScheduler sees `NO_PREF` for every task and assigns them to any available slot. The locality wait (`spark.locality.wait = 3s`) adds scheduling delay for no benefit; set it to `0` when reading exclusively from object storage.
+
+    The optimization levers shift entirely:
+
+    - **Partition pruning** — skipping S3 key prefixes based on partition column filters avoids HTTP requests entirely; the savings are large
+    - **Parallelism** — more concurrent S3 GET requests mean higher throughput; tune `spark.sql.files.maxPartitionBytes` to control how much each task reads
+    - **Pushdown** — column pruning and filter pushdown (e.g. S3 Select for CSV/JSON, Parquet metadata for column skipping) reduce bytes transferred over the network
+    - **Local caching** — Alluxio and Databricks Disk Cache (formerly Delta Cache) transparently cache S3 objects on executor-local NVMe/SSD, restoring `NODE_LOCAL` locality for repeated reads; Databricks Disk Cache is automatic for Parquet and Delta files on Databricks Runtime 14.2+
+    - **Region colocation** — run compute in the same AWS region as the S3 bucket; cross-region reads add latency and egress cost
 
 Once the TaskScheduler has selected a task-executor pairing, it hands the assignment to the **SchedulerBackend** — the RPC bridge between the driver and the executors. The SchedulerBackend serializes the task and delivers it to the chosen executor. The driver **pushes** tasks to executors — executors do not poll for work. The driver is therefore a coordination bottleneck for result collection (all task results flow back to the driver), while executors communicate directly with each other only during shuffle reads.
 

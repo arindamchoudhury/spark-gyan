@@ -4,14 +4,15 @@
 >
 > Completes the core DataFrame API by adding joins and grouped aggregation. The running question is: *which Canadian TV channels show the greatest proportion of commercials?* The chapter builds the answer step by step — joining a star-schema log table to three reference tables, grouping by channel, computing conditional sums with `F.when()`, and handling null values at the end.
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** The join and `groupBy` APIs are unchanged in Spark 4.x. Key Spark 4.x changes that affect this chapter:
->
-> - **`AnalysisException`** moved to `pyspark.errors` in Spark 3.4+ (`pyspark.sql.utils` still re-exports it, but prefer the new import path).
-> - **ANSI mode is on by default in Spark 4.0+**: `F.sum()` / `F.avg()` throw `ArithmeticException` on overflow. Use `F.try_sum()` / `F.try_avg()` for null-on-overflow behaviour.
-> - **Self-join ambiguity tightened (SPARK-46541, 4.0)**: always `.alias()` both sides of a self-join to avoid `AnalysisException`.
-> - **New aggregate functions**: `F.median()` (3.4), `F.count_if()` (3.5), `F.any_value()` (3.5), `F.mode()` (3.4, gained `deterministic` param in 4.0), `F.bit_and/or/xor()` (3.5), `F.try_sum()` / `F.try_avg()` (3.5).
-> - **`F.trim()` gained an optional trim-character parameter in 4.0**: `F.trim(col, trimStr)` removes a specific character instead of whitespace.
-> - **`groupBy()` accepts integer ordinals in 4.0**: `df.groupBy(1, 2)` groups by column position (like SQL `GROUP BY 1, 2`).
+!!! info "📌 Notes adapted to PySpark 4.1.1"
+    The join and `groupBy` APIs are unchanged in Spark 4.x. Key Spark 4.x changes that affect this chapter:
+
+    - **`AnalysisException`** moved to `pyspark.errors` in Spark 3.4+ (`pyspark.sql.utils` still re-exports it, but prefer the new import path).
+    - **ANSI mode is on by default in Spark 4.0+**: `F.sum()` / `F.avg()` throw `ArithmeticException` on overflow. Use `F.try_sum()` / `F.try_avg()` for null-on-overflow behaviour.
+    - **Self-join ambiguity tightened (SPARK-46541, 4.0)**: always `.alias()` both sides of a self-join to avoid `AnalysisException`.
+    - **New aggregate functions**: `F.median()` (3.4), `F.count_if()` (3.5), `F.any_value()` (3.5), `F.mode()` (3.4, gained `deterministic` param in 4.0), `F.bit_and/or/xor()` (3.5), `F.try_sum()` / `F.try_avg()` (3.5).
+    - **`F.trim()` gained an optional trim-character parameter in 4.0**: `F.trim(col, trimStr)` removes a specific character instead of whitespace.
+    - **`groupBy()` accepts integer ordinals in 4.0**: `df.groupBy(1, 2)` groups by column position (like SQL `GROUP BY 1, 2`).
 
 ---
 
@@ -71,26 +72,29 @@ This is the preferred form for equi-joins: shorter and it automatically deduplic
 | `"left_anti"` | Rows from the left that have **no** match on the right. The inverse of `inner`. |
 | `"cross"` | Every left row paired with every right row (m × n records). Use via `crossJoin()` or `how="cross"`. |
 
-> 💡 Use `left` when you cannot guarantee every left-side key has a corresponding right-side entry — you keep all records and can fill nulls (or filter) later.
+!!! info "💡 When to choose a left join"
+    Use `left` when you cannot guarantee every left-side key has a corresponding right-side entry — you keep all records and can fill nulls (or filter) later.
 
-> ⚠️ Cross joins produce explosive row counts. Only useful for generating all possible combinations.
+!!! warning "⚠️ Cross joins produce explosive row counts"
+    Only useful for generating all possible combinations.
 
-> ⚠️ **Always specify `how=` as a keyword argument** (Palantir style guide)
->
-> Passing `how` as a positional argument or omitting it entirely silently uses the default (`inner`) and makes intent opaque to the reader:
->
-> ```python
-> # Bad — positional, intent unclear
-> logs.join(log_identifier, "LogServiceID", "inner")
->
-> # Bad — omitted, defaults to inner silently
-> logs.join(log_identifier, "LogServiceID")
->
-> # Good — explicit, self-documenting
-> logs.join(log_identifier, "LogServiceID", how="inner")
-> ```
->
-> This matters most for `inner` — it is the default so it is the easiest to forget, and a silent `inner` drops non-matching rows without any indication in the code.
+!!! warning "⚠️ Always specify `how=` as a keyword argument"
+    (Palantir style guide)
+
+    Passing `how` as a positional argument or omitting it entirely silently uses the default (`inner`) and makes intent opaque to the reader:
+
+    ```python
+    # Bad — positional, intent unclear
+    logs.join(log_identifier, "LogServiceID", "inner")
+
+    # Bad — omitted, defaults to inner silently
+    logs.join(log_identifier, "LogServiceID")
+
+    # Good — explicit, self-documenting
+    logs.join(log_identifier, "LogServiceID", how="inner")
+    ```
+
+    This matters most for `inner` — it is the default so it is the easiest to forget, and a silent `inner` drops non-matching rows without any indication in the code.
 
 ### 1.4 Column naming clashes
 
@@ -127,7 +131,8 @@ logs_verbose.drop(F.col("right.LogServiceID")).select("LogServiceID")
 ```
 *Required when using `F.col()`, which loses origin tracking. Alias the DataFrames first.*
 
-> 📌 **Self-join aliasing requirement (Spark 4.0, SPARK-46541):** When joining a DataFrame with itself or a derived copy, `.alias()` both sides unconditionally. The plan-identity tracking that previously resolved self-join column references is stricter in Spark 4.0 and may raise `AnalysisException` where it previously succeeded silently.
+!!! info "📌 Self-join aliasing requirement (Spark 4.0, SPARK-46541)"
+    When joining a DataFrame with itself or a derived copy, `.alias()` both sides unconditionally. The plan-identity tracking that previously resolved self-join column references is stricter in Spark 4.0 and may raise `AnalysisException` where it previously succeeded silently.
 
 ### 1.5 Multi-table join chain
 
@@ -212,7 +217,8 @@ answer = (
 )
 ```
 
-> ⚠️ **ANSI mode overflow (Spark 4.0+):** `F.sum()` and `F.avg()` throw `ArithmeticException` when a partial aggregate overflows (e.g., summing a `LongType` column that exceeds `Long.MAX_VALUE`). Use `F.try_sum()` / `F.try_avg()` to get null-on-overflow behaviour instead of a thrown exception. The `duration_seconds` data in this chapter uses small integer values so overflow is not a concern here, but keep this in mind for production pipelines with large numeric columns.
+!!! warning "⚠️ ANSI mode overflow (Spark 4.0+)"
+    `F.sum()` and `F.avg()` throw `ArithmeticException` when a partial aggregate overflows (e.g., summing a `LongType` column that exceeds `Long.MAX_VALUE`). Use `F.try_sum()` / `F.try_avg()` to get null-on-overflow behaviour instead of a thrown exception. The `duration_seconds` data in this chapter uses small integer values so overflow is not a concern here, but keep this in mind for production pipelines with large numeric columns.
 
 **`F.when()` blueprint:**
 
@@ -227,39 +233,41 @@ answer = (
 - `F.trim(col)` — strips leading and trailing whitespace from a string column. Essential before `isin()` if data may have padding. In Spark 4.0+, accepts an optional second argument: `F.trim(col, trimStr)` removes a specific character instead of whitespace.
 - `.isin([list])` — returns `True` if the column value is in the list. Applied to a `Column` expression, not a Python variable.
 
-> 💡 You can use `F.when()` inline inside `F.sum()`, `F.avg()`, or any aggregate function — no need to create an intermediate `withColumn()` step first.
+!!! info "💡 Conditional aggregation with F.when()"
+    You can use `F.when()` inline inside `F.sum()`, `F.avg()`, or any aggregate function — no need to create an intermediate `withColumn()` step first.
 
-> ⚠️ **Separate aggregation from column creation and null handling** (Palantir style guide)
->
-> The example above chains `groupby → agg → withColumn → fillna` in a single block. Palantir recommends separating chains by operation type — mixing aggregation, column creation, and null handling in one block makes it harder to reason about each step:
->
-> ```python
-> # Discouraged — three different operation types in one chain
-> answer = (
->     full_log.groupby("LogIdentifierID")
->     .agg(...)
->     .withColumn("commercial_ratio", ...)
->     .fillna(0)
-> )
->
-> # Better — each logical step is a named assignment
-> answer = (
->     full_log.groupby("LogIdentifierID")
->     .agg(
->         F.sum(...).alias("duration_commercial"),
->         F.sum("duration_seconds").alias("duration_total"),
->     )
-> )
->
-> answer = answer.withColumn(
->     "commercial_ratio",
->     F.col("duration_commercial") / F.col("duration_total"),
-> )
->
-> answer = answer.fillna(0)
-> ```
->
-> The chain is within Palantir's five-statement limit, so the original form won't cause a linting error. The separation is still preferred for clarity — a reader jumping to `answer =` can immediately see the aggregation logic without scrolling through the `withColumn` and `fillna`.
+!!! warning "⚠️ Separate aggregation from column creation and null handling"
+    (Palantir style guide)
+
+    The example above chains `groupby → agg → withColumn → fillna` in a single block. Palantir recommends separating chains by operation type — mixing aggregation, column creation, and null handling in one block makes it harder to reason about each step:
+
+    ```python
+    # Discouraged — three different operation types in one chain
+    answer = (
+        full_log.groupby("LogIdentifierID")
+        .agg(...)
+        .withColumn("commercial_ratio", ...)
+        .fillna(0)
+    )
+
+    # Better — each logical step is a named assignment
+    answer = (
+        full_log.groupby("LogIdentifierID")
+        .agg(
+            F.sum(...).alias("duration_commercial"),
+            F.sum("duration_seconds").alias("duration_total"),
+        )
+    )
+
+    answer = answer.withColumn(
+        "commercial_ratio",
+        F.col("duration_commercial") / F.col("duration_total"),
+    )
+
+    answer = answer.fillna(0)
+    ```
+
+    The chain is within Palantir's five-statement limit, so the original form won't cause a linting error. The separation is still preferred for clarity — a reader jumping to `answer =` can immediately see the aggregation logic without scrolling through the `withColumn` and `fillna`.
 
 ### 2.3 New aggregate functions (Spark 3.4+)
 
@@ -275,7 +283,8 @@ Several new aggregate functions landed in recent Spark releases that complement 
 | `F.try_sum(col)` | 3.5 | Like `F.sum()` but returns `null` on overflow (ANSI mode). |
 | `F.try_avg(col)` | 3.5 | Like `F.avg()` but returns `null` on overflow. |
 
-> 💡 `F.count_if(condition)` is a concise replacement for the `F.sum(F.when(..., 1).otherwise(0))` pattern whenever you only need a count, not a weighted sum.
+!!! info "💡 F.count_if() as a concise alternative"
+    `F.count_if(condition)` is a concise replacement for the `F.sum(F.when(..., 1).otherwise(0))` pattern whenever you only need a count, not a weighted sum.
 
 ---
 
@@ -307,7 +316,8 @@ answer.fillna({"duration_commercial": 0, "duration_total": 0})  # per-column dic
 - The `value` type must be compatible with the column type. `fillna("zero")` on a `double` column is a no-op.
 - Subset and dict form let you be precise about which columns get filled.
 
-> 💡 Both `dropna()` and `fillna()` also accept `na.drop()` / `na.fill()` as aliases via the `df.na` accessor.
+!!! info "💡 dropna() and fillna() have na.* aliases"
+    Both `dropna()` and `fillna()` also accept `na.drop()` / `na.fill()` as aliases via the `df.na` accessor.
 
 ---
 

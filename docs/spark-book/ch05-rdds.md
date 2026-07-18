@@ -705,7 +705,8 @@ The result is `0`, not `55`. When `foreach` runs, Spark serialises the closure �
 
 The cruellest part: in `local[*]` mode the driver and executors share one JVM and one Python process, so the closure may mutate the same object and the counter *appears* to work. Deploy the identical code to a real cluster — where executors are separate processes on separate machines — and it silently returns wrong answers. Code that passed every local test fails in production with no error, no stack trace, just a wrong number.
 
-> **The rule:** never mutate driver-side state from inside a closure. A closure can *read* captured values (you get a copy), but anything it *writes* is lost when the task ends. This applies to counters, lists, dictionaries, and any object defined on the driver.
+!!! warning "The rule"
+    never mutate driver-side state from inside a closure. A closure can *read* captured values (you get a copy), but anything it *writes* is lost when the task ends. This applies to counters, lists, dictionaries, and any object defined on the driver.
 
 ### The two correct tools
 

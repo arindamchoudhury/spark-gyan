@@ -171,7 +171,8 @@ Hadoop MapReduce solved distribution, fault tolerance, and load balancing on com
 | Data between nodes | Mandatory HDFS write + read | In-memory pipeline within a stage; disk only at shuffle boundaries |
 | Working-set reuse | Impossible — every job rereads from disk | `.cache()` keeps partitions in executor memory across actions |
 
-> **Note — two levels of DAG in Spark.** The "one operator per DAG node" description applies to the *logical plan* (the Catalyst tree the optimizer rewrites). At *execution* time the DAGScheduler works with **stages**, not individual operators: consecutive narrow operators (`filter → withColumn → select`) collapse into a single stage and run as one pipeline pass, with no materialization between them. Wide operators (`groupBy`, `join`) introduce a shuffle boundary and start a new stage. So the logical DAG is operator-grained; the execution DAG is stage-grained. The table captures the right spirit — Spark's unit of work is far more granular than a MapReduce job — but the execution node is a stage, not a single operator.
+!!! note "Note — two levels of DAG in Spark"
+    The "one operator per DAG node" description applies to the *logical plan* (the Catalyst tree the optimizer rewrites). At *execution* time the DAGScheduler works with **stages**, not individual operators: consecutive narrow operators (`filter → withColumn → select`) collapse into a single stage and run as one pipeline pass, with no materialization between them. Wide operators (`groupBy`, `join`) introduce a shuffle boundary and start a new stage. So the logical DAG is operator-grained; the execution DAG is stage-grained. The table captures the right spirit — Spark's unit of work is far more granular than a MapReduce job — but the execution node is a stage, not a single operator.
 
 Two classes of workloads exposed this cost directly:
 

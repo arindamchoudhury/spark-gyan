@@ -4,7 +4,8 @@
 >
 > Window functions apply a computation over a *window* of records without collapsing the data frame — every record gains a new computed column while the row count stays the same. They fill the niche between `groupBy().agg()` (many rows → one row) and `groupBy().applyInPandas()` (many rows → any shape): a window function always preserves the original shape.
 >
-> 📌 **Notes adapted to Spark 4.1.1 / PySpark 4.1.1.** The book targets Spark 3.2. The Window API has been stable since Spark 1.4 — no API changes in Spark 4.x. One Spark Connect improvement: `WindowSpec` gained Spark Connect support in 3.4.0. Notes on the `PandasUDFType.GROUPED_AGG` decorator used in §10.4: that is the deprecated Spark 2.x syntax — use type hints instead (Spark 3.0+).
+!!! info "📌 Notes adapted to Spark 4.1.1 / PySpark 4.1.1"
+    The book targets Spark 3.2. The Window API has been stable since Spark 1.4 — no API changes in Spark 4.x. One Spark Connect improvement: `WindowSpec` gained Spark Connect support in 3.4.0. Notes on the `PandasUDFType.GROUPED_AGG` decorator used in §10.4: that is the deprecated Spark 2.x syntax — use type hints instead (Spark 3.0+).
 
 ---
 
@@ -24,7 +25,8 @@ The three stages of a window function map onto split-apply-combine terminology f
 2. **Apply** — the function runs over the window; the result is broadcast to each record in the partition.
 3. **Combine** — implicitly: Spark unions the partitions back.
 
-> 💡 **Vocabulary collision** — Spark has always used *partition* for physical data splits across executors. Window functions borrow the same word for *logical* row groups within one operation. The book calls these *window partitions* to distinguish them; in practice, context makes it clear.
+!!! info "💡 Vocabulary collision"
+    — Spark has always used *partition* for physical data splits across executors. Window functions borrow the same word for *logical* row groups within one operation. The book calls these *window partitions* to distinguish them; in practice, context makes it clear.
 
 ---
 
@@ -72,7 +74,8 @@ gsod.select(
 ).where("temp = min_temp").drop("min_temp").show()
 ```
 
-> ⚠️ **Constraint** — Spark raises `AnalysisException` if you try to use `.over()` directly inside `groupby()` or `where()`. Materialise the column with `withColumn()` or `select()` first, then filter or group.
+!!! warning "⚠️ Constraint"
+    — Spark raises `AnalysisException` if you try to use `.over()` directly inside `groupby()` or `where()`. Materialise the column with `withColumn()` or `select()` first, then filter or group.
 
 ### Multiple partitioning columns
 
@@ -160,7 +163,8 @@ gsod_light.withColumn("rn", F.row_number().over(temp_each_year)).show()
 # Always 1, 2, 3 … — no shared values even for ties
 ```
 
-> ⚠️ **row_number() and ties** — when the `orderBy` column has ties, `row_number()` assigns an arbitrary order among the tied records. Use a tiebreaker column in `orderBy()` if reproducibility matters.
+!!! warning "⚠️ row_number() and ties"
+    — when the `orderBy` column has ties, `row_number()` assigns an arbitrary order among the tied records. Use a tiebreaker column in `orderBy()` if reproducibility matters.
 
 ### Reversing sort order
 
@@ -250,7 +254,8 @@ Positive integers look forward; negative integers look backward:
 Window.unboundedPreceding   Window.unboundedFollowing
 ```
 
-> ⚠️ Do not use raw large integers (e.g., `sys.maxsize`) to represent the first or last record. Use the named constants — Spark translates them to the correct internal values and the intent is clear.
+!!! warning "⚠️ Do not use raw large integers (e.g., `sys.maxsize`) to represent the first or last record"
+    Use the named constants — Spark translates them to the correct internal values and the intent is clear.
 
 ### Explicit frame specification
 
@@ -269,7 +274,8 @@ ordered = Window.partitionBy("year").orderBy("temp").rangeBetween(
 three_rows = Window.partitionBy("year").orderBy("temp").rowsBetween(-1, 1)
 ```
 
-> ⚠️ **Unordered + boundaries = nondeterministic** — if the window spec is unordered, Spark does not guarantee which records land inside bounded frames. Always add `orderBy()` before using `rowsBetween()` or `rangeBetween()` with non-unbounded endpoints.
+!!! warning "⚠️ Unordered + boundaries = nondeterministic"
+    — if the window spec is unordered, Spark does not guarantee which records land inside bounded frames. Always add `orderBy()` before using `rowsBetween()` or `rangeBetween()` with non-unbounded endpoints.
 
 ### Rows vs ranges
 
@@ -332,7 +338,8 @@ Version requirements:
 - UDF over **unbounded** window: Spark 2.4+
 - UDF over **bounded** window: Spark 3.0+
 
-> ⚠️ Do not mutate the input `pd.Series` inside the UDF — this introduces hard-to-diagnose bugs because pandas operations may share underlying memory.
+!!! warning "⚠️ Never mutate the input Series inside a UDF"
+    Do not mutate the input `pd.Series` inside the UDF — this introduces hard-to-diagnose bugs because pandas operations may share underlying memory.
 
 > ❓ Revisit: `F.median("temp").over(window_spec)` — `F.median()` was added as a built-in in Spark 3.4. Verify whether it supports `.over()` in Spark 4.1 (if so, the custom `median` pandas UDF above becomes unnecessary for this case).
 

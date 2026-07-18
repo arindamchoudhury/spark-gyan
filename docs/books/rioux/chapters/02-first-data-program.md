@@ -4,7 +4,8 @@
 >
 > Builds a word-frequency program on *Pride and Prejudice* to introduce the core PySpark development loop: launch a REPL, ingest data into a DataFrame, apply a chain of column transformations, filter rows, and print results. The chapter deliberately stops before counting and scaling — those land in Chapter 3 — so the focus stays on transformation mechanics.
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** The book shows Python 3.8 and Spark 3.2.0. PySpark 4.1.1 requires **Python ≥ 3.10** and **Java 17**. Exception classes moved from `pyspark.sql.utils` to `pyspark.errors` in Spark 4.x — update any `from pyspark.sql.utils import AnalysisException` to `from pyspark.errors import AnalysisException`. The DataFrame API (select, filter, split, explode, lower, regexp_extract) is unchanged.
+!!! info "📌 Notes adapted to PySpark 4.1.1"
+    The book shows Python 3.8 and Spark 3.2.0. PySpark 4.1.1 requires **Python ≥ 3.10** and **Java 17**. Exception classes moved from `pyspark.sql.utils` to `pyspark.errors` in Spark 4.x — update any `from pyspark.sql.utils import AnalysisException` to `from pyspark.errors import AnalysisException`. The DataFrame API (select, filter, split, explode, lower, regexp_extract) is unchanged.
 
 ---
 
@@ -33,7 +34,8 @@ This drops you into an IPython (or plain Python) REPL with two variables pre-con
 - `spark` — a `SparkSession`; main entry point for DataFrame operations.
 - `sc` — a `SparkContext`; lower-level entry point; rarely needed directly.
 
-> 💡 **Tip** — IPython (`pip install ipython`) is strongly recommended over the plain Python shell: friendlier paste, tab completion, syntax highlighting, and the `?` / `??` doc shortcuts.
+!!! info "💡 Tip"
+    — IPython (`pip install ipython`) is strongly recommended over the plain Python shell: friendlier paste, tab completion, syntax highlighting, and the `?` / `??` doc shortcuts.
 
 ### Creating SparkSession from scratch (for scripts and IDEs)
 
@@ -56,9 +58,11 @@ Key points:
 - **`appName`** — shows up in the Spark UI (Ch 11); pick something meaningful.
 - `SparkSession` wraps and supersedes the older `SparkContext` / `SQLContext` combo. Access the underlying context via `spark.sparkContext` if you need it.
 
-> ⚠️ **Notebook trap** — Re-running the builder cell after changing a `.config()` value silently does nothing: `getOrCreate()` returns the existing session unchanged. Call `spark.stop()` first to force a fresh session with the new config. Note: `spark.close()` does not exist on `SparkSession` — the correct method is `spark.stop()`.
+!!! warning "⚠️ Notebook trap"
+    — Re-running the builder cell after changing a `.config()` value silently does nothing: `getOrCreate()` returns the existing session unchanged. Call `spark.stop()` first to force a fresh session with the new config. Note: `spark.close()` does not exist on `SparkSession` — the correct method is `spark.stop()`.
 
-> ⚠️ **Legacy code warning** — Older tutorials use `sc` and `sqlContext` as separate entry points. In current PySpark: `sc = spark.sparkContext` and `sqlContext = spark` are the equivalents. Avoid creating them directly in new code.
+!!! warning "⚠️ Legacy code warning"
+    — Older tutorials use `sc` and `sqlContext` as separate entry points. In current PySpark: `sc = spark.sparkContext` and `sqlContext = spark` are the equivalents. Avoid creating them directly in new code.
 
 ### Binding to localhost and routing log output (scripts)
 
@@ -89,7 +93,8 @@ What each piece does:
 - **`os.path.abspath("log4j2.xml")`** — resolves a relative path to an absolute one. The JVM is launched from an unpredictable working directory, so a relative path silently fails to locate the file; `abspath` anchors it to your script's location.
 - **`spark.driver.extraJavaOptions`** — passes raw JVM flags to the driver process. `-Dlog4j2.configurationFile=<path>` overrides the bundled Log4j 2 config with your own, giving you finer-grained control over which loggers are active and at what level — a more permanent alternative to `spark.sparkContext.setLogLevel()`.
 
-> 💡 **Tip** — This pattern (env var + custom log4j2.xml) is the standard script setup used throughout the book. A minimal `log4j2.xml` that sets `org.apache.spark` to `WARN` eliminates Spark's own log lines entirely, leaving only your application output.
+!!! info "💡 Tip"
+    — This pattern (env var + custom log4j2.xml) is the standard script setup used throughout the book. A minimal `log4j2.xml` that sets `org.apache.spark` to `WARN` eliminates Spark's own log lines entirely, leaving only your application output.
 
 ### Passing multiple config values
 
@@ -128,7 +133,8 @@ spark = SparkSession.builder.config(conf=merged).getOrCreate()
 - `SparkConf.getAll()` returns a list of `(key, value)` tuples — easy to combine with `+`.
 - `.config(conf=...)` accepts a `SparkConf` object instead of individual key/value pairs.
 
-> 💡 **Rule of thumb** — use chained `.config()` when all settings are known at write time; use `SparkConf` when building config dynamically (loading from a file, merging environment-specific overrides, or sharing a conf object across multiple session builders).
+!!! info "💡 Rule of thumb"
+    — use chained `.config()` when all settings are known at write time; use `SparkConf` when building config dynamically (loading from a file, merging environment-specific overrides, or sharing a conf object across multiple session builders).
 
 ### The log4j2.xml file
 
@@ -190,7 +196,8 @@ The Root logger catches everything not explicitly named. The four namespaces tha
 </Configuration>
 ```
 
-> ⚠️ **Spark 3.3+ uses log4j 2.x.** If you see the JVM complain that it can't find a `log4j2.xml`, check that you're not accidentally placing a log4j *1.x* style file (`log4j.properties`) — the formats are incompatible. The `<Configuration>` root element is the log4j2 tell.
+!!! warning "⚠️ Spark 3.3+ uses log4j 2.x"
+    If you see the JVM complain that it can't find a `log4j2.xml`, check that you're not accidentally placing a log4j *1.x* style file (`log4j.properties`) — the formats are incompatible. The `<Configuration>` root element is the log4j2 tell.
 
 ### Configuring the log level
 
@@ -211,7 +218,8 @@ spark.sparkContext.setLogLevel("WARN")   # or ERROR, OFF, DEBUG, TRACE, ALL
 | `TRACE` | Very verbose debug |
 | `ALL` | Everything |
 
-> 💡 **Tip** — Anything chattier than `WARN` in the shell will interleave log lines with your typing. `WARN` is the sweet spot for interactive development.
+!!! info "💡 Tip"
+    — Anything chattier than `WARN` in the shell will interleave log lines with your typing. `WARN` is the sweet spot for interactive development.
 
 ### (Optional) Eager evaluation in the REPL
 
@@ -225,7 +233,8 @@ spark = (
 )
 ```
 
-> ⚠️ **Pitfall** — Eager mode triggers full computation on every assignment. Great for demos, expensive for large data. Leave it off in production pipelines.
+!!! warning "⚠️ Pitfall"
+    — Eager mode triggers full computation on every assignment. Great for demos, expensive for large data. Leave it off in production pipelines.
 
 ### Connecting to a remote cluster
 
@@ -252,9 +261,11 @@ Common `.master()` URLs:
 | `k8s://https://host:443` | Kubernetes |
 | `mesos://host:5050` | Apache Mesos — **removed in Spark 4.x** |
 
-> 💡 **Tip** — In practice, the master URL is almost never hard-coded. Prefer passing it via `spark-submit --master <url>` or an environment variable so the same script runs locally and on the cluster without edits.
+!!! info "💡 Tip"
+    — In practice, the master URL is almost never hard-coded. Prefer passing it via `spark-submit --master <url>` or an environment variable so the same script runs locally and on the cluster without edits.
 
-> ⚠️ **Is `.master()` deprecated?** As of PySpark 4.1.1, the method carries no formal deprecation notice. However, the Spark team's direction is clearly toward Spark Connect (`.remote()`) for Python clients — classic mode is being superseded, not yet removed. The safe read: `.master()` still works and is fine for `spark-submit` cluster submissions, but new local/interactive code should prefer `.remote()`. Expect a formal deprecation in a future major release.
+!!! warning "⚠️ Is `.master()` deprecated?"
+    As of PySpark 4.1.1, the method carries no formal deprecation notice. However, the Spark team's direction is clearly toward Spark Connect (`.remote()`) for Python clients — classic mode is being superseded, not yet removed. The safe read: `.master()` still works and is fine for `spark-submit` cluster submissions, but new local/interactive code should prefer `.remote()`. Expect a formal deprecation in a future major release.
 
 ### Spark Connect (Spark 3.4+ / default in 4.x)
 
@@ -313,7 +324,8 @@ pyspark --remote "sc://localhost"
 - Spark UI access is on the *server* side; you browse to the server's web UI, not localhost.
 - **Port 4040 conflict with Docker** — the Connect server's Spark UI binds to port 4040 on the host (via `com.docker.backend.exe` when running in Docker). A local PySpark session started alongside will find 4040 occupied and fall back to 4041 with a `WARN SparkUI could not bind on port 4040` message. This is harmless; to suppress it, pin the local session explicitly: `.config("spark.ui.port", "4041")`.
 
-> 📌 **Version note (PySpark 4.1.1)** — Spark Connect is stable and production-ready. The `pyspark` shell defaults to Connect mode; pass `--master local[*]` explicitly to force classic mode.
+!!! info "📌 Version note (PySpark 4.1.1)"
+    — Spark Connect is stable and production-ready. The `pyspark` shell defaults to Connect mode; pass `--master local[*]` explicitly to force classic mode.
 
 ---
 
@@ -388,7 +400,8 @@ spark.read.parquet(path)  # Parquet (Spark's default storage format)
 spark.read.orc(path)      # ORC
 ```
 
-> 📌 **Version note** — Parquet is Spark's default storage format (read and write). ORC is an Apache competitor; both are columnar, compressed, and optimized for big data.
+!!! info "📌 Version note"
+    — Parquet is Spark's default storage format (read and write). ORC is an Apache competitor; both are columnar, compressed, and optimized for big data.
 
 Loading *Pride and Prejudice*:
 
@@ -432,7 +445,8 @@ book.show(5, truncate=False, vertical=True)  # each record as a mini-table
 | `truncate` | `True` (20 chars) | `False` = full; any int = chars limit |
 | `vertical` | `False` | Display each record as a key-value mini-table |
 
-> 💡 **Tip** — `printSchema()` + `show()` together are your primary exploration tools. Use them constantly when building a new pipeline.
+!!! info "💡 Tip"
+    — `printSchema()` + `show()` together are your primary exploration tools. Use them constantly when building a new pipeline.
 
 ### Column pruning
 
@@ -516,14 +530,15 @@ df = (
 
 **Key difference:** column pruning is always free and safe to rely on for columnar formats. Predicate pushdown depends on the quality of the file's statistics — freshly written Parquet files have statistics; files written by non-Spark tools may not.
 
-> 💡 **JDBC sources** — both optimizations work for databases too, but the mechanism shifts from file I/O to SQL query rewriting:
->
-> - **Column pruning** → Spark generates `SELECT id, country FROM table` instead of `SELECT *`.
-> - **Predicate pushdown** → Spark appends a `WHERE` clause: `SELECT id, country FROM table WHERE year = 2024`. The database executes the filter so only matching rows cross the network.
->
-> Simple comparisons (`=`, `<`, `>`, `IN`, `IS NULL`) push cleanly. Arithmetic on columns, UDFs, and non-standard functions fall back to Spark-side filtering after the full result is transferred — check `PushedFilters` on the `JDBCScan` node in `df.explain()`.
->
-> One JDBC-specific gotcha: without explicit partition config (`partitionColumn`, `numPartitions`, `lowerBound`, `upperBound`), Spark uses a single connection regardless of pushdown — the filter reduces rows transferred but parallelism stays at 1.
+!!! info "💡 JDBC sources"
+    — both optimizations work for databases too, but the mechanism shifts from file I/O to SQL query rewriting:
+
+    - **Column pruning** → Spark generates `SELECT id, country FROM table` instead of `SELECT *`.
+    - **Predicate pushdown** → Spark appends a `WHERE` clause: `SELECT id, country FROM table WHERE year = 2024`. The database executes the filter so only matching rows cross the network.
+
+    Simple comparisons (`=`, `<`, `>`, `IN`, `IS NULL`) push cleanly. Arithmetic on columns, UDFs, and non-standard functions fall back to Spark-side filtering after the full result is transferred — check `PushedFilters` on the `JDBCScan` node in `df.explain()`.
+
+    One JDBC-specific gotcha: without explicit partition config (`partitionColumn`, `numPartitions`, `lowerBound`, `upperBound`), Spark uses a single connection regardless of pushdown — the filter reduces rows transferred but parallelism stays at 1.
 
 ---
 
@@ -588,32 +603,33 @@ df = spark.read.parquet("data/events/").filter(F.col("year") == 2024)
 
 Partition pruning and predicate pushdown work together — pruning cuts directories, pushdown cuts row groups within those directories.
 
-> 📌 **Delta tables: two extra layers on top of partition pruning**
->
-> Delta still uses Hive-style directories when you specify `partitionBy`, so partition pruning works identically. But Delta adds:
->
-> **Data skipping** — Delta maintains column statistics (min, max, null count) per data file in its transaction log (`_delta_log/`). Spark reads the log first and skips any file whose stats prove it can't contain matching rows — for *any* filtered column, not just partition columns:
->
-> ```python
-> # No user_id partition needed — Delta skips files where max(user_id) < 42
-> df = spark.read.format("delta").load("data/events/").filter(F.col("user_id") == 42)
-> ```
->
-> **Z-Ordering** — data skipping only helps when values are clustered within files. `OPTIMIZE ... ZORDER BY` physically rearranges data so related values land together, making skipping effective for high-cardinality non-partition columns:
->
-> ```sql
-> OPTIMIZE events ZORDER BY (user_id, event_type)
-> ```
->
-> **How this changes partition strategy:**
->
-> | | Plain Parquet | Delta |
-> |---|---|---|
-> | Partition columns | Everything you filter on | High-cardinality temporal only (`date`, `year`) |
-> | Non-partition filters | Full scan within partition | Skipped via file stats |
-> | Point-lookup tuning | Add partitions | ZORDER instead |
->
-> Over-partitioning is a common Delta mistake — too many small partitions create too many tiny files. Delta's rule of thumb: only partition when each partition will be ≥ 1 GB.
+!!! info "📌 Delta tables: two extra layers on top of partition pruning"
+
+    Delta still uses Hive-style directories when you specify `partitionBy`, so partition pruning works identically. But Delta adds:
+
+!!! note "Data skipping"
+    — Delta maintains column statistics (min, max, null count) per data file in its transaction log (`_delta_log/`). Spark reads the log first and skips any file whose stats prove it can't contain matching rows — for *any* filtered column, not just partition columns:
+
+    ```python
+    # No user_id partition needed — Delta skips files where max(user_id) < 42
+    df = spark.read.format("delta").load("data/events/").filter(F.col("user_id") == 42)
+    ```
+
+    **Z-Ordering** — data skipping only helps when values are clustered within files. `OPTIMIZE ... ZORDER BY` physically rearranges data so related values land together, making skipping effective for high-cardinality non-partition columns:
+
+    ```sql
+    OPTIMIZE events ZORDER BY (user_id, event_type)
+    ```
+
+    **How this changes partition strategy:**
+
+    | | Plain Parquet | Delta |
+    |---|---|---|
+    | Partition columns | Everything you filter on | High-cardinality temporal only (`date`, `year`) |
+    | Non-partition filters | Full scan within partition | Skipped via file stats |
+    | Point-lookup tuning | Add partitions | ZORDER instead |
+
+    Over-partitioning is a common Delta mistake — too many small partitions create too many tiny files. Delta's rule of thumb: only partition when each partition will be ≥ 1 GB.
 
 **5. Read directories, not individual files**
 
@@ -725,7 +741,8 @@ Unpersist when done to release memory:
 df.unpersist()
 ```
 
-> ⚠️ **Pitfall** — Caching a DataFrame that is used only once wastes memory and adds overhead. Cache only when the same DataFrame is consumed by two or more actions.
+!!! warning "⚠️ Pitfall"
+    — Caching a DataFrame that is used only once wastes memory and adds overhead. Cache only when the same DataFrame is consumed by two or more actions.
 
 **9. Use `df.explain()` to verify column pruning and predicate pushdown**
 
@@ -757,7 +774,8 @@ book.select(F.col("value"))      # F.col() — most flexible; doesn't bind to a 
 book.select("value")             # string shorthand — fine for plain selects
 ```
 
-> 💡 **Prefer `F.col()` in complex expressions, strings elsewhere.** A plain string (`"value"`) works as a column reference in `select()` and as an argument to most functions (`F.split("value", " ")`). Use `F.col()` when you need to call Column methods on the reference (`.alias()`, `.cast()`, `.isNull()`, etc.), when the column name is ambiguous after a join, or when building expressions that are passed around as variables. In simple, unambiguous cases the string form is cleaner.
+!!! info "💡 Prefer `F.col()` in complex expressions, strings elsewhere"
+    A plain string (`"value"`) works as a column reference in `select()` and as an argument to most functions (`F.split("value", " ")`). Use `F.col()` when you need to call Column methods on the reference (`.alias()`, `.cast()`, `.isNull()`, etc.), when the column name is ambiguous after a join, or when building expressions that are passed around as variables. In simple, unambiguous cases the string form is cleaner.
 
 ### Best practices for `select()`
 
@@ -935,7 +953,8 @@ lines.printSchema()
 
 Each row now contains an array of words. The original `"hello world"` → `["hello", "world"]`.
 
-> 💡 **Note** — PySpark uses **Java regular expressions** in built-in functions like `split()` and `regexp_extract()`, not Python's `re` module syntax. They're very similar but not identical.
+!!! info "💡 Note"
+    — PySpark uses **Java regular expressions** in built-in functions like `split()` and `regexp_extract()`, not Python's `re` module syntax. They're very similar but not identical.
 
 ### Best practices for `split()`
 
@@ -950,7 +969,8 @@ import pyspark.sql.functions as F
 df.select(F.split("email", "@", limit=2).alias("parts"))
 ```
 
-> 📌 **Version note (Spark 3.0)** — the `limit` parameter was added in Spark 3.0 with a default of `-1`. Before 3.0 there was no `limit` parameter and the behavior matched Java's `String.split(pattern, 0)`, which discards trailing empty strings. With `-1` as the default, trailing empty strings are now preserved. Be explicit if trailing empties matter.
+!!! info "📌 Version note (Spark 3.0)"
+    — the `limit` parameter was added in Spark 3.0 with a default of `-1`. Before 3.0 there was no `limit` parameter and the behavior matched Java's `String.split(pattern, 0)`, which discards trailing empty strings. With `-1` as the default, trailing empty strings are now preserved. Be explicit if trailing empties matter.
 
 **2. Use `split_part()` when you only need one element — Spark 3.3+**
 
@@ -964,7 +984,8 @@ df.select(F.split("email", "@")[0].alias("username"))   # [0] = first element
 df.select(F.split_part("email", "@", 1).alias("username"))  # 1 = first element
 ```
 
-> ⚠️ **Index mismatch trap** — `split()[0]` and `split_part(..., 1)` both return the first element, but the indexes differ by 1. Mixing them up silently returns the wrong field.
+!!! warning "⚠️ Index mismatch trap"
+    — `split()[0]` and `split_part(..., 1)` both return the first element, but the indexes differ by 1. Mixing them up silently returns the wrong field.
 
 **3. Escape regex metacharacters in literal delimiters**
 
@@ -1316,7 +1337,8 @@ df.select(
 
 The output array can be empty `[]` if no elements match — it is never `null`. To check whether the result is empty use `F.size(col) == 0`.
 
-> 💡 **Tip** — `F.filter()` inside `F.explode()` (as seen in the explode best practices) is a common combo: filter the array first to reduce row count, then explode only the elements you need.
+!!! info "💡 Tip"
+    — `F.filter()` inside `F.explode()` (as seen in the explode best practices) is a common combo: filter the array first to reduce row count, then explode only the elements you need.
 
 ### `F.aggregate()` — reduce an array to a scalar
 
@@ -1404,7 +1426,8 @@ words_clean = words_lower.select(
 - The `0` argument extracts group 0 (the whole match).
 - `"prejudice,"` → `"prejudice"`. An empty string `""` is left for rows that contained only punctuation.
 
-> 💡 **Regex resource** — [regexr.com](https://regexr.com/) is excellent for testing Java/JavaScript-compatible regexes interactively.
+!!! info "💡 Regex resource"
+    — [regexr.com](https://regexr.com/) is excellent for testing Java/JavaScript-compatible regexes interactively.
 
 ### Best practices for `regexp_extract()`
 
@@ -1493,7 +1516,8 @@ F.col("x").isin(["a", "b"])   # membership
 ~(F.col("x") == "")           # negation with ~ operator
 ```
 
-> 💡 **Tip** — Don't stress about filtering "too late" in the chain. Because Spark is lazy, it can push filter predicates earlier in the physical plan automatically. Write filters where they're most *readable*, and let the optimizer handle placement.
+!!! info "💡 Tip"
+    — Don't stress about filtering "too late" in the chain. Because Spark is lazy, it can push filter predicates earlier in the physical plan automatically. Write filters where they're most *readable*, and let the optimizer handle placement.
 
 ---
 

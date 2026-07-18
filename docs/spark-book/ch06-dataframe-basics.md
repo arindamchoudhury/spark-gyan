@@ -45,40 +45,40 @@ DataFrames were introduced in **Spark 1.3 (2015)** to address all of these at on
 
 The result: the same operation written as a DataFrame transform is typically **2–10× faster** than the equivalent RDD code, and the gap widens at scale.
 
-> 💡 **Default to DataFrames — but the "RDD is slower" claim needs context.**
->
-> **Where DataFrames are faster (structured/tabular data):**
-> - Catalyst can't see inside a lambda — predicate pushdown, projection pruning, and constant folding don't apply to RDD operations.
-> - Python RDDs add cloudpickle serialization + Python-JVM bridge overhead on every operation.
->
-> **Catalyst optimisations that RDDs miss:**
->
-> | Optimisation | What it does | RDD equivalent |
-> |---|---|---|
-> | **Predicate pushdown** | Moves `filter` as early as possible — ideally into the file reader so unmatched rows are never loaded | Lambda runs after all data is loaded |
-> | **Projection pruning** | Reads only the columns the query actually uses from Parquet/ORC | All columns always loaded |
-> | **Constant folding** | Evaluates constant sub-expressions at planning time — `salary * (100 + 10)` → `salary * 110` before any row is touched | Full expression re-evaluated for every element at runtime |
->
-> **Where RDDs are not slower (or are the right tool):**
-> - Unstructured data (text streams, arbitrary Python objects, binary blobs) — forcing it into a DataFrame schema adds overhead with no benefit.
-> - Custom algorithms with no relational equivalent (`reduce`, graph traversal, etc.).
-> - Scala/Java RDDs — the Python-JVM bridge cost doesn't apply; the gap vs DataFrames is much narrower.
->
-> **If you need RDDs, prefer Scala or Java over Python.**
->
-> PySpark RDD operations cross the Python↔JVM bridge on every operation: data is cloudpickled to the JVM, unpickled in a Python worker process, the function runs, then pickled back. This happens per partition, per operation.
->
-> Scala/Java RDD functions run natively inside the JVM executor — no serialization bridge, no Python worker. Typically **3–8× faster** for RDD-heavy code.
->
-> | | PySpark RDD | Scala/Java RDD | DataFrame (any language) |
-> |---|---|---|---|
-> | Execution | Python worker + JVM bridge | Native JVM | Native JVM + Catalyst/WSCG |
-> | Serialization overhead | Per partition, per op | None | None (UnsafeRow stays in JVM) |
-> | Catalyst optimizations | No | No | Yes |
->
-> For DataFrames, the language gap essentially disappears — Catalyst produces the same optimized physical plan regardless of whether you wrote it in Python, Scala, or Java.
->
-> Reach for the RDD only when the DataFrame is genuinely restrictive.
+!!! info "Default to DataFrames — but the 'RDD is slower' claim needs context"
+    **Where DataFrames are faster (structured/tabular data):**
+
+    - Catalyst can't see inside a lambda — predicate pushdown, projection pruning, and constant folding don't apply to RDD operations.
+    - Python RDDs add cloudpickle serialization + Python-JVM bridge overhead on every operation.
+
+    **Catalyst optimisations that RDDs miss:**
+
+    | Optimisation | What it does | RDD equivalent |
+    |---|---|---|
+    | **Predicate pushdown** | Moves `filter` as early as possible — ideally into the file reader so unmatched rows are never loaded | Lambda runs after all data is loaded |
+    | **Projection pruning** | Reads only the columns the query actually uses from Parquet/ORC | All columns always loaded |
+    | **Constant folding** | Evaluates constant sub-expressions at planning time — `salary * (100 + 10)` → `salary * 110` before any row is touched | Full expression re-evaluated for every element at runtime |
+
+    **Where RDDs are not slower (or are the right tool):**
+    - Unstructured data (text streams, arbitrary Python objects, binary blobs) — forcing it into a DataFrame schema adds overhead with no benefit.
+    - Custom algorithms with no relational equivalent (`reduce`, graph traversal, etc.).
+    - Scala/Java RDDs — the Python-JVM bridge cost doesn't apply; the gap vs DataFrames is much narrower.
+
+    **If you need RDDs, prefer Scala or Java over Python.**
+
+    PySpark RDD operations cross the Python↔JVM bridge on every operation: data is cloudpickled to the JVM, unpickled in a Python worker process, the function runs, then pickled back. This happens per partition, per operation.
+
+    Scala/Java RDD functions run natively inside the JVM executor — no serialization bridge, no Python worker. Typically **3–8× faster** for RDD-heavy code.
+
+    | | PySpark RDD | Scala/Java RDD | DataFrame (any language) |
+    |---|---|---|---|
+    | Execution | Python worker + JVM bridge | Native JVM | Native JVM + Catalyst/WSCG |
+    | Serialization overhead | Per partition, per op | None | None (UnsafeRow stays in JVM) |
+    | Catalyst optimizations | No | No | Yes |
+
+    For DataFrames, the language gap essentially disappears — Catalyst produces the same optimized physical plan regardless of whether you wrote it in Python, Scala, or Java.
+
+    Reach for the RDD only when the DataFrame is genuinely restrictive.
 
 In Python, `DataFrame` is effectively the only API — there is no separate `Dataset` (Datasets are type-safe JVM constructs; Python has no equivalent static typing). Everything in PySpark goes through `pyspark.sql.DataFrame`.
 
@@ -208,9 +208,11 @@ When declaring a schema you need to map Python types to PySpark types. The full 
 | `T.StructType([…])` | `list` or `tuple` | `"struct<name:type,...>"` |
 | `T.NullType()` | `None` | `"void"` |
 
-> **Why types look like function calls.** `StringType()`, `LongType()` etc. are class instances, not plain values. Parameterised types like `DecimalType(10, 2)` and `ArrayType(StringType())` carry configuration as instance attributes. Spark also calls methods on them internally (`simpleString()`, `needConversion()`). Parameterless types use a singleton metaclass — `StringType()` always returns the same object, so there is no allocation cost.
+!!! note "Why types look like function calls"
+    `StringType()`, `LongType()` etc. are class instances, not plain values. Parameterised types like `DecimalType(10, 2)` and `ArrayType(StringType())` carry configuration as instance attributes. Spark also calls methods on them internally (`simpleString()`, `needConversion()`). Parameterless types use a singleton metaclass — `StringType()` always returns the same object, so there is no allocation cost.
 
-> ⚠️ Python `int` is unbounded; `LongType` is 64-bit. A Python `int` exceeding `2^63 - 1` will overflow silently or error. Use the narrowest type that fits your data.
+!!! warning "⚠️ Python `int` is unbounded;"
+    `LongType` is 64-bit. A Python `int` exceeding `2^63 - 1` will overflow silently or error. Use the narrowest type that fits your data.
 
 ### From a list of `Row` objects
 
@@ -324,7 +326,8 @@ A PySpark DataFrame is a typed, distributed table. Every column has a name and a
 
 The API is transformation-based: every method returns a new DataFrame; nothing is mutated in place. This makes method chaining natural and safe.
 
-> **Note — fluent builder vs. immutable chaining.** This looks like the *fluent builder pattern* but differs in one key way: a fluent builder mutates the same object and returns `self`, ending with a terminal call (`build()` / `getOrCreate()`). PySpark DataFrame transforms return a *new* DataFrame each time — the original is untouched, and any intermediate result is already usable. It is better described as a *fluent interface over immutable values*. Interestingly, PySpark uses both patterns: `SparkSession.builder.appName("x").master("local").getOrCreate()` is a true fluent builder; `df.filter(...).withColumn(...).select(...)` is immutable chaining.
+!!! note "Note — fluent builder vs. immutable chaining"
+    This looks like the *fluent builder pattern* but differs in one key way: a fluent builder mutates the same object and returns `self`, ending with a terminal call (`build()` / `getOrCreate()`). PySpark DataFrame transforms return a *new* DataFrame each time — the original is untouched, and any intermediate result is already usable. It is better described as a *fluent interface over immutable values*. Interestingly, PySpark uses both patterns: `SparkSession.builder.appName("x").master("local").getOrCreate()` is a true fluent builder; `df.filter(...).withColumn(...).select(...)` is immutable chaining.
 
 `pyspark.sql.functions` (imported as `F`) contains the complete library of column functions — 400+ functions from `F.col()` to `F.sum()` to `F.regexp_extract()`. Import it once at the top; everything flows from there:
 
@@ -369,7 +372,8 @@ Partitions in flight (flowing between stages, during shuffles) are stored in Tun
 - reduced GC pressure — one byte array per row instead of one JVM object per field (**on-heap by default**; fully GC-free only when `spark.memory.offHeap.enabled=true`)
 - CPU-cache-friendly sequential access within a row
 
-> **Row-based vs. columnar.** `UnsafeRow` (execution format) is row-based — all fields of one row sit together in memory. When a DataFrame is **cached** (`.cache()` / `.persist()`), Spark stores partitions as `CachedBatch` — a **columnar** in-memory format where all values for one column are packed together, enabling better compression and vectorized reads. File formats like Parquet and ORC are also columnar on disk. The rule of thumb: execution is row-based (`UnsafeRow`); cache storage and file I/O are columnar.
+!!! note "Row-based vs. columnar"
+    `UnsafeRow` (execution format) is row-based — all fields of one row sit together in memory. When a DataFrame is **cached** (`.cache()` / `.persist()`), Spark stores partitions as `CachedBatch` — a **columnar** in-memory format where all values for one column are packed together, enabling better compression and vectorized reads. File formats like Parquet and ORC are also columnar on disk. The rule of thumb: execution is row-based (`UnsafeRow`); cache storage and file I/O are columnar.
 
 This is why DataFrame code is significantly faster than equivalent RDD code — RDDs store actual Java objects, which carry GC overhead and hide structure from the optimizer.
 
@@ -590,7 +594,8 @@ spark = SparkSession.builder \
 spark.conf.set("spark.rapids.sql.enabled", "true")   # or "false" to fall back to CPU
 ```
 
-> ⚠️ Requires NVIDIA GPU hardware + CUDA on every machine running executors. Local mode works if the local machine has a GPU; most dev machines don't, so it fails there in practice — not a local-mode restriction, a hardware one.
+!!! warning "⚠️ Requires NVIDIA GPU hardware + CUDA on every machine running executors"
+    Local mode works if the local machine has a GPU; most dev machines don't, so it fails there in practice — not a local-mode restriction, a hardware one.
 
 **Apache Gluten + Velox:**
 

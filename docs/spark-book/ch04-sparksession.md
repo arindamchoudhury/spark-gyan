@@ -265,7 +265,8 @@ Spark 4.x ships two ways for your Python process to talk to the engine, and know
 
 **Classic mode** is what every example so far has used: the Python process launches a local driver JVM and talks to it in-process. It remains the **default** for both the `pyspark` shell and `spark-submit`.
 
-> **3-layer class split (Spark 4.x).** In the JVM source, `SparkSession` is split across three packages: `org.apache.spark.sql.SparkSession` (abstract API, shared by both modes), `org.apache.spark.sql.classic.SparkSession` (the classic implementation), and `org.apache.spark.sql.connect.SparkSession` (the Connect client). The Python import `from pyspark.sql import SparkSession` is unchanged — this split only surfaces in JVM stack traces and source browsing.
+!!! note "3-layer class split (Spark 4.x)"
+    In the JVM source, `SparkSession` is split across three packages: `org.apache.spark.sql.SparkSession` (abstract API, shared by both modes), `org.apache.spark.sql.classic.SparkSession` (the classic implementation), and `org.apache.spark.sql.connect.SparkSession` (the Connect client). The Python import `from pyspark.sql import SparkSession` is unchanged — this split only surfaces in JVM stack traces and source browsing.
 
 **Spark Connect** breaks that coupling. Instead of launching a local driver JVM, your Python process becomes a thin **client**: it sends an unresolved logical plan over gRPC to a separate Spark Connect server, and the server runs the engine and streams results back. The DataFrame API is identical — only the transport changes — but because the client no longer needs a local JVM, it is ideal for lightweight clients, IDEs, and embedding Spark in applications.
 

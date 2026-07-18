@@ -6,15 +6,17 @@
 >
 > Spark 4.2.0 is the third 4.x release — 1,700+ Jira tickets. Learn against 4.2.0; the books below are written against 3.x, so the callouts on each topic mark where they diverge.
 >
-> **Status key.** ⬜ not started · ✅ done and current · 🔄 done, but written against an older Spark and now needs revisiting (the topic's callout says what drifted).
->
-> **How to read this page.** Topics are grouped by level — Beginner → Intermediate → Advanced → Expert. Each topic lists what it is, why it matters, and exactly which resources to use and in what order. Pick the level where you currently are and work through the topics in sequence within that level.
+!!! note "Status key"
+    ⬜ not started · ✅ done and current · 🔄 done, but written against an older Spark and now needs revisiting (the topic's callout says what drifted).
+
+    **How to read this page.** Topics are grouped by level — Beginner → Intermediate → Advanced → Expert. Each topic lists what it is, why it matters, and exactly which resources to use and in what order. Pick the level where you currently are and work through the topics in sequence within that level.
 
 **What this path is built around.** Apache Spark itself — the open-source engine, its APIs, and the open formats and tooling around it. Vendor platforms (Databricks, and the certifications built on it) appear as *optional milestones* at the end, not as the spine. Rationale: the transferable skill is the engine and the open ecosystem; platform-specific surfaces change with your employer, and a path organised around one vendor's exam quietly under-weights what the wider market asks for. If you decide to sit those exams, the [optional certification milestones](#optional-certification-milestones) section maps them back onto these topics.
 
 **How to actually use each topic.** Read the milestone *first*, and attempt it from memory before opening any resource. You will mostly fail early on — that is the point; the failed attempt is what makes the subsequent reading stick, and it tells you which parts you can skip. Then read, then attempt the milestone again in writing. Self-explanation and retrieval practice both carry roughly twice the effect size of rereading, and the book chapters in `docs/spark-book/` are where the self-explanation happens.
 
-> **Topic codes are stable identifiers, not an ordering.** They are referenced by the book index, the chapter files, and the source-map coverage matrix, so they are never renumbered when the taxonomy changes. A code with a gap or an out-of-sequence number (I15, the I12–I14 depth topics) is normal. Read the level headings for order, not the numbers.
+!!! warning "Topic codes are stable identifiers, not an ordering"
+    They are referenced by the book index, the chapter files, and the source-map coverage matrix, so they are never renumbered when the taxonomy changes. A code with a gap or an out-of-sequence number (I15, the I12–I14 depth topics) is normal. Read the level headings for order, not the numbers.
 
 ---
 

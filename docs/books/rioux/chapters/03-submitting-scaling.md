@@ -4,7 +4,8 @@
 >
 > Completes the word-frequency program started in Chapter 2: adds grouping/counting (step 4) and ordering (step 5), then shows how to write results to disk, package the program for batch submission via `spark-submit`, refactor it for readability using method chaining and the `F` import convention, and finally scale it to multiple files with a single glob pattern change.
 >
-> 📌 **Notes adapted to PySpark 4.1.1.** The book mentions `spark-submit` can submit SparkR programs — SparkR is **deprecated in Spark 4.x** and should not be used for new projects. All other content in this chapter (groupBy, orderBy, write, coalesce, spark-submit for Python, glob patterns) is unchanged in Spark 4.1.1.
+!!! info "📌 Notes adapted to PySpark 4.1.1"
+    The book mentions `spark-submit` can submit SparkR programs — SparkR is **deprecated in Spark 4.x** and should not be used for new projects. All other content in this chapter (groupBy, orderBy, write, coalesce, spark-submit for Python, glob patterns) is unchanged in Spark 4.1.1.
 
 ---
 
@@ -39,7 +40,8 @@ results.show(5)
 - The order of rows in the result is **not guaranteed**. Spark distributes grouping work across executors; no executor knows the global sort order. Explicitly order with `orderBy()` when order matters.
 - To group by multiple columns: `groupBy("col_a", "col_b")` or `groupBy(col("col_a"), col("col_b"))`.
 
-> 💡 **Naming** — `groupby` (all lowercase) is an alias for `groupBy` (camelCase). Both work. `orderBy` has no lowercase alias — you must use the camelCase spelling. PySpark's method-naming is inconsistent (Scala heritage for camelCase, Python heritage for snake_case); just accept it and keep a cheatsheet handy.
+!!! info "💡 Naming"
+    — `groupby` (all lowercase) is an alias for `groupBy` (camelCase). Both work. `orderBy` has no lowercase alias — you must use the camelCase spelling. PySpark's method-naming is inconsistent (Scala heritage for camelCase, Python heritage for snake_case); just accept it and keep a cheatsheet handy.
 
 ---
 
@@ -113,7 +115,8 @@ results.coalesce(1).write.csv("./data/simple_count_single.csv")
 - `coalesce(n)` reduces the number of partitions to `n` **without a full shuffle** (moves data only to fill empty partitions). Efficient for reducing partition count.
 - `repartition(n)` does a full shuffle — use when you need to *increase* partition count or balance uneven partitions.
 
-> ⚠️ **Pitfall** — Ordering is not preserved through writes and subsequent reads unless you `orderBy()` immediately before the action *and* write to a single partition. On a large dataset, `coalesce(1)` forces all data to one executor — fine for dev/small data, never for production-scale output.
+!!! warning "⚠️ Pitfall"
+    — Ordering is not preserved through writes and subsequent reads unless you `orderBy()` immediately before the action *and* write to a single partition. On a large dataset, `coalesce(1)` forces all data to one executor — fine for dev/small data, never for production-scale output.
 
 ### Write modes
 
@@ -150,7 +153,8 @@ F.regexp_extract("word", "[a-z']*", 0)
 - Many function names (`sum`, `min`, `max`, `round`, `abs`) clash with Python built-ins. The `F.` prefix avoids silent shadowing.
 - Avoids the `from pyspark.sql.functions import *` anti-pattern, which makes code unreadable and can mask bugs.
 
-> ⚠️ **Anti-pattern** — `from pyspark.sql.functions import *` — never do this in a real script. It pollutes the namespace and makes it impossible to tell what's PySpark vs. Python.
+!!! warning "⚠️ Anti-pattern"
+    — `from pyspark.sql.functions import *` — never do this in a real script. It pollutes the namespace and makes it impossible to tell what's PySpark vs. Python.
 
 ### Method chaining
 
@@ -188,7 +192,8 @@ results = (
 - When you need to reuse a DataFrame in multiple branches (two separate `write()` calls, or feeding two different `.groupBy()` operations).
 - When a step is logically distinct enough to deserve a name for readability.
 
-> 💡 **Tip** — The [Black](https://black.readthedocs.io/) Python formatter automatically handles indentation in long chains. Recommended for all PySpark projects.
+!!! info "💡 Tip"
+    — The [Black](https://black.readthedocs.io/) Python formatter automatically handles indentation in long chains. Recommended for all PySpark projects.
 
 ### The complete program
 
