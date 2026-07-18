@@ -3,6 +3,13 @@
 > *Learning-path topic: I4 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+!!! warning "🔄 Needs revisiting — I4 completeness pass (flagged 2026-07-18)"
+    The 4.1.2 trace closed every gap in this chapter, and its anchors have now been re-verified against 4.2.0 (22 line numbers had drifted). The completeness pass added five gaps from layers that trace never examined; one is a scoping statement the chapter needs near the top rather than as a detail.
+
+    **The RDD API is classic-mode only.** `df.rdd` raises `PySparkNotImplementedError` under Spark Connect, and the Connect client has no `RDD` class. Connect is the default `pyspark` REPL mode in 4.x, so a reader following this chapter in a default 4.x shell may find none of it available. (The 4.2.0 notes' "RDD API compatibility" heading is misleading — the items under it are DataFrame methods that reduce the *need* for RDDs, not RDD support. Verified at source.)
+
+    Also missing: `SparkContext.clean` as the machinery behind `Task not serializable` — the chapter covers the closure-capture bug but not the mechanism that reports it; RDD aggregations spilling via `ExternalAppendOnlyMap`/`ExternalSorter`, the RDD-level analogue of the aggregate spill in Ch09; `repartition` being literally `coalesce(n, shuffle = true)`, which collapses two APIs into one parameter; and `take()` potentially submitting several jobs, which confuses job counts in the UI. Full list in the [I4 source trace](../reference/spark-source-map/topics/i4.md).
+
 The RDD (Resilient Distributed Dataset) is Spark's original data model — a schema-free distributed collection of Python objects. Understanding it explains what the DataFrame API is built on and reveals when to reach below the DataFrame abstraction.
 
 ---

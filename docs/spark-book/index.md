@@ -13,7 +13,7 @@ Personal book written as I work through the [learning path](../learning-path.md)
 | 🔄 | 02 | B1 | [Spark Architecture and the Execution Model](ch02-spark-architecture.md) | 2026-06-05 |
 | 🔄 | 03 | B1 | [Spark Installation](ch03-spark-installation.md) | 2026-06-05 |
 | 🔄 | 04 | B2 | [SparkSession and Entry Points](ch04-sparksession.md) | 2026-06-05 |
-| ✅ | 05 | I4 | [RDD Fundamentals](ch05-rdds.md) | 2026-05-31 |
+| 🔄 | 05 | I4 | [RDD Fundamentals](ch05-rdds.md) | 2026-05-31 |
 | 🔄 | 06 | B3 | [The DataFrame API: Basics](ch06-dataframe-basics.md) | 2026-05-31 |
 | 🔄 | 07 | B4 | [Reading and Writing Data](ch07-reading-writing-data.md) | 2026-05-31 |
 | 🔄 | 08 | B5 | [Schema: StructType, DDL, and Type Safety](ch08-schema-type-safety.md) | 2026-05-31 |

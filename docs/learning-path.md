@@ -509,7 +509,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ✅ I4 — RDD Fundamentals
+### 🔄 I4 — RDD Fundamentals
 
 **What it is:** `SparkContext.parallelize`, `map`, `filter`, `reduce`, `flatMap`, `collect`, `take`; when RDDs are still needed vs DataFrames.
 
@@ -522,6 +522,18 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **SDG Ch 12–13** — the deepest treatment of RDDs and advanced patterns (accumulators, broadcast variables)
 4. **FKane** — Spark Basics and the RDD Interface section (~2 hrs, hands-on)
 5. **Spark-docs → RDD Programming Guide** ([rdd-programming-guide.html](https://spark.apache.org/docs/latest/rdd-programming-guide.html)) — the canonical reference, and the one place that explains closures (why a driver variable mutated inside a transformation stays unchanged) before it bites you
+6. **Spark-docs → Tuning** ([tuning.html](https://spark.apache.org/docs/latest/tuning.html)) — serialization and memory tuning matter far more for RDDs than for DataFrames, since there is no Tungsten format underneath: read the [data serialization](https://spark.apache.org/docs/latest/tuning.html#data-serialization) section alongside `spark.serializer`
+7. **Source trace — [I4 in the source map](reference/spark-source-map/topics/i4.md)** — the five-method contract every RDD implements, how `iterator()` dispatches between cache, checkpoint and compute, and the exact line where a co-partitioned join becomes shuffle-free
+
+!!! warning "The RDD API is classic-mode only — it does not work over Spark Connect"
+    `df.rdd` raises `PySparkNotImplementedError` under Connect, and the Connect client ships no `RDD` class at all. Since Connect is the default mode of the `pyspark` REPL in 4.x, check which mode you are in before assuming this topic's material is available.
+
+    The 4.2.0 release notes are actively misleading here: the heading "RDD API compatibility ([SPARK-55227])" sits above `DataFrame.zipWithIndex`, `Dataset.zipWithIndex` and `DataFrame.toJSON` — DataFrame methods that *remove reasons* to drop to RDDs under Connect. That is the opposite of RDD support. Verified against the 4.2.0 source, not the notes.
+
+!!! info "`repartition` is `coalesce` with one boolean flipped"
+    `repartition(n)` is defined as `coalesce(n, shuffle = true)`. One method, one argument — which turns "coalesce avoids a shuffle, repartition forces one" from two APIs to memorise into a single fact about a parameter. Carries directly into I5.
+
+    Two related mechanics worth having here: every closure you pass is run through `SparkContext.clean`, which is what raises `Task not serializable` when driver state leaks into a task; and RDD aggregations spill through `ExternalAppendOnlyMap`/`ExternalSorter`, the RDD-level analogue of the aggregate spill in B6 — which is why `groupByKey` on skewed data degrades instead of failing outright.
 
 **Milestone:** You can explain in one sentence why `reduce` requires a commutative and associative function, and name two real tasks where you would use an RDD instead of a DataFrame.
 
@@ -1161,8 +1173,15 @@ You are ready to leave this level when you can:
 
 **Milestone:** You can explain the difference between classic mode and Connect mode, start a local Spark Connect server, connect to it from a Python client, and describe what changes in a UDF when running over Connect.
 
-!!! note "New in Spark 4.2.0 — RDD API compatibility over Connect"
-    Spark Connect gained RDD API compatibility ([SPARK-55227]), closing one of the largest gaps between classic and Connect mode. The classic-vs-Connect feature-parity table in older material is therefore out of date — check the 4.2.0 docs before concluding something "doesn't work over Connect". Ties back to I4.
+!!! warning "Correction — 'RDD API compatibility' in the 4.2.0 notes does not mean df.rdd works over Connect"
+    Checked against the 4.2.0 source while tracing I4: `pyspark.sql.connect.dataframe.DataFrame.rdd` still raises `PySparkNotImplementedError`. There is no `RDD` class in the Connect client at all.
+
+    In the release notes, "RDD API compatibility ([SPARK-55227])" is a *heading* over items like `DataFrame.zipWithIndex`, `Dataset.zipWithIndex` and `DataFrame.toJSON` — DataFrame methods that fill gaps people previously dropped to RDDs for. That is genuinely useful, but it is the opposite of RDD support: it reduces the *need* for RDDs under Connect rather than enabling them.
+
+    Practical consequence for this topic: **anything in I4 that requires a real `RDD` is classic-mode only.** If your target environment is Connect, treat the RDD API as unavailable and reach for the DataFrame equivalents.
+
+!!! note "What SPARK-55227 actually added"
+    DataFrame-side conveniences that reduce the need to drop to RDDs under Connect: `DataFrame.zipWithIndex` and `Dataset.zipWithIndex` ([SPARK-55229], [SPARK-55228]), `DataFrame.toJSON` in the Python client ([SPARK-55090]), and `spark.read.json` accepting a DataFrame ([SPARK-56253]). Useful additions — just not RDD support.
 
 ---
 
@@ -1236,7 +1255,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1–B9, I1, I2 and I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
+**Carrying 🔄:** B1–B9 and I1–I4 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 
