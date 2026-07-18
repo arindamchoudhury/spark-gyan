@@ -1,0 +1,6 @@
+# Normalise line endings so generator output (catalog.yaml, the source-map
+# index pages) stops showing as modified after every run on Windows.
+# Everything tracked here is text except the one PNG.
+* text=auto eol=lf
+
+*.png binary
