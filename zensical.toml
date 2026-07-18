@@ -33,6 +33,7 @@ nav = [
             { "I8 — Delta Lake Basics" = "reference/spark-source-map/topics/i8.md" },
             { "I9 — The Medallion Architecture" = "reference/spark-source-map/topics/i9.md" },
             { "I10 — Data Formats" = "reference/spark-source-map/topics/i10.md" },
+            { "I12 — Pair RDD Aggregations" = "reference/spark-source-map/topics/i12.md" },
             { "I15 — Apache Iceberg and Interoperability" = "reference/spark-source-map/topics/i15.md" },
         ]},
         { "Sweeps" = [

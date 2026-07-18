@@ -33,7 +33,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I15 | Apache Iceberg and Table-Format Interoperability | — | apache/iceberg, delta-io/delta, apache/spark | ✅ complete |
 | I14 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
 | I13 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
-| I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | — | ⬜ |
+| I12 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | apache/spark | ✅ complete |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |

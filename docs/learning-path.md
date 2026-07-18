@@ -891,9 +891,23 @@ You are ready to leave this level when you can:
 
 1. **SDG Ch 13** — advanced RDDs; key-value operations and the aggregation family in full
 2. **Spark-docs → Shuffle operations** ([rdd-programming-guide.html#shuffle-operations](https://spark.apache.org/docs/latest/rdd-programming-guide.html#shuffle-operations)) — what a shuffle costs and which operations trigger one
-3. **Source** — `core/src/main/scala/org/apache/spark/rdd/PairRDDFunctions.scala`; every aggregation bottoms out in `combineByKeyWithClassTag`
+3. **Source trace — [I12 in the source map](reference/spark-source-map/topics/i12.md)** — the one implementation behind five API names, the boolean that separates the fast case from the slow one, and why the two fail differently rather than merely differing in speed
 
-**Milestone:** You can explain why `reduceByKey` beats `groupByKey().mapValues(sum)` in terms of what crosses the network, and express both as a `combineByKey` call with its three functions.
+**Milestone:** You can explain why `reduceByKey` beats `groupByKey().mapValues(sum)` in terms of what crosses the network, and express both as a `combineByKey` call with its three functions. Then the sharper version: say what happens to each under a single hot key, and name the one argument that differs between them in the source.
+
+!!! warning "`reduceByKey` degrades under skew; `groupByKey` fails"
+    This is a difference in **failure mode**, not just performance, and it is the reason the usual advice is worth following.
+
+    Both route through the same `combineByKeyWithClassTag`. The combine path builds an `ExternalAppendOnlyMap`, which **spills to disk** when memory runs short — slow, but it completes. `groupByKey` passes `mapSideCombine = false` and materialises every value for a key as an in-memory `Iterable`; the source scaladoc states outright that a key with too many values gives an `OutOfMemoryError`.
+
+    So a hot key makes `reduceByKey` slow and `groupByKey` dead.
+
+    Two related facts fall out of the same code. `reduceByKey(f)` passes `f` as *both* `mergeValue` and `mergeCombiners`, which is the mechanical reason `f` must be associative and commutative — Spark applies it within and across partitions. And when the accumulator type differs from the value type (an average needs `(sum, count)`), `aggregateByKey` is the right tool, not `groupByKey`.
+
+!!! info "An already-partitioned RDD skips the shuffle entirely"
+    `combineByKeyWithClassTag` checks `self.partitioner == Some(partitioner)` and, on a match, uses `mapPartitions` with **no `ShuffledRDD` at all**. This is the RDD-level counterpart of the partitioning negotiation in [I5](#i5-partitioning-concepts-and-control), and it is the payoff for `partitionBy` when several keyed aggregations share a key.
+
+    Worth reading alongside [B6](#b6-basic-aggregations-and-groupby): `HashAggregateExec`'s partial/final split *is* `mapSideCombine` at the DataFrame level, and its sort-based fallback mirrors the spilling map here. The DataFrame API's real advantage is that it makes this choice for you.
 
 ---
 
