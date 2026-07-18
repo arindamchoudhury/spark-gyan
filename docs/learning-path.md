@@ -279,8 +279,25 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 2. **LS2e Ch 4** — join in the context of SQL tables and views
 3. **SDG Ch 8** — the most comprehensive treatment of join mechanics, including physical strategies
 4. **Spark-docs → JOIN syntax** ([sql-ref-syntax-qry-select-join.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-join.html)) — every join type in SQL form, including the semi/anti variants the books skim; also where `NEAREST BY` is documented from 4.2.0
+5. **Spark-docs → Join Strategy Hints** ([sql-performance-tuning.html#join-strategy-hints-for-sql-queries](https://spark.apache.org/docs/latest/sql-performance-tuning.html#join-strategy-hints-for-sql-queries)) — the four hints (`BROADCAST`, `MERGE`, `SHUFFLE_HASH`, `SHUFFLE_REPLICATE_NL`) and the [adaptive skew-join](https://spark.apache.org/docs/latest/sql-performance-tuning.html#optimizing-skew-join) settings; a hint is a request the planner may decline, and this page says when
+6. **Source trace — [B7 in the source map](reference/spark-source-map/topics/b7.md)** — the three-line strategy priority chain that explains all join tuning, why a `BROADCAST` hint on the wrong side does nothing, and what happens when your join condition is not an equality
 
-**Milestone:** You can perform all seven join types, explain what `left_semi` and `left_anti` return without looking it up, and name three situations where a broadcast join is appropriate.
+**Milestone:** You can perform all seven join types, explain what `left_semi` and `left_anti` return without looking it up, and name three situations where a broadcast join is appropriate. Then from the plan: run `explain()` on a large-large join, identify the strategy and the `Exchange` nodes feeding it, and predict which strategy you would get if you changed the condition from `a == b` to `a > b`.
+
+!!! info "Join *type* is your decision; join *strategy* is Spark's — and it is a ranked list"
+    `JoinSelection` tries exactly three strategies in order: **broadcast hash → shuffled hash → sort-merge**. All join tuning is moving your query up that list.
+
+    Two things about it are counterintuitive. `spark.sql.join.preferSortMergeJoin` defaults to **true**, which gates out the middle rung — most people never see a shuffled hash join. And the join *type* restricts which side may be broadcast: a left outer join can only broadcast its right side, so a `BROADCAST` hint naming the wrong side is silently inapplicable rather than honoured.
+
+!!! warning "A non-equality join condition leaves the hash-join world entirely"
+    Broadcast and sort-merge joins both require equi-join keys. Change `df1.a == df2.b` to `df1.a > df2.b` and there are no keys to hash or sort on, so Spark falls to `BroadcastNestedLoopJoinExec` — which compares every left row against every right row, O(n×m). With no condition at all you get `CartesianProductExec`, and `spark.sql.crossJoin.enabled` defaults to **`true`** in 4.x, so Spark will not stop you.
+
+    This is the most common reason a join appears to hang rather than fail. Check the operator name in `explain()` before assuming the data is too big.
+
+!!! info "The broadcast decision uses an estimate, and AQE may overrule it later"
+    `canBroadcastBySize` compares `plan.stats.sizeInBytes` — a statistic, not a measurement — against the threshold. Missing or stale statistics are why a broadcast is sometimes chosen for something that then exhausts the driver or trips `spark.sql.broadcastTimeout` (300s).
+
+    After a shuffle completes, AQE knows the real sizes and can promote a sort-merge join to a broadcast using a *separate* threshold, `spark.sql.adaptive.autoBroadcastJoinThreshold`. So the strategy in the Spark UI can legitimately differ from the one `explain()` printed — see the AQE note under B3.
 
 !!! note "New in Spark 4.2.0 — `NEAREST BY` top-K ranking join"
     Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a join primitive for nearest-neighbour queries with both Catalyst and DataFrame API support. It is not one of the seven relational join types and none of the books cover it — learn the seven first, then read the 4.2.0 SQL reference. Relevant if you do vector/embedding work.

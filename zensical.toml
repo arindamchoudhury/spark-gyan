@@ -20,6 +20,7 @@ nav = [
             { "B4 — Reading and Writing Data" = "reference/spark-source-map/topics/b4.md" },
             { "B5 — Schema, DDL and Type Safety" = "reference/spark-source-map/topics/b5.md" },
             { "B6 — Aggregations and GroupBy" = "reference/spark-source-map/topics/b6.md" },
+            { "B7 — Joins: Types and Mechanics" = "reference/spark-source-map/topics/b7.md" },
             { "I4 — RDD Fundamentals" = "reference/spark-source-map/topics/i4.md" },
         ]},
         { "Sweeps" = [

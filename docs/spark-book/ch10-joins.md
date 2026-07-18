@@ -3,8 +3,20 @@
 > *Learning-path topic: B7 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-!!! warning "🔄 Needs revisiting — Spark 4.2.0 (flagged 2026-07-18)"
-    Nothing here is wrong, but the chapter is now incomplete: Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a top-K ranking join primitive for nearest-neighbour queries with Catalyst support and a DataFrame API. It is not one of the seven relational join types this chapter covers and needs its own section — probably after the seven, framed as "the eighth thing called a join that isn't one."
+!!! warning "🔄 Needs revisiting — Spark 4.2.0 + B7 source trace (flagged 2026-07-18)"
+    Incomplete, not wrong. The B7 source trace opened ten gaps; four are worth fixing before this chapter is relied on for anything performance-related.
+
+    **The strategy priority chain.** `JoinSelection` tries broadcast hash → shuffled hash → sort-merge, in that order — three lines of code that explain every piece of join tuning advice. The chapter covers broadcast joins without presenting the ladder they sit at the top of.
+
+    **A non-equality condition leaves the hash-join world.** Change `a == b` to `a > b` and there are no keys to hash or sort, so Spark falls to `BroadcastNestedLoopJoinExec` — O(n×m), and the most common reason a join appears to hang rather than fail. `spark.sql.crossJoin.enabled` also defaults to `true` in 4.x, so an accidental cartesian product is no longer refused.
+
+    **Join type restricts which side can be broadcast.** A left outer join can only broadcast its right side, so a `BROADCAST` hint on the wrong side is inapplicable rather than honoured — which reads as the hint being ignored.
+
+    **AQE re-decides after the shuffle.** `DynamicJoinSelection` can promote a sort-merge join to a broadcast once real sizes are known, using a separate threshold. Skew splitting requires a partition to exceed *both* 5× the median *and* 256MB, which explains "AQE didn't fix my skew".
+
+    Also missing: `preferSortMergeJoin=true` gating shuffled hash join out by default; `canBroadcastBySize` using an estimate rather than a measurement; and that the shuffle is a separate `Exchange` node inserted by `EnsureRequirements`, not part of the join operator. Full list in the [B7 source trace](../reference/spark-source-map/topics/b7.md).
+
+    The originally-noted gap: Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a top-K ranking join primitive for nearest-neighbour queries with Catalyst support and a DataFrame API. It is not one of the seven relational join types this chapter covers and needs its own section — probably after the seven, framed as "the eighth thing called a join that isn't one."
 
 Joins are the most common source of performance problems in Spark, and the most common source of subtle data bugs. Getting join types right is foundational; everything in advanced tuning (Chapter 22) builds on this.
 
