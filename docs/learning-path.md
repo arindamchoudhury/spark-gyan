@@ -433,7 +433,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 ---
 
-### ✅ I2 — Window Functions
+### 🔄 I2 — Window Functions
 
 **What it is:** `Window.partitionBy().orderBy()`, aggregate functions over windows, ranking functions (`rank`, `dense_rank`, `percent_rank`, `ntile`, `row_number`), analytic functions (`lag`, `lead`, `cume_dist`), frame boundaries (`rowsBetween`, `rangeBetween`).
 
@@ -445,8 +445,27 @@ You are ready to leave this level when you can build a complete end-to-end batch
 2. **LS2e Ch 5** — window functions in the context of SQL and DataFrame APIs
 3. **SDG Ch 7** — aggregations chapter includes window functions with the deepest semantic explanations
 4. **Spark-docs → Window Functions** ([sql-ref-syntax-qry-select-window.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-window.html)) — frame semantics stated precisely: `ROWS` vs `RANGE`, and what the default frame becomes once you add `ORDER BY` (the single most common window bug)
+5. **Source trace — [I2 in the source map](reference/spark-source-map/topics/i2.md)** — the six lines of `resolveFrame` that decide your default frame, why omitting `partitionBy` moves the entire dataset to one partition, and which frame implementation your window actually runs
 
-**Milestone:** You can reproduce a self-join using a window function, explain why an ordered aggregate window produces different results than an unordered one, and build a 30-day rolling average using `rangeBetween` on a unix timestamp.
+!!! warning "Adding `orderBy` changes what an aggregate window computes — silently"
+    Spark fills in a frame you did not write, and the default depends on whether an ordering is present:
+
+    - **no `orderBy`** → `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` — the whole partition
+    - **with `orderBy`** → `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` — a *running* value
+
+    So `F.sum("x").over(Window.partitionBy("k"))` is a partition total, while the same window `.orderBy("t")` is a running total. Different results, and nothing in your code says so. Note the frame *type* also flips from `ROWS` to `RANGE`: `RANGE` compares ordering **values**, so rows tied on the ordering column all enter the frame together — a running sum over duplicate timestamps jumps rather than stepping.
+
+    Write the frame explicitly whenever the answer matters.
+
+!!! warning "A window without `partitionBy` moves the entire dataset to one partition"
+    `WindowExec` requires `AllTuples` distribution when no partitioning is given — every row on one executor. Spark logs `"No Partition Defined for Window operation!"` and carries on, so it works fine on sample data and falls over at scale.
+
+    More generally, every window is a shuffle **plus** a sort, since the operator requires both a distribution and an ordering. Chaining windows with different `partitionBy` clauses means repeating both each time.
+
+!!! info "Top-N per group is optimized — within limits"
+    The idiomatic `row_number() <= n` filter is efficient because `InferWindowGroupLimit` pushes a `WindowGroupLimit` below the shuffle, discarding non-qualifying rows before they are moved. But it only fires for recognised comparison forms and when *n* ≤ `spark.sql.optimizer.windowGroupLimitThreshold` (1000) — above that, or with an unusual predicate, you silently rank everything.
+
+**Milestone:** You can reproduce a self-join using a window function, explain why an ordered aggregate window produces different results than an unordered one — naming both default frames — and build a 30-day rolling average using `rangeBetween` on a unix timestamp. Then: given rows with duplicate timestamps, predict how a running sum differs under `rowsBetween` versus `rangeBetween`, and say what `explain()` shows above your window operator.
 
 ---
 
@@ -1199,7 +1218,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1–B9, I1 and I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
+**Carrying 🔄:** B1–B9, I1, I2 and I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 
