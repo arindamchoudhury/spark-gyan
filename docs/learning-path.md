@@ -102,17 +102,21 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 ### ✅ B2 — SparkSession and Entry Points
 
-**What it is:** Creating a `SparkSession`; configuring the application; log levels; local vs cluster mode; the REPL vs script context.
+**What it is:** Creating a `SparkSession`; configuring the application and which settings can still change afterwards; log levels; local vs cluster mode; the REPL vs script context; and **which implementation you get** — classic or Connect — since `SparkSession` is an abstract base with two concrete subclasses in Spark 4.x.
 
-**Why you need it:** Every PySpark program starts here. Understanding modes prevents "why does this work in notebook but not spark-submit" surprises.
+**Why you need it:** Every PySpark program starts here. Understanding modes prevents "why does this work in notebook but not spark-submit" surprises — and in 4.x the same question extends to Connect, where a session that looks identical rejects direct JVM access.
 
 **Learn it with:**
 
 1. **Rioux Ch 2** — covers setup, configuration, and the SparkSession builder pattern
 2. **FKane** — first two sections; shows the setup in a runnable environment you can follow along
-3. **Spark-docs → Starting Point: SparkSession** ([sql-getting-started.html#starting-point-sparksession](https://spark.apache.org/docs/latest/sql-getting-started.html#starting-point-sparksession)) — the builder pattern from the source of truth; pair with [Configuration](https://spark.apache.org/docs/latest/configuration.html) for the precedence rules (`spark-defaults.conf` vs `spark-submit` flags vs `SparkConf`) that decide which setting actually wins
+3. **Spark-docs → Starting Point: SparkSession** ([sql-getting-started.html#starting-point-sparksession](https://spark.apache.org/docs/latest/sql-getting-started.html#starting-point-sparksession)) — the builder pattern from the source of truth
+4. **Spark-docs → Configuration** ([configuration.html](https://spark.apache.org/docs/latest/configuration.html)) — three sections carry this topic: [Dynamically Loading Spark Properties](https://spark.apache.org/docs/latest/configuration.html#dynamically-loading-spark-properties) for the precedence rules (`SparkConf` vs `spark-submit` flags vs `spark-defaults.conf`), [Viewing Spark Properties](https://spark.apache.org/docs/latest/configuration.html#viewing-spark-properties) for confirming what actually took effect, and [Configuring Logging](https://spark.apache.org/docs/latest/configuration.html#configuring-logging) for log levels including the structured-logging option
+5. **Spark-docs → Spark Connect Overview** ([spark-connect-overview.html](https://spark.apache.org/docs/latest/spark-connect-overview.html)) — what `.remote()` and `spark.api.mode` actually select. Follow with [Application development with Connect](https://spark.apache.org/docs/latest/app-dev-spark-connect.html) and the [Connect gotchas](https://spark.apache.org/docs/latest/spark-connect-gotchas.html), which lists the behaviours that differ — the fastest way to understand why `df._jdf` and `sc._jsc` are unavailable
+6. **Spark-docs → `pyspark.sql.SparkSession` API reference** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.SparkSession.html)) — the full builder surface (`appName`, `master`, `config`, `remote`, `enableHiveSupport`, `getOrCreate`, `create`) in one table; keep it open while working
+7. **Source trace — [B2 in the source map](reference/spark-source-map/topics/b2.md)** — `getOrCreate`'s real resolution order (thread-local active session → global default → construct new), and where `newSession`, `cloneSession` and `create` actually differ
 
-**Milestone:** You can create a SparkSession with custom config, set the log level, and run a script with `spark-submit`.
+**Milestone:** You can create a SparkSession with custom config, set the log level, and run a script with `spark-submit`. Then, the part that catches people: given a config set *after* the session exists, predict whether it takes effect or is silently ignored, and say why — then verify with `spark.conf.isModifiable()`.
 
 ---
 
