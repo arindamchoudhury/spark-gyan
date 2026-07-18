@@ -1061,7 +1061,7 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1, B2, B3, B4, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0.
+**Carrying 🔄:** B1, B2, B3, B4, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
 Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 

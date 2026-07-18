@@ -10,7 +10,7 @@ Personal book written as I work through the [learning path](../learning-path.md)
 | Status | Ch | Topic code | Title | Written |
 |---|---|---|---|---|
 | ✅ | 01 | B1 | [Introduction to Spark](ch01-introduction-to-spark.md) | 2026-06-05 |
-| ✅ | 02 | B1 | [Spark Architecture and the Execution Model](ch02-spark-architecture.md) | 2026-06-05 |
+| 🔄 | 02 | B1 | [Spark Architecture and the Execution Model](ch02-spark-architecture.md) | 2026-06-05 |
 | 🔄 | 03 | B1 | [Spark Installation](ch03-spark-installation.md) | 2026-06-05 |
 | 🔄 | 04 | B2 | [SparkSession and Entry Points](ch04-sparksession.md) | 2026-06-05 |
 | ✅ | 05 | I4 | [RDD Fundamentals](ch05-rdds.md) | 2026-05-31 |

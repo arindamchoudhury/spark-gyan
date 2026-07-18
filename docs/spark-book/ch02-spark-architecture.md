@@ -3,6 +3,16 @@
 > *Learning-path topic: B1 (Beginner)*
 > *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
+> 🔄 **Needs revisiting — B1 completeness pass (flagged 2026-07-18).** Incomplete, not wrong. This chapter was previously marked clean, but only because the source trace behind it had followed one path — session → scheduler → task — and never examined the layers below. Tracing those opened five gaps:
+>
+> - **The three shuffle writers.** `getWriter` selects between `BypassMergeSortShuffleWriter`, `UnsafeShuffleWriter` and `SortShuffleWriter`. Crossing `spark.shuffle.sort.bypassMergeThreshold` or introducing a map-side combine silently changes which one runs — a real performance cliff the chapter never mentions.
+> - **`FetchFailed` is not an ordinary task failure.** It means an upstream stage's output is gone, so the DAGScheduler resubmits the *parent stage* rather than retrying the task. This is the mechanism behind "a stage I thought had finished ran again".
+> - **Executor loss forces recomputation** by unregistering that executor's map output from `MapOutputTracker` — the concrete version of the lineage-based fault tolerance the chapter describes abstractly.
+> - **`maxResultSize` drops results at the executor** rather than transmitting them.
+> - **Locality wait** explains idle cores while tasks queue.
+>
+> Full anchors in the [B1 source trace](../reference/spark-source-map/topics/b1.md).
+
 This chapter covers the physical architecture of a Spark cluster — the components that run when a job executes and how they coordinate.
 
 ---
