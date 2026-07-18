@@ -3,6 +3,8 @@
 > *Learning-path topic: B2 (Beginner)*
 > *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
+> 🔄 **Needs revisiting — Spark 4.2.0 (flagged 2026-07-18).** Nothing below is wrong; it is incomplete. The 4.2.0 source re-trace found eleven `spark.connect.session.*` configs that postdate this chapter — plan caching (`planCache.enabled`, `alwaysCacheDataSourceReadsEnabled`), plan compression (`planCompression.threshold`, `defaultAlgorithm`), result chunking (`resultChunking.maxChunkSize`), and the ML cache memory controls. This chapter explains *which* session implementation you get but not what the Connect server then does with the plan, which is exactly what differs when a Connect session behaves unlike a classic one. Add a short subsection. Details in the [B2 source trace](../reference/spark-source-map/topics/b2.md).
+
 Every PySpark program begins with a `SparkSession`. Before you can read a file, run a query, or train a model, you need this one object — and the few minutes spent understanding how it is created, what it actually spins up underneath, and how to configure it will save you hours of confusing failures later. This chapter walks that entry point end to end: building a session, the JVM and SparkContext it sits on, configuration that bites beginners, and Spark 4.x's classic-vs-Connect fork.
 
 ---

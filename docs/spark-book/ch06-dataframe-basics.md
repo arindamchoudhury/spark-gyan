@@ -3,6 +3,12 @@
 > *Learning-path topic: B3 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
+> 🔄 **Needs revisiting — Spark 4.2.0 (flagged 2026-07-18).** Two reasons, one of them behavioural.
+>
+> **ANSI mode is on by default in Spark 4.x and this chapter does not teach it.** The only mention is a parenthetical inside the Gluten bullet. Under `spark.sql.ansi.enabled=true`, invalid casts, arithmetic overflow and division by zero raise at runtime instead of returning `null` — the official docs describe the old behaviour as "Spark 3 or older". Any example here that relies on a bad cast producing `null` is now wrong, and this is a beginner chapter where that pattern is common. Needs a section covering ANSI cast semantics and `try_cast`.
+>
+> **Fourteen gaps from the source trace remain open**, including that `withColumn` and `withColumns` compile to the same plan node, the two `drop` overloads behaving differently (eager vs lazy, both silently ignoring missing columns), `distinct()` producing `Deduplicate` rather than a `Distinct` operator, and `show(n)` fetching n+1 rows. Full list in the [B3 source trace](../reference/spark-source-map/topics/b3.md).
+
 The DataFrame is PySpark's primary data structure — a distributed, column-typed table with a rich transformation API modelled on SQL. Fluency with its core operations is what separates someone who has used PySpark from someone who can actually work with it.
 
 ---

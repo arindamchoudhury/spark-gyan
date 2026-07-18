@@ -100,7 +100,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 ---
 
-### ✅ B2 — SparkSession and Entry Points
+### 🔄 B2 — SparkSession and Entry Points
 
 **What it is:** Creating a `SparkSession`; configuring the application and which settings can still change afterwards; log levels; local vs cluster mode; the REPL vs script context; and **which implementation you get** — classic or Connect — since `SparkSession` is an abstract base with two concrete subclasses in Spark 4.x.
 
@@ -120,7 +120,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 ---
 
-### ✅ B3 — The DataFrame API: Basics
+### 🔄 B3 — The DataFrame API: Basics
 
 **What it is:** `select`, `filter`/`where`, `withColumn`, `drop`, `rename`, `distinct`, `show`, `printSchema`, `dtypes`, `describe`.
 
@@ -1061,7 +1061,9 @@ Optional milestones: three Databricks certifications — see the section below
 
 **You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
 
-**Carrying 🔄:** B1, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0. Only I3 and the B1 install chapter contain claims that are actually *wrong*; B7 and B8 are merely missing new surface. Clearing them is a smaller job than starting a new topic.
+**Carrying 🔄:** B1, B2, B3, B7, B8, I3 — completed against Spark 4.1.x, now partly stale under 4.2.0.
+
+Three contain claims that are actually *wrong* and should be cleared first: **B3** (ANSI mode is on by default, so book examples relying on a bad cast returning `null` now raise), **I3** (Arrow UDFs are default, invalidating the performance hierarchy as written), and the **B1** install chapter (Java 25 is supported; it says 17/21 only). **B2**, **B7** and **B8** are merely missing new surface — safe to read as-is, just incomplete.
 
 **If you only do three things next:** clear I3 (it teaches a now-false performance model), do I6–I7 (caching and the Spark UI — everything in Advanced depends on being able to read a plan), then I8 with both table formats rather than Delta alone.
 
