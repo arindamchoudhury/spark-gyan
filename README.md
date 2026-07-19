@@ -153,6 +153,8 @@ Topic and sweep pages carry a `spark_version`. When it trails the catalog, `chec
 
 Adding a group, extending a scope, or recarving a subsystem. All by hand — no generator writes this file.
 
+**Or just ask the skill: `regroup core`.** The `spark-source-map` skill runs this whole loop — survey, propose, edit, check, regenerate, sync the tables, commit — and stops only for the editorial call of what deserves a group. Same for a release: "Spark 4.3 is out" runs the runbook below. The steps here are for doing it by hand, and for knowing what the skill should have done.
+
 **1. Decide what changes.** `--coverage` tells you where the holes are; `--list-groups` shows the current carving and what has already been swept. A new group is warranted when a real body of code has no owner (`sql/core/scripting/` backing topic I12, say); extending an existing scope is right when the code belongs to a group that simply never named it.
 
 **2. Edit the YAML, watching two traps.**
