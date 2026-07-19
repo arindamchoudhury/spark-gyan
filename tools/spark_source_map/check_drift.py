@@ -159,7 +159,7 @@ def scope_tokens(scope: str) -> set[str]:
     return out
 
 
-def report_coverage(source: Path, subsystems: dict) -> int:
+def report_coverage(source: Path, subsystems: dict, plumbing: set[str] | None = None) -> int:
     """Report packages that no group scope claims.
 
     check_drift's other checks verify that what a scope *names* still exists.
@@ -170,9 +170,12 @@ def report_coverage(source: Path, subsystems: dict) -> int:
     Advisory only: some packages are plumbing that deserves no group, and a
     scope may cover a package by naming its classes rather than its directory.
     """
+    plumbing = plumbing or set()
     print("Packages no group scope claims (largest first).")
-    print("Advisory: plumbing rightly has no group -- judge, don't auto-add.\n")
+    print("Only packages not yet judged are listed -- ones already recorded in")
+    print("groups.yaml _meta.plumbing are counted, not reprinted.\n")
     total = 0
+    judged = 0
     for sub in sorted(subsystems):
         mod = module_dir(source, sub)
         if not mod.is_dir():
@@ -196,6 +199,10 @@ def report_coverage(source: Path, subsystems: dict) -> int:
                 if any(f.stem in scope_classes for f in files):
                     continue
                 if files:
+                    # Already judged not worth a group; count it, don't re-litigate.
+                    if f"{sub}:{pkg.name}" in plumbing:
+                        judged += 1
+                        continue
                     rows.append((len(files), pkg.name))
             if rows:
                 total += len(rows)
@@ -203,7 +210,13 @@ def report_coverage(source: Path, subsystems: dict) -> int:
                 for n, name in sorted(rows, reverse=True):
                     print(f"    {n:>4}  {name}/")
                 print()
-    print(f"{total} unclaimed package(s). Add a group, extend a scope, or leave as plumbing.")
+    if total:
+        print(f"{total} package(s) need a decision: add a group, extend a scope, or "
+              f"record as plumbing in _meta.plumbing.")
+    else:
+        print("Every unclaimed package has been judged.")
+    if judged:
+        print(f"({judged} already recorded as plumbing.)")
     report_overlaps(subsystems)
     return 0
 
@@ -291,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.coverage:
-        return report_coverage(source, subsystems)
+        return report_coverage(source, subsystems, set(meta.get("plumbing") or []))
 
     # --- 1. version stamp ----------------------------------------------------
     cat_version = None

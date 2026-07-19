@@ -150,7 +150,18 @@ Those checks are all one direction: does what a scope *names* still exist. The i
 python tools/spark_source_map/check_drift.py --coverage
 ```
 
-This matters because a sweep only walks a group's scope, so **a package no group claims can never be swept**, and its concepts can never surface as `propose:` blocks. The gap hides itself. Run it after any Spark upgrade, and when adding a group. It is advisory and never fails the build: plenty of packages (`util/`, `errors/`, `test/`, `dsl/`) are plumbing that rightly has no group, and deciding what deserves one is editorial.
+This matters because a sweep only walks a group's scope, so **a package no group claims can never be swept**, and its concepts can never surface as `propose:` blocks. The gap hides itself.
+
+It lists only packages **not yet judged**. Once you decide a package is plumbing, record it in `groups.yaml` under `_meta.plumbing` as `<subsystem>:<package>` with a reason, and it is counted rather than reprinted. So the list is normally empty, and anything in it is new code since the last refresh — a real decision, not recurring noise:
+
+```
+Every unclaimed package has been judged.
+(21 already recorded as plumbing.)
+```
+
+Each listed package gets one of three outcomes: extend an existing group's `scope` (the common case, mechanical), record it as plumbing, or — if it is a real concept with no home — a new group, which may imply a new learning-path topic and is therefore a decision for you rather than for the tool.
+
+One trap when extending a scope: a scope token is matched as a path *segment*, and a package counts as claimed when any descendant matches. Writing `unsafe/map/` therefore also claims every `.../util/collection/unsafe/`, silently suppressing an unrelated package from the report. Name a class instead when the path would be too coarse.
 
 **What is checked at which level.** The two directions do not have the same granularity:
 

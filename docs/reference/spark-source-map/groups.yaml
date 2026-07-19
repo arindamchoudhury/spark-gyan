@@ -8,6 +8,36 @@ _meta:
   spark_version: "4.2.0"
   verified_at: 2026-07-19
   source_root: C:/opt/learn/spark/repos/spark
+  # Packages deliberately left without a group, so --coverage stops re-raising
+  # them every run. Only add an entry once you have looked and judged: these are
+  # helpers, shims and test scaffolding, not Spark concepts a learner would study.
+  # A package NOT listed here and not claimed by a scope is an open decision.
+  plumbing:
+    # helper/utility packages -- no user-facing concept of their own
+    - core:util
+    - sql/catalyst:util
+    - sql/core:util
+    - streaming:util
+    - resource-managers/yarn:util
+    - sql/connect:util
+    - sql/connect:utils
+    # launcher, path and legacy-API plumbing
+    - core:launcher
+    - core:paths
+    - core:mapred
+    - resource-managers/yarn:launcher
+    # error-message definitions, generated or mechanical
+    - core:errors
+    # test scaffolding and the internal test DSL
+    - sql/core:test
+    - sql/catalyst:dsl
+    # small internal helpers
+    - sql/catalyst:normalizer
+    - sql/catalyst:transactions
+    - sql/core:connector
+    # Hive compatibility shims under org.apache.hadoop, not Spark's own code
+    - sql/hive:exec
+    - sql/hive:udf
   note: >
     Scopes re-walked against v4.2.0 on 2026-07-19, in two passes.
 
@@ -30,7 +60,7 @@ core:
     name: rdd-layer
     title: "RDD layer"
     topics: [I4, I5, I6]
-    scope: "rdd/, Dependency, Partition, Partitioner, broadcast/"
+    scope: "rdd/, Dependency, Partition, Partitioner, broadcast/, partial/ (CountEvaluator, BoundedDouble, PartialResult — the countApprox family), input/ (WholeTextFileInputFormat, PortableDataStream — binaryFiles/wholeTextFiles)"
     description: "RDD programming model, transformations/actions, lineage, persistence, broadcast variables"
   - number: 2
     name: execution-engine
@@ -42,7 +72,7 @@ core:
     name: shuffle-memory
     title: "Shuffle & memory"
     topics: [A4, E1]
-    scope: "shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression"
+    scope: "shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression, BytesToBytesMap (the Tungsten off-heap hash map, in core's Java tree)"
     description: ""
   - number: 4
     name: storage-serializer
@@ -108,7 +138,7 @@ sql/catalyst:
     name: framework
     title: "Catalyst framework"
     topics: [A1, E1]
-    scope: "trees/ (TreeNode, TreePatterns), rules/ (Rule, RuleExecutor, RuleIdCollection), plans/ (QueryPlan, logical/ LogicalPlan, physical/ Partitioning), catalog/ (SessionCatalog, InMemoryCatalog), encoders/ (ExpressionEncoder)"
+    scope: "trees/ (TreeNode, TreePatterns), rules/ (Rule, RuleExecutor, RuleIdCollection), plans/ (QueryPlan, logical/ LogicalPlan, physical/ Partitioning), catalog/ (SessionCatalog, InMemoryCatalog), encoders/ (ExpressionEncoder), streaming/ (StreamingRelationV2, WriteToStream — the streaming logical plan nodes)"
     description: "The substrate the analyzer, optimizer and planner all operate on: the immutable tree, the rule-execution engine, the plan hierarchy, the session catalog, and the encoders behind the typed Dataset API"
 
 sql/connect:
@@ -146,7 +176,7 @@ resource-managers/kubernetes:
     topics: [E2]
     # Split from auth-networking by theme, not by path: both walk k8s/.
     shared_scope: true
-    scope: "k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates)"
+    scope: "k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates), shuffle/"
     description: "Pod allocation, executor lifecycle, and driver submission on Kubernetes"
   - number: 2
     name: auth-networking
@@ -161,7 +191,7 @@ resource-managers/yarn:
     name: am-executor
     title: "AM & executor allocation"
     topics: [E2]
-    scope: "yarn/ (ApplicationMaster, YarnAllocator, executor containers)"
+    scope: "yarn/ (ApplicationMaster, YarnAllocator, executor containers), scheduler/cluster/ (YarnClusterManager, YarnSchedulerBackend), executor/"
     description: "YARN ApplicationMaster, container allocation, and executor lifecycle"
 
 connector/kafka-0-10:
@@ -206,7 +236,7 @@ sql/core:
     name: query-execution
     title: "Query execution & planning"
     topics: [A1, I7]
-    scope: "execution/ (QueryExecution, SparkPlan, SQLExecution, SparkOptimizer, ExplainUtils, WholeStageCodegenExec)"
+    scope: "execution/ (QueryExecution, SparkPlan, SQLExecution, SparkOptimizer, ExplainUtils, WholeStageCodegenExec), catalyst/analysis/ (ResolveSessionCatalog, ResolveDataSource — the analyzer rules that live in sql/core)"
     description: "Physical planning entry point, the plan lifecycle behind EXPLAIN, and whole-stage code generation"
   - number: 2
     name: joins-exec
@@ -248,7 +278,7 @@ sql/core:
     name: classic-api
     title: "Classic DataFrame API"
     topics: [B2, E9]
-    scope: "classic/ (SparkSession, Dataset, DataFrameReader, DataFrameWriter, Catalog), artifact/, columnar/"
+    scope: "classic/ (SparkSession, Dataset, DataFrameReader, DataFrameWriter, Catalog), artifact/, columnar/, internal/ (SessionState, SharedState, BaseSessionStateBuilder — session lifecycle and shared state)"
     description: "The classic (non-Connect) implementation of the user-facing API — the same names Spark Connect reimplements over gRPC, which is what makes the two paths worth reading side by side"
   - number: 9
     name: sql-scripting

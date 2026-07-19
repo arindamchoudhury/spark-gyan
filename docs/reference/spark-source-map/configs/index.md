@@ -13,25 +13,25 @@
 - [connector/profiler](#connectorprofiler) — 7 configs
     - **Group 1 — Async profiler integration** (topics E3): profiler/ (ProfilerPlugin, SparkAsyncProfiler)
 - [core](#core) — 546 configs
-    - **Group 1 — RDD layer** (topics I4, I5, I6): rdd/, Dependency, Partition, Partitioner, broadcast/
+    - **Group 1 — RDD layer** (topics I4, I5, I6): rdd/, Dependency, Partition, Partitioner, broadcast/, partial/ (CountEvaluator, BoundedDouble, PartialResult — the countApprox family), input/ (WholeTextFileInputFormat, PortableDataStream — binaryFiles/wholeTextFiles)
     - **Group 2 — Execution engine** (topics B1, E1): scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext
-    - **Group 3 — Shuffle & memory** (topics A4, E1): shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression
+    - **Group 3 — Shuffle & memory** (topics A4, E1): shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression, BytesToBytesMap (the Tungsten off-heap hash map, in core's Java tree)
     - **Group 4 — Storage & serialization** (topics I6, E1): storage/ (BlockManager, BlockManagerMaster, DiskBlockManager; StorageLevel now in common/utils), serializer/ (KryoSerializer vs JavaSerializer)
     - **Group 5 — Infra** (topics E2, E3): deploy/, metrics/, security/, ui/, status/ (AppStatusStore, the UI/History Server backend), internal/ (config system: ConfigBuilder, ConfigEntry), History Server configs
     - **Group 6 — RPC & resource profiles** (topics E1, E2): rpc/ (RpcEndpoint, NettyRpcEnv), network/, resource/ (ResourceProfile, ExecutorResourceRequest, ResourceAllocator)
     - **Group 7 — Language API bridge** (topics I3, I4): api/python/ (PythonRDD, PythonRunner, Py4JServer), api/java/, api/r/
 - [resource-managers/kubernetes](#resource-managerskubernetes) — 89 configs
-    - **Group 1 — Driver & executor lifecycle** (topics E2): k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates)
+    - **Group 1 — Driver & executor lifecycle** (topics E2): k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates), shuffle/
     - **Group 2 — Auth & networking** (topics E2): k8s/ (authentication, service account, node affinity, executor env)
 - [resource-managers/yarn](#resource-managersyarn) — 61 configs
-    - **Group 1 — AM & executor allocation** (topics E2): yarn/ (ApplicationMaster, YarnAllocator, executor containers)
+    - **Group 1 — AM & executor allocation** (topics E2): yarn/ (ApplicationMaster, YarnAllocator, executor containers), scheduler/cluster/ (YarnClusterManager, YarnSchedulerBackend), executor/
 - [sql/catalyst](#sqlcatalyst) — 750 configs
     - **Group 1 — Analysis** (topics A1, B1): analysis/ (Analyzer, resolution rules, catalog)
     - **Group 2 — Optimizer** (topics A1, A2): optimizer/ (logical rules, CBO, statistics)
     - **Group 3 — Planner & physical operators** (topics A1, A3, E1): planning/ (QueryPlanner, GenericStrategy, plan-matching patterns e.g. ExtractEquiJoinKeys), execution/datasources/v2/ (DataSourceV2Relation, DataSourceV2Implicits)
     - **Group 4 — Expressions & codegen** (topics E1): expressions/ (Expression hierarchy, codegen/ CodegenContext, CodeGenerator), WholeStageCodegenExec
     - **Group 5 — Types & SQL parser** (topics B5): types/ (DataType hierarchy, StructType, DecimalType — now in sql/api), parser/ (Antlr4 grammar, AbstractSqlParser, AstBuilder), csv/, json/, xml/ (the per-format parsers and their options)
-    - **Group 6 — Catalyst framework** (topics A1, E1): trees/ (TreeNode, TreePatterns), rules/ (Rule, RuleExecutor, RuleIdCollection), plans/ (QueryPlan, logical/ LogicalPlan, physical/ Partitioning), catalog/ (SessionCatalog, InMemoryCatalog), encoders/ (ExpressionEncoder)
+    - **Group 6 — Catalyst framework** (topics A1, E1): trees/ (TreeNode, TreePatterns), rules/ (Rule, RuleExecutor, RuleIdCollection), plans/ (QueryPlan, logical/ LogicalPlan, physical/ Partitioning), catalog/ (SessionCatalog, InMemoryCatalog), encoders/ (ExpressionEncoder), streaming/ (StreamingRelationV2, WriteToStream — the streaming logical plan nodes)
 - [sql/connect](#sqlconnect) — 44 configs
     - **Group 1 — Client-server protocol** (topics E9): planner/ (SparkConnectPlanner — turns protobuf relations into a Catalyst logical plan), execution/, service/, config/, plugin/, ui/, common/ (proto definitions), client/ (SparkConnectClient), ml/ (Connect ML)
     - **Group 2 — Declarative Pipelines** (topics A11): connect/pipelines/ (PipelinesHandler, DataflowGraphRegistry, PipelineEventSender); configs: spark.sql.pipelines.* in sql/catalyst
