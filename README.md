@@ -36,6 +36,32 @@ Tools in `tools/spark_source_map/` mine the Apache Spark source using a hybrid t
 - **Topic-first** (`trace <code>`) — start from a learning-path topic, find the backing source classes and configs. Output: `topics/<code>.md`.
 - **Source-first sweep** (`sweep <subsystem>`) — scan a subsystem, surface concepts the learning path doesn't yet cover. Output: `sweeps/<slug>.md` + proposals auto-appended to `learning-path.md`.
 
+### Driving it from Claude Code
+
+The `spark-source-map` skill (in `~/.claude/skills/`) owns this pipeline. Say one line in a Claude Code session in this repo; it loads on those phrasings and runs the job to completion.
+
+| Say | It does |
+|---|---|
+| `trace B7` | Traces the topic, writes `topics/b7.md`, adds the trace to that topic's "Learn it with" in `learning-path.md`, flips any stale chapter to 🔄, wires nav, commits |
+| `sweep core execution-engine` | Sweeps that one group, writes the sweep page, reconciles every topic it touched, fills in proposed topics, commits |
+| `regroup core` | Surveys with `--coverage`, proposes a carving, edits `groups.yaml`, loops `check_drift.py` to green, regenerates, syncs the copied tables, commits |
+| `refresh the spark configs` | Regenerates the catalog, runs the parser tests and the drift checks, commits |
+| `Spark 4.3 is out` | The whole release runbook below |
+| `update the coverage matrix` | Regenerates `index.md` |
+
+**A verb is a whole job, not a step.** It runs every command, fixes every checker to green, updates whatever the change invalidated, and commits — rather than handing back a list of commands for you to run.
+
+**When it stops and asks.** Four conditions, all observable rather than a judgement about confidence:
+
+1. The change would alter the **learning path's taxonomy** — adding, retitling or renumbering a topic. That is your curriculum, not its call.
+2. **Two options are defensible and the source cannot decide** — which group owns a package, whether something is plumbing or deserves a group. It brings the options with file counts and a recommendation.
+3. **A fix would require inventing a fact** — a class that exists nowhere in the checkout, a config with no discoverable default. It says what it could not verify instead of writing a plausible guess.
+4. The action **reaches outside the repo or is hard to undo** — pushing, deleting a page with content, rewriting history.
+
+Everything else proceeds, including the commit. Anything surprising — a wrong scope, a regression it caused — gets fixed and reported in the summary rather than raised as a question.
+
+The commands below are the same pipeline by hand, and are what the skill should be doing.
+
 ```bash
 # Refresh the whole-repo config catalog (deterministic, ~8 s)
 python tools/spark_source_map/gen_configs.py
@@ -300,7 +326,7 @@ Two subsystems are not where their name suggests:
 
 Group definitions live in `docs/reference/spark-source-map/groups.yaml`.
 
-Topic traces and source sweeps (LLM-driven, one unit at a time) are done via the `spark-source-map` Claude Code skill.
+Topic traces and source sweeps are LLM-driven, one unit at a time, via the `spark-source-map` skill — see "Driving it from Claude Code" above for the phrasings and for when it stops to ask.
 
 ## Fetching vendor pages
 
