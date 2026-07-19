@@ -222,13 +222,14 @@ Confirms the change closed the gap you meant, and flags an identical-path collis
 
 **5. Bump `_meta`** — `spark_version` and `verified_at` — if you re-walked scopes against a checkout. Note in `_meta.note` what changed and why, since nothing else records the reasoning.
 
-**6. Regenerate and sync.**
+**6. Regenerate and sync.** Both generators consume `groups.yaml`, so both must run:
 
 ```bash
-python tools/spark_source_map/gen_coverage.py
+python tools/spark_source_map/gen_configs.py   # renders group scopes into configs/index.md
+python tools/spark_source_map/gen_coverage.py  # adds the group's row to index.md
 ```
 
-New groups appear in the sweep-status table as `⬜ pending` automatically. Then update the group table in this README and in the skill — both are hand-copied from `groups.yaml`, so they drift the moment you add a group. Check them against the file:
+`gen_configs.py` is easy to forget here — it looks like a catalog-only tool, but `configs/index.md` prints each subsystem's groups and their scopes, so editing `groups.yaml` without re-running it leaves that page describing the old carving. New groups appear in the sweep-status table as `⬜ pending` automatically. Then update the group table in this README and in the skill — both are hand-copied from `groups.yaml`, so they drift the moment you add a group. Check them against the file:
 
 ```bash
 python -c "
