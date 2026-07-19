@@ -39,7 +39,8 @@ core:
     name: storage-serializer
     title: "Storage & serialization"
     topics: [I6, E1]
-    scope: "storage/ (BlockManager, StorageLevel), serializer/ (Kryo vs Java)"
+    modules: [common/utils]   # StorageLevel moved out of core in Spark 4.x
+    scope: "storage/ (BlockManager, BlockManagerMaster, DiskBlockManager; StorageLevel now in common/utils), serializer/ (KryoSerializer vs JavaSerializer)"
     description: ""
   - number: 5
     name: infra
@@ -71,13 +72,15 @@ sql/catalyst:
     name: expressions
     title: "Expressions & codegen"
     topics: [E1]
-    scope: "expressions/ (Expression hierarchy, codegen, Whole-Stage CodeGen)"
+    modules: [sql/core]   # WholeStageCodegenExec is a physical operator, in sql/core
+    scope: "expressions/ (Expression hierarchy, codegen/ CodegenContext, CodeGenerator), WholeStageCodegenExec"
     description: "Expression evaluation, code generation, and the columnar execution model"
   - number: 5
     name: types-parser
     title: "Types & SQL parser"
     topics: [B5]
-    scope: "types/ (DataType hierarchy), parser/ (Antlr4, AbstractSqlParser)"
+    modules: [sql/api]   # the DataType hierarchy moved to sql/api in Spark 4.x
+    scope: "types/ (DataType hierarchy, StructType, DecimalType — now in sql/api), parser/ (Antlr4 grammar, AbstractSqlParser, AstBuilder)"
     description: "DataType system and the SQL/DDL parser that produces unresolved logical plans"
 
 sql/connect:
@@ -94,14 +97,14 @@ sql/connect:
     scope: "connect/pipelines/ (PipelinesHandler, DataflowGraphRegistry, PipelineEventSender); configs: spark.sql.pipelines.* in sql/catalyst"
     description: "Declarative ETL framework (Spark 4.1+) — flows, streaming tables, materialized views, spark-pipelines CLI"
 
+# Structured Streaming is NOT here. Its execution lives in sql/core
+# (execution/streaming/runtime/: StreamExecution, MicroBatchExecution,
+# TriggerExecutor) and is covered by the sql/core "streaming-exec" group; its
+# configs are registered in catalyst's SQLConf. This module is DStream only —
+# the spark.streaming.* configs. A structured-streaming group here duplicated
+# sql/core and was removed 2026-07-19.
 streaming:
   - number: 1
-    name: structured-streaming
-    title: "Structured Streaming"
-    topics: [A7, A8]
-    scope: "sql/streaming/ (StreamExecution, MicroBatchExecution, TriggerExecutor)"
-    description: "Incremental query execution, triggers, watermarks, and stateful processing"
-  - number: 2
     name: dstream
     title: "DStream (legacy)"
     topics: []
@@ -151,7 +154,7 @@ connector/profiler:
     name: async-profiler
     title: "Async profiler integration"
     topics: [E3]
-    scope: "profiler/ (ExecutorProfiler, ProfilerPlugin)"
+    scope: "profiler/ (ProfilerPlugin, SparkAsyncProfiler)"
     description: "Per-executor async-profiler integration for CPU and memory flamegraph collection"
 
 sql/hive:
