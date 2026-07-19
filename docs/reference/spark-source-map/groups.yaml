@@ -52,8 +52,20 @@ _meta:
     trees/rules/plans/catalog/encoders substrate the analyzer, optimizer and planner all
     sit on), core "rpc-resources" and "api-bridge", sql/core "classic-api" and
     "sql-scripting" (I12 was a path topic with no group behind it) — and extended nine
-    scopes. Down to 31, the remainder being plumbing (util/, errors/, test/, dsl/).
-    Re-check with: python tools/spark_source_map/check_drift.py --coverage
+    scopes. Down to 31.
+
+    Reconciliation (third pass, same day): extended seven more scopes to absorb packages
+    that belonged to an existing group which never named them — partial/ and input/ into
+    core rdd-layer, BytesToBytesMap into shuffle-memory, catalyst streaming plan nodes into
+    framework, sql/core internal/ into classic-api and catalyst/analysis/ into
+    query-execution, yarn's scheduler backend, k8s shuffle/. 31 → 21, and the remaining 21
+    are recorded in _meta.plumbing above so they are counted rather than re-raised.
+
+    State: every class and package named here resolves in v4.2.0; every package in every
+    swept module is either claimed by a group or recorded as plumbing; every topics: code
+    resolves in learning-path.md (47 topics). Re-check with:
+      python tools/spark_source_map/check_drift.py
+      python tools/spark_source_map/check_drift.py --coverage
 
 core:
   - number: 1
