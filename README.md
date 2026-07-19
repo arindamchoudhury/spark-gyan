@@ -85,7 +85,7 @@ core
 sweep core execution-engine
 ```
 
-Naming the group is what keeps a run finishable. `sweep core` on its own is a request to sweep all five groups at once; the skill will stop and ask you to pick one rather than attempt it. Either form is fine — naming the group up front just skips the question.
+Naming the group is what keeps a run finishable. `sweep core` on its own is a request to sweep every group in `core` at once; the skill will stop and ask you to pick one rather than attempt it. Either form is fine — naming the group up front just skips the question.
 
 Each group gets **its own page** — `sweeps/<subsystem-with-slashes-as-dashes>-<group>.md`, e.g. `core-rdd-layer.md`, `sql-catalyst-optimizer.md`. Never merge two groups into one file: `gen_coverage.py` keys the sweep-status table on `(subsystem, group)` and the `group:` field is a scalar, so the second group would be dropped and left showing `⬜ pending`. Filenames are otherwise inert — the generator globs `sweeps/*.md` and reads front matter — but they must be unique.
 
@@ -117,6 +117,14 @@ concepts:
 Nothing generates it — `gen_configs.py` and `gen_coverage.py` only read it. Editing it directly is the only way to change it, and no generator run notices when its scopes drift from the source. Its `_meta` block records the Spark version the scopes were last walked against.
 
 That's what `check_drift.py` is for. It verifies the `_meta` stamp against the catalog, that every subsystem is a real module directory, and that every class and package named in a `scope` still exists **inside that group's modules**. Subsystem names are module paths, so the search is exact rather than guessed.
+
+Those checks are all one direction: does what a scope *names* still exist. The inverse — what exists that no scope names — is `--coverage`:
+
+```bash
+python tools/spark_source_map/check_drift.py --coverage
+```
+
+This matters because a sweep only walks a group's scope, so **a package no group claims can never be swept**, and its concepts can never surface as `propose:` blocks. The gap hides itself. Run it after any Spark upgrade, and when adding a group. It is advisory and never fails the build: plenty of packages (`util/`, `errors/`, `test/`, `dsl/`) are plumbing that rightly has no group, and deciding what deserves one is editorial.
 
 Spark 4.x moved classes between modules repeatedly — `StorageLevel` to `common/utils`, the `DataType` hierarchy to `sql/api`. A group can declare `modules: [sql/api]` to name the other modules its classes legitimately live in; that keeps the check strict instead of forcing scopes to stay vague enough to always pass.
 
@@ -178,9 +186,9 @@ The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--
 
 | Subsystem | Groups |
 |---|---|
-| `sql/catalyst` | analysis, optimizer, planner, expressions, types-parser |
-| `sql/core` | query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec |
-| `core` | rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra |
+| `sql/catalyst` | analysis, optimizer, planner, expressions, types-parser, framework |
+| `sql/core` | query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec, classic-api, sql-scripting |
+| `core` | rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra, rpc-resources, api-bridge |
 | `sql/pipelines` | graph, autocdc, pipeline-runtime |
 | `sql/connect` | client-server, declarative-pipelines |
 | `resource-managers/kubernetes` | driver-executor, auth-networking |

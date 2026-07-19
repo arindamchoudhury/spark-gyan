@@ -9,12 +9,21 @@ _meta:
   verified_at: 2026-07-19
   source_root: C:/opt/learn/spark/repos/spark
   note: >
-    Scopes re-walked against v4.2.0 on 2026-07-19. All resolve except sql/catalyst
-    "planner", corrected here: SparkPlanner and SparkStrategies live in sql/core, not
-    catalyst, and catalyst's execution/ package holds V2 logical relations plus arrow,
-    not physical operators. Note DataSource V2 is split across both modules by design —
-    3 logical-plan files in sql/catalyst, 87 physical exec files in sql/core — so the
-    sql/core "datasources" scope claiming v2/ is correct and was left alone.
+    Scopes re-walked against v4.2.0 on 2026-07-19, in two passes.
+
+    Correctness (does what a scope names still exist): sql/catalyst "planner" was wrong —
+    SparkPlanner and SparkStrategies live in sql/core, and catalyst's execution/ package
+    holds V2 logical relations plus arrow, not physical operators. DataSource V2 is split
+    across both modules by design (3 logical-plan files in sql/catalyst, 87 physical exec
+    files in sql/core), so the sql/core "datasources" scope claiming v2/ is correct.
+
+    Coverage (what exists that no scope named): 73 packages were unclaimed, and a package
+    no group claims can never be swept. Added five groups — catalyst "framework" (the
+    trees/rules/plans/catalog/encoders substrate the analyzer, optimizer and planner all
+    sit on), core "rpc-resources" and "api-bridge", sql/core "classic-api" and
+    "sql-scripting" (I12 was a path topic with no group behind it) — and extended nine
+    scopes. Down to 31, the remainder being plumbing (util/, errors/, test/, dsl/).
+    Re-check with: python tools/spark_source_map/check_drift.py --coverage
 
 core:
   - number: 1
@@ -46,8 +55,21 @@ core:
     name: infra
     title: "Infra"
     topics: [E2, E3]
-    scope: "deploy/, metrics/, security/, ui/, History Server configs"
+    modules: [common/utils]   # ConfigBuilder/ConfigEntry live in common/utils
+    scope: "deploy/, metrics/, security/, ui/, status/ (AppStatusStore, the UI/History Server backend), internal/ (config system: ConfigBuilder, ConfigEntry), History Server configs"
     description: ""
+  - number: 6
+    name: rpc-resources
+    title: "RPC & resource profiles"
+    topics: [E1, E2]
+    scope: "rpc/ (RpcEndpoint, NettyRpcEnv), network/, resource/ (ResourceProfile, ExecutorResourceRequest, ResourceAllocator)"
+    description: "The control-plane RPC layer every component talks over, and the resource-profile model behind GPU and accelerator scheduling"
+  - number: 7
+    name: api-bridge
+    title: "Language API bridge"
+    topics: [I3, I4]
+    scope: "api/python/ (PythonRDD, PythonRunner, Py4JServer), api/java/, api/r/"
+    description: "How PySpark reaches the JVM: the Py4J gateway, the Python worker protocol, and the Java/R wrappers over the RDD API"
 
 sql/catalyst:
   - number: 1
@@ -80,15 +102,21 @@ sql/catalyst:
     title: "Types & SQL parser"
     topics: [B5]
     modules: [sql/api]   # the DataType hierarchy moved to sql/api in Spark 4.x
-    scope: "types/ (DataType hierarchy, StructType, DecimalType — now in sql/api), parser/ (Antlr4 grammar, AbstractSqlParser, AstBuilder)"
+    scope: "types/ (DataType hierarchy, StructType, DecimalType — now in sql/api), parser/ (Antlr4 grammar, AbstractSqlParser, AstBuilder), csv/, json/, xml/ (the per-format parsers and their options)"
     description: "DataType system and the SQL/DDL parser that produces unresolved logical plans"
+  - number: 6
+    name: framework
+    title: "Catalyst framework"
+    topics: [A1, E1]
+    scope: "trees/ (TreeNode, TreePatterns), rules/ (Rule, RuleExecutor, RuleIdCollection), plans/ (QueryPlan, logical/ LogicalPlan, physical/ Partitioning), catalog/ (SessionCatalog, InMemoryCatalog), encoders/ (ExpressionEncoder)"
+    description: "The substrate the analyzer, optimizer and planner all operate on: the immutable tree, the rule-execution engine, the plan hierarchy, the session catalog, and the encoders behind the typed Dataset API"
 
 sql/connect:
   - number: 1
     name: client-server
     title: "Client-server protocol"
     topics: [E9]
-    scope: "connect/ (gRPC service, proto definitions, session management)"
+    scope: "planner/ (SparkConnectPlanner — turns protobuf relations into a Catalyst logical plan), execution/, service/, config/, plugin/, ui/, common/ (proto definitions), client/ (SparkConnectClient), ml/ (Connect ML)"
     description: "Spark Connect protocol separating the client from the server over gRPC"
   - number: 2
     name: declarative-pipelines
@@ -108,7 +136,7 @@ streaming:
     name: dstream
     title: "DStream (legacy)"
     topics: []
-    scope: "streaming/ (StreamingContext, DStream, ReceiverTracker)"
+    scope: "dstream/ (DStream, InputDStream), receiver/ (Receiver, ReceiverTracker), scheduler/ (JobGenerator), rdd/, api/, ui/, StreamingContext"
     description: "Legacy RDD-based streaming model; superseded by Structured Streaming"
 
 resource-managers/kubernetes:
@@ -146,7 +174,7 @@ connector/kafka-0-10-sql:
     name: source-sink
     title: "Kafka source & sink"
     topics: [A7, A8]
-    scope: "kafka010/ (KafkaSourceProvider, KafkaMicroBatchStream, KafkaSink)"
+    scope: "kafka010/ (KafkaSourceProvider, KafkaMicroBatchStream, KafkaSink), consumer/, producer/"
     description: "Structured Streaming Kafka source and sink with offset tracking and exactly-once semantics"
 
 connector/profiler:
@@ -162,7 +190,7 @@ sql/hive:
     name: hive-metastore
     title: "Hive metastore & DDL"
     topics: [B4]
-    scope: "hive/ (HiveSessionCatalog, HiveExternalCatalog, HiveClientImpl)"
+    scope: "hive/ (HiveSessionCatalog, HiveExternalCatalog, HiveClientImpl), client/ (HiveClient shim layer), execution/ (HiveTableScanExec, InsertIntoHiveTable, HiveSimpleUDF, HiveGenericUDF wrappers), orc/, security/"
     description: "Hive metastore connectivity, DDL compatibility, and SerDe/UDF bridging"
 
 # Subsystems below define no configs of their own — Spark declares nearly every
@@ -193,7 +221,7 @@ sql/core:
     name: datasources
     title: "Data sources & scans"
     topics: [B4, I10]
-    scope: "execution/datasources/ (FileSourceScanExec, parquet/, v2/), DataSourceScanExec"
+    scope: "execution/datasources/ (FileSourceScanExec, parquet/, v2/), DataSourceScanExec, jdbc/ (JdbcDialects, JDBCRelation), avro/ (AvroFileFormat), sources/"
     description: "File format readers/writers, predicate pushdown, column pruning, and the DSv2 API"
   - number: 5
     name: agg-window-exchange
@@ -211,8 +239,20 @@ sql/core:
     name: streaming-exec
     title: "Streaming execution"
     topics: [A7, A8]
-    scope: "execution/streaming/ (MicroBatchExecution, state store, watermark tracking)"
+    scope: "execution/streaming/ (MicroBatchExecution, state store, watermark tracking), execution/streaming/runtime/ (StreamExecution, TriggerExecutor)"
     description: "Micro-batch execution loop, checkpointing, and stateful operator storage"
+  - number: 8
+    name: classic-api
+    title: "Classic DataFrame API"
+    topics: [B2, E9]
+    scope: "classic/ (SparkSession, Dataset, DataFrameReader, DataFrameWriter, Catalog), artifact/, columnar/"
+    description: "The classic (non-Connect) implementation of the user-facing API — the same names Spark Connect reimplements over gRPC, which is what makes the two paths worth reading side by side"
+  - number: 9
+    name: sql-scripting
+    title: "SQL scripting"
+    topics: [I12]
+    scope: "scripting/ (SqlScriptingInterpreter, SqlScriptingExecution, SqlScriptingExecutionNode, SqlScriptingLocalVariableManager)"
+    description: "The SQL-only procedural layer added in Spark 4.0: compound statements, local variables, control flow, and cursors"
 
 sql/pipelines:
   - number: 1

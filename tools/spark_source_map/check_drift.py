@@ -107,6 +107,106 @@ def declared_in(files: list[Path], tokens: set[str]) -> set[str]:
     return found
 
 
+def package_roots(mod: Path, subsystem: str) -> list[Path]:
+    """Every natural package root under a module.
+
+    A module may hold several source trees (resource-managers/kubernetes keeps
+    its under a core/ submodule), so this returns a list. Within each,
+    src/main/scala/org/apache/spark/... is a single chain until it fans out;
+    the fan-out point is where the module's own packages begin. For sql/* the
+    fan-out lands on org/apache/spark, one level above the interesting
+    packages, so keep descending while a child echoes the module path
+    (sql/core -> .../spark/sql, streaming -> .../spark/streaming).
+    """
+    seg = {s for part in subsystem.split("/") for s in (part, part.replace("-", ""))}
+    # Every Spark package sits under org/apache/spark; descend it unconditionally
+    # so a sibling like org/apache/datasketches cannot stall the walk.
+    prefix = ("org", "apache", "spark")
+    roots: list[Path] = []
+    for src in sorted(mod.rglob("src/main/scala")) + sorted(mod.rglob("src/main/java")):
+        if "target" in src.parts:
+            continue
+        cur = src
+        while True:
+            kids = {d.name: d for d in cur.iterdir() if d.is_dir()}
+            has_src = any(f.suffix in SRC_EXTS for f in cur.iterdir() if f.is_file())
+            step = next((kids[p] for p in prefix if p in kids), None)
+            if step is None and len(kids) == 1 and not has_src:
+                step = next(iter(kids.values()))
+            if step is None and not has_src:
+                echo = [k for n, k in kids.items() if n in seg]
+                step = echo[0] if len(echo) == 1 else None
+            if step is None:
+                break
+            cur = step
+        if cur not in roots:
+            roots.append(cur)
+    return roots
+
+
+def scope_tokens(scope: str) -> set[str]:
+    """Package segments a scope actually claims, lowercased.
+
+    Only segments of a real `foo/bar/` path token count. A scope's prose
+    mentions must not claim a package -- "analysis/ (Analyzer, resolution
+    rules, catalog)" describes the analyzer, and reading it as coverage of
+    catalyst's rules/ and catalog/ packages would hide two genuine gaps.
+    Split per segment so 'sources' is not satisfied by 'datasources'.
+    """
+    out: set[str] = set()
+    for m in DIR_RE.finditer(scope):
+        out.update(m.group(1).lower().split("/"))
+    return out
+
+
+def report_coverage(source: Path, subsystems: dict) -> int:
+    """Report packages that no group scope claims.
+
+    check_drift's other checks verify that what a scope *names* still exists.
+    This is the inverse: what exists that no scope names. It matters because a
+    sweep only walks a group's scope, so a package no group claims can never be
+    swept -- and its concepts can never surface as learning-path proposals.
+
+    Advisory only: some packages are plumbing that deserves no group, and a
+    scope may cover a package by naming its classes rather than its directory.
+    """
+    print("Packages no group scope claims (largest first).")
+    print("Advisory: plumbing rightly has no group -- judge, don't auto-add.\n")
+    total = 0
+    for sub in sorted(subsystems):
+        mod = module_dir(source, sub)
+        if not mod.is_dir():
+            continue
+        scope_text = " ".join((g.get("scope") or "") for g in (subsystems[sub] or []))
+        toks = scope_tokens(scope_text)
+        # Class names in the scope resolve a package too: a group naming
+        # DStream covers dstream/ without spelling out the directory.
+        scope_classes = {t for t in IDENT_RE.findall(scope_text) if looks_like_class(t)}
+
+        for root in package_roots(mod, sub):
+            rows = []
+            for pkg in sorted(d for d in root.iterdir() if d.is_dir()):
+                if pkg.name.lower() in toks:      # whole segment, case-insensitive
+                    continue
+                # A scope may claim a nested package (k8s/ lives under deploy/);
+                # the parent is then covered, not a gap.
+                if any(d.is_dir() and d.name.lower() in toks for d in pkg.rglob("*")):
+                    continue
+                files = [f for f in pkg.rglob("*") if f.suffix in SRC_EXTS]
+                if any(f.stem in scope_classes for f in files):
+                    continue
+                if files:
+                    rows.append((len(files), pkg.name))
+            if rows:
+                total += len(rows)
+                print(f"{sub}  ({root.relative_to(mod).as_posix()})")
+                for n, name in sorted(rows, reverse=True):
+                    print(f"    {n:>4}  {name}/")
+                print()
+    print(f"{total} unclaimed package(s). Add a group, extend a scope, or leave as plumbing.")
+    return 0
+
+
 def load_front_matter(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
@@ -118,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", help="Spark checkout (default: groups.yaml _meta.source_root).")
     ap.add_argument("--quiet", action="store_true", help="Only print problems.")
+    ap.add_argument("--coverage", action="store_true",
+                    help="Report packages no group scope claims, and exit. Advisory, "
+                         "never fails: judging what deserves a group is editorial.")
     args = ap.parse_args(argv)
 
     root = Path(__file__).resolve().parents[2]
@@ -141,6 +244,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: Spark source not found at {source!s} "
               f"(set _meta.source_root in groups.yaml or pass --source)")
         return 1
+
+    if args.coverage:
+        return report_coverage(source, subsystems)
 
     # --- 1. version stamp ----------------------------------------------------
     cat_version = None
