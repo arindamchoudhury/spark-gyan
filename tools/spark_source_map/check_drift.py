@@ -222,12 +222,24 @@ def main(argv: list[str] | None = None) -> int:
         if not d.is_dir():
             continue
         for p in sorted(d.glob("*.md")):
+            text = p.read_text(encoding="utf-8")
             fm = load_front_matter(p)
             ver = str(fm.get("spark_version", "")).strip()
-            if cat_version and ver and ver != cat_version:
-                warnings.append(
-                    f"{kind}/{p.name}: recorded against Spark {ver}, catalog is now "
-                    f"{cat_version} — file:line anchors likely drifted.")
+            if not (cat_version and ver and ver != cat_version):
+                continue
+            # A page may deliberately target an older Spark: Iceberg and Delta
+            # ship no Spark 4.2 module, so their traces pin to 4.1 on purpose.
+            # version_pinned states that, and is not drift.
+            if fm.get("version_pinned"):
+                continue
+            # The warning is about apache/spark file:line anchors moving. A page
+            # whose anchors all point at another repo has none to drift.
+            if "apache/spark/blob/" not in text:
+                continue
+            warnings.append(
+                f"{kind}/{p.name}: recorded against Spark {ver}, catalog is now "
+                f"{cat_version} — file:line anchors likely drifted. If the older version "
+                f"is deliberate, set version_pinned: <reason> in the front matter.")
 
     # --- report --------------------------------------------------------------
     for w in warnings:
