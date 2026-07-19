@@ -50,6 +50,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A12 | Kafka and Streaming Ingestion | — | — | ⬜ |
 | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up | — | — | ⬜ |
 | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry | — | — | ⬜ |
+| A15 | Push-Based Shuffle | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -63,6 +64,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E11 | Serialization: KryoSerializer vs JavaSerializer | — | — | ⬜ |
 | E12 | Executor Exclusion and Health Tracking | — | — | ⬜ |
 | E13 | Barrier Execution Mode | — | — | ⬜ |
+| E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool | — | — | ⬜ |
 
 ## Source concept map
 
@@ -111,6 +113,34 @@ flowchart LR
     S1 --> S1c11["accumulator-v2"]
     S1 --> S1c12["async-rdd-actions"]
     S1 --> S1c13["serialization"]
+    S2["core"]
+    S2 --> S2c0["shuffle-manager-registration"]
+    S2 --> S2c1["writer-selection"]
+    S2 --> S2c2["bypass-merge-sort-writer"]
+    S2 --> S2c3["unsafe-shuffle-writer"]
+    S2 --> S2c4["sort-shuffle-writer"]
+    S2 --> S2c5["index-file-and-block-lookup"]
+    S2 --> S2c6["map-output-commit"]
+    S2 --> S2c7["fetch-request-planning"]
+    S2 --> S2c8["fetch-to-memory-vs-disk"]
+    S2 --> S2c9["corruption-detection-and-retry"]
+    S2 --> S2c10["netty-oom-backpressure"]
+    S2 --> S2c11["batch-fetch"]
+    S2 --> S2c12["push-based-shuffle"]
+    S2 --> S2c13["external-shuffle-service"]
+    S2 --> S2c14["reduce-side-locality"]
+    S2 --> S2c15["memory-pool-sizing"]
+    S2 --> S2c16["execution-storage-borrowing"]
+    S2 --> S2c17["per-task-memory-share"]
+    S2 --> S2c18["memory-consumer-acquire-spill-loop"]
+    S2 --> S2c19["spill-size-estimation"]
+    S2 --> S2c20["tungsten-pages"]
+    S2 --> S2c21["bytes-to-bytes-map"]
+    S2 --> S2c22["unsafe-external-sorter"]
+    S2 --> S2c23["unroll-memory"]
+    S2 --> S2c24["compression-codecs"]
+    S2 --> S2c25["memory-release-and-leak-detection"]
+    S2 --> S2c26["unmanaged-memory-accounting"]
 ```
 
 ## Discovery gaps and refinement proposals
@@ -128,7 +158,9 @@ flowchart LR
 | fetch-failure-and-stage-retry | core | gap | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
 | indeterminate-stages-and-rollback | core | gap | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
+| push-based-shuffle | core | gap | A15 | Push-Based Shuffle |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
+| unmanaged-memory-accounting | core | gap | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
 | whole-file-sources | core | gap | I17 | Whole-File and Binary RDD Sources |
 
 
@@ -146,7 +178,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | sql/catalyst — framework | — | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-19 |
-| core — shuffle-memory | — | ⬜ pending | — | — |
+| core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — storage-serializer | — | ⬜ pending | — | — |
 | core — submit-standalone | — | ⬜ pending | — | — |
 | core — monitoring | — | ⬜ pending | — | — |

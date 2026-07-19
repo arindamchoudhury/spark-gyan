@@ -95,6 +95,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 9. **Source trace — [B1 in the source map](reference/spark-source-map/topics/b1.md)** — the full path: `getOrCreate()` → `DAGScheduler` → `TaskRunner`, then what a task actually produces (shuffle write, the three writers, `MapOutputTracker`), the failure and retry paths, how results return to the driver, and Connect as the alternative front end. Read it *after* the books: it turns "the DAG scheduler splits stages at shuffle boundaries" from a claim you accept into one you can go and look at
 10. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the RDD contract itself (`compute`, `getPartitions`, `getDependencies`) and the `iterator` → `getOrCompute` path every task runs, which is where the architecture stops being a diagram and becomes code
 11. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the whole execution model as code — action to job to stages to tasks, the single-threaded event loop that drives it, and where the driver stops deciding and the executor starts running
+12. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — what a shuffle physically is: two files per map task, an index of offsets, and the executor-wide monitor that commits them
 
 **Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code. Stronger version, once you have read the source trace: name the single function that decides where one stage ends and the next begins; explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop; and explain why a stage you already watched succeed can run again.
 
@@ -579,6 +580,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 5. **Source trace — [I5 in the source map](reference/spark-source-map/topics/i5.md)** — why `coalesce` is contagious upstream, why a bare `repartition` does a hidden sort, and how partitionings are negotiated rather than commanded
 6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `Partitioner`, `HashPartitioner` vs `RangePartitioner` with its reservoir sampling, `ShuffledRDD`, and the narrow `coalesce` path that avoids a shuffle
 7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — `computeValidLocalityLevels` and the delay-scheduling timers — including that a `NO_PREF` task is reported as `PROCESS_LOCAL`, so the UI's locality column can flatter you
+8. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the shuffle index format — a prefix sum of partition lengths — and the reduce-side locality preference with its hardcoded 0.2 fraction
 
 **Milestone:** You can explain the difference between `repartition` and `coalesce`, set `spark.sql.shuffle.partitions` appropriately for your data volume, and write a DataFrame to exactly N files. Then the one that separates knowing the API from understanding it: explain why `df.transform(...).coalesce(1).write(...)` can be dramatically slower than the same pipeline with `repartition(1)`, and say what `explain()` would show in each case.
 
@@ -617,6 +619,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 6. **Spark-docs → `pyspark.StorageLevel`** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.StorageLevel.html)) — the Python constants, which do **not** map one-to-one onto the Scala ones (see the warning below)
 7. **Source trace — [I6 in the source map](reference/spark-source-map/topics/i6.md)** — why a cache hit depends on plan equivalence rather than on your variable, and why `storageFraction` is a floor rather than a reservation
 8. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `persist`/`cache` down to `getOrCompute` and the block manager, plus both checkpoint modes and how `markCheckpointed` truncates lineage
+9. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — unroll memory as the caching admission path, and why a cached DataFrame can be almost entirely evicted with nothing in the logs
 
 **Milestone:** You can identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower. Then two the source settles: explain why `cached_df.filter(...)` may recompute from source, and say which storage level `df.cache()` actually gives you — spelled the way PySpark spells it.
 
@@ -1067,6 +1070,7 @@ You are ready to leave this level when you can:
 4. **Spark-docs → Optimizing Skew Join** ([sql-performance-tuning.html#optimizing-skew-join](https://spark.apache.org/docs/latest/sql-performance-tuning.html#optimizing-skew-join)) — what AQE now handles for you, with the thresholds that decide when it kicks in; read alongside [Splitting skewed shuffle partitions](https://spark.apache.org/docs/latest/sql-performance-tuning.html#splitting-skewed-shuffle-partitions) before reaching for manual salting
 5. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `combineByKeyWithClassTag`, the single function every key-wise aggregation bottoms out in — and the map-side-combine difference that makes `reduceByKey` cheap and `groupByKey` a skew hazard
 6. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — speculation's launch criteria and its duplicate-side-effect risk, plus the fetch-failure path that skew and stragglers eventually provoke
+7. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — why skew spills (a task's ceiling is 1/N of the pool regardless of partition size), the size estimation behind 'it OOMed instead of spilling', and the three in-flight limits on the fetch side
 
 **Milestone:** You can diagnose a skewed stage from the Spark UI task-time histogram, apply a salting strategy, and measure the improvement.
 
@@ -1269,6 +1273,36 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ A15 — Push-Based Shuffle
+
+> Discovered from source sweep (gap): `core: push-based-shuffle`
+
+**What it is:** a second shuffle write path. Instead of every reducer fetching one small block from every mapper, map tasks *push* their output to remote merger services, which concatenate blocks per reduce partition so a reducer reads a few large merged chunks. It adds a driver-side finalization protocol, thirteen configs, and a reduce-side fallback that silently reverts to ordinary blocks whenever anything goes wrong.
+
+**Why you need it:** it is the standard answer to the small-block problem on large clusters — the case where a 10,000 × 10,000 shuffle produces 100 million tiny fetches — and it is also the highest-config-density, lowest-observability feature in the shuffle subsystem. `spark.shuffle.push.enabled=true` on a non-YARN cluster is accepted and does nothing. Merger negotiation can disable it per stage with no log line at any level. And turning it on forfeits checksum-based corruption diagnosis entirely.
+
+**Learn it with:**
+
+1. **Spark-docs → Configuration, Shuffle Behavior** ([configuration.html#shuffle-behavior](https://spark.apache.org/docs/latest/configuration.html#shuffle-behavior)) — the `spark.shuffle.push.*` family and the external shuffle service settings it depends on
+2. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — the external shuffle service and dynamic allocation, both prerequisites for the merger side
+3. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the four enablement preconditions, the merger-threshold negotiation that returns an empty list without logging, the pusher's batching and skip rules, and the three reduce-side fallback triggers
+
+!!! warning "No book covers this"
+
+    Push-based shuffle landed in Spark 3.2, after every book in the resources table. SDG (2018) and LS2e (2020) describe the sort-shuffle write path only. Docs and source only.
+
+!!! warning "It is off unless four separate conditions all hold"
+
+    YARN as the master (checked by string equality), the external shuffle service enabled, IO encryption off, and a relocatable serializer. Spark logs one warning naming all four without saying which failed. Then, per stage, if fewer merger locations come back than `max(mergersMinStaticThreshold, desired × mergersMinThresholdRatio)`, push is disabled for that stage **silently** — no log at any level.
+
+!!! info "Push failures are non-fatal by design"
+
+    An unpushed or unmerged block is simply fetched from the mapper as usual, so every degradation here costs efficiency rather than correctness — which is exactly why none of it is loud. `corruptMergedBlockChunks` is the only metric that moves, and it is not in the UI's standard shuffle metrics.
+
+**Milestone:** You can state the four conditions under which push-based shuffle actually activates, explain why enabling it on a Kubernetes cluster does nothing, predict what happens to a stage when two of its merger nodes are excluded, and say what you lose in corruption diagnosis by turning it on.
+
+---
+
 ### 🎯 Advanced Checkpoint
 
 You are ready to leave this level when you can:
@@ -1282,6 +1316,8 @@ You are ready to leave this level when you can:
 *Optional:* the Databricks Data Engineer Associate exam maps to roughly I8–A6 plus orchestration, if you are working on that platform.
 
 ---
+
+
 
 
 
@@ -1312,6 +1348,7 @@ You are ready to leave this level when you can:
 5. **Spark-docs → Memory Tuning** ([tuning.html#memory-tuning](https://spark.apache.org/docs/latest/tuning.html#memory-tuning)) — the unified memory model, GC tuning, and the serialization section; the current numbers, against which the books' JVM-flag advice should be treated as dated
 6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `TorrentBroadcast`'s block protocol, `ContextCleaner`'s GC-driven cleanup, the `AccumulatorV2` copy/merge lifecycle, and Kryo vs Java serializer construction
 7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the task lifecycle on the executor, `TaskContext` completion listeners, the result-size decision, and the kill path that turns an uninterruptible task into a lost slot
+8. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the memory system end to end — pool sizing, the execution/storage asymmetry, the acquire/spill loop, Tungsten pages, and the leak detection that is suppressed exactly when leaks are likeliest
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
@@ -1333,6 +1370,7 @@ You are ready to leave this level when you can:
 3. **Spark-docs → Cluster Mode Overview** ([spark.apache.org/docs/latest/cluster-overview.html](https://spark.apache.org/docs/latest/cluster-overview.html))
 4. **Spark-docs → Kubernetes** ([spark.apache.org/docs/latest/running-on-kubernetes.html](https://spark.apache.org/docs/latest/running-on-kubernetes.html)) — the direction production Spark is moving
 5. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — executor registration, the offer loop, decommissioning as a graceful drain, and dynamic allocation's target arithmetic
+6. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the external shuffle service — how it makes map output survive executor loss, and its hardcoded five-second registration retry
 
 **Milestone:** You can size a Spark cluster for a given workload (number of executors, cores per executor, memory), explain the difference between client and cluster deploy mode, and configure dynamic allocation.
 
@@ -1584,6 +1622,32 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ E14 — Unmanaged Memory: Native Allocators Outside the Unified Pool
+
+> Discovered from source sweep (gap): `core: unmanaged-memory-accounting`
+
+**What it is:** Spark's unified memory manager accounts for execution and storage memory it hands out itself. Components that allocate *outside* those pools — RocksDB state stores, native libraries, JNI buffers — are invisible to it unless they register as `UnmanagedMemoryConsumer`s. When registered and polling is enabled, a daemon thread samples their usage and subtracts it from what execution and storage may allocate.
+
+**Why you need it:** the polling interval defaults to `0s`, which means disabled. On a stock install a stateful streaming job's RocksDB memory does not appear in Spark's accounting at all, which is the direct cause of the most common complaint in stateful streaming: **the executor is killed for exceeding its container limit while the Spark UI shows plenty of free storage memory.** Sizing executors from the UI's numbers is wrong by however much the native allocator holds.
+
+**Learn it with:**
+
+1. **Spark-docs → Configuration, Memory Management** ([configuration.html#memory-management](https://spark.apache.org/docs/latest/configuration.html#memory-management)) — `spark.memory.fraction`, `storageFraction` and the off-heap keys, i.e. what *is* accounted for
+2. **Spark-docs → Structured Streaming, State Store** ([structured-streaming-programming-guide.html#state-store](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html#state-store)) — the RocksDB state store, the usual unmanaged consumer in practice
+3. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the registration mechanism, the polling daemon and its default-off interval, and how the polled figures are subtracted from the execution and storage ceilings
+
+!!! warning "No book covers this, and it is new"
+
+    `UnmanagedMemoryConsumer` arrived in Spark 4.1 — after every book in the resources table, and after most blog posts on Spark memory tuning. Anything you read about `spark.memory.fraction` predating it describes an incomplete picture on a stateful streaming workload.
+
+!!! warning "Enabled, the numbers are still a stale snapshot"
+
+    Allocation decisions run against poll data up to one interval old, and a consumer whose usage accessor throws is silently counted as zero. This narrows the gap rather than closing it.
+
+**Milestone:** You can explain why a RocksDB-backed streaming executor gets OOM-killed while the Spark UI reports free memory, name the config that makes that memory visible and its default, and describe how you would size executor memory for a stateful streaming job given that the state store sits outside `spark.memory.fraction`.
+
+---
+
 
 ### 🎯 Expert Checkpoint
 
@@ -1597,6 +1661,8 @@ You are operating at Expert level when you can:
 *Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
 
 ---
+
+
 
 
 
