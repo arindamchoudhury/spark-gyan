@@ -37,7 +37,7 @@ nav = [
             { "I13 — Pair RDD Aggregations" = "reference/spark-source-map/topics/i13.md" },
         ]},
         { "Sweeps" = [
-            { "core (RDD layer)" = "reference/spark-source-map/sweeps/core.md" },
+            { "core — RDD layer" = "reference/spark-source-map/sweeps/core-rdd-layer.md" },
         ]},
     ]},
     { "Spark Book" = [
