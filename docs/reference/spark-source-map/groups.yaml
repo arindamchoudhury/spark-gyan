@@ -1,3 +1,21 @@
+# Hand-authored — no generator writes this file. gen_configs.py and
+# gen_coverage.py only read it. Edit it directly; re-running the generators
+# will not update it, and will not notice when it drifts from the source.
+#
+# Group scopes are package hints for a human or a sweeper subagent, not
+# resolvable paths — verify them against the checkout when bumping the version.
+_meta:
+  spark_version: "4.2.0"
+  verified_at: 2026-07-19
+  source_root: C:/opt/learn/spark/repos/spark
+  note: >
+    Scopes re-walked against v4.2.0 on 2026-07-19. All resolve except sql/catalyst
+    "planner", corrected here: SparkPlanner and SparkStrategies live in sql/core, not
+    catalyst, and catalyst's execution/ package holds V2 logical relations plus arrow,
+    not physical operators. Note DataSource V2 is split across both modules by design —
+    3 logical-plan files in sql/catalyst, 87 physical exec files in sql/core — so the
+    sql/core "datasources" scope claiming v2/ is correct and was left alone.
+
 core:
   - number: 1
     name: rdd-layer
@@ -47,8 +65,8 @@ sql/catalyst:
     name: planner
     title: "Planner & physical operators"
     topics: [A1, A3, E1]
-    scope: "planning/ (SparkPlanner, strategies), execution/ (physical operators)"
-    description: "Conversion of logical plans to physical execution plans and operator implementations"
+    scope: "planning/ (QueryPlanner, GenericStrategy, plan-matching patterns e.g. ExtractEquiJoinKeys), execution/datasources/v2/ (DataSourceV2Relation, DataSourceV2Implicits)"
+    description: "The abstract planner framework and plan-matching patterns catalyst provides, plus V2 logical relations. SparkPlanner, SparkStrategies and every physical operator live in sql/core — see the sql/core query-execution group."
   - number: 4
     name: expressions
     title: "Expressions & codegen"

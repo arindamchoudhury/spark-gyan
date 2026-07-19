@@ -495,7 +495,9 @@ def load_groups(out_dir: Path) -> dict | None:
     groups_file = out_dir.parent / "groups.yaml"
     if not groups_file.exists():
         return None
-    return yaml.safe_load(groups_file.read_text(encoding="utf-8"))
+    data = yaml.safe_load(groups_file.read_text(encoding="utf-8")) or {}
+    # Drop "_"-prefixed metadata keys (_meta) so only subsystems remain.
+    return {sub: groups for sub, groups in data.items() if not sub.startswith("_")}
 
 
 def write_markdown(cat: Catalog, path: Path) -> None:

@@ -68,7 +68,10 @@ def load_group_subsystems(groups_file: Path) -> dict[str, list[str]]:
     if not groups_file.exists():
         return {}
     data = yaml.safe_load(groups_file.read_text(encoding="utf-8")) or {}
-    return {sub: [g["name"] for g in groups] for sub, groups in data.items()}
+    # Keys starting with "_" are file metadata (_meta: spark_version, verified_at),
+    # not subsystems; without this they render as phantom rows in the sweep table.
+    return {sub: [g["name"] for g in groups]
+            for sub, groups in data.items() if not sub.startswith("_")}
 
 
 def load_topic_pages(topics_dir: Path) -> dict[str, dict]:
