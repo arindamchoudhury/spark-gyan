@@ -304,9 +304,16 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 - [DAGScheduler.scala:2987](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L2987) — merge statuses arriving after finalization are silently dropped (acknowledged `TODO: SPARK-35549`)
 - [DAGScheduler.scala:352](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L352) — the six push-shuffle timing/threading configs read into fields
 
-!!! note "Partial coverage — flagged deliberately"
+!!! info "Covered in full by the shuffle-memory sweep — not a carving gap"
 
-    Only the boundaries of this subsystem were traced. The RPC fan-out to merger shuffle-service instances (`finalizeShuffleMerge`), its timeout and threading model, and `cancelFinalizeShuffleMergeFutures` were **not** read line by line and carry no anchors here. The `spark.shuffle.push.*` config family is also absent from this group's config slice, which suggests a `groups.yaml` carving gap worth revisiting.
+    Only the *driver-side boundaries* are traced here, because push-based shuffle belongs to the
+    `core — shuffle-memory` group, whose scope names it explicitly and whose config slice holds all
+    thirteen `spark.shuffle.push.*` keys. An earlier version of this note read their absence from
+    *this* group's slice as a `groups.yaml` carving gap; that was wrong — the carving is correct,
+    and this group rightly does not own them. For the pusher, the merger negotiation, the server
+    side of finalization (`RemoteBlockPushResolver`) and the reduce-side fallback, see
+    [core — shuffle & memory](core-shuffle-memory.md). What remains genuinely untraced anywhere is
+    `cancelFinalizeShuffleMergeFutures` and the finalize thread pool's timeout model.
 
 **Configs:** `spark.shuffle.push.*`
 
@@ -650,4 +657,5 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
 | Date | Spark | What changed |
 |---|---|---|
-| 2026-07-19 | 4.2.0 | Initial sweep, in two halves. 27 concepts. Four discovery gaps proposed as topics: A13 (stage retry), A14 (determinism and rollback), E12 (executor exclusion), E13 (barrier execution). Push-based shuffle finalization covered at its boundaries only — flagged as partial, and its `spark.shuffle.push.*` config family is absent from this group's slice, suggesting a `groups.yaml` carving gap. |
+| 2026-07-19 | 4.2.0 | Initial sweep, in two halves. 27 concepts. Four discovery gaps proposed as topics: A13 (stage retry), A14 (determinism and rollback), E12 (executor exclusion), E13 (barrier execution). Push-based shuffle traced only at its driver-side boundaries, since it belongs to the `shuffle-memory` group. |
+| 2026-07-19 | 4.2.0 | Correction: this page originally read the absence of `spark.shuffle.push.*` from this group's slice as a `groups.yaml` carving gap. It is not — `shuffle-memory`'s scope names push-based shuffle and its slice holds all thirteen keys, and the [shuffle & memory sweep](core-shuffle-memory.md) covers the subsystem in full. |
