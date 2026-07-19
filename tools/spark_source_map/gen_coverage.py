@@ -324,8 +324,13 @@ def build_index(root: Path) -> str:
     all_subs = set(sub_counts) | set(group_subs)
     for sub in sorted(all_subs, key=lambda s: (-sub_counts.get(s, 0), s)):
         count_col = str(sub_counts[sub]) if sub in sub_counts else "—"
-        if sub in grouped_subs:
-            for i, g in enumerate(all_groups_by_sub[sub]):
+        # groups.yaml is authoritative for which groups exist. A sweep page's
+        # all_groups is only a fallback for a subsystem groups.yaml does not
+        # list -- relying on it meant that adding a group to an already-swept
+        # subsystem silently dropped it from this table, with no row at all.
+        rows = group_subs.get(sub) or all_groups_by_sub.get(sub)
+        if rows:
+            for i, g in enumerate(rows):
                 configs_col = count_col if i == 0 else "—"
                 if (sub, g) in group_meta:
                     m = group_meta[(sub, g)]

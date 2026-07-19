@@ -96,20 +96,39 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
-| sql/catalyst | 750 | ⬜ pending | — | — |
+| sql/catalyst — analysis | 750 | ⬜ pending | — | — |
+| sql/catalyst — optimizer | — | ⬜ pending | — | — |
+| sql/catalyst — planner | — | ⬜ pending | — | — |
+| sql/catalyst — expressions | — | ⬜ pending | — | — |
+| sql/catalyst — types-parser | — | ⬜ pending | — | — |
+| sql/catalyst — framework | — | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.1.2 | 2026-06-06 |
 | core — execution-engine | — | ⬜ pending | — | — |
 | core — shuffle-memory | — | ⬜ pending | — | — |
 | core — storage-serializer | — | ⬜ pending | — | — |
 | core — infra | — | ⬜ pending | — | — |
-| resource-managers/kubernetes | 89 | ⬜ pending | — | — |
-| resource-managers/yarn | 61 | ⬜ pending | — | — |
-| sql/connect | 44 | ⬜ pending | — | — |
-| streaming | 28 | ⬜ pending | — | — |
-| sql/hive | 17 | ⬜ pending | — | — |
-| connector/kafka-0-10 | 8 | ⬜ pending | — | — |
-| connector/kafka-0-10-sql | 8 | ⬜ pending | — | — |
-| connector/profiler | 7 | ⬜ pending | — | — |
-| sql/core | — | ⬜ pending | — | — |
-| sql/pipelines | — | ⬜ pending | — | — |
+| core — rpc-resources | — | ⬜ pending | — | — |
+| core — api-bridge | — | ⬜ pending | — | — |
+| resource-managers/kubernetes — driver-executor | 89 | ⬜ pending | — | — |
+| resource-managers/kubernetes — auth-networking | — | ⬜ pending | — | — |
+| resource-managers/yarn — am-executor | 61 | ⬜ pending | — | — |
+| sql/connect — client-server | 44 | ⬜ pending | — | — |
+| sql/connect — declarative-pipelines | — | ⬜ pending | — | — |
+| streaming — dstream | 28 | ⬜ pending | — | — |
+| sql/hive — hive-metastore | 17 | ⬜ pending | — | — |
+| connector/kafka-0-10 — consumer | 8 | ⬜ pending | — | — |
+| connector/kafka-0-10-sql — source-sink | 8 | ⬜ pending | — | — |
+| connector/profiler — async-profiler | 7 | ⬜ pending | — | — |
+| sql/core — query-execution | — | ⬜ pending | — | — |
+| sql/core — joins-exec | — | ⬜ pending | — | — |
+| sql/core — adaptive | — | ⬜ pending | — | — |
+| sql/core — datasources | — | ⬜ pending | — | — |
+| sql/core — agg-window-exchange | — | ⬜ pending | — | — |
+| sql/core — python-arrow | — | ⬜ pending | — | — |
+| sql/core — streaming-exec | — | ⬜ pending | — | — |
+| sql/core — classic-api | — | ⬜ pending | — | — |
+| sql/core — sql-scripting | — | ⬜ pending | — | — |
+| sql/pipelines — graph | — | ⬜ pending | — | — |
+| sql/pipelines — autocdc | — | ⬜ pending | — | — |
+| sql/pipelines — pipeline-runtime | — | ⬜ pending | — | — |
 

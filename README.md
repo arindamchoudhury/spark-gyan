@@ -89,7 +89,7 @@ Naming the group is what keeps a run finishable. `sweep core` on its own is a re
 
 Each group gets **its own page** — `sweeps/<subsystem-with-slashes-as-dashes>-<group>.md`, e.g. `core-rdd-layer.md`, `sql-catalyst-optimizer.md`. Never merge two groups into one file: `gen_coverage.py` keys the sweep-status table on `(subsystem, group)` and the `group:` field is a scalar, so the second group would be dropped and left showing `⬜ pending`. Filenames are otherwise inert — the generator globs `sweeps/*.md` and reads front matter — but they must be unique.
 
-Every page for a subsystem repeats the same `all_groups:` list, copied from `groups.yaml`. That list is what renders the table's rows: a group missing from it gets no row at all, not even a pending one. The generator takes the list from whichever page sorts **first alphabetically**, so a page that omits it or carries a stale copy silently drops rows.
+The sweep-status rows come from `groups.yaml`, which is authoritative for which groups exist. A page's optional `all_groups:` is only a fallback for a subsystem `groups.yaml` does not list. It used to be the primary source, which meant adding a group to an already-swept subsystem silently dropped it from the table — no row at all, not even pending. Keep `all_groups` accurate if you write it, but nothing breaks when it trails.
 
 ```yaml
 ---
@@ -148,6 +148,75 @@ Per-group completeness is enforced at sweep time instead, by the sweeper rather 
 Spark 4.x moved classes between modules repeatedly — `StorageLevel` to `common/utils`, the `DataType` hierarchy to `sql/api`. A group can declare `modules: [sql/api]` to name the other modules its classes legitimately live in; that keeps the check strict instead of forcing scopes to stay vague enough to always pass.
 
 Topic and sweep pages carry a `spark_version`. When it trails the catalog, `check_drift.py` warns that `file:line` anchors have likely drifted. Set `version_pinned: "<reason>"` when the older version is deliberate — the Iceberg and Delta traces pin to 4.1 because neither ships a Spark 4.2 module.
+
+### Editing groups.yaml
+
+Adding a group, extending a scope, or recarving a subsystem. All by hand — no generator writes this file.
+
+**1. Decide what changes.** `--coverage` tells you where the holes are; `--list-groups` shows the current carving and what has already been swept. A new group is warranted when a real body of code has no owner (`sql/core/scripting/` backing topic I12, say); extending an existing scope is right when the code belongs to a group that simply never named it.
+
+**2. Edit the YAML, watching two traps.**
+
+- **Numbers must ascend** within a subsystem. A new group goes last unless you renumber.
+- **Inserting after a `scope:` line orphans the following `description:` onto your new group**, producing a duplicate key. `yaml.safe_load` accepts this silently and keeps the last one. Insert after the group's `description:` line, not after its `scope:`.
+
+Verify with a duplicate-key-aware parse before moving on:
+
+```bash
+python -c "
+import yaml, collections, sys
+class D(yaml.SafeLoader): pass
+def nodup(l, n, deep=False):
+    ks = [l.construct_object(k, deep=True) for k, _ in n.value]
+    d = [k for k, c in collections.Counter(ks).items() if c > 1]
+    if d: sys.exit(f'DUPLICATE KEYS: {d}')
+    return yaml.SafeLoader.construct_mapping(l, n, deep)
+D.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, nodup)
+g = yaml.load(open('docs/reference/spark-source-map/groups.yaml', encoding='utf-8'), Loader=D)
+print(sum(len(v) for k, v in g.items() if not k.startswith('_')), 'groups, no duplicate keys')"
+```
+
+**3. Name real classes in the scope, then let the checker prove it.**
+
+```bash
+python tools/spark_source_map/check_drift.py
+```
+
+Write the classes you actually mean — `WholeStageCodegenExec`, not "Whole-Stage CodeGen" — because a name is what makes the scope checkable. Expect to be wrong: the last five scopes written here named four classes that were in a different module or misspelled. When a class legitimately lives elsewhere, add that module to the group's `modules:` list rather than vaguening the scope.
+
+**4. Re-run coverage.**
+
+```bash
+python tools/spark_source_map/check_drift.py --coverage
+```
+
+Confirms the change closed the gap you meant, and flags an identical-path collision with another group if you created one.
+
+**5. Bump `_meta`** — `spark_version` and `verified_at` — if you re-walked scopes against a checkout. Note in `_meta.note` what changed and why, since nothing else records the reasoning.
+
+**6. Regenerate and sync.**
+
+```bash
+python tools/spark_source_map/gen_coverage.py
+```
+
+New groups appear in the sweep-status table as `⬜ pending` automatically. Then update the group table in this README and in the skill — both are hand-copied from `groups.yaml`, so they drift the moment you add a group. Check them against the file:
+
+```bash
+python -c "
+import yaml, re
+g = yaml.safe_load(open('docs/reference/spark-source-map/groups.yaml', encoding='utf-8'))
+rd = open('README.md', encoding='utf-8').read()
+for s, v in g.items():
+    if s.startswith('_'): continue
+    m = re.search(r'^\|\s*\`' + re.escape(s) + r'\`\s*\|([^|]*)\|', rd, re.M)
+    want = [x['name'] for x in v]
+    got = [t.strip() for t in m.group(1).split(',')] if m else None
+    if got != want: print('DRIFT', s, got, '!=', want)
+print('table checked')"
+```
+
+**7. Commit `groups.yaml` and the regenerated `index.md` together**, so the carving and the rendered matrix never disagree in history.
 
 ### When a new Spark version ships
 
