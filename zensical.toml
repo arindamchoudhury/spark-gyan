@@ -40,6 +40,7 @@ nav = [
             { "core — RDD layer" = "reference/spark-source-map/sweeps/core-rdd-layer.md" },
             { "core — Execution engine" = "reference/spark-source-map/sweeps/core-execution-engine.md" },
             { "core — Shuffle & memory" = "reference/spark-source-map/sweeps/core-shuffle-memory.md" },
+            { "core — Storage & serialization" = "reference/spark-source-map/sweeps/core-storage-serializer.md" },
         ]},
     ]},
     { "Spark Book" = [

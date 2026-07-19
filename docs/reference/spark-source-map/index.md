@@ -65,6 +65,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E12 | Executor Exclusion and Health Tracking | — | — | ⬜ |
 | E13 | Barrier Execution Mode | — | — | ⬜ |
 | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool | — | — | ⬜ |
+| E15 | Block Locking and Cache Visibility | — | — | ⬜ |
 
 ## Source concept map
 
@@ -141,6 +142,32 @@ flowchart LR
     S2 --> S2c24["compression-codecs"]
     S2 --> S2c25["memory-release-and-leak-detection"]
     S2 --> S2c26["unmanaged-memory-accounting"]
+    S3["core"]
+    S3 --> S3c0["blockmanager-initialization"]
+    S3 --> S3c1["driver-location-registry"]
+    S3 --> S3c2["read-path-and-the-iterator-lock"]
+    S3 --> S3c3["get-or-else-update"]
+    S3 --> S3c4["cache-visibility-tracking"]
+    S3 --> S3c5["write-path-and-disk-fallback"]
+    S3 --> S3c6["block-locking"]
+    S3 --> S3c7["block-status-reporting-and-reregistration"]
+    S3 --> S3c8["unreadable-blocks"]
+    S3 --> S3c9["remote-block-fetch-and-location-refresh"]
+    S3 --> S3c10["replication-and-topology"]
+    S3 --> S3c11["executor-loss-and-proactive-replication"]
+    S3 --> S3c12["disk-layout"]
+    S3 --> S3c13["disk-lifecycle-and-shutdown"]
+    S3 --> S3c14["memory-eviction"]
+    S3 --> S3c15["decommission-block-migration"]
+    S3 --> S3c16["fallback-storage"]
+    S3 --> S3c17["serializer-abstraction"]
+    S3 --> S3c18["java-serializer"]
+    S3 --> S3c19["not-serializable-enrichment"]
+    S3 --> S3c20["kryo-construction-and-buffers"]
+    S3 --> S3c21["kryo-pool-and-registration"]
+    S3 --> S3c22["relocation-support"]
+    S3 --> S3c23["serializer-manager-auto-selection"]
+    S3 --> S3c24["storage-level-model"]
 ```
 
 ## Discovery gaps and refinement proposals
@@ -153,6 +180,7 @@ flowchart LR
 | approximate-actions | core | gap | I16 | Approximate Actions and Partial Results |
 | async-rdd-actions | core | refinement | I15 | AsyncRDDActions: Non-Blocking Job Submission |
 | barrier-execution | core | gap | E13 | Barrier Execution Mode |
+| block-locking | core | gap | E15 | Block Locking and Cache Visibility |
 | closure-cleaning | core | refinement | I14 | Closure Cleaning and the Task-Not-Serializable Problem |
 | executor-exclusion | core | gap | E12 | Executor Exclusion and Health Tracking |
 | fetch-failure-and-stage-retry | core | gap | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
@@ -179,7 +207,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-19 |
-| core — storage-serializer | — | ⬜ pending | — | — |
+| core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — submit-standalone | — | ⬜ pending | — | — |
 | core — monitoring | — | ⬜ pending | — | — |
 | core — config-security | — | ⬜ pending | — | — |

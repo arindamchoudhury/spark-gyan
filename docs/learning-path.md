@@ -620,6 +620,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 7. **Source trace — [I6 in the source map](reference/spark-source-map/topics/i6.md)** — why a cache hit depends on plan equivalence rather than on your variable, and why `storageFraction` is a floor rather than a reservation
 8. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `persist`/`cache` down to `getOrCompute` and the block manager, plus both checkpoint modes and how `markCheckpointed` truncates lineage
 9. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — unroll memory as the caching admission path, and why a cached DataFrame can be almost entirely evicted with nothing in the logs
+10. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — what a cached block physically is — the put path's memory-then-disk fallback, LRU eviction with its RDD self-eviction guard, and why `MEMORY_ONLY` on an oversized partition silently caches a prefix
 
 **Milestone:** You can identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower. Then two the source settles: explain why `cached_df.filter(...)` may recompute from source, and say which storage level `df.cache()` actually gives you — spelled the way PySpark spells it.
 
@@ -890,6 +891,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **Spark-docs → Understanding closures** ([rdd-programming-guide.html#understanding-closures](https://spark.apache.org/docs/latest/rdd-programming-guide.html#understanding-closures)) — the canonical explanation of why mutating a driver variable inside a transformation silently does nothing
 2. **SDG Ch 14** — distributed shared variables; broadcast and accumulators as the correct alternatives to capturing driver state
 3. **Source** — `core/src/main/scala/org/apache/spark/util/ClosureCleaner.scala`
+4. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — why closures are always Java-serialized — the closure serializer is hardcoded — and how `SerializationDebugger` builds the serialization stack you actually read
 
 **Milestone:** You can explain why a counter incremented inside `foreach` stays zero on the driver, predict whether a given lambda will raise `Task not serializable` before running it, and name the two fixes (broadcast the value, or move construction inside the closure).
 
@@ -1071,6 +1073,7 @@ You are ready to leave this level when you can:
 5. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `combineByKeyWithClassTag`, the single function every key-wise aggregation bottoms out in — and the map-side-combine difference that makes `reduceByKey` cheap and `groupByKey` a skew hazard
 6. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — speculation's launch criteria and its duplicate-side-effect risk, plus the fetch-failure path that skew and stragglers eventually provoke
 7. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — why skew spills (a task's ceiling is 1/N of the pool regardless of partition size), the size estimation behind 'it OOMed instead of spilling', and the three in-flight limits on the fetch side
+8. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the shuffle-block staleness path, and the serializer properties that decide whether the fast shuffle write path is available at all
 
 **Milestone:** You can diagnose a skewed stage from the Spark UI task-time histogram, apply a salting strategy, and measure the improvement.
 
@@ -1349,6 +1352,7 @@ You are ready to leave this level when you can:
 6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `TorrentBroadcast`'s block protocol, `ContextCleaner`'s GC-driven cleanup, the `AccumulatorV2` copy/merge lifecycle, and Kryo vs Java serializer construction
 7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the task lifecycle on the executor, `TaskContext` completion listeners, the result-size decision, and the kill path that turns an uninterruptible task into a lost slot
 8. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the memory system end to end — pool sizing, the execution/storage asymmetry, the acquire/spill loop, Tungsten pages, and the leak detection that is suppressed exactly when leaks are likeliest
+9. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the block manager's read and write paths, the lock protocol underneath them, and how a block that is reported but unreadable retracts itself from the driver's registry
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
@@ -1371,6 +1375,7 @@ You are ready to leave this level when you can:
 4. **Spark-docs → Kubernetes** ([spark.apache.org/docs/latest/running-on-kubernetes.html](https://spark.apache.org/docs/latest/running-on-kubernetes.html)) — the direction production Spark is moving
 5. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — executor registration, the offer loop, decommissioning as a graceful drain, and dynamic allocation's target arithmetic
 6. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the external shuffle service — how it makes map output survive executor loss, and its hardcoded five-second registration retry
+7. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — block replication and its topology requirement, executor loss and proactive re-replication, the disk layout, and decommission migration with fallback storage
 
 **Milestone:** You can size a Spark cluster for a given workload (number of executors, cores per executor, memory), explain the difference between client and cluster deploy mode, and configure dynamic allocation.
 
@@ -1565,6 +1570,7 @@ You are ready to leave this level when you can:
 1. **Spark-docs → Data Serialization** ([tuning.html#data-serialization](https://spark.apache.org/docs/latest/tuning.html#data-serialization)) — the official Kryo recommendation, registration, and buffer sizing
 2. **SDG Ch 19** — performance tuning; serialization in the context of everything else that makes a job slow. Treat its JVM-flag specifics as dated (see E1 — 4.2.0 runs on Java 25)
 3. **Source** — `core/src/main/scala/org/apache/spark/serializer/KryoSerializer.scala`
+4. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the serializer abstraction end to end: the Kryo pool and registration order, the 2 GiB buffer validation, relocation support gating the fast shuffle path, and the two places `spark.serializer` is silently ignored
 
 **Milestone:** You can enable Kryo with class registration, explain what `spark.kryo.registrationRequired=true` protects you from, and describe why this matters far less for pure DataFrame work than for RDDs of custom objects.
 
@@ -1648,6 +1654,32 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ E15 — Block Locking and Cache Visibility
+
+> Discovered from source sweep (gap): `core: block-locking`
+
+**What it is:** every cached or shuffled block sits behind a per-block readers-writer lock, attributed to a task attempt id so all of a task's locks can be reclaimed when it ends. Separately, an RDD block reported by a still-running task is held **invisible** until the driver learns that task succeeded, so a speculative or failed attempt cannot publish partial data to other tasks.
+
+**Why you need it:** two symptoms have no other explanation. A cached iterator you never fully drain keeps its read lock and pins the block against eviction for the rest of the task — `getLocalValues` hands back an iterator that releases the lock only on completion. And the executor log line `N block locks were not released by task X` is unreadable without the protocol, yet it is reported at INFO by default, so a genuine leak is invisible in most production log configurations.
+
+**Learn it with:**
+
+1. **Spark-docs → Configuration, Memory Management** ([configuration.html#memory-management](https://spark.apache.org/docs/latest/configuration.html#memory-management)) — the storage configs this interacts with, including `spark.storage.exceptionOnPinLeak`
+2. **Spark-docs → RDD Programming Guide, RDD Persistence** ([rdd-programming-guide.html#rdd-persistence](https://spark.apache.org/docs/latest/rdd-programming-guide.html#rdd-persistence)) — the caching semantics the locking protocol protects
+3. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the striped readers-writer lock, task-scoped release, the visibility handshake between executor and driver, and the two concurrent-release bugs the code now guards against
+
+!!! warning "No book covers this"
+
+    Block-level locking is an internal contract; SDG, LS2e and Rioux all describe caching at the API level and stop. This is source territory, and the sweep is the primary reference.
+
+!!! info "A cached block from a failed task is left invisible, not evicted"
+
+    SPARK-42582 is still open. Combined with the acknowledged TODO that indeterminate RDDs can produce *different* replicas under one BlockId, this is the storage-layer half of the correctness story that [A14](#a14--determinism-indeterminate-stages-and-correctness-under-retry) tells from the scheduler side.
+
+**Milestone:** You can explain why an un-drained `BlockResult` iterator keeps memory pinned, say what `N block locks were not released` means and which config turns it into a hard failure, and describe why a cached RDD block is not readable by other tasks until the producing task succeeds.
+
+---
+
 
 ### 🎯 Expert Checkpoint
 
@@ -1661,6 +1693,8 @@ You are operating at Expert level when you can:
 *Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
 
 ---
+
+
 
 
 
