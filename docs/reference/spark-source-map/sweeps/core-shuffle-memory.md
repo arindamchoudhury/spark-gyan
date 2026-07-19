@@ -10,7 +10,7 @@ concepts:
   - name: shuffle-manager-registration
     topics: [B1, E1]
   - name: writer-selection
-    topics: [E1, A4, B1]
+    topics: [E1, A4, B1, E3]
   - name: bypass-merge-sort-writer
     topics: [E1, A4]
   - name: unsafe-shuffle-writer
@@ -28,7 +28,7 @@ concepts:
   - name: corruption-detection-and-retry
     topics: [A4, E1, A13]
   - name: netty-oom-backpressure
-    topics: [A4, E1]
+    topics: [A4, E1, A13, E3]
   - name: batch-fetch
     topics: [A4, E1]
   - name: push-based-shuffle
@@ -621,4 +621,4 @@ Off-heap is a separate, **unreserved** budget: no 300 MB floor and no `spark.mem
 
 | Date | Spark | What changed |
 |---|---|---|
-| 2026-07-19 | 4.2.0 | Initial sweep, in two halves (shuffle write/read; memory, Tungsten, compression). 27 concepts. Two gaps proposed: A15 (push-based shuffle) and E14 (unmanaged memory). Two further gaps recorded against existing topics rather than proposed — the fetch-side failure taxonomy (Netty-OOM backpressure, the single-retry corruption budget, the three in-flight limits), which belongs with A13, and a cross-cutting observability gap: writer selection, merge strategy, batch-fetch eligibility and merger-threshold failure are all debug-level or silent. |
+| 2026-07-19 | 4.2.0 | Initial sweep, in two halves (shuffle write/read; memory, Tungsten, compression). 27 concepts. Two gaps proposed: A15 (push-based shuffle) and E14 (unmanaged memory). Two further gaps folded into existing topics rather than proposed as new ones, and the folding was done, not just noted: the fetch-side failure taxonomy (three in-flight limits, the single-retry corruption budget, the Netty-OOM circuit breaker) now sits in **A13** alongside the driver-side half it completes, and the cross-cutting observability gap — writer selection, merge strategy, batch-fetch eligibility and merger-threshold failure all being debug-level or silent — now sits in **E3**, with the practical remedy of raising `org.apache.spark.shuffle` and `org.apache.spark.storage` to DEBUG on one representative run. |

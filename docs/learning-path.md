@@ -1227,7 +1227,7 @@ You are ready to leave this level when you can:
 
 > Discovered from source sweep (gap): `core: fetch-failure-and-stage-retry`
 
-**What it is:** a `FetchFailed` means a reduce task could not read a map output — the executor that produced it died, its shuffle files are gone, or the node went away. The driver unregisters the lost output, re-runs the producing map stage, and aborts the job once the retry budget is spent. How *much* output is thrown away depends on whether an external shuffle service is running and whether the loss was a graceful decommission.
+**What it is:** a `FetchFailed` means a reduce task could not read a map output — the executor that produced it died, its shuffle files are gone, or the node went away. There are **two halves** to it. On the *reduce side*, the fetcher throttles, retries and detects corruption, and only escalates when it gives up. On the *driver side*, that escalation unregisters the lost output, re-runs the producing map stage, and aborts the job once the retry budget is spent. How *much* output is thrown away depends on whether an external shuffle service is running and whether the loss was a graceful decommission.
 
 **Why you need it:** this is the most common production Spark failure you will ever debug, and every default that governs it is non-obvious. `spark.stage.maxConsecutiveAttempts` is 4 and resets on stage success; `spark.stage.maxAttempts` is unbounded and never resets; `spark.stage.ignoreDecommissionFetchFailure` is true but depends on `maxRetainedRemovedDecommissionExecutors`, which is 0; `spark.files.fetchFailure.unRegisterOutputOnHost` is false, so a dead host loses its outputs one fetch failure at a time. Reading `FetchFailed … Resubmitting stage N` in a driver log without this model is guesswork.
 
@@ -1237,6 +1237,7 @@ You are ready to leave this level when you can:
 2. **Spark-docs → Configuration, Scheduling** ([configuration.html#scheduling](https://spark.apache.org/docs/latest/configuration.html#scheduling)) — the `spark.stage.*`, `spark.task.maxFailures` and `spark.excludeOnFailure.*` keys with their defaults
 3. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — dynamic allocation and executor loss, the context in which fetch failures normally arise
 4. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the layered `FetchFailed` handler: the staleness check, the decommission exemption, the two retry ceilings, and the executor-vs-host unregistration decision
+5. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the other half: the three in-flight limits that throttle fetching, the single-retry corruption budget, and the Netty-OOM circuit breaker that halts fetching cluster-wide
 
 !!! warning "No book covers the retry state machine"
 
@@ -1246,7 +1247,24 @@ You are ready to leave this level when you can:
 
     The effective limit is the max of `spark.stage.maxConsecutiveAttempts` (4, cleared whenever the stage succeeds) and `spark.stage.maxAttempts` (unbounded, never cleared). A long-running job that reuses a stage will not accumulate unrelated failures toward the first, which is why the "consecutive" wording matters.
 
-**Milestone:** You can read a driver log containing `FetchFailed` followed by `Resubmitting stage`, say which executor's output was unregistered and whether the whole host was affected, predict how many more attempts the stage gets, and explain why enabling the external shuffle service changes what an executor loss costs you.
+!!! info "The reduce side tries hard before it gives up"
+
+    A `FetchFailed` reaching the driver is the *end* of a sequence, not the start. Before it,
+    three independent limits throttle fetching — bytes in flight, requests in flight, and blocks
+    in flight per remote address — and `spark.reducer.maxSizeInFlight` is a target rather than a
+    cap, since a single oversized request is let through when nothing else is in flight. A block
+    that fails to decompress is re-fetched **exactly once**; the second failure is what throws.
+    A local corrupt block is not retried at all.
+
+!!! warning "A Netty OOM halts fetching for the whole JVM, and looks like slowness"
+
+    An `OutOfDirectMemoryError` during fetch is not a failure but a cross-task circuit breaker:
+    a shared flag stops all new shuffle fetch requests until memory recovers or in-flight requests
+    drain. It is logged once per iterator at INFO, with no metric. A cluster spending most of its
+    fetch time parked behind this flag shows tasks that are simply slow, with no error and almost
+    no log volume — so rule it out before concluding the network or the data is at fault.
+
+**Milestone:** You can read a driver log containing `FetchFailed` followed by `Resubmitting stage`, say which executor's output was unregistered and whether the whole host was affected, predict how many more attempts the stage gets, explain why enabling the external shuffle service changes what an executor loss costs you, and distinguish a genuine fetch failure from a job merely parked behind the Netty-OOM flag.
 
 ---
 
@@ -1393,8 +1411,27 @@ You are ready to leave this level when you can:
 2. **ADEB Module 3** — pipeline event logging; monitoring in the Databricks context
 3. **Spark-docs → Monitoring** ([spark.apache.org/docs/latest/monitoring.html](https://spark.apache.org/docs/latest/monitoring.html))
 4. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the heartbeat protocol and its expiry, the executor metrics poller, and the listener events every monitoring tool consumes
+5. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — which shuffle path a job actually took, and why none of it is visible at default log levels
 
-**Milestone:** You can configure a custom Spark listener that emits stage completion metrics to a log sink, and set up an alert that fires when a job's duration exceeds 2× its 7-day moving average.
+!!! warning "Spark's most expensive decisions are logged at `debug` or not at all"
+
+    Four branches that each change performance by a large factor are invisible by default, and
+    together they are the reason "the job got slower" is so often unexplainable:
+
+    - **Which shuffle writer ran.** All three reasons for rejecting the fast serialized path are
+      `log.debug`. Falling back to the deserialized writer — the largest write-path cliff in
+      Spark — emits nothing at INFO.
+    - **Which merge strategy ran.** Fast vs slow spill merge is `debug`; enabling IO encryption
+      silently demotes it.
+    - **Whether batch fetch applied.** The eligibility mismatch is reported at `debug` only.
+    - **Whether push-based shuffle was actually on.** A per-stage merger shortfall disables it by
+      returning an empty list with **no log at any level**.
+
+    Practical consequence for this topic: raising `org.apache.spark.shuffle` and
+    `org.apache.spark.storage` to DEBUG on one representative run tells you which paths a job
+    takes, and is worth doing once per workload shape rather than never.
+
+**Milestone:** You can configure a custom Spark listener that emits stage completion metrics to a log sink, set up an alert that fires when a job's duration exceeds 2× its 7-day moving average, and determine from logs or metrics which shuffle write path a given job actually used.
 
 !!! note "New in Spark 4.2.0 — History Server scalability"
     The History Server got scalability work in 4.2.0 ([SPARK-56287]), which matters directly for this topic's premise (debugging a completed job without the live UI). Kubernetes deployments also gained a Resource Manager API ([SPARK-56603]) and reduced control-plane overhead ([SPARK-55400]) — relevant to E2.
