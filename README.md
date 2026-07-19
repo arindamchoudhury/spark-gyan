@@ -95,6 +95,54 @@ Spark 4.x moved classes between modules repeatedly — `StorageLevel` to `common
 
 Topic and sweep pages carry a `spark_version`. When it trails the catalog, `check_drift.py` warns that `file:line` anchors have likely drifted. Set `version_pinned: "<reason>"` when the older version is deliberate — the Iceberg and Delta traces pin to 4.1 because neither ships a Spark 4.2 module.
 
+### When a new Spark version ships
+
+Work in this order — each step feeds the next, and steps 3–4 are the ones that catch silent breakage.
+
+**1. Move the checkout to the new tag.**
+
+```bash
+git -C C:/opt/learn/spark/repos/spark fetch --tags
+git -C C:/opt/learn/spark/repos/spark checkout v<new>
+```
+
+Do this first. Everything downstream reads whatever is checked out, and none of it warns when that isn't what you meant.
+
+**2. Regenerate the config catalog.**
+
+```bash
+python tools/spark_source_map/gen_configs.py
+python -m pytest tools/spark_source_map/test_gen_configs.py
+```
+
+Read the printed summary. Config count should be **> 1000** and in the same ballpark as last release — a sharp drop means a parser regression against new source syntax, not a shrinking Spark. If `unparsed` climbs above ~5, open `catalog.yaml`'s `unparsed:` block and confirm they are genuinely hard cases. Never hand-edit the catalog.
+
+**3. Check for drift, and fix what it names.**
+
+```bash
+python tools/spark_source_map/check_drift.py
+```
+
+This is the step that earns the release. Spark moves classes between modules every major version — 4.x moved `StorageLevel` to `common/utils` and the `DataType` hierarchy to `sql/api` — and a `groups.yaml` scope naming a relocated class is prose, so nothing else notices. For each error: add the owning module to that group's `modules:` list, or fix the name. Then bump `_meta.spark_version` and `_meta.verified_at` in `groups.yaml` so the stamp matches the catalog and the checker goes green.
+
+Warnings about topic and sweep pages recorded against the old version are advisory. They mean the anchors on those pages likely moved.
+
+**4. Regenerate the coverage matrix.**
+
+```bash
+python tools/spark_source_map/gen_coverage.py
+```
+
+**5. Decide what to re-trace, and don't just bump tags.** The warnings from step 3 list every page whose anchors predate the new release. Re-tracing is a real pass over the source, not a find-and-replace on the version in the GitHub URLs: line numbers drift heavily between releases (26 of 33 anchors moved for B3 between 4.1.2 and 4.2.0), and a stale anchor still renders perfectly on GitHub while pointing at the wrong code. Re-verify each anchor against the local checkout, then update the page's `spark_version`, `traced_at`, and refresh-log row. Pages that pin deliberately (`version_pinned`) need no action.
+
+**6. Reconcile the prose layers.**
+
+- `docs/learning-path.md` header — bump **Last updated**, **Current Spark stable**, and the maintenance lines; note what changed in the new release and which topics it touches.
+- `docs/spark-book/index.md` — chapters written against the old version need their status reviewed. Distinguish **wrong** (a changed default, a dropped requirement) from merely **incomplete** (new surface not yet covered): mark the first 🔄 and fix it before trusting the chapter, and treat the second as safe to read as-is. Every chapter also carries a `Spark <version>` line in its header.
+- `README.md` — the "Targets Spark X" line at the top.
+
+**7. Commit the catalog, `groups.yaml`, `index.md`, and any re-traced pages together**, so the source map and the path never disagree in history.
+
 The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--source` or the `SPARK_SRC` environment variable.
 
 > **Check the checkout before regenerating.** The catalog records whatever it parsed in `meta.spark_version`, with no warning if that isn't what you meant. A checkout left on `master` yields a `5.0.0-SNAPSHOT` catalog that looks perfectly valid. To target a release: `git -C C:/opt/learn/spark/repos/spark checkout v4.2.0`.
