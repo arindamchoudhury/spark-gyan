@@ -106,7 +106,9 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | core — execution-engine | — | ⬜ pending | — | — |
 | core — shuffle-memory | — | ⬜ pending | — | — |
 | core — storage-serializer | — | ⬜ pending | — | — |
-| core — infra | — | ⬜ pending | — | — |
+| core — submit-standalone | — | ⬜ pending | — | — |
+| core — monitoring | — | ⬜ pending | — | — |
+| core — config-security | — | ⬜ pending | — | — |
 | core — rpc-resources | — | ⬜ pending | — | — |
 | core — api-bridge | — | ⬜ pending | — | — |
 | resource-managers/kubernetes — driver-executor | 89 | ⬜ pending | — | — |

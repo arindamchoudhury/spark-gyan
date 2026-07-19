@@ -61,6 +61,12 @@ _meta:
     query-execution, yarn's scheduler backend, k8s shuffle/. 31 → 21, and the remaining 21
     are recorded in _meta.plumbing above so they are counted rather than re-raised.
 
+    Rebalancing (fourth pass, same day): core "infra" was 221 files — 41% of the subsystem
+    and three unrelated concerns — so no single sweep could finish it. Split into
+    submit-standalone (SparkSubmit and the standalone Master/Worker), monitoring (ui/,
+    status/, metrics/ and the History Server) and config-security (the config system and
+    SecurityManager). core's largest group is now 116 files, down from 221.
+
     State: every class and package named here resolves in v4.2.0; every package in every
     swept module is either claimed by a group or recorded as plumbing; every topics: code
     resolves in learning-path.md (47 topics). Re-check with:
@@ -94,19 +100,31 @@ core:
     scope: "storage/ (BlockManager, BlockManagerMaster, DiskBlockManager; StorageLevel now in common/utils), serializer/ (KryoSerializer vs JavaSerializer)"
     description: ""
   - number: 5
-    name: infra
-    title: "Infra"
+    name: submit-standalone
+    title: "Submit & standalone cluster"
+    topics: [E2]
+    scope: "SparkSubmit, SparkSubmitArguments, deploy/master/ (Master, WorkerInfo), deploy/worker/ (Worker, ExecutorRunner), deploy/rest/ (RestSubmissionServer), deploy/client/, deploy/security/"
+    description: "How an application is submitted and how the standalone cluster manager places it: SparkSubmit's argument and dependency handling, the Master/Worker registration protocol, and the REST submission gateway"
+  - number: 6
+    name: monitoring
+    title: "Monitoring, UI & history"
+    topics: [E3]
+    scope: "ui/ (SparkUI, WebUI pages), status/ (AppStatusStore, AppStatusListener — the store every UI page reads), metrics/ (MetricsSystem, sinks and sources), deploy/history/ (HistoryServer, FsHistoryProvider, event-log replay)"
+    description: "The event-listener pipeline behind every number in the UI, the metrics system, and the History Server that replays finished applications from event logs"
+  - number: 7
+    name: config-security
+    title: "Config system & security"
     topics: [E2, E3]
     modules: [common/utils]   # ConfigBuilder/ConfigEntry live in common/utils
-    scope: "deploy/, metrics/, security/, ui/, status/ (AppStatusStore, the UI/History Server backend), internal/ (config system: ConfigBuilder, ConfigEntry), History Server configs"
-    description: ""
-  - number: 6
+    scope: "internal/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader), security/ (SecurityManager, CryptoStreamUtils)"
+    description: "How every spark.* config is declared, typed, defaulted and read — the machinery behind the config catalog — plus authentication, ACLs and encryption"
+  - number: 8
     name: rpc-resources
     title: "RPC & resource profiles"
     topics: [E1, E2]
     scope: "rpc/ (RpcEndpoint, NettyRpcEnv), network/, resource/ (ResourceProfile, ExecutorResourceRequest, ResourceAllocator)"
     description: "The control-plane RPC layer every component talks over, and the resource-profile model behind GPU and accelerator scheduling"
-  - number: 7
+  - number: 9
     name: api-bridge
     title: "Language API bridge"
     topics: [I3, I4]

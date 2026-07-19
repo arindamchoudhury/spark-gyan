@@ -17,9 +17,11 @@
     - **Group 2 — Execution engine** (topics B1, E1): scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext
     - **Group 3 — Shuffle & memory** (topics A4, E1): shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression, BytesToBytesMap (the Tungsten off-heap hash map, in core's Java tree)
     - **Group 4 — Storage & serialization** (topics I6, E1): storage/ (BlockManager, BlockManagerMaster, DiskBlockManager; StorageLevel now in common/utils), serializer/ (KryoSerializer vs JavaSerializer)
-    - **Group 5 — Infra** (topics E2, E3): deploy/, metrics/, security/, ui/, status/ (AppStatusStore, the UI/History Server backend), internal/ (config system: ConfigBuilder, ConfigEntry), History Server configs
-    - **Group 6 — RPC & resource profiles** (topics E1, E2): rpc/ (RpcEndpoint, NettyRpcEnv), network/, resource/ (ResourceProfile, ExecutorResourceRequest, ResourceAllocator)
-    - **Group 7 — Language API bridge** (topics I3, I4): api/python/ (PythonRDD, PythonRunner, Py4JServer), api/java/, api/r/
+    - **Group 5 — Submit & standalone cluster** (topics E2): SparkSubmit, SparkSubmitArguments, deploy/master/ (Master, WorkerInfo), deploy/worker/ (Worker, ExecutorRunner), deploy/rest/ (RestSubmissionServer), deploy/client/, deploy/security/
+    - **Group 6 — Monitoring, UI & history** (topics E3): ui/ (SparkUI, WebUI pages), status/ (AppStatusStore, AppStatusListener — the store every UI page reads), metrics/ (MetricsSystem, sinks and sources), deploy/history/ (HistoryServer, FsHistoryProvider, event-log replay)
+    - **Group 7 — Config system & security** (topics E2, E3): internal/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader), security/ (SecurityManager, CryptoStreamUtils)
+    - **Group 8 — RPC & resource profiles** (topics E1, E2): rpc/ (RpcEndpoint, NettyRpcEnv), network/, resource/ (ResourceProfile, ExecutorResourceRequest, ResourceAllocator)
+    - **Group 9 — Language API bridge** (topics I3, I4): api/python/ (PythonRDD, PythonRunner, Py4JServer), api/java/, api/r/
 - [resource-managers/kubernetes](#resource-managerskubernetes) — 89 configs
     - **Group 1 — Driver & executor lifecycle** (topics E2): k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates), shuffle/
     - **Group 2 — Auth & networking** (topics E2): k8s/ (authentication, service account, node affinity, executor env)

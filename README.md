@@ -316,7 +316,7 @@ The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--
 |---|---|
 | `sql/catalyst` | analysis, optimizer, planner, expressions, types-parser, framework |
 | `sql/core` | query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec, classic-api, sql-scripting |
-| `core` | rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra, rpc-resources, api-bridge |
+| `core` | rdd-layer, execution-engine, shuffle-memory, storage-serializer, submit-standalone, monitoring, config-security, rpc-resources, api-bridge |
 | `sql/pipelines` | graph, autocdc, pipeline-runtime |
 | `sql/connect` | client-server, declarative-pipelines |
 | `resource-managers/kubernetes` | driver-executor, auth-networking |
