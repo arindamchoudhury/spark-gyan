@@ -204,7 +204,52 @@ def report_coverage(source: Path, subsystems: dict) -> int:
                     print(f"    {n:>4}  {name}/")
                 print()
     print(f"{total} unclaimed package(s). Add a group, extend a scope, or leave as plumbing.")
+    report_overlaps(subsystems)
     return 0
+
+
+def claimed_paths(scope: str) -> set[str]:
+    """The package paths a scope claims, as written.
+
+    Whole paths, not segments: 'execution/joins' and 'execution/adaptive' are
+    different claims, and neither collides with a group that claims bare
+    'execution'. Comparing segments instead would report all seven sql/core
+    groups as overlapping on 'execution'.
+    """
+    return {m.group(1).lower().rstrip("/") for m in DIR_RE.finditer(scope)}
+
+
+def report_overlaps(subsystems: dict) -> None:
+    """Flag two groups in one subsystem claiming the identical package path.
+
+    A parent/child pair is fine -- sql/core's query-execution claims
+    'execution' while joins-exec claims 'execution/joins', and a sweep of one
+    does not duplicate the other. Claiming the *same* path is different: both
+    sweeps walk the same code. That is sometimes deliberate (kubernetes splits
+    k8s/ into driver-executor and auth-networking by theme rather than by
+    path), so a group can set `shared_scope: true` to say so.
+    """
+    undeclared: list[str] = []
+    declared: list[str] = []
+    for sub, groups in sorted(subsystems.items()):
+        owners: dict[str, list[dict]] = {}
+        for g in groups or []:
+            for path in claimed_paths(g.get("scope") or ""):
+                owners.setdefault(path, []).append(g)
+        for path, gs in sorted(owners.items()):
+            if len(gs) < 2:
+                continue
+            names = ", ".join(g.get("name", "?") for g in gs)
+            line = f"  {sub}: {path}/ claimed by {names}"
+            (declared if all(g.get("shared_scope") for g in gs) else undeclared).append(line)
+
+    if not (declared or undeclared):
+        return
+    print("\nGroups sharing an identical package path:")
+    for line in undeclared:
+        print(line + "   <- undeclared; split the scope or set shared_scope: true")
+    for line in declared:
+        print(line + "   (shared_scope: declared intentional)")
 
 
 def load_front_matter(path: Path) -> dict:

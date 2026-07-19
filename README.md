@@ -135,10 +135,13 @@ This matters because a sweep only walks a group's scope, so **a package no group
 | classes named in a `scope` resolve | ✓ | ✓ (against that group's `modules:`) |
 | packages named in a `scope` resolve | ✓ | ✓ |
 | unclaimed packages (`--coverage`) | ✓ | ✗ |
+| two groups claiming one package (`--coverage`) | — | ✓ |
 
 `--coverage` joins every group's scope into one string, so a package claimed by *any* group counts as claimed. It will tell you `core` has a hole; it will not tell you which group should own it, or that one group's scope is thin.
 
-That gap is deliberate, because per-group coverage is not well defined. Some groups partition by directory (`sql/core`'s seven groups each take a different `execution/*` child), others by concern *within* one directory — `resource-managers/kubernetes` splits `k8s/` into `driver-executor` and `auth-networking` by theme, not by path. There is no mechanical way to say a themed group "missed" a package, so such a check would be noise, or would force an unnatural path-based carving.
+`--coverage` also reports the one per-group question that *is* well defined: **two groups claiming the identical package path**. Both sweeps would then walk the same code. A parent/child pair is fine and is not flagged — `sql/core`'s `query-execution` claims `execution/` while `joins-exec` claims `execution/joins/`, and sweeping one does not duplicate the other. Only an exact-path collision counts. Where the sharing is deliberate, set `shared_scope: true` on each group involved and the report labels it declared rather than flagging it; `resource-managers/kubernetes` is the standing example, splitting `k8s/` into `driver-executor` and `auth-networking` by theme.
+
+The wider gap is deliberate, because general per-group coverage is not well defined. Some groups partition by directory (`sql/core`'s seven groups each take a different `execution/*` child), others by concern *within* one directory — `resource-managers/kubernetes` splits `k8s/` into `driver-executor` and `auth-networking` by theme, not by path. There is no mechanical way to say a themed group "missed" a package, so such a check would be noise, or would force an unnatural path-based carving.
 
 Per-group completeness is enforced at sweep time instead, by the sweeper rather than a script: every config in the group's slice must tie to a concept, and one that doesn't means an area that was never visited. That check is mechanical, and the skill requires it before a sweep page is written.
 

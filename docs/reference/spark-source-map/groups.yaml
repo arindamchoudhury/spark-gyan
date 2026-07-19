@@ -144,12 +144,15 @@ resource-managers/kubernetes:
     name: driver-executor
     title: "Driver & executor lifecycle"
     topics: [E2]
+    # Split from auth-networking by theme, not by path: both walk k8s/.
+    shared_scope: true
     scope: "k8s/ (KubernetesClusterManager, ExecutorPodsAllocator, pod templates)"
     description: "Pod allocation, executor lifecycle, and driver submission on Kubernetes"
   - number: 2
     name: auth-networking
     title: "Auth & networking"
     topics: [E2]
+    shared_scope: true   # see driver-executor
     scope: "k8s/ (authentication, service account, node affinity, executor env)"
     description: "Kubernetes authentication, RBAC, service accounts, and network configuration"
 
