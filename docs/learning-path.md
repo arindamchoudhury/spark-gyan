@@ -93,6 +93,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 7. **Spark-docs → Spark Connect Overview** ([spark-connect-overview.html](https://spark.apache.org/docs/latest/spark-connect-overview.html)) — skim only: the architecture has **two** shapes in Spark 4.x, and every diagram in the books shows the classic one. Enough here to know which you are running; the depth is E9
 8. **Spark-docs → Tuning** ([tuning.html](https://spark.apache.org/docs/latest/tuning.html)) — the shuffle and serialization behaviour behind the stage model; read the data-locality section alongside the locality-wait note below
 9. **Source trace — [B1 in the source map](reference/spark-source-map/topics/b1.md)** — the full path: `getOrCreate()` → `DAGScheduler` → `TaskRunner`, then what a task actually produces (shuffle write, the three writers, `MapOutputTracker`), the failure and retry paths, how results return to the driver, and Connect as the alternative front end. Read it *after* the books: it turns "the DAG scheduler splits stages at shuffle boundaries" from a claim you accept into one you can go and look at
+10. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the RDD contract itself (`compute`, `getPartitions`, `getDependencies`) and the `iterator` → `getOrCompute` path every task runs, which is where the architecture stops being a diagram and becomes code
 
 **Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code. Stronger version, once you have read the source trace: name the single function that decides where one stage ends and the next begins; explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop; and explain why a stage you already watched succeed can run again.
 
@@ -531,6 +532,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 5. **Spark-docs → RDD Programming Guide** ([rdd-programming-guide.html](https://spark.apache.org/docs/latest/rdd-programming-guide.html)) — the canonical reference, and the one place that explains closures (why a driver variable mutated inside a transformation stays unchanged) before it bites you
 6. **Spark-docs → Tuning** ([tuning.html](https://spark.apache.org/docs/latest/tuning.html)) — serialization and memory tuning matter far more for RDDs than for DataFrames, since there is no Tungsten format underneath: read the [data serialization](https://spark.apache.org/docs/latest/tuning.html#data-serialization) section alongside `spark.serializer`
 7. **Source trace — [I4 in the source map](reference/spark-source-map/topics/i4.md)** — the five-method contract every RDD implements, how `iterator()` dispatches between cache, checkpoint and compute, and the exact line where a co-partitioned join becomes shuffle-free
+8. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the full RDD anchor set — transformations vs actions, the lineage encoded in `Dependency`, closure cleaning via ASM, and `take`'s incremental partition scan
 
 !!! warning "The RDD API is classic-mode only — it does not work over Spark Connect"
     `df.rdd` raises `PySparkNotImplementedError` under Connect, and the Connect client ships no `RDD` class at all. Since Connect is the default mode of the `pyspark` REPL in 4.x, check which mode you are in before assuming this topic's material is available.
@@ -574,6 +576,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **Spark-docs → Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `spark.sql.shuffle.partitions`, and the [coalescing post-shuffle partitions](https://spark.apache.org/docs/latest/sql-performance-tuning.html#coalescing-post-shuffle-partitions) section, which is what actually decides your partition count once AQE is on
 4. **Spark-docs → SQL Hints** ([sql-ref-syntax-qry-select-hints.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-hints.html)) — the partitioning hints (`COALESCE`, `REPARTITION`, `REPARTITION_BY_RANGE`, `REBALANCE`), including `REBALANCE`, which asks AQE to size partitions instead of you picking a number
 5. **Source trace — [I5 in the source map](reference/spark-source-map/topics/i5.md)** — why `coalesce` is contagious upstream, why a bare `repartition` does a hidden sort, and how partitionings are negotiated rather than commanded
+6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `Partitioner`, `HashPartitioner` vs `RangePartitioner` with its reservoir sampling, `ShuffledRDD`, and the narrow `coalesce` path that avoids a shuffle
 
 **Milestone:** You can explain the difference between `repartition` and `coalesce`, set `spark.sql.shuffle.partitions` appropriately for your data volume, and write a DataFrame to exactly N files. Then the one that separates knowing the API from understanding it: explain why `df.transform(...).coalesce(1).write(...)` can be dramatically slower than the same pipeline with `repartition(1)`, and say what `explain()` would show in each case.
 
@@ -611,6 +614,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 5. **Spark-docs → Memory Management** ([tuning.html#memory-management-overview](https://spark.apache.org/docs/latest/tuning.html#memory-management-overview)) — `spark.memory.fraction` and `storageFraction`; the key point being that storage and execution *share* one region, so cached blocks can be evicted by a shuffle
 6. **Spark-docs → `pyspark.StorageLevel`** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.StorageLevel.html)) — the Python constants, which do **not** map one-to-one onto the Scala ones (see the warning below)
 7. **Source trace — [I6 in the source map](reference/spark-source-map/topics/i6.md)** — why a cache hit depends on plan equivalence rather than on your variable, and why `storageFraction` is a floor rather than a reservation
+8. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `persist`/`cache` down to `getOrCompute` and the block manager, plus both checkpoint modes and how `markCheckpointed` truncates lineage
 
 **Milestone:** You can identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower. Then two the source settles: explain why `cached_df.filter(...)` may recompute from source, and say which storage level `df.cache()` actually gives you — spelled the way PySpark spells it.
 
@@ -924,6 +928,65 @@ You are ready to leave this level when you can:
 ---
 
 
+
+
+
+### ⬜ I16 — Approximate Actions and Partial Results
+
+> Discovered from source sweep (gap): `core: approximate-actions`
+
+**What it is:** `countApprox`, `countByValueApprox`, `sumApprox`, `meanApprox` and `countByKeyApprox` submit an ordinary job, but hand each task's result to an incremental evaluator as it lands and return a `PartialResult[BoundedDouble]` — a point estimate plus a confidence interval — once a wall-clock timeout expires. RDD-only; there is no DataFrame or SQL equivalent, and none of it works over Spark Connect.
+
+**Why you need it:** The API reads as "get a cheap answer fast" and is not. The timeout bounds only how long *the driver* blocks — the job is never cancelled, so the cluster does exactly the work a full `count()` would. The interval extrapolates from the fraction of *partitions* completed, which assumes unseen partitions resemble seen ones; on skewed data the small partitions finish first, so the estimate is biased low and the stated confidence is not the achieved confidence.
+
+**Learn it with:**
+
+1. **Spark-docs → RDD API (Scala)** ([RDD.html](https://spark.apache.org/docs/latest/api/scala/org/apache/spark/rdd/RDD.html)) — the signatures and the `confidence` parameter; the narrative RDD Programming Guide does not list the approximate actions at all
+2. **Spark-docs → RDD Programming Guide, Actions** ([rdd-programming-guide.html#actions](https://spark.apache.org/docs/latest/rdd-programming-guide.html#actions)) — the surrounding action model these build on
+3. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the `runApproximateJob` path, the three-way timeout decision in `ApproximateActionListener`, the Poisson/Normal/Student-t models behind each evaluator, and the three silent-failure paths
+
+!!! warning "No book in the resources table covers this"
+
+    Rioux (2022), LS2e (2020) and SDG (2018) all teach the RDD action set without the approximate family. This is docs-and-source territory — read the sweep, then verify against your own 4.2.0 stack.
+
+!!! warning "Three failures here are silent"
+
+    A job that fails *after* the timeout is never reported: `PartialResult.setFailure` is unreachable from the main source tree, so `getFinalValue()` on a timed-out result blocks forever. Only successful tasks merge, so retries silently shrink the sample. And an empty RDD returns `(0, +Inf)` at confidence `0.0`, indistinguishable from "learned nothing". From PySpark the timeout is inert entirely — it calls the blocking `getFinalValue()`.
+
+**Milestone:** You can explain why `countApprox(timeout=100)` on a large RDD saves no cluster time, predict whether the returned `BoundedDouble` will be biased high or low on a skewed RDD and say why, and name the method whose call makes the timeout meaningless in PySpark.
+
+---
+
+### ⬜ I17 — Whole-File and Binary RDD Sources
+
+> Discovered from source sweep (gap): `core: whole-file-sources`
+
+**What it is:** `SparkContext.binaryFiles`, `wholeTextFiles` and `binaryRecords` read whole files — or fixed-length records — as RDD records. The first two set `isSplitable = false` and pack whole files into splits with `CombineFileInputFormat`; `binaryRecords` is the only splittable one. They are governed by the `spark.files.*` config family, which is **not** the `spark.sql.files.*` family that DataFrame reads use.
+
+**Why you need it:** Whole-file reads are the standard on-ramp for images, PDFs, logs and scientific binary formats. The two most common failures follow directly from `isSplitable = false` — one task per giant file, and an OOM inside `PortableDataStream.toArray()`, which loads an entire file into a single JVM byte array. Neither consequence is documented user-facing.
+
+**Learn it with:**
+
+1. **Spark-docs → RDD Programming Guide, External Datasets** ([rdd-programming-guide.html#external-datasets](https://spark.apache.org/docs/latest/rdd-programming-guide.html#external-datasets)) — the canonical description of `wholeTextFiles` and `binaryFiles`, including the small-files rationale
+2. **Spark-docs → Binary File Data Source** ([sql-data-sources-binaryFile.html](https://spark.apache.org/docs/latest/sql-data-sources-binaryFile.html)) — `spark.read.format("binaryFile")`, the modern Connect-compatible successor you should usually reach for instead
+3. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the two different split formulas, which configs each entry point actually reads, and the silent truncation and encoding paths
+
+!!! warning "No book in the resources table covers this"
+
+    SDG Ch 12 and LS2e Ch 3 cover RDD creation from text files, but none of the three books covers `binaryFiles`, `binaryRecords`, or the `spark.files.*` config family. Docs and source only.
+
+!!! warning "`minPartitions` means opposite things in the two whole-file APIs"
+
+    `binaryFiles` computes `max(sc.defaultParallelism, minPartitions)` — a *floor* that `defaultParallelism` can override, so it cannot lower the partition count. `wholeTextFiles` uses `ceil(totalLen / minPartitions)` with no `defaultParallelism` term and no cap, so it is a genuine target. Only `binaryFiles` reads `spark.files.maxPartitionBytes` and `openCostInBytes`; `wholeTextFiles` ignores both.
+
+!!! warning "Corrupt-file handling truncates silently"
+
+    With `spark.files.ignoreCorruptFiles=true`, a mid-file `IOException` marks the partition finished and the **job succeeds with a truncated result** — the only trace is a log warning. `wholeTextFiles` decodes as UTF-8 with replacement, so a latin-1 file yields U+FFFD rather than an error, despite the scaladoc requiring UTF-8.
+
+**Milestone:** You can predict how many partitions `binaryFiles` produces for 10,000 small files given `spark.default.parallelism`, explain why passing `minPartitions=2` does not reduce that number, and say what `spark.read.format("binaryFile")` gives you that `SparkContext.binaryFiles` does not.
+
+---
+
 ## Advanced
 
 **Goal:** Write high-performance, production-grade pipelines. Understand Spark's optimiser deeply enough to fix it when it makes wrong decisions. Handle streaming workloads. Build ML pipelines.
@@ -999,6 +1062,7 @@ You are ready to leave this level when you can:
 2. **LS2e Ch 7** — scaling for large workloads; shuffle management
 3. **SDG Ch 19** — performance tuning; shuffle configuration
 4. **Spark-docs → Optimizing Skew Join** ([sql-performance-tuning.html#optimizing-skew-join](https://spark.apache.org/docs/latest/sql-performance-tuning.html#optimizing-skew-join)) — what AQE now handles for you, with the thresholds that decide when it kicks in; read alongside [Splitting skewed shuffle partitions](https://spark.apache.org/docs/latest/sql-performance-tuning.html#splitting-skewed-shuffle-partitions) before reaching for manual salting
+5. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `combineByKeyWithClassTag`, the single function every key-wise aggregation bottoms out in — and the map-side-combine difference that makes `reduceByKey` cheap and `groupByKey` a skew hazard
 
 **Milestone:** You can diagnose a skewed stage from the Spark UI task-time histogram, apply a salting strategy, and measure the improvement.
 
@@ -1185,6 +1249,7 @@ You are ready to leave this level when you can:
 3. **ADEB Module 3** — serialisation best practices; cluster instance selection
 4. **LS2e Ch 3** — Tungsten and WSCG overview
 5. **Spark-docs → Memory Tuning** ([tuning.html#memory-tuning](https://spark.apache.org/docs/latest/tuning.html#memory-tuning)) — the unified memory model, GC tuning, and the serialization section; the current numbers, against which the books' JVM-flag advice should be treated as dated
+6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `TorrentBroadcast`'s block protocol, `ContextCleaner`'s GC-driven cleanup, the `AccumulatorV2` copy/merge lifecycle, and Kryo vs Java serializer construction
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 

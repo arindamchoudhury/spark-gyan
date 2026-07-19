@@ -34,6 +34,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | apache/spark | ✅ complete |
 | I14 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
 | I15 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
+| I16 | Approximate Actions and Partial Results | — | — | ⬜ |
+| I17 | Whole-File and Binary RDD Sources | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -72,9 +74,11 @@ flowchart LR
     S0 --> S0c6["context-cleaner"]
     S0 --> S0c7["pair-rdd-functions"]
     S0 --> S0c8["closure-cleaning"]
-    S0 --> S0c9["accumulator-v2"]
-    S0 --> S0c10["async-rdd-actions"]
-    S0 --> S0c11["serialization"]
+    S0 --> S0c9["approximate-actions"]
+    S0 --> S0c10["whole-file-sources"]
+    S0 --> S0c11["accumulator-v2"]
+    S0 --> S0c12["async-rdd-actions"]
+    S0 --> S0c13["serialization"]
 ```
 
 ## Discovery gaps and refinement proposals
@@ -84,10 +88,12 @@ flowchart LR
 | Concept | Subsystem | Kind | Proposed code | Proposed title |
 |---|---|---|---|---|
 | accumulator-v2 | core | refinement | E10 | AccumulatorV2: Distributed Side-Effect Counters |
+| approximate-actions | core | gap | I16 | Approximate Actions and Partial Results |
 | async-rdd-actions | core | refinement | I15 | AsyncRDDActions: Non-Blocking Job Submission |
 | closure-cleaning | core | refinement | I14 | Closure Cleaning and the Task-Not-Serializable Problem |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
+| whole-file-sources | core | gap | I17 | Whole-File and Binary RDD Sources |
 
 
 ## Sweep status
@@ -102,7 +108,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | sql/catalyst — expressions | — | ⬜ pending | — | — |
 | sql/catalyst — types-parser | — | ⬜ pending | — | — |
 | sql/catalyst — framework | — | ⬜ pending | — | — |
-| core — rdd-layer | 546 | ✅ complete | 4.1.2 | 2026-06-06 |
+| core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — execution-engine | — | ⬜ pending | — | — |
 | core — shuffle-memory | — | ⬜ pending | — | — |
 | core — storage-serializer | — | ⬜ pending | — | — |
