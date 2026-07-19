@@ -1,7 +1,7 @@
 meta:
   spark_version: 4.2.0
   source_root: C:/opt/learn/spark/repos/spark
-  generated_at: '2026-07-18'
+  generated_at: '2026-07-19'
   entry_count: 1558
   unparsed_count: 4
 configs:
