@@ -60,6 +60,33 @@ All scripts work from any directory. Never hand-edit generated files — re-run 
 
 A sweep covers **one group of one subsystem per run**. Big subsystems (`sql/catalyst` at ~750 configs, `sql/core`) are far too large for a single pass, so `groups.yaml` carves each into study-sized groups with a `scope` (which packages and classes), the topic codes it backs, and a description.
 
+**See what's there before picking one:**
+
+```bash
+python tools/spark_source_map/gen_coverage.py --list-groups core   # one subsystem
+python tools/spark_source_map/gen_coverage.py --list-groups        # all of them
+```
+
+Prints each group with its topics, its scope, and whether it has already been swept (and at which Spark version). Read-only — it writes nothing.
+
+```
+core
+  rdd-layer                [swept: complete, Spark 4.1.2, core-rdd-layer.md]
+      topics: I4, I5, I6
+      scope:  rdd/, Dependency, Partition, Partitioner, broadcast/
+  execution-engine         [not swept]
+      topics: B1, E1
+      scope:  scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext
+```
+
+**Then ask the `spark-source-map` skill for that group by name:**
+
+```
+sweep core execution-engine
+```
+
+Naming the group is what keeps a run finishable. `sweep core` on its own is a request to sweep all five groups at once; the skill will stop and ask you to pick one rather than attempt it. Either form is fine — naming the group up front just skips the question.
+
 Each group gets **its own page** — `sweeps/<subsystem-with-slashes-as-dashes>-<group>.md`, e.g. `core-rdd-layer.md`, `sql-catalyst-optimizer.md`. Never merge two groups into one file: `gen_coverage.py` keys the sweep-status table on `(subsystem, group)` and the `group:` field is a scalar, so the second group would be dropped and left showing `⬜ pending`. Filenames are otherwise inert — the generator globs `sweeps/*.md` and reads front matter — but they must be unique.
 
 Every page for a subsystem repeats the same `all_groups:` list, copied from `groups.yaml`. That list is what renders the table's rows: a group missing from it gets no row at all, not even a pending one. The generator takes the list from whichever page sorts **first alphabetically**, so a page that omits it or carries a stale copy silently drops rows.

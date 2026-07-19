@@ -348,14 +348,62 @@ def build_index(root: Path) -> str:
     return "\n".join(L) + "\n"
 
 
+def list_groups(root: Path, subsystem: str | None) -> int:
+    """Print sweepable groups and whether each has been swept.
+
+    A sweep covers one group per run, so this answers the question you have
+    before starting one: which groups exist here, and which are still open.
+    """
+    base = root / "docs" / "reference" / "spark-source-map"
+    groups_file = base / "groups.yaml"
+    if not groups_file.exists():
+        print(f"error: {groups_file} not found")
+        return 1
+    data = yaml.safe_load(groups_file.read_text(encoding="utf-8")) or {}
+    subs = {k: v for k, v in data.items() if not k.startswith("_")}
+
+    if subsystem and subsystem not in subs:
+        print(f"error: no such subsystem '{subsystem}'. Known: {', '.join(sorted(subs))}")
+        return 1
+
+    # (subsystem, group) -> the page that swept it
+    done: dict[tuple[str, str], dict] = {}
+    for page in load_sweep_pages(base / "sweeps"):
+        if page.get("group"):
+            done[(page.get("subsystem", "?"), page["group"])] = page
+
+    for sub in ([subsystem] if subsystem else sorted(subs)):
+        print(f"\n{sub}")
+        for g in subs[sub] or []:
+            name = g.get("name", "?")
+            page = done.get((sub, name))
+            if page:
+                mark = f"[swept: {page.get('status', 'complete')}, " \
+                       f"Spark {page.get('spark_version', '?')}, {page['_file']}]"
+            else:
+                mark = "[not swept]"
+            topics = ", ".join(g.get("topics") or []) or "none"
+            print(f"  {name:<24} {mark}")
+            print(f"      topics: {topics}")
+            print(f"      scope:  {g.get('scope', '')}")
+    print("\nSweep one group per run:  sweep <subsystem> <group>")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Render the spark-source-map landing page.")
     ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]),
                     help="Notes repo root.")
     ap.add_argument("--no-write-proposals", action="store_true",
                     help="Skip appending proposed topics from sweep gaps to learning-path.md.")
+    ap.add_argument("--list-groups", nargs="?", const="", metavar="SUBSYSTEM",
+                    help="List sweepable groups (all subsystems, or just one) and exit. "
+                         "Writes nothing.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+
+    if args.list_groups is not None:
+        return list_groups(root, args.list_groups or None)
 
     if not args.no_write_proposals:
         swept = load_sweep_pages(root / "docs" / "reference" / "spark-source-map" / "sweeps")
