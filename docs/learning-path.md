@@ -94,6 +94,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 8. **Spark-docs → Tuning** ([tuning.html](https://spark.apache.org/docs/latest/tuning.html)) — the shuffle and serialization behaviour behind the stage model; read the data-locality section alongside the locality-wait note below
 9. **Source trace — [B1 in the source map](reference/spark-source-map/topics/b1.md)** — the full path: `getOrCreate()` → `DAGScheduler` → `TaskRunner`, then what a task actually produces (shuffle write, the three writers, `MapOutputTracker`), the failure and retry paths, how results return to the driver, and Connect as the alternative front end. Read it *after* the books: it turns "the DAG scheduler splits stages at shuffle boundaries" from a claim you accept into one you can go and look at
 10. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the RDD contract itself (`compute`, `getPartitions`, `getDependencies`) and the `iterator` → `getOrCompute` path every task runs, which is where the architecture stops being a diagram and becomes code
+11. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the whole execution model as code — action to job to stages to tasks, the single-threaded event loop that drives it, and where the driver stops deciding and the executor starts running
 
 **Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code. Stronger version, once you have read the source trace: name the single function that decides where one stage ends and the next begins; explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop; and explain why a stage you already watched succeed can run again.
 
@@ -577,6 +578,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 4. **Spark-docs → SQL Hints** ([sql-ref-syntax-qry-select-hints.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-hints.html)) — the partitioning hints (`COALESCE`, `REPARTITION`, `REPARTITION_BY_RANGE`, `REBALANCE`), including `REBALANCE`, which asks AQE to size partitions instead of you picking a number
 5. **Source trace — [I5 in the source map](reference/spark-source-map/topics/i5.md)** — why `coalesce` is contagious upstream, why a bare `repartition` does a hidden sort, and how partitionings are negotiated rather than commanded
 6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `Partitioner`, `HashPartitioner` vs `RangePartitioner` with its reservoir sampling, `ShuffledRDD`, and the narrow `coalesce` path that avoids a shuffle
+7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — `computeValidLocalityLevels` and the delay-scheduling timers — including that a `NO_PREF` task is reported as `PROCESS_LOCAL`, so the UI's locality column can flatter you
 
 **Milestone:** You can explain the difference between `repartition` and `coalesce`, set `spark.sql.shuffle.partitions` appropriately for your data volume, and write a DataFrame to exactly N files. Then the one that separates knowing the API from understanding it: explain why `df.transform(...).coalesce(1).write(...)` can be dramatically slower than the same pipeline with `repartition(1)`, and say what `explain()` would show in each case.
 
@@ -654,6 +656,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 4. **Spark-docs → Web UI** ([web-ui.html](https://spark.apache.org/docs/latest/web-ui.html)) — every tab and what each column means; the reference to keep open while the books teach you what to look for. Note the UI was rebuilt in 4.2.0, so this page matches your screen and the book screenshots do not
 5. **Spark-docs → Monitoring** ([monitoring.html](https://spark.apache.org/docs/latest/monitoring.html)) — the History Server, event logging, and the [REST API](https://spark.apache.org/docs/latest/monitoring.html#rest-api). Everything the UI renders is available as JSON at `/api/v1`, which turns "check the UI" into something you can automate
 6. **Source trace — [I7 in the source map](reference/spark-source-map/topics/i7.md)** — the UI is a read model over an event stream, and the stream drops events under load. Read this before trusting a number the UI shows you on a busy job
+7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — where the UI's numbers come from: the listener events, the accumulator merge, and why skipped stages are grey — `MapOutputTracker` still holds their output
 
 !!! warning "The UI is derived from an event stream that drops events under load — by design"
     Nothing in the UI is measured directly. The scheduler emits listener events onto a **bounded** asynchronous queue; when it fills, events are discarded so the scheduler is never blocked. The only evidence is one log line — *"Dropping event from queue … one of the listeners is too slow"* — and a counter.
@@ -1063,6 +1066,7 @@ You are ready to leave this level when you can:
 3. **SDG Ch 19** — performance tuning; shuffle configuration
 4. **Spark-docs → Optimizing Skew Join** ([sql-performance-tuning.html#optimizing-skew-join](https://spark.apache.org/docs/latest/sql-performance-tuning.html#optimizing-skew-join)) — what AQE now handles for you, with the thresholds that decide when it kicks in; read alongside [Splitting skewed shuffle partitions](https://spark.apache.org/docs/latest/sql-performance-tuning.html#splitting-skewed-shuffle-partitions) before reaching for manual salting
 5. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `combineByKeyWithClassTag`, the single function every key-wise aggregation bottoms out in — and the map-side-combine difference that makes `reduceByKey` cheap and `groupByKey` a skew hazard
+6. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — speculation's launch criteria and its duplicate-side-effect risk, plus the fetch-failure path that skew and stragglers eventually provoke
 
 **Milestone:** You can diagnose a skewed stage from the Spark UI task-time histogram, apply a salting strategy, and measure the improvement.
 
@@ -1212,6 +1216,59 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ A13 — Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up
+
+> Discovered from source sweep (gap): `core: fetch-failure-and-stage-retry`
+
+**What it is:** a `FetchFailed` means a reduce task could not read a map output — the executor that produced it died, its shuffle files are gone, or the node went away. The driver unregisters the lost output, re-runs the producing map stage, and aborts the job once the retry budget is spent. How *much* output is thrown away depends on whether an external shuffle service is running and whether the loss was a graceful decommission.
+
+**Why you need it:** this is the most common production Spark failure you will ever debug, and every default that governs it is non-obvious. `spark.stage.maxConsecutiveAttempts` is 4 and resets on stage success; `spark.stage.maxAttempts` is unbounded and never resets; `spark.stage.ignoreDecommissionFetchFailure` is true but depends on `maxRetainedRemovedDecommissionExecutors`, which is 0; `spark.files.fetchFailure.unRegisterOutputOnHost` is false, so a dead host loses its outputs one fetch failure at a time. Reading `FetchFailed … Resubmitting stage N` in a driver log without this model is guesswork.
+
+**Learn it with:**
+
+1. **SDG Ch 15** — the job/stage/task execution model this failure path operates on; it does not cover retry, but you need the vocabulary first
+2. **Spark-docs → Configuration, Scheduling** ([configuration.html#scheduling](https://spark.apache.org/docs/latest/configuration.html#scheduling)) — the `spark.stage.*`, `spark.task.maxFailures` and `spark.excludeOnFailure.*` keys with their defaults
+3. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — dynamic allocation and executor loss, the context in which fetch failures normally arise
+4. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the layered `FetchFailed` handler: the staleness check, the decommission exemption, the two retry ceilings, and the executor-vs-host unregistration decision
+
+!!! warning "No book covers the retry state machine"
+
+    SDG (2018), LS2e (2020) and Rioux (2022) all describe the happy path — job to stages to tasks — and stop. The failure machinery is source-and-docs territory, which is unfortunate given it is what you actually debug at 2am.
+
+!!! info "Two independent ceilings, one of which never resets"
+
+    The effective limit is the max of `spark.stage.maxConsecutiveAttempts` (4, cleared whenever the stage succeeds) and `spark.stage.maxAttempts` (unbounded, never cleared). A long-running job that reuses a stage will not accumulate unrelated failures toward the first, which is why the "consecutive" wording matters.
+
+**Milestone:** You can read a driver log containing `FetchFailed` followed by `Resubmitting stage`, say which executor's output was unregistered and whether the whole host was affected, predict how many more attempts the stage gets, and explain why enabling the external shuffle service changes what an executor loss costs you.
+
+---
+
+### ⬜ A14 — Determinism, Indeterminate Stages, and Correctness Under Retry
+
+> Discovered from source sweep (gap): `core: indeterminate-stages-and-rollback`
+
+**What it is:** if a shuffle map stage produces *different data* when re-run — `repartition` on unordered input, `zipWithIndex`, a non-deterministic UDF — then any downstream stage that already consumed the old output is now inconsistent. Spark's defence is to roll back and re-run every succeeding stage, or abort the job when it cannot. Spark 4.2.0 adds a second, runtime detection mechanism: a checksum comparison when a `MapStatus` is re-registered for a partition that already had one.
+
+**Why you need it:** the alternative to the abort is **silently wrong data**. The trigger is an unrelated retry, so a pipeline can run correctly for a year and then abort with a message telling you to checkpoint before `repartition`. And the new runtime detection means jobs that previously produced quiet corruption will start failing loudly after a 4.2.0 upgrade — you need to recognise the failure as a pre-existing correctness bug being surfaced, not a regression.
+
+**Learn it with:**
+
+1. **Spark-docs → RDD Programming Guide, Shuffle operations** ([rdd-programming-guide.html#shuffle-operations](https://spark.apache.org/docs/latest/rdd-programming-guide.html#shuffle-operations)) — why shuffle output ordering is not guaranteed, which is the root of indeterminacy
+2. **Spark-docs → RDD Programming Guide, RDD Persistence** ([rdd-programming-guide.html#rdd-persistence](https://spark.apache.org/docs/latest/rdd-programming-guide.html#rdd-persistence)) — checkpointing, the prescribed fix
+3. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the static and runtime detection paths, `maxAttemptIdToIgnore`, and the query-level rollback that can abort your job because of a different, already-finished job
+
+!!! warning "Docs coverage is thin, book coverage is nil"
+
+    No book in the resources table covers determinism under retry, and the official docs describe shuffle ordering without connecting it to rollback. This topic is largely source-derived — read the sweep and the abort messages themselves.
+
+!!! warning "The blast radius can exceed the failing job"
+
+    `rollbackSucceedingStagesForQuery` widens rollback to every job sharing a SQL execution id, including completed ones. If a completed job in the same query had a `ResultStage`, the situation is unrecoverable and Spark aborts with a "re-run the query to ensure data correctness" message.
+
+**Milestone:** You can name three operations that make a stage indeterminate, explain why the problem only manifests after a fetch failure, say what `checkpoint()` before `repartition` actually fixes, and predict what a 4.2.0 upgrade will do to a pipeline that has been silently producing inconsistent output on retries.
+
+---
+
 ### 🎯 Advanced Checkpoint
 
 You are ready to leave this level when you can:
@@ -1225,6 +1282,10 @@ You are ready to leave this level when you can:
 *Optional:* the Databricks Data Engineer Associate exam maps to roughly I8–A6 plus orchestration, if you are working on that platform.
 
 ---
+
+
+
+
 
 ## Expert
 
@@ -1250,6 +1311,7 @@ You are ready to leave this level when you can:
 4. **LS2e Ch 3** — Tungsten and WSCG overview
 5. **Spark-docs → Memory Tuning** ([tuning.html#memory-tuning](https://spark.apache.org/docs/latest/tuning.html#memory-tuning)) — the unified memory model, GC tuning, and the serialization section; the current numbers, against which the books' JVM-flag advice should be treated as dated
 6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `TorrentBroadcast`'s block protocol, `ContextCleaner`'s GC-driven cleanup, the `AccumulatorV2` copy/merge lifecycle, and Kryo vs Java serializer construction
+7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the task lifecycle on the executor, `TaskContext` completion listeners, the result-size decision, and the kill path that turns an uninterruptible task into a lost slot
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
@@ -1270,6 +1332,7 @@ You are ready to leave this level when you can:
 2. **ADEB Module 3** — instance type selection for performance
 3. **Spark-docs → Cluster Mode Overview** ([spark.apache.org/docs/latest/cluster-overview.html](https://spark.apache.org/docs/latest/cluster-overview.html))
 4. **Spark-docs → Kubernetes** ([spark.apache.org/docs/latest/running-on-kubernetes.html](https://spark.apache.org/docs/latest/running-on-kubernetes.html)) — the direction production Spark is moving
+5. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — executor registration, the offer loop, decommissioning as a graceful drain, and dynamic allocation's target arithmetic
 
 **Milestone:** You can size a Spark cluster for a given workload (number of executors, cores per executor, memory), explain the difference between client and cluster deploy mode, and configure dynamic allocation.
 
@@ -1286,6 +1349,7 @@ You are ready to leave this level when you can:
 1. **SDG Ch 18** — monitoring and debugging; the Spark metrics system
 2. **ADEB Module 3** — pipeline event logging; monitoring in the Databricks context
 3. **Spark-docs → Monitoring** ([spark.apache.org/docs/latest/monitoring.html](https://spark.apache.org/docs/latest/monitoring.html))
+4. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the heartbeat protocol and its expiry, the executor metrics poller, and the listener events every monitoring tool consumes
 
 **Milestone:** You can configure a custom Spark listener that emits stage completion metrics to a log sink, and set up an alert that fires when a job's duration exceeds 2× its 7-day moving average.
 
@@ -1468,6 +1532,58 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ E12 — Executor Exclusion and Health Tracking
+
+> Discovered from source sweep (gap): `core: executor-exclusion`
+
+**What it is:** two tiers of failure tracking. `TaskSetExcludelist` works within a single stage attempt and escalates — (task, executor), then (task, node), then the whole executor and node *for that stage*. `HealthTracker` accumulates across the application with an expiry, and can kill or decommission a persistently bad executor. Critically, the application-level tracker only learns about failures **when a TaskSet completes successfully**.
+
+**Why you need it:** one flaky disk or one bad NIC manifests as a stage that retries repeatedly and then aborts with "cannot run anywhere due to node and executor excludeOnFailure" — opaque without the two-tier model. The subsystem also has a dry-run mode that silently excludes nothing, and a startup validation that will refuse to launch your application entirely.
+
+**Learn it with:**
+
+1. **Spark-docs → Configuration, Scheduling** ([configuration.html#scheduling](https://spark.apache.org/docs/latest/configuration.html#scheduling)) — the full `spark.excludeOnFailure.*` family, its scopes and timeouts
+2. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — how exclusion interacts with dynamic allocation, which is what supplies replacement executors
+3. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the escalation ladder, the "blind until a TaskSet succeeds" constraint, the dry-run mode, and the starvation caveat that can stop the unschedulable-abort timer from ever firing
+
+!!! warning "No book covers this"
+
+    Executor exclusion post-dates SDG (2018) in its current form and is absent from LS2e and Rioux. The `spark.blacklist.*` keys you will find in older blog posts are the pre-3.1 names for the same thing.
+
+!!! warning "Spark refuses to start on a contradictory configuration"
+
+    If `spark.excludeOnFailure.task.maxTaskAttemptsPerNode` is greater than or equal to `spark.task.maxFailures`, initialisation throws `IllegalArgumentException` — because a task would exhaust its total failure budget on one node before exclusion could ever route it elsewhere. The error names both keys; the reasoning is not obvious.
+
+**Milestone:** You can explain why the application-level tracker sees nothing during a stage that keeps failing, predict what happens to a node after a single fetch failure when the external shuffle service is enabled, and say which combination of settings produces a tracker that records failures but excludes nothing.
+
+---
+
+### ⬜ E13 — Barrier Execution Mode
+
+> Discovered from source sweep (gap): `core: barrier-execution`
+
+**What it is:** a barrier stage is gang-scheduled. `resourceOffers` refuses to launch *any* task of the stage unless it can place *every* task in a single offer round, and at runtime `BarrierTaskContext.barrier()` blocks until all tasks in the stage have called it. This is the execution model that lets distributed training frameworks — which need all workers alive simultaneously and able to talk to each other — embed inside a Spark job.
+
+**Why you need it:** barrier mode is the bridge between Spark's fault-tolerant task model and the all-or-nothing model that MPI-style workloads require, and both of its failure modes are **silent hangs rather than errors**. A cluster that cannot supply every slot at once waits indefinitely instead of failing at submit; an unequal number of `barrier()` calls across code branches hangs the job until the coordinator's own timer fires.
+
+**Learn it with:**
+
+1. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — the scheduling model barrier mode overrides, and why gang scheduling conflicts with dynamic allocation
+2. **Spark-docs → BarrierTaskContext API** ([BarrierTaskContext.html](https://spark.apache.org/docs/latest/api/scala/org/apache/spark/BarrierTaskContext.html)) — the `barrier()` contract and `getTaskInfos()`, with the misuse examples in the scaladoc
+3. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the all-or-nothing offer gate, the revert-and-retry round, the 365-day RPC timeout that defers to the coordinator's timer, and the interaction with `spark.locality.wait.legacyResetOnTaskLaunch` that turns a partial launch into an abort
+
+!!! warning "No book covers this"
+
+    Barrier execution landed in Spark 2.4, after SDG (2018), and neither LS2e nor Rioux covers it. Docs are thin too — the API scaladoc is the most precise description available.
+
+!!! warning "Both failure modes are hangs, not errors"
+
+    A barrier job needing more slots than the cluster has is **not failed at submit** (there is a standing `TODO` in the source saying so) — it simply waits, logging once a minute. And `barrier()` must be called the same number of times by every task: putting one inside an `if` that only some partitions enter will hang the stage until the sync timeout.
+
+**Milestone:** You can explain why barrier mode and dynamic allocation interact badly, predict what happens when a barrier stage requests more slots than the cluster can offer at once, and say why speculation is disabled for barrier TaskSets.
+
+---
+
 
 ### 🎯 Expert Checkpoint
 
@@ -1481,6 +1597,10 @@ You are operating at Expert level when you can:
 *Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
 
 ---
+
+
+
+
 
 
 ## Suggested Study Sequence

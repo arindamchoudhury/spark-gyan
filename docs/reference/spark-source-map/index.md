@@ -48,6 +48,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A10 | Testing PySpark Pipelines | — | — | ⬜ |
 | A11 | Spark Declarative Pipelines | — | — | ⬜ |
 | A12 | Kafka and Streaming Ingestion | — | — | ⬜ |
+| A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up | — | — | ⬜ |
+| A14 | Determinism, Indeterminate Stages, and Correctness Under Retry | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -59,26 +61,56 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E9 | Spark Connect and the Modern Client Architecture | — | — | ⬜ |
 | E10 | AccumulatorV2: Distributed Side-Effect Counters | — | — | ⬜ |
 | E11 | Serialization: KryoSerializer vs JavaSerializer | — | — | ⬜ |
+| E12 | Executor Exclusion and Health Tracking | — | — | ⬜ |
+| E13 | Barrier Execution Mode | — | — | ⬜ |
 
 ## Source concept map
 
 ```mermaid
 flowchart LR
     S0["core"]
-    S0 --> S0c0["rdd-model"]
-    S0 --> S0c1["transformations-actions"]
-    S0 --> S0c2["partitioning"]
-    S0 --> S0c3["persistence"]
-    S0 --> S0c4["checkpointing"]
-    S0 --> S0c5["broadcast"]
-    S0 --> S0c6["context-cleaner"]
-    S0 --> S0c7["pair-rdd-functions"]
-    S0 --> S0c8["closure-cleaning"]
-    S0 --> S0c9["approximate-actions"]
-    S0 --> S0c10["whole-file-sources"]
-    S0 --> S0c11["accumulator-v2"]
-    S0 --> S0c12["async-rdd-actions"]
-    S0 --> S0c13["serialization"]
+    S0 --> S0c0["job-submission"]
+    S0 --> S0c1["stage-creation-and-reuse"]
+    S0 --> S0c2["driver-side-planning"]
+    S0 --> S0c3["partition-selection-and-preferred-locations"]
+    S0 --> S0c4["task-completion-and-accumulators"]
+    S0 --> S0c5["fetch-failure-and-stage-retry"]
+    S0 --> S0c6["indeterminate-stages-and-rollback"]
+    S0 --> S0c7["job-completion-and-cancellation"]
+    S0 --> S0c8["push-based-shuffle-finalization"]
+    S0 --> S0c9["scheduling-mode-and-pools"]
+    S0 --> S0c10["executor-registration-and-offers"]
+    S0 --> S0c11["taskset-submission-and-zombies"]
+    S0 --> S0c12["delay-scheduling-and-locality"]
+    S0 --> S0c13["slot-arithmetic-and-resource-profiles"]
+    S0 --> S0c14["task-execution-on-the-executor"]
+    S0 --> S0c15["task-result-delivery"]
+    S0 --> S0c16["task-failure-and-retry"]
+    S0 --> S0c17["speculation"]
+    S0 --> S0c18["executor-exclusion"]
+    S0 --> S0c19["kill-path-and-task-reaper"]
+    S0 --> S0c20["heartbeat-and-expiry"]
+    S0 --> S0c21["executor-metrics-polling"]
+    S0 --> S0c22["decommissioning"]
+    S0 --> S0c23["dynamic-allocation"]
+    S0 --> S0c24["barrier-execution"]
+    S0 --> S0c25["task-context-lifecycle"]
+    S0 --> S0c26["executor-loss-handling"]
+    S1["core"]
+    S1 --> S1c0["rdd-model"]
+    S1 --> S1c1["transformations-actions"]
+    S1 --> S1c2["partitioning"]
+    S1 --> S1c3["persistence"]
+    S1 --> S1c4["checkpointing"]
+    S1 --> S1c5["broadcast"]
+    S1 --> S1c6["context-cleaner"]
+    S1 --> S1c7["pair-rdd-functions"]
+    S1 --> S1c8["closure-cleaning"]
+    S1 --> S1c9["approximate-actions"]
+    S1 --> S1c10["whole-file-sources"]
+    S1 --> S1c11["accumulator-v2"]
+    S1 --> S1c12["async-rdd-actions"]
+    S1 --> S1c13["serialization"]
 ```
 
 ## Discovery gaps and refinement proposals
@@ -90,7 +122,11 @@ flowchart LR
 | accumulator-v2 | core | refinement | E10 | AccumulatorV2: Distributed Side-Effect Counters |
 | approximate-actions | core | gap | I16 | Approximate Actions and Partial Results |
 | async-rdd-actions | core | refinement | I15 | AsyncRDDActions: Non-Blocking Job Submission |
+| barrier-execution | core | gap | E13 | Barrier Execution Mode |
 | closure-cleaning | core | refinement | I14 | Closure Cleaning and the Task-Not-Serializable Problem |
+| executor-exclusion | core | gap | E12 | Executor Exclusion and Health Tracking |
+| fetch-failure-and-stage-retry | core | gap | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
+| indeterminate-stages-and-rollback | core | gap | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
 | whole-file-sources | core | gap | I17 | Whole-File and Binary RDD Sources |
@@ -109,7 +145,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | sql/catalyst — types-parser | — | ⬜ pending | — | — |
 | sql/catalyst — framework | — | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-19 |
-| core — execution-engine | — | ⬜ pending | — | — |
+| core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — shuffle-memory | — | ⬜ pending | — | — |
 | core — storage-serializer | — | ⬜ pending | — | — |
 | core — submit-standalone | — | ⬜ pending | — | — |
