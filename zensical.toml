@@ -41,6 +41,7 @@ nav = [
             { "core — Execution engine" = "reference/spark-source-map/sweeps/core-execution-engine.md" },
             { "core — Shuffle & memory" = "reference/spark-source-map/sweeps/core-shuffle-memory.md" },
             { "core — Storage & serialization" = "reference/spark-source-map/sweeps/core-storage-serializer.md" },
+            { "core — Submit & standalone" = "reference/spark-source-map/sweeps/core-submit-standalone.md" },
         ]},
     ]},
     { "Spark Book" = [

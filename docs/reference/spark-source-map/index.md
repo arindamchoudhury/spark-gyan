@@ -36,6 +36,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I15 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
 | I16 | Approximate Actions and Partial Results | — | — | ⬜ |
 | I17 | Whole-File and Binary RDD Sources | — | — | ⬜ |
+| I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -66,6 +67,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E13 | Barrier Execution Mode | — | — | ⬜ |
 | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool | — | — | ⬜ |
 | E15 | Block Locking and Cache Visibility | — | — | ⬜ |
+| E16 | Standalone High Availability and Recovery | — | — | ⬜ |
 
 ## Source concept map
 
@@ -168,6 +170,35 @@ flowchart LR
     S3 --> S3c22["relocation-support"]
     S3 --> S3c23["serializer-manager-auto-selection"]
     S3 --> S3c24["storage-level-model"]
+    S4["core"]
+    S4 --> S4c0["master-url-resolution"]
+    S4 --> S4c1["deploy-mode-matrix"]
+    S4 --> S4c2["argument-precedence"]
+    S4 --> S4c3["prepare-submit-environment"]
+    S4 --> S4c4["main-class-selection"]
+    S4 --> S4c5["dependency-resolution"]
+    S4 --> S4c6["resource-staging"]
+    S4 --> S4c7["run-main-and-classloader"]
+    S4 --> S4c8["rest-submission-and-fallback"]
+    S4 --> S4c9["legacy-standalone-client"]
+    S4 --> S4c10["exit-code-propagation"]
+    S4 --> S4c11["remote-and-connect-branch"]
+    S4 --> S4c12["proxy-user-impersonation"]
+    S4 --> S4c13["worker-registration"]
+    S4 --> S4c14["application-registration"]
+    S4 --> S4c15["driver-placement"]
+    S4 --> S4c16["executor-allocation-arithmetic"]
+    S4 --> S4c17["executor-process-supervision"]
+    S4 --> S4c18["driver-supervision-and-restart"]
+    S4 --> S4c19["heartbeat-and-worker-timeout"]
+    S4 --> S4c20["executor-failure-accounting"]
+    S4 --> S4c21["worker-decommissioning"]
+    S4 --> S4c22["persistence-engines"]
+    S4 --> S4c23["leader-election-and-ha"]
+    S4 --> S4c24["recovery-state-machine"]
+    S4 --> S4c25["work-directory-cleanup"]
+    S4 --> S4c26["application-completion"]
+    S4 --> S4c27["standalone-observability"]
 ```
 
 ## Discovery gaps and refinement proposals
@@ -182,9 +213,11 @@ flowchart LR
 | barrier-execution | core | gap | E13 | Barrier Execution Mode |
 | block-locking | core | gap | E15 | Block Locking and Cache Visibility |
 | closure-cleaning | core | refinement | I14 | Closure Cleaning and the Task-Not-Serializable Problem |
+| dependency-resolution | core | gap | I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars |
 | executor-exclusion | core | gap | E12 | Executor Exclusion and Health Tracking |
 | fetch-failure-and-stage-retry | core | gap | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
 | indeterminate-stages-and-rollback | core | gap | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
+| leader-election-and-ha | core | gap | E16 | Standalone High Availability and Recovery |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
 | push-based-shuffle | core | gap | A15 | Push-Based Shuffle |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
@@ -208,7 +241,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-19 |
-| core — submit-standalone | — | ⬜ pending | — | — |
+| core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — monitoring | — | ⬜ pending | — | — |
 | core — config-security | — | ⬜ pending | — | — |
 | core — rpc-resources | — | ⬜ pending | — | — |

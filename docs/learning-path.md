@@ -96,6 +96,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 10. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the RDD contract itself (`compute`, `getPartitions`, `getDependencies`) and the `iterator` → `getOrCompute` path every task runs, which is where the architecture stops being a diagram and becomes code
 11. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the whole execution model as code — action to job to stages to tasks, the single-threaded event loop that drives it, and where the driver stops deciding and the executor starts running
 12. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — what a shuffle physically is: two files per map task, an index of offsets, and the executor-wide monitor that commits them
+13. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — what `spark-submit` actually does before any of your code runs — master-URL resolution, the wrapper main class each cluster mode substitutes, and the classloader `runMain` builds
 
 **Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code. Stronger version, once you have read the source trace: name the single function that decides where one stage ends and the next begins; explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop; and explain why a stage you already watched succeed can run again.
 
@@ -134,6 +135,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 5. **Spark-docs → Spark Connect Overview** ([spark-connect-overview.html](https://spark.apache.org/docs/latest/spark-connect-overview.html)) — what `.remote()` and `spark.api.mode` actually select. Follow with [Application development with Connect](https://spark.apache.org/docs/latest/app-dev-spark-connect.html) and the [Connect gotchas](https://spark.apache.org/docs/latest/spark-connect-gotchas.html), which lists the behaviours that differ — the fastest way to understand why `df._jdf` and `sc._jsc` are unavailable
 6. **Spark-docs → `pyspark.sql.SparkSession` API reference** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.SparkSession.html)) — the full builder surface (`appName`, `master`, `config`, `remote`, `enableHiveSupport`, `getOrCreate`, `create`) in one table; keep it open while working
 7. **Source trace — [B2 in the source map](reference/spark-source-map/topics/b2.md)** — `getOrCreate`'s real resolution order (thread-local active session → global default → construct new); what `SharedState` owns versus `SessionState`, which is the model that makes `newSession` / `cloneSession` / `create` follow from something rather than needing to be memorised; and how extensions attach
+8. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — how a config gets its value *before* a session exists: the four-stage precedence pipeline and the option table that `--conf` cannot override
 
 !!! info "`SharedState` vs `SessionState` — learn this and the session API stops needing memorisation"
     A `SparkSession` owns two state objects, and every confusing session behaviour follows from which one holds what.
@@ -145,6 +147,19 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 !!! warning "`spark.sql.extensions` is static — set it at build time or not at all"
     Iceberg, Delta and Sedona all attach themselves through `SparkSessionExtensions`, driven by the `spark.sql.extensions` config. It is a **static** config: read once while the session is being constructed, so setting it afterwards with `spark.conf.set(...)` silently does nothing. This is the usual first failure when adding a table format, and the symptom — "my SQL syntax isn't recognised" — points nowhere near the cause.
 
+
+
+!!! warning "Config precedence before the session exists"
+
+    This topic covers configuration once a `SparkSession` is running. Submission-time resolution is
+    a separate, earlier pipeline with its own order: `--conf` beats `--properties-file`, which beats
+    `--extra-properties-file`, which beats `conf/spark-defaults.conf` — and `spark-defaults.conf` is
+    **skipped entirely** once `--properties-file` is given, unless `--load-spark-defaults` is passed.
+
+    The counter-intuitive part: `--conf` values are applied **last, via `setIfMissing`**, so any key
+    `spark-submit`'s internal option table already wrote — `spark.jars`, `spark.files`, `spark.master`,
+    `spark.app.name` among them — is immune to `--conf`. And a key that does not start with `spark.`
+    is dropped with only a warning, so a typo'd namespace vanishes rather than failing.
 **Milestone:** You can create a SparkSession with custom config, set the log level, and run a script with `spark-submit`. Then, the part that catches people: given a config set *after* the session exists, predict whether it takes effect or is silently ignored, and say why — then verify with `spark.conf.isModifiable()`. Finally, using the `SharedState`/`SessionState` split: predict whether a DataFrame cached in one session is visible from a second one created with `newSession()`, and whether a temp view is — then check both.
 
 ---
@@ -995,6 +1010,38 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ I18 — Dependency Management at Submit Time: --packages, Ivy, and Jars
+
+> Discovered from source sweep (gap): `core: dependency-resolution`
+
+**What it is:** `spark-submit` resolves `--packages` through Apache Ivy *before* anything touches the classpath, using a fixed resolver chain — local `~/.m2`, the local Ivy cache, Maven Central, then spark-packages — which `--repositories` and `spark.jars.ivySettings` modify. Resolved jars are merged into `spark.jars`, and for Python applications into `spark.submit.pyFiles` as well, since a Spark package can carry Python code.
+
+**Why you need it:** `--packages` is how nearly every connector reaches your job — Kafka, Delta, Iceberg, JDBC drivers, cloud filesystem implementations. It is also the part of submission with the most opaque failures, and none of them look like a dependency problem at the point they surface.
+
+**Learn it with:**
+
+1. **Spark-docs → Submitting Applications, Advanced Dependency Management** ([submitting-applications.html#advanced-dependency-management](https://spark.apache.org/docs/latest/submitting-applications.html#advanced-dependency-management)) — the canonical description of `--packages`, `--repositories`, `--jars` and how each is distributed
+2. **Spark-docs → Configuration, Runtime Environment** ([configuration.html#runtime-environment](https://spark.apache.org/docs/latest/configuration.html#runtime-environment)) — `spark.jars`, `spark.jars.packages`, `spark.jars.ivy`, `spark.jars.ivySettings` and their interactions
+3. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — the resolver chain and its order, Spark's automatic exclusions, where resolution actually happens per cluster manager, and the three ways a dependency silently is not there
+
+!!! warning "No book covers this"
+
+    SDG, LS2e and Rioux all describe `spark-submit` at the level of `--class` and `--master`. Ivy resolution, `ivySettings`, and the exclusion rules are docs-and-source territory — which is unfortunate, because this is where firewalled and air-gapped environments spend their time.
+
+!!! warning "Three ways a dependency silently is not there"
+
+    A resolution failure throws a bare `RuntimeException` whose message is the `toString` of Ivy's problem list, with no coordinate context. A package whose artifact is a `pom` or `bundle` rather than a `jar` is filtered out at info level and "resolves successfully" while contributing nothing. And a missing local jar — or *any* remote jar — passed to `--jars` is warned about and skipped, so the failure arrives much later as `ClassNotFoundException`.
+
+!!! info "Where resolution happens depends on the cluster manager"
+
+    In client mode and on YARN, the *submitting* machine resolves. In standalone and Kubernetes **cluster** mode it is skipped entirely and the configs are forwarded so the driver resolves after it starts — which means the driver needs the repository access, not your laptop. Note also that Spark's default Ivy home is `~/.ivy2.5.2`, not `~/.ivy2`, so a pre-warmed cache is ignored.
+
+**Milestone:** You can load a connector with `--packages` and explain where the jars were fetched and to which machine, configure `spark.jars.ivySettings` for a private mirror, and diagnose a job that starts cleanly but fails with `ClassNotFoundException` for a class you believe you supplied.
+
+---
+
+
+
 ## Advanced
 
 **Goal:** Write high-performance, production-grade pipelines. Understand Spark's optimiser deeply enough to fix it when it makes wrong decisions. Handle streaming workloads. Build ML pipelines.
@@ -1394,7 +1441,27 @@ You are ready to leave this level when you can:
 5. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — executor registration, the offer loop, decommissioning as a graceful drain, and dynamic allocation's target arithmetic
 6. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the external shuffle service — how it makes map output survive executor loss, and its hardcoded five-second registration retry
 7. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — block replication and its topology requirement, executor loss and proactive re-replication, the disk layout, and decommission migration with fallback storage
+8. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — the submission path end to end, standalone placement arithmetic, and the graceful worker drain that a rolling restart depends on
 
+
+
+!!! warning "Graceful worker drain is off by default"
+
+    Decommissioning a standalone worker is what lets a rolling restart or a spot reclamation avoid
+    recomputation: the Master reports each executor with its host so drivers unregister that host's
+    shuffle map output, instead of discovering it later as fetch failures. But
+    `spark.decommission.enabled` defaults to **false**, which means the `SIGPWR` handler is never
+    installed — so sending the decommission signal to a worker started without it simply kills the
+    process, and you pay for the lost shuffle output. Note also that a decommissioning worker
+    refuses new executors but still accepts new drivers.
+
+!!! info "Standalone placement has two defaults worth checking"
+
+    `spark.deploy.defaultCores` is unlimited, so the first application to register claims every core
+    in the cluster unless it sets `spark.cores.max`. And `spark.worker.timeout` drives two timers in
+    two different processes — the worker heartbeats at a quarter of it, the Master sweeps at it — so
+    setting it on one side only either leaves dead workers registered or reaps healthy ones, with
+    nothing cross-checking the two values.
 **Milestone:** You can size a Spark cluster for a given workload (number of executors, cores per executor, memory), explain the difference between client and cluster deploy mode, and configure dynamic allocation.
 
 ---
@@ -1412,6 +1479,7 @@ You are ready to leave this level when you can:
 3. **Spark-docs → Monitoring** ([spark.apache.org/docs/latest/monitoring.html](https://spark.apache.org/docs/latest/monitoring.html))
 4. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the heartbeat protocol and its expiry, the executor metrics poller, and the listener events every monitoring tool consumes
 5. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — which shuffle path a job actually took, and why none of it is visible at default log levels
+6. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — what standalone actually exposes: four master gauges, five worker gauges, and the states that have no metric at all
 
 !!! warning "Spark's most expensive decisions are logged at `debug` or not at all"
 
@@ -1543,6 +1611,7 @@ You are ready to leave this level when you can:
 1. **Spark-docs → Spark Connect** ([spark.apache.org/docs/latest/spark-connect-overview.html](https://spark.apache.org/docs/latest/spark-connect-overview.html))
 2. **Databricks Spark Associate Cert** — Spark Connect is 5% of the exam; a good forcing function to study it
 3. **Spark-docs → Connect gotchas** ([spark-connect-gotchas.html](https://spark.apache.org/docs/latest/spark-connect-gotchas.html)) and [app development with Connect](https://spark.apache.org/docs/latest/app-dev-spark-connect.html) — the behavioural differences that bite in practice, including what JVM access is unavailable
+4. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — how `--remote` enters submission as a mutually-exclusive alternative to `--master`, and why the Connect server may only run in cluster mode under YARN
 
 !!! info "No book covers this — docs only"
     Spark Connect arrived in 3.4 and became the default `pyspark` REPL mode in 4.x, after all four books. LS2e and SDG describe classic mode exclusively and never flag the distinction, which makes them quietly wrong about what a UDF can reach. Docs and your own local server are the sources here.
@@ -1717,6 +1786,40 @@ You are ready to leave this level when you can:
 
 ---
 
+### ⬜ E16 — Standalone High Availability and Recovery
+
+> Discovered from source sweep (gap): `core: leader-election-and-ha`
+
+**What it is:** the standalone Master persists applications, workers and drivers through a `PersistenceEngine`, and on startup a `LeaderElectionAgent` decides whether this Master becomes active. Recovery then reads the persisted state, broadcasts `MasterChanged`, waits `spark.deploy.recoveryTimeout` for everyone to check in, and removes whatever did not. **Only ZooKeeper mode has real leader election** — FILESYSTEM and ROCKSDB use `MonarchyLeaderAgent`, which declares itself leader unconditionally in its constructor.
+
+**Why you need it:** the standalone Master is a single point of failure, and the three configurations that look like they fix it each have a trap that is invisible until the day it matters.
+
+**Learn it with:**
+
+1. **Spark-docs → Spark Standalone Mode, High Availability** ([spark-standalone.html#high-availability](https://spark.apache.org/docs/latest/spark-standalone.html#high-availability)) — the ZooKeeper and single-node recovery modes as documented
+2. **Spark-docs → Configuration, Deploy** ([configuration.html#deploy](https://spark.apache.org/docs/latest/configuration.html#deploy)) — the `spark.deploy.recovery*` keys
+3. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — `MonarchyLeaderAgent` electing in its constructor, the silent `case _` fallthrough, the exit-code-0 behaviour on lost leadership, and what `recoveryTimeout` actually removes
+
+!!! warning "No book covers standalone HA"
+
+    SDG Ch 16 covers standalone deployment without the recovery machinery. This is docs-and-source territory.
+
+!!! warning "FILESYSTEM mode is not high availability"
+
+    It is what people reach for as "HA without ZooKeeper". `MonarchyLeaderAgent` makes **both** Masters believe they are leader; both accept registrations, and the persistence engine throws when the second writes a key the first already wrote. The failure is partial and confusing rather than immediate. A typo in `spark.deploy.recoveryMode` is worse: it falls into a catch-all that gives you no persistence and no error at all.
+
+!!! warning "Losing leadership exits with code 0"
+
+    `RevokedLeadership` calls `System.exit(0)`. A supervisor configured with `Restart=on-failure` reads that as a clean shutdown and does **not** restart the Master — so a ZooKeeper hiccup silently leaves you with one fewer standby than you think.
+
+!!! info "Recovery removes slow workers, not just dead ones"
+
+    `spark.deploy.recoveryTimeout` defaults to `spark.worker.timeout` (60 s). A large cluster whose workers cannot all re-register within that window loses the stragglers on every failover, with their executors reported LOST though the processes are still running. Raising it independently is the fix, and is why the config was split out in 4.0.0.
+
+**Milestone:** You can explain why two Masters against a shared recovery directory is not HA, predict what a process supervisor does when a Master loses ZooKeeper leadership, and size `spark.deploy.recoveryTimeout` for a cluster whose workers take longer than a minute to re-register.
+
+---
+
 
 ### 🎯 Expert Checkpoint
 
@@ -1730,6 +1833,8 @@ You are operating at Expert level when you can:
 *Optional:* the Databricks Data Engineer Professional exam maps to roughly A6–E8.
 
 ---
+
+
 
 
 
