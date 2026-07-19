@@ -126,6 +126,22 @@ python tools/spark_source_map/check_drift.py --coverage
 
 This matters because a sweep only walks a group's scope, so **a package no group claims can never be swept**, and its concepts can never surface as `propose:` blocks. The gap hides itself. Run it after any Spark upgrade, and when adding a group. It is advisory and never fails the build: plenty of packages (`util/`, `errors/`, `test/`, `dsl/`) are plumbing that rightly has no group, and deciding what deserves one is editorial.
 
+**What is checked at which level.** The two directions do not have the same granularity:
+
+| Check | Subsystem | Per group |
+|---|---|---|
+| `_meta.spark_version` matches the catalog | ✓ | — |
+| module directory exists | ✓ | — |
+| classes named in a `scope` resolve | ✓ | ✓ (against that group's `modules:`) |
+| packages named in a `scope` resolve | ✓ | ✓ |
+| unclaimed packages (`--coverage`) | ✓ | ✗ |
+
+`--coverage` joins every group's scope into one string, so a package claimed by *any* group counts as claimed. It will tell you `core` has a hole; it will not tell you which group should own it, or that one group's scope is thin.
+
+That gap is deliberate, because per-group coverage is not well defined. Some groups partition by directory (`sql/core`'s seven groups each take a different `execution/*` child), others by concern *within* one directory — `resource-managers/kubernetes` splits `k8s/` into `driver-executor` and `auth-networking` by theme, not by path. There is no mechanical way to say a themed group "missed" a package, so such a check would be noise, or would force an unnatural path-based carving.
+
+Per-group completeness is enforced at sweep time instead, by the sweeper rather than a script: every config in the group's slice must tie to a concept, and one that doesn't means an area that was never visited. That check is mechanical, and the skill requires it before a sweep page is written.
+
 Spark 4.x moved classes between modules repeatedly — `StorageLevel` to `common/utils`, the `DataType` hierarchy to `sql/api`. A group can declare `modules: [sql/api]` to name the other modules its classes legitimately live in; that keeps the check strict instead of forcing scopes to stay vague enough to always pass.
 
 Topic and sweep pages carry a `spark_version`. When it trails the catalog, `check_drift.py` warns that `file:line` anchors have likely drifted. Set `version_pinned: "<reason>"` when the older version is deliberate — the Iceberg and Delta traces pin to 4.1 because neither ships a Spark 4.2 module.
