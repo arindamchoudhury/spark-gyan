@@ -44,7 +44,15 @@ def _template(display: str) -> str:
             f"## Timeline\n\n{START}\n{END}\n")
 
 def write_pages(catalog_path, out_dir):
-    records = [json.loads(l) for l in Path(catalog_path).read_text(encoding="utf-8").splitlines() if l.strip()]
+    catalog_path_obj = Path(catalog_path)
+    records = [json.loads(l) for l in catalog_path_obj.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+    # Try to load prose records from _prose.jsonl in the same directory
+    prose_path = catalog_path_obj.parent / "_prose.jsonl"
+    if prose_path.exists():
+        prose_records = [json.loads(l) for l in prose_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        records.extend(prose_records)
+
     by_area: dict[str, list] = {}
     for r in records:
         by_area.setdefault(r["area"], []).append(r)
