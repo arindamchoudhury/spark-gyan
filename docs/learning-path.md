@@ -1,6 +1,6 @@
 # Learning Path: Apache Spark / PySpark
 
-> **Last updated:** 2026-07-21 (Phase 5: folded five 4.2.0 features from the "Introducing Apache Spark 4.2" blog that the path had missed — Python Data Sources → B4, Real-Time Mode streaming → A7, pandas 3 + Arrow C Data / PyCapsule interop → I3, and `SYSTEM.BUILTIN` / `SYSTEM.SESSION` qualification + `time_bucket` + tuple sketches → B8). Earlier, 2026-07-18: taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I11/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
+> **Last updated:** 2026-07-21 (Phase 5, full sweep of the "Introducing Apache Spark 4.2" blog — folded every feature the path had missed into its topic: Python Data Sources → B4; Real-Time Mode streaming → A7; pandas 3 + Arrow C Data / PyCapsule interop → I3; vector distance/similarity/normalization/aggregation functions → B7; DSv2 row-level / MERGE-perf / INSERT-schema-evolution / transaction-API work → A3; and `SYSTEM.BUILTIN` / `SYSTEM.SESSION` qualification + `time_bucket` + tuple sketches + `IGNORE`/`RESPECT NULLS` + top-K `max_by`/`min_by` → B8. Every other blog feature was already placed in a prior pass). Earlier, 2026-07-18: taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I11/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026)
 >
@@ -324,8 +324,8 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
     After a shuffle completes, AQE knows the real sizes and can promote a sort-merge join to a broadcast using a *separate* threshold, `spark.sql.adaptive.autoBroadcastJoinThreshold`. So the strategy in the Spark UI can legitimately differ from the one `explain()` printed — see the AQE note under B3.
 
-!!! note "New in Spark 4.2.0 — `NEAREST BY` top-K ranking join"
-    Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a join primitive for nearest-neighbour queries with both Catalyst and DataFrame API support. It is not one of the seven relational join types and none of the books cover it — learn the seven first, then read the 4.2.0 SQL reference. Relevant if you do vector/embedding work.
+!!! note "New in Spark 4.2.0 — `NEAREST BY` join, and the vector-function family it sits on"
+    Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a join primitive for nearest-neighbour queries with both Catalyst and DataFrame API support. It is not one of the seven relational join types and none of the books cover it — learn the seven first, then read the 4.2.0 SQL reference. `NEAREST BY` is the join member of a wider **vector primitive** set 4.2.0 adds for embedding/RAG work: scalar **distance and similarity** functions (cosine, dot, euclidean), **vector normalization**, and **vector aggregation**. These are ordinary built-in functions usable anywhere in a query, not just inside the join — learn them together the day you first need to rank by embedding distance. All 4.2.0, all book-absent; go to the 4.2.0 function reference.
 
 ---
 
@@ -361,7 +361,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 !!! note "New in Spark 4.2.0 — QUALIFY, search paths, metric views, and SQL surface additions"
     Additions the books predate: `QUALIFY` ([SPARK-31561]) filters on window-function results without a wrapping subquery — worth learning alongside I2; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]) changes how unqualified names resolve; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]) add a declarative semantic-modelling surface. Learn the classic catalog model first — it's what the exam tests.
 
-    Four smaller 4.2.0 SQL additions worth knowing exist (reach for the 4.2.0 release notes for detail): explicit **`SYSTEM.BUILTIN`** qualification to force a built-in function past a same-named UDF, and **`SYSTEM.SESSION`** to name a temp view unambiguously — both make the name-resolution order above overridable rather than implicit; **`time_bucket`** for fixed-interval time-series bucketing (a cleaner alternative to the `window()` idiom, relevant to I2); and **tuple sketches** for approximate multi-column cardinality. All post-date every book here.
+    Smaller 4.2.0 SQL additions worth knowing exist (reach for the 4.2.0 release notes for detail): explicit **`SYSTEM.BUILTIN`** qualification to force a built-in function past a same-named UDF, and **`SYSTEM.SESSION`** to name a temp view unambiguously — both make the name-resolution order above overridable rather than implicit; **`time_bucket`** for fixed-interval time-series bucketing (a cleaner alternative to the `window()` idiom, relevant to I2); **tuple sketches** for approximate multi-column cardinality; **`IGNORE NULLS` / `RESPECT NULLS`** on analytic functions like `lag`/`lead`/`first`/`last` (skip nulls when scanning for the neighbouring value — pairs with I2); and **top-K aggregate** forms of `max_by` / `min_by` that return the N extreme rows rather than one (pairs with B6). All post-date every book here.
 
 ---
 
@@ -1108,8 +1108,10 @@ You are ready to leave this level when you can:
 
 **Milestone:** You can look at a query's physical plan, identify the join strategy, force a broadcast join on a table below the auto-broadcast threshold, and handle a skewed join key with salting.
 
-!!! note "New in Spark 4.2.0 — `NEAREST BY` and DSv2 partition-stats filtering"
+!!! note "New in Spark 4.2.0 — `NEAREST BY` and a batch of DSv2 engine work"
     `NEAREST BY` ([SPARK-56395]) adds a top-K ranking join with its own physical strategy — see B7. Data Source V2 also gained enhanced partition-stats filtering ([SPARK-55596]) and `TABLESAMPLE SYSTEM` block sampling with DSv2 pushdown ([SPARK-55978]), both of which change what the planner can prune before a join.
+
+    Several other DSv2 improvements landed in 4.2.0 that a connector-writer or MERGE-heavy pipeline will feel (detail in the 4.2.0 release notes): **row-level operation improvements** including `MERGE INTO` performance gains, **schema evolution on `INSERT`** (both name-based and position-based), **`UPDATE`/`DELETE` operation summaries**, and **transaction-API foundations**. These are engine/connector-facing rather than new user syntax — worth knowing exist so you attribute a MERGE speedup or a newly-tolerated INSERT to the release, not to your own change. The user-facing CDC side of this DSv2 work (the `CHANGES` clause) is covered in E8.
 
 ---
 
