@@ -1,0 +1,4 @@
+# spark_id<TAB>area_slug   — manual corrections; one per line; '#' comments allowed.
+SPARK-8701	dstreams
+SPARK-19518	builtin-functions
+SPARK-29739	build-lang
