@@ -1,4 +1,4 @@
-from catalog.parser import classify_type, KEEP_TYPES, DROP_TYPES, iter_releases, has_dump
+from catalog.parser import classify_type, KEEP_TYPES, DROP_TYPES, iter_releases, has_dump, parse_dump, Item
 
 
 SAMPLE = """RELEASE: spark-release-9-9-9
@@ -44,3 +44,32 @@ def test_has_dump_detects_h2():
     rels = dict(iter_releases(SAMPLE))
     assert has_dump(rels["spark-release-8-8-8"]) is True
     assert has_dump(rels["spark-release-9-9-9"]) is False
+
+
+DUMP = """<h2>        New Feature</h2>
+<ul>
+<li>[<a href='https://issues.apache.org/jira/browse/SPARK-24882'>SPARK-24882</a>] -         data source v2 API improvement &amp; cleanup</li>
+</ul>
+<h2>        Bug</h2>
+<ul>
+<li>[<a href='https://issues.apache.org/jira/browse/SPARK-25567'>SPARK-25567</a>] -         Table listing doesn&#39;t sort</li>
+</ul>
+"""
+
+
+def test_parse_dump_extracts_items():
+    items = parse_dump(DUMP)
+    assert len(items) == 2
+    feat = items[0]
+    assert feat.spark_id == "SPARK-24882"
+    assert feat.jira_type == "New Feature"
+    assert feat.disposition == "keep"
+    assert feat.title == "data source v2 API improvement & cleanup"
+
+
+def test_parse_dump_unescapes_and_drops_bug():
+    items = parse_dump(DUMP)
+    bug = items[1]
+    assert bug.jira_type == "Bug"
+    assert bug.disposition == "drop"
+    assert bug.title == "Table listing doesn't sort"
