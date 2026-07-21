@@ -18,6 +18,10 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 
 2.1.0 let Python dictionaries populate `StructType` values when constructing a DataFrame (SPARK-16700). 2.2.0's biggest change for adoption was distributional, not technical: PySpark became installable from PyPI via `pip install pyspark`, dropping the need to download a full Spark distribution just to write Python code against it. 2.3.0 delivered the performance counterpart — significant gains from fast serialization and vectorized execution (SPARK-22216), the umbrella work that also underpinned Pandas UDFs and Arrow-based conversion elsewhere. 2.4.0 closed the line with eager evaluation for DataFrames in notebook environments (SPARK-24215), showing results immediately rather than only on an action, plus a dedicated `spark.executor.pyspark.memory` limit (SPARK-25004) for controlling Python worker memory separately from JVM executor memory.
 
+### 3.x era — Project Zen modernizes the Python experience
+
+3.1.1 launched Project Zen (SPARK-32082), an umbrella to make PySpark feel native to Python developers: type hints via stub files (SPARK-32681), NumPy-style API docs (SPARK-32085), and installability straight from PyPI without a separate Spark download (SPARK-32017). 3.2.0 continued the Python-usability push with pinned-thread mode enabled by default (SPARK-35303) and snake_case naming across the function APIs (SPARK-34306). 3.3.0 was quiet for pure-PySpark entries, adding just `cot`. 3.5.0 picked the pace back up: Python user-defined table functions (SPARK-43798, SPARK-43797), positional and named parameters for `sql()` (SPARK-44140, SPARK-41666), `assertDataFrameEqual`/`assertSchemaEqual` testing utilities (SPARK-44061, SPARK-44216), and a push to make Python the default language for Spark's own documentation examples (SPARK-42493).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -159,9 +163,36 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 3.0.0 | [SPARK-31748](https://issues.apache.org/jira/browse/SPARK-31748) | Improvement | Document resource module in PySpark doc and rename/move classes |
 | 3.0.0 | [SPARK-31767](https://issues.apache.org/jira/browse/SPARK-31767) | Improvement | Remove ResourceInformation in pyspark module's namespace |
 | 3.0.0 | [SPARK-31807](https://issues.apache.org/jira/browse/SPARK-31807) | Improvement | Use python 3 style in release-build.sh |
+| 3.1.1 | [SPARK-27936](https://issues.apache.org/jira/browse/SPARK-27936) | prose | Support Python dependency |
+| 3.1.1 | [SPARK-29157](https://issues.apache.org/jira/browse/SPARK-29157) | prose | Support data source v2x write APIs |
+| 3.1.1 | [SPARK-29641](https://issues.apache.org/jira/browse/SPARK-29641) | prose | Stage Level Scheduling APIs |
+| 3.1.1 | [SPARK-30569](https://issues.apache.org/jira/browse/SPARK-30569) | prose | Support percentile_approx in PySpark functions |
+| 3.1.1 | [SPARK-30681](https://issues.apache.org/jira/browse/SPARK-30681) | prose | Support higher order functions in PySpark functions |
+| 3.1.1 | [SPARK-31763](https://issues.apache.org/jira/browse/SPARK-31763) | prose | Support inputFiles in PySpark DataFrame |
+| 3.1.1 | [SPARK-31851](https://issues.apache.org/jira/browse/SPARK-31851) | prose | Redesign PySpark documentation |
+| 3.1.1 | [SPARK-32017](https://issues.apache.org/jira/browse/SPARK-32017) | prose | Installation option for PyPI Users |
+| 3.1.1 | [SPARK-32082](https://issues.apache.org/jira/browse/SPARK-32082) | prose | Project Zen: Improving Python usability |
+| 3.1.1 | [SPARK-32085](https://issues.apache.org/jira/browse/SPARK-32085) | prose | Migrate to NumPy documentation style |
+| 3.1.1 | [SPARK-32094](https://issues.apache.org/jira/browse/SPARK-32094) | prose | Update cloudpickle to v1.5.0 |
+| 3.1.1 | [SPARK-32681](https://issues.apache.org/jira/browse/SPARK-32681) | prose | PySpark type hints support |
+| 3.1.1 | [SPARK-32686](https://issues.apache.org/jira/browse/SPARK-32686) | prose | Un-deprecate inferring DataFrame schema from list of dict |
+| 3.1.1 | [SPARK-32798](https://issues.apache.org/jira/browse/SPARK-32798) | prose | Support to fill nulls for missing columns in unionByName |
+| 3.1.1 | [SPARK-32835](https://issues.apache.org/jira/browse/SPARK-32835) | prose | Support withField in PySpark Column |
+| 3.1.1 | [SPARK-33017](https://issues.apache.org/jira/browse/SPARK-33017) | prose | Support getCheckpointDir method in PySpark SparkContext |
+| 3.1.1 | [SPARK-33020](https://issues.apache.org/jira/browse/SPARK-33020) | prose | Support nth_value in PySpark functions |
+| 3.1.1 | [SPARK-33303](https://issues.apache.org/jira/browse/SPARK-33303) | prose | Deduplicate deterministic PythonUDF calls |
+| 3.1.1 | [SPARK-33407](https://issues.apache.org/jira/browse/SPARK-33407) | prose | Simplify the exception message from Python UDFs |
+| 3.1.1 | [SPARK-33563](https://issues.apache.org/jira/browse/SPARK-33563) | prose | Support acosh, asinh and atanh |
+| 3.1.1 | [SPARK-33748](https://issues.apache.org/jira/browse/SPARK-33748) | prose | Respect environment variables and configurations for Python executables |
+| 3.1.1 | [SPARK-33836](https://issues.apache.org/jira/browse/SPARK-33836) | prose | DataStreamReader.table and DataStreamWriter.toTable |
 | 3.1.1 | [SPARK-34398](https://issues.apache.org/jira/browse/SPARK-34398) | Improvement | Missing pyspark 3.1.1 doc migration |
+| 3.1.2 | [SPARK-34630](https://issues.apache.org/jira/browse/SPARK-34630) | prose | Add type hints of pyspark.__version__ and pyspark.sql.Column.contains |
+| 3.1.2 | [SPARK-35019](https://issues.apache.org/jira/browse/SPARK-35019) | prose | Improve type hints on pyspark.sql.* |
+| 3.2.0 | [SPARK-34306](https://issues.apache.org/jira/browse/SPARK-34306) | prose | Use Snake naming rule across the function APIs |
+| 3.2.0 | [SPARK-35303](https://issues.apache.org/jira/browse/SPARK-35303) | prose | Enable pinned thread mode by default |
 | 3.2.0 | [SPARK-35419](https://issues.apache.org/jira/browse/SPARK-35419) | Improvement | Enable spark.sql.execution.pyspark.udf.simplifiedTraceback.enabled by default |
 | 3.2.0 | [SPARK-35498](https://issues.apache.org/jira/browse/SPARK-35498) | Improvement | Add an API "inheritable_thread_target" which return a wrapped thread target for pyspark pin thread mode |
+| 3.2.0 | [SPARK-35929](https://issues.apache.org/jira/browse/SPARK-35929) | prose | Support to infer nested dict as a struct when creating a DataFrame |
 | 3.2.0 | [SPARK-35946](https://issues.apache.org/jira/browse/SPARK-35946) | Improvement | Respect Py4J server if InheritableThread API |
 | 3.2.0 | [SPARK-35986](https://issues.apache.org/jira/browse/SPARK-35986) | Improvement | fix pyspark.rdd.RDD.histogram's buckets argument |
 | 3.2.0 | [SPARK-36062](https://issues.apache.org/jira/browse/SPARK-36062) | Improvement | Try to capture faulthanlder when a Python worker crashes. |
@@ -172,4 +203,29 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 3.2.0 | [SPARK-36226](https://issues.apache.org/jira/browse/SPARK-36226) | Improvement | improve python docstring links to other pyspark classes |
 | 3.2.0 | [SPARK-36285](https://issues.apache.org/jira/browse/SPARK-36285) | Improvement | Skip MiMa in PySpark GHA job |
 | 3.2.0 | [SPARK-36288](https://issues.apache.org/jira/browse/SPARK-36288) | Improvement | Update API usage on pyspark pandas documents |
+| 3.2.0 | [SPARK-36469](https://issues.apache.org/jira/browse/SPARK-36469) | prose | Implement Index.map |
+| 3.2.0 | [SPARK-36470](https://issues.apache.org/jira/browse/SPARK-36470) | prose | Implement CategoricalIndex.map and DatetimeIndex.map |
+| 3.3.0 | [SPARK-36660](https://issues.apache.org/jira/browse/SPARK-36660) | prose | Add cot as Scala and Python functions |
+| 3.4.1 | [SPARK-43759](https://issues.apache.org/jira/browse/SPARK-43759) | prose | Expose TimestampNTZType in pyspark.sql.types |
+| 3.5.0 | [SPARK-41233](https://issues.apache.org/jira/browse/SPARK-41233) | prose | Add array_prepend function |
+| 3.5.0 | [SPARK-41666](https://issues.apache.org/jira/browse/SPARK-41666) | prose | Support parameterized SQL by sql() |
+| 3.5.0 | [SPARK-42094](https://issues.apache.org/jira/browse/SPARK-42094) | prose | Support fill_value for ps.Series |
+| 3.5.0 | [SPARK-42194](https://issues.apache.org/jira/browse/SPARK-42194) | prose | Allow columns parameter when creating DataFrame with Series |
+| 3.5.0 | [SPARK-42493](https://issues.apache.org/jira/browse/SPARK-42493) | prose | Make Python the first tab for code examples - Spark SQL, DataFrames and Datasets Guide |
+| 3.5.0 | [SPARK-42642](https://issues.apache.org/jira/browse/SPARK-42642) | prose | Updating remaining Spark documentation code examples to show Python by default |
+| 3.5.0 | [SPARK-43213](https://issues.apache.org/jira/browse/SPARK-43213) | prose | Add DataFrame.offset to PySpark |
+| 3.5.0 | [SPARK-43270](https://issues.apache.org/jira/browse/SPARK-43270) | prose | Implement dir() in pyspark.sql.dataframe.DataFrame to include columns |
+| 3.5.0 | [SPARK-43545](https://issues.apache.org/jira/browse/SPARK-43545) | prose | Support nested timestamp type |
+| 3.5.0 | [SPARK-43759](https://issues.apache.org/jira/browse/SPARK-43759) | prose | Expose TimestampNTZType in pyspark.sql.types |
+| 3.5.0 | [SPARK-43797](https://issues.apache.org/jira/browse/SPARK-43797) | prose | Support Python user-defined table functions |
+| 3.5.0 | [SPARK-43798](https://issues.apache.org/jira/browse/SPARK-43798) | prose | Support Python user-defined table functions |
+| 3.5.0 | [SPARK-43799](https://issues.apache.org/jira/browse/SPARK-43799) | prose | Add descriptor binary option to Pyspark Protobuf API |
+| 3.5.0 | [SPARK-43892](https://issues.apache.org/jira/browse/SPARK-43892) | prose | ] in pyspark.sql.dataframe.DataFrame |
+| 3.5.0 | [SPARK-43907](https://issues.apache.org/jira/browse/SPARK-43907) | prose | Add SQL functions into Scala, Python and R API |
+| 3.5.0 | [SPARK-44061](https://issues.apache.org/jira/browse/SPARK-44061) | prose | Add assertDataFrameEqual util function |
+| 3.5.0 | [SPARK-44140](https://issues.apache.org/jira/browse/SPARK-44140) | prose | Support positional parameters in Python sql() |
+| 3.5.0 | [SPARK-44194](https://issues.apache.org/jira/browse/SPARK-44194) | prose | Add JobTag APIs to PySpark SparkContext |
+| 3.5.0 | [SPARK-44216](https://issues.apache.org/jira/browse/SPARK-44216) | prose | Make assertSchemaEqual API public |
+| 3.5.0 | [SPARK-44217](https://issues.apache.org/jira/browse/SPARK-44217) | prose | Allow custom precision for fp approx equality |
+| 3.5.0 | [SPARK-44380](https://issues.apache.org/jira/browse/SPARK-44380) | prose | Support for Python UDTF to analyze in Python |
 <!-- AUTO:timeline END -->

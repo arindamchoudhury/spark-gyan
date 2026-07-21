@@ -12,6 +12,10 @@ The data sources API gained write support in 1.3.0, letting external sources imp
 
 Before Data Source API V2 existed, 2.0.0-2.2.0 spent three releases rebuilding the catalog machinery underneath it: a native database/table system catalog (SPARK-13075), bucketed table support (SPARK-12538), `CatalogTable` replacing ad hoc storage-format representations (SPARK-16691, SPARK-16731), and unified logical plans for `CREATE TABLE`/CTAS (SPARK-16879). That groundwork led to 2.3.0's actual milestone: Data Source API V2 (SPARK-15689), an experimental interface for plugging in new sources and sinks meant to fix the V1 API's limitations around performance and extensibility. The release notes were explicit that the API was still under active development and breaking changes should be expected — a caveat that held for several releases afterward.
 
+### 3.x era — catalog plugin API to storage-partitioned joins
+
+3.0.0 defined the catalog plugin API (SPARK-31121) and the DataSourceV2 table relation (SPARK-27322), giving external catalogs and V2 tables a real place in the analyzer alongside DESCRIBE/USE/multi-catalog SQL support. 3.1.1 added partial predicate pushdown through more operators. 3.2.0 introduced the aggregate-pushdown APIs (SPARK-34952), a DataSourceV2 function catalog (SPARK-35260), and write-side distribution/ordering requests (SPARK-33779). 3.3.0 rounded pushdown out substantially (SPARK-38788): limit, sample, TopN, complete aggregate pushdown, and a general expression-translation framework for DS V2. 3.4.0 added Storage Partitioned Joins (SPARK-37375), row-level operations (SPARK-35801), and column statistics in DS v2 (SPARK-41378) — letting a source-aware join skip a shuffle entirely when both sides already share the same partitioning.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -105,11 +109,13 @@ Before Data Source API V2 existed, 2.0.0-2.2.0 spent three releases rebuilding t
 | 2.2.0 | [SPARK-20420](https://issues.apache.org/jira/browse/SPARK-20420) | Improvement | Add events to the external catalog |
 | 2.2.0 | [SPARK-20967](https://issues.apache.org/jira/browse/SPARK-20967) | Improvement | SharedState.externalCatalog is not really lazy |
 | 2.3.0 | [SPARK-15689](https://issues.apache.org/jira/browse/SPARK-15689) | prose | Data Source API V2 (experimental) |
+| 3.0.0 | [SPARK-19712](https://issues.apache.org/jira/browse/SPARK-19712) | prose | Rule PushDownLeftSemiAntiJoin |
 | 3.0.0 | [SPARK-25196](https://issues.apache.org/jira/browse/SPARK-25196) | New Feature | Extends the analyze column command for cached tables |
 | 3.0.0 | [SPARK-25269](https://issues.apache.org/jira/browse/SPARK-25269) | Improvement | SQL interface support specify StorageLevel when cache table |
 | 3.0.0 | [SPARK-25390](https://issues.apache.org/jira/browse/SPARK-25390) | Improvement | Data source V2 API refactoring |
 | 3.0.0 | [SPARK-25423](https://issues.apache.org/jira/browse/SPARK-25423) | Improvement | Output "dataFilters" in DataSourceScanExec.metadata |
 | 3.0.0 | [SPARK-25458](https://issues.apache.org/jira/browse/SPARK-25458) | Improvement | Support FOR ALL COLUMNS in ANALYZE TABLE |
+| 3.0.0 | [SPARK-25482](https://issues.apache.org/jira/browse/SPARK-25482) | prose | Avoid pushdown of subqueries in data source filters |
 | 3.0.0 | [SPARK-25531](https://issues.apache.org/jira/browse/SPARK-25531) | Improvement | new write APIs for data source v2 |
 | 3.0.0 | [SPARK-25575](https://issues.apache.org/jira/browse/SPARK-25575) | Improvement | SQL tab in the spark UI doesn't have option of hiding tables, eventhough other UI tabs has. |
 | 3.0.0 | [SPARK-25884](https://issues.apache.org/jira/browse/SPARK-25884) | Improvement | Add TBLPROPERTIES and COMMENT, and use LOCATION when SHOW CREATE TABLE. |
@@ -203,12 +209,15 @@ Before Data Source API V2 existed, 2.0.0-2.2.0 spent three releases rebuilding t
 | 3.0.0 | [SPARK-31516](https://issues.apache.org/jira/browse/SPARK-31516) | Improvement | Non-existed metric hiveClientCalls.count of CodeGenerator in Monitoring Doc |
 | 3.0.0 | [SPARK-35444](https://issues.apache.org/jira/browse/SPARK-35444) | Improvement | Improve createTable logic if table exists |
 | 3.1.1 | [SPARK-30497](https://issues.apache.org/jira/browse/SPARK-30497) | Improvement | migrate DESCRIBE TABLE to the new framework |
+| 3.1.1 | [SPARK-32302](https://issues.apache.org/jira/browse/SPARK-32302) | prose | Partially push down predicates |
+| 3.1.1 | [SPARK-33302](https://issues.apache.org/jira/browse/SPARK-33302) | prose | Push down filters through expand |
 | 3.1.1 | [SPARK-34153](https://issues.apache.org/jira/browse/SPARK-34153) | Improvement | Remove unused `getRawTable()` from `HiveExternalCatalog.alterPartitions()` |
 | 3.2.0 | [SPARK-27658](https://issues.apache.org/jira/browse/SPARK-27658) | Improvement | Catalog API to load functions |
 | 3.2.0 | [SPARK-31891](https://issues.apache.org/jira/browse/SPARK-31891) | Improvement | `ALTER TABLE multipartIdentifier RECOVER PARTITIONS` should drop partition if partition specific location is not exist any more |
 | 3.2.0 | [SPARK-32985](https://issues.apache.org/jira/browse/SPARK-32985) | Improvement | Decouple bucket filter pruning and bucket table scan |
 | 3.2.0 | [SPARK-33617](https://issues.apache.org/jira/browse/SPARK-33617) | Improvement | Avoid generating small files for INSERT INTO TABLE from VALUES |
 | 3.2.0 | [SPARK-33651](https://issues.apache.org/jira/browse/SPARK-33651) | Improvement | allow CREATE EXTERNAL TABLE with LOCATION for data source tables |
+| 3.2.0 | [SPARK-33779](https://issues.apache.org/jira/browse/SPARK-33779) | prose | Add API to request distribution and ordering on write |
 | 3.2.0 | [SPARK-34001](https://issues.apache.org/jira/browse/SPARK-34001) | Improvement | Remove unused runShowTablesSql() in DataSourceV2SQLSuite.scala |
 | 3.2.0 | [SPARK-34074](https://issues.apache.org/jira/browse/SPARK-34074) | Improvement | Update stats when table size changes |
 | 3.2.0 | [SPARK-34099](https://issues.apache.org/jira/browse/SPARK-34099) | Improvement | Refactor table caching in `DataSourceV2Strategy` |
@@ -230,14 +239,55 @@ Before Data Source API V2 existed, 2.0.0-2.2.0 spent three releases rebuilding t
 | 3.2.0 | [SPARK-34678](https://issues.apache.org/jira/browse/SPARK-34678) | Improvement | Add table function registry |
 | 3.2.0 | [SPARK-34800](https://issues.apache.org/jira/browse/SPARK-34800) | Improvement | Use fine-grained lock in SessionCatalog.tableExists |
 | 3.2.0 | [SPARK-34935](https://issues.apache.org/jira/browse/SPARK-34935) | Improvement | CREATE TABLE LIKE should respect the reserved properties of tables |
+| 3.2.0 | [SPARK-34952](https://issues.apache.org/jira/browse/SPARK-34952) | prose | Aggregate pushdown APIs |
 | 3.2.0 | [SPARK-35087](https://issues.apache.org/jira/browse/SPARK-35087) | Improvement | Some columns in table ` Aggregated Metrics by Executor` of stage-detail page shows incorrectly. |
 | 3.2.0 | [SPARK-35122](https://issues.apache.org/jira/browse/SPARK-35122) | Improvement | Migrate CACHE/UNCACHE TABLE to use AnalysisOnlyCommand |
 | 3.2.0 | [SPARK-35236](https://issues.apache.org/jira/browse/SPARK-35236) | Improvement | Support archive files as resources for CREATE FUNCTION USING syntax |
+| 3.2.0 | [SPARK-35260](https://issues.apache.org/jira/browse/SPARK-35260) | prose | DataSourceV2 Function Catalog implementation |
 | 3.2.0 | [SPARK-35332](https://issues.apache.org/jira/browse/SPARK-35332) | Improvement | Not Coalesce shuffle partitions when cache table |
 | 3.2.0 | [SPARK-35360](https://issues.apache.org/jira/browse/SPARK-35360) | Improvement | Spark make add partition batch size configurable when call RepairTableCommand |
 | 3.2.0 | [SPARK-35556](https://issues.apache.org/jira/browse/SPARK-35556) | Improvement | Remove the close HiveClient's SessionState |
 | 3.2.0 | [SPARK-35629](https://issues.apache.org/jira/browse/SPARK-35629) | Improvement | Use better exception type if database doesn't exist on `drop database` |
 | 3.2.0 | [SPARK-35779](https://issues.apache.org/jira/browse/SPARK-35779) | Improvement | Support dynamic filtering for v2 tables |
 | 3.2.0 | [SPARK-36178](https://issues.apache.org/jira/browse/SPARK-36178) | Improvement | Document PySpark Catalog APIs in docs/source/reference/pyspark.sql.rst |
+| 3.3.0 | [SPARK-35442](https://issues.apache.org/jira/browse/SPARK-35442) | prose | Support propagate empty relation through aggregate/union |
+| 3.3.0 | [SPARK-35803](https://issues.apache.org/jira/browse/SPARK-35803) | prose | Support DataSource V2 CreateTempViewUsing |
+| 3.3.0 | [SPARK-36526](https://issues.apache.org/jira/browse/SPARK-36526) | prose | DS V2 Index Support: Add supportsIndex interface |
+| 3.3.0 | [SPARK-36556](https://issues.apache.org/jira/browse/SPARK-36556) | prose | Add DS V2 filters |
+| 3.3.0 | [SPARK-36644](https://issues.apache.org/jira/browse/SPARK-36644) | prose | Push down boolean column filter |
+| 3.3.0 | [SPARK-36646](https://issues.apache.org/jira/browse/SPARK-36646) | prose | Push down group by partition column for aggregate |
+| 3.3.0 | [SPARK-36760](https://issues.apache.org/jira/browse/SPARK-36760) | prose | Add interface SupportsPushDownV2Filters |
+| 3.3.0 | [SPARK-37020](https://issues.apache.org/jira/browse/SPARK-37020) | prose | DS V2 LIMIT push down |
+| 3.3.0 | [SPARK-37038](https://issues.apache.org/jira/browse/SPARK-37038) | prose | DS V2 Sample Push Down |
+| 3.3.0 | [SPARK-37376](https://issues.apache.org/jira/browse/SPARK-37376) | prose | Introduce a new DataSource V2 interface HasPartitionKey |
+| 3.3.0 | [SPARK-37527](https://issues.apache.org/jira/browse/SPARK-37527) | prose | Translate more standard aggregate functions for pushdown |
+| 3.3.0 | [SPARK-37578](https://issues.apache.org/jira/browse/SPARK-37578) | prose | Update task metrics from ds V2 custom metrics |
+| 3.3.0 | [SPARK-37644](https://issues.apache.org/jira/browse/SPARK-37644) | prose | Support datasource V2 complete aggregate pushdown |
+| 3.3.0 | [SPARK-37670](https://issues.apache.org/jira/browse/SPARK-37670) | prose | Support predicate pushdown and column pruning for de-duped CTEs |
+| 3.3.0 | [SPARK-37789](https://issues.apache.org/jira/browse/SPARK-37789) | prose | Add a class to represent general aggregate functions in DS V2 |
+| 3.3.0 | [SPARK-37828](https://issues.apache.org/jira/browse/SPARK-37828) | prose | Push down filters through RebalancePartitions |
+| 3.3.0 | [SPARK-37917](https://issues.apache.org/jira/browse/SPARK-37917) | prose | Push down limit 1 for right side of left semi/anti join if join condition is empty |
+| 3.3.0 | [SPARK-37960](https://issues.apache.org/jira/browse/SPARK-37960) | prose | A new framework to represent catalyst expressions in DS V2 APIs |
+| 3.3.0 | [SPARK-38391](https://issues.apache.org/jira/browse/SPARK-38391) | prose | Datasource V2 supports partial topN push-down |
+| 3.3.0 | [SPARK-38533](https://issues.apache.org/jira/browse/SPARK-38533) | prose | DS V2 aggregate push-down supports project with alias |
+| 3.3.0 | [SPARK-38644](https://issues.apache.org/jira/browse/SPARK-38644) | prose | DS V2 topN push-down supports project with alias |
+| 3.3.0 | [SPARK-38761](https://issues.apache.org/jira/browse/SPARK-38761) | prose | DS V2 supports push down misc non-aggregate functions |
+| 3.3.0 | [SPARK-38768](https://issues.apache.org/jira/browse/SPARK-38768) | prose | Remove Limit from plan if complete push down limit to data source |
+| 3.3.0 | [SPARK-38788](https://issues.apache.org/jira/browse/SPARK-38788) | prose | More comprehensive DS V2 push down capabilities |
+| 3.3.0 | [SPARK-38855](https://issues.apache.org/jira/browse/SPARK-38855) | prose | DS V2 supports push down math functions |
+| 3.3.0 | [SPARK-38997](https://issues.apache.org/jira/browse/SPARK-38997) | prose | DS V2 aggregate push-down supports group by expressions |
+| 3.3.0 | [SPARK-39037](https://issues.apache.org/jira/browse/SPARK-39037) | prose | DS V2 Top N push-down supports order by expressions |
+| 3.4.0 | [SPARK-35801](https://issues.apache.org/jira/browse/SPARK-35801) | prose | Row-level operations in DS v2 |
+| 3.4.0 | [SPARK-37375](https://issues.apache.org/jira/browse/SPARK-37375) | prose | Storage Partitioned Join (SPJ) in DS v2 |
+| 3.4.0 | [SPARK-37670](https://issues.apache.org/jira/browse/SPARK-37670) | prose | Support predicate pushdown and column pruning for de-duped CTEs |
+| 3.4.0 | [SPARK-38647](https://issues.apache.org/jira/browse/SPARK-38647) | prose | Add SupportsReportOrdering mix in interface for DS v2 Scan |
+| 3.4.0 | [SPARK-39607](https://issues.apache.org/jira/browse/SPARK-39607) | prose | Distribution and ordering support DS v2 function in writing |
+| 3.4.0 | [SPARK-39635](https://issues.apache.org/jira/browse/SPARK-39635) | prose | Support driver metrics in DS v2 custom metric API |
+| 3.4.0 | [SPARK-41378](https://issues.apache.org/jira/browse/SPARK-41378) | prose | Support Column Stats in DS v2 |
+| 3.4.0 | [SPARK-42115](https://issues.apache.org/jira/browse/SPARK-42115) | prose | Push down limit through Python UDFs |
+| 3.5.0 | [SPARK-41171](https://issues.apache.org/jira/browse/SPARK-41171) | prose | Infer and push down window limit through window if partitionSpec is empty |
+| 3.5.0 | [SPARK-42115](https://issues.apache.org/jira/browse/SPARK-42115) | prose | Push down limit through Python UDFs |
+| 3.5.0 | [SPARK-43390](https://issues.apache.org/jira/browse/SPARK-43390) | prose | DSv2 allows CTAS/RTAS to reserve schema nullability |
+| 3.5.3 | [SPARK-49359](https://issues.apache.org/jira/browse/SPARK-49359) | prose | Allow StagedTableCatalog implementations to fall back to non-atomic write |
 | 4.1.3 | [SPARK-57642](https://issues.apache.org/jira/browse/SPARK-57642) | Improvement | Require predicateSql to be present for the DSv2 CHECK constraint |
 <!-- AUTO:timeline END -->

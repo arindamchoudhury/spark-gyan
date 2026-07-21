@@ -12,6 +12,10 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 
 2.0.0 was Spark SQL's biggest release: `DataFrame` became a type alias for `Dataset[Row]`, unifying the two APIs; `SparkSession` replaced `SQLContext`/`HiveContext` as the single entry point; whole-stage code generation sped up common SQL/DataFrame operators 2-10x by fusing operators into generated Java bytecode; and a native SQL parser added ANSI-SQL and subquery support (correlated/uncorrelated scalar subqueries, `IN`/`NOT IN`/`EXISTS` predicates). 2.1.0 added a faster row-based hashmap for group-by aggregation (SPARK-16523). 2.2.0 introduced a cost-based optimizer — cardinality estimation for filters, joins, and aggregates plus cost-based join reordering (SPARK-17075, SPARK-17080). 2.3.0 extended the CBO with histogram-based statistics (SPARK-21975) and stabilized codegen against the JVM's 64KB bytecode method limit (SPARK-22510). 2.4.0 rounded out SQL syntax with `PIVOT` (SPARK-24035) and `EXCEPT ALL`/`INTERSECT ALL` (SPARK-21274).
 
+### 3.x era — AQE by default and the error-class overhaul
+
+3.2.0 is the pivotal release: Adaptive Query Execution turned on by default (SPARK-33679), the RocksDB state store (SPARK-34198), and Scala 2.13 support (SPARK-34218) all landed together. 3.3.0 shifted focus to diagnosability with a broad Error Message Improvements initiative (SPARK-38781) that began migrating exceptions onto structured error classes, plus row-level runtime filtering (SPARK-32268) and hidden file-metadata columns (SPARK-37273). 3.4.0 was the busiest release for new SQL surface: DEFAULT column values (SPARK-38334), `TIMESTAMP WITHOUT TIME ZONE` (SPARK-35662), lateral column aliases (SPARK-27561), bloom-filter joins enabled by default (SPARK-38841), parameterized SQL (SPARK-41271), and Protobuf support (SPARK-40654). 3.5.0 added the `IDENTIFIER` clause (SPARK-43205), named arguments for SQL functions, and continued the PySpark error-class migration (SPARK-42986) — carrying the 3.3.0 diagnosability push through to completion.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -617,10 +621,19 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-11150](https://issues.apache.org/jira/browse/SPARK-11150) | New Feature | Dynamic partition pruning |
 | 3.0.0 | [SPARK-14023](https://issues.apache.org/jira/browse/SPARK-14023) | Improvement | Make exceptions consistent regarding fields and columns |
 | 3.0.0 | [SPARK-16323](https://issues.apache.org/jira/browse/SPARK-16323) | Improvement | Avoid unnecessary cast when doing integral divide |
+| 3.0.0 | [SPARK-18455](https://issues.apache.org/jira/browse/SPARK-18455) | prose | Better support for correlated subquery processing |
 | 3.0.0 | [SPARK-19851](https://issues.apache.org/jira/browse/SPARK-19851) | Improvement | Add support for EVERY and ANY (SOME) aggregates |
+| 3.0.0 | [SPARK-20286](https://issues.apache.org/jira/browse/SPARK-20286) | prose | Improve logic for timing out executors in dynamic allocation |
 | 3.0.0 | [SPARK-21351](https://issues.apache.org/jira/browse/SPARK-21351) | Improvement | Update nullability based on children's output in optimized logical plan |
 | 3.0.0 | [SPARK-21436](https://issues.apache.org/jira/browse/SPARK-21436) | Improvement | Take advantage of known partioner for distinct on RDDs |
 | 3.0.0 | [SPARK-21870](https://issues.apache.org/jira/browse/SPARK-21870) | Improvement | Split codegen'd aggregation code into small functions for the HotSpot |
+| 3.0.0 | [SPARK-23429](https://issues.apache.org/jira/browse/SPARK-23429) | prose | Add executor memory metrics to heartbeat and expose in executors REST API |
+| 3.0.0 | [SPARK-23903](https://issues.apache.org/jira/browse/SPARK-23903) | prose | extract |
+| 3.0.0 | [SPARK-23935](https://issues.apache.org/jira/browse/SPARK-23935) | prose | map_entries |
+| 3.0.0 | [SPARK-23937](https://issues.apache.org/jira/browse/SPARK-23937) | prose | map_filter |
+| 3.0.0 | [SPARK-23938](https://issues.apache.org/jira/browse/SPARK-23938) | prose | map_zip_with |
+| 3.0.0 | [SPARK-23939](https://issues.apache.org/jira/browse/SPARK-23939) | prose | transform_keys |
+| 3.0.0 | [SPARK-23940](https://issues.apache.org/jira/browse/SPARK-23940) | prose | transform_values |
 | 3.0.0 | [SPARK-24762](https://issues.apache.org/jira/browse/SPARK-24762) | Improvement | Aggregator should be able to use Option of Product encoder |
 | 3.0.0 | [SPARK-24901](https://issues.apache.org/jira/browse/SPARK-24901) | Improvement | Merge the codegen of RegularHashMap and fastHashMap to reduce compiler maxCodesize when VectorizedHashMap is false |
 | 3.0.0 | [SPARK-25038](https://issues.apache.org/jira/browse/SPARK-25038) | Improvement | Accelerate Spark Plan generation when Spark SQL read large amount of data |
@@ -635,6 +648,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-25444](https://issues.apache.org/jira/browse/SPARK-25444) | Improvement | Refactor GenArrayData.genCodeToCreateArrayData() method |
 | 3.0.0 | [SPARK-25446](https://issues.apache.org/jira/browse/SPARK-25446) | Improvement | Add schema_of_json() and schema_of_csv() to R |
 | 3.0.0 | [SPARK-25447](https://issues.apache.org/jira/browse/SPARK-25447) | Improvement | Support JSON options by schema_of_json |
+| 3.0.0 | [SPARK-25474](https://issues.apache.org/jira/browse/SPARK-25474) | prose | Support spark.sql.statistics.fallBackToHdfs in data source tables |
 | 3.0.0 | [SPARK-25497](https://issues.apache.org/jira/browse/SPARK-25497) | Improvement | limit operation within whole stage codegen should not consume all the inputs |
 | 3.0.0 | [SPARK-25514](https://issues.apache.org/jira/browse/SPARK-25514) | Improvement | Generating pretty JSON by to_json |
 | 3.0.0 | [SPARK-25556](https://issues.apache.org/jira/browse/SPARK-25556) | New Feature | Predicate Pushdown for Nested fields |
@@ -653,9 +667,12 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-25971](https://issues.apache.org/jira/browse/SPARK-25971) | Improvement | Ignore partition byte-size statistics in SQLQueryTestSuite |
 | 3.0.0 | [SPARK-26003](https://issues.apache.org/jira/browse/SPARK-26003) | Improvement | Improve performance in SQLAppStatusListener |
 | 3.0.0 | [SPARK-26004](https://issues.apache.org/jira/browse/SPARK-26004) | Improvement | InMemoryTable support StartsWith predicate push down |
+| 3.0.0 | [SPARK-26023](https://issues.apache.org/jira/browse/SPARK-26023) | prose | Support Dumping truncated plans and generated code to a file |
 | 3.0.0 | [SPARK-26065](https://issues.apache.org/jira/browse/SPARK-26065) | Improvement | Change query hint from a `LogicalPlan` to a field |
 | 3.0.0 | [SPARK-26098](https://issues.apache.org/jira/browse/SPARK-26098) | Improvement | Show associated SQL query in Job page |
 | 3.0.0 | [SPARK-26099](https://issues.apache.org/jira/browse/SPARK-26099) | Improvement | Verification of the corrupt column in from_csv/from_json |
+| 3.0.0 | [SPARK-26129](https://issues.apache.org/jira/browse/SPARK-26129) | prose | Instrumentation for tracking per-query planning time |
+| 3.0.0 | [SPARK-26218](https://issues.apache.org/jira/browse/SPARK-26218) | prose | Throw exception on overflow for integers |
 | 3.0.0 | [SPARK-26230](https://issues.apache.org/jira/browse/SPARK-26230) | Improvement | FileIndex: if case sensitive, validate partitions with original column names |
 | 3.0.0 | [SPARK-26262](https://issues.apache.org/jira/browse/SPARK-26262) | Improvement | Runs SQLQueryTestSuite on mixed config sets: WHOLESTAGE_CODEGEN_ENABLED and CODEGEN_FACTORY_MODE |
 | 3.0.0 | [SPARK-26263](https://issues.apache.org/jira/browse/SPARK-26263) | Improvement | Throw exception when Partition column value can't be converted to user specified type |
@@ -669,6 +686,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-26527](https://issues.apache.org/jira/browse/SPARK-26527) | Improvement | Let acquireUnrollMemory fail fast if required space exceeds memory limit |
 | 3.0.0 | [SPARK-26617](https://issues.apache.org/jira/browse/SPARK-26617) | Improvement | CacheManager blocks during requery |
 | 3.0.0 | [SPARK-26622](https://issues.apache.org/jira/browse/SPARK-26622) | Improvement | Improve wording in SQLMetrics labels |
+| 3.0.0 | [SPARK-26651](https://issues.apache.org/jira/browse/SPARK-26651) | prose | Switch to Proleptic Gregorian calendar |
 | 3.0.0 | [SPARK-26696](https://issues.apache.org/jira/browse/SPARK-26696) | Improvement | Dataset encoder should be publicly accessible |
 | 3.0.0 | [SPARK-26716](https://issues.apache.org/jira/browse/SPARK-26716) | Improvement | Refactor supportDataType API: the supported types of read/write should be consistent |
 | 3.0.0 | [SPARK-26736](https://issues.apache.org/jira/browse/SPARK-26736) | Improvement | if filter condition `And` has non-determined sub function it does not do partition prunning |
@@ -691,7 +709,9 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-27221](https://issues.apache.org/jira/browse/SPARK-27221) | Improvement | Improve the assert error message in TreeNode.parseToJson |
 | 3.0.0 | [SPARK-27225](https://issues.apache.org/jira/browse/SPARK-27225) | New Feature | Implement join strategy hints |
 | 3.0.0 | [SPARK-27241](https://issues.apache.org/jira/browse/SPARK-27241) | Improvement | Add map_keys and map_values support to SelectedField in nested schema pruning |
+| 3.0.0 | [SPARK-27279](https://issues.apache.org/jira/browse/SPARK-27279) | prose | Rule ReuseSubquery |
 | 3.0.0 | [SPARK-27285](https://issues.apache.org/jira/browse/SPARK-27285) | Improvement | Support describing output of a CTE |
+| 3.0.0 | [SPARK-27296](https://issues.apache.org/jira/browse/SPARK-27296) | prose | Allows Aggregator to be registered as a UDAF |
 | 3.0.0 | [SPARK-27314](https://issues.apache.org/jira/browse/SPARK-27314) | Improvement | Deduplicate exprIds for Union. |
 | 3.0.0 | [SPARK-27320](https://issues.apache.org/jira/browse/SPARK-27320) | Improvement | Converting seq to array in AggregationIterator to improve its access performance |
 | 3.0.0 | [SPARK-27327](https://issues.apache.org/jira/browse/SPARK-27327) | Improvement | New JSON benchmarks: functions, dataset parsing |
@@ -699,6 +719,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-27342](https://issues.apache.org/jira/browse/SPARK-27342) | Improvement | Optimize limit 0 queries |
 | 3.0.0 | [SPARK-27393](https://issues.apache.org/jira/browse/SPARK-27393) | Improvement | Show ReusedSubquery in the plan when the subquery is reused |
 | 3.0.0 | [SPARK-27395](https://issues.apache.org/jira/browse/SPARK-27395) | New Feature | New format of EXPLAIN command |
+| 3.0.0 | [SPARK-27396](https://issues.apache.org/jira/browse/SPARK-27396) | prose | Developer APIs for extended Columnar Processing Support |
 | 3.0.0 | [SPARK-27404](https://issues.apache.org/jira/browse/SPARK-27404) | Improvement | Fix build warnings for 3.0: postfixOps edition |
 | 3.0.0 | [SPARK-27423](https://issues.apache.org/jira/browse/SPARK-27423) | Improvement | Cast DATE to/from TIMESTAMP according to SQL standard |
 | 3.0.0 | [SPARK-27449](https://issues.apache.org/jira/browse/SPARK-27449) | Improvement | Clean-up checks in CodegenSupport.limitNotReachedCond |
@@ -723,6 +744,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-27829](https://issues.apache.org/jira/browse/SPARK-27829) | Improvement | In Dataset.joinWith inner joins, don't nest data before shuffling |
 | 3.0.0 | [SPARK-27839](https://issues.apache.org/jira/browse/SPARK-27839) | Improvement | Improve UTF8String.replace() / StringReplace performance |
 | 3.0.0 | [SPARK-27871](https://issues.apache.org/jira/browse/SPARK-27871) | Improvement | LambdaVariable should use per-query unique IDs instead of globally unique IDs |
+| 3.0.0 | [SPARK-27901](https://issues.apache.org/jira/browse/SPARK-27901) | prose | Improve the error messages of SQL parser |
 | 3.0.0 | [SPARK-27944](https://issues.apache.org/jira/browse/SPARK-27944) | Improvement | Unify the behavior of checking empty output column names |
 | 3.0.0 | [SPARK-27945](https://issues.apache.org/jira/browse/SPARK-27945) | Improvement | Make minimal changes to support columnar processing |
 | 3.0.0 | [SPARK-27947](https://issues.apache.org/jira/browse/SPARK-27947) | Improvement | Enhance redactOptions to accept any Map type |
@@ -740,17 +762,23 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-28292](https://issues.apache.org/jira/browse/SPARK-28292) | Improvement | Enable inject user-defined Hint |
 | 3.0.0 | [SPARK-28339](https://issues.apache.org/jira/browse/SPARK-28339) | Improvement | Rename Spark SQL adaptive execution configuration name |
 | 3.0.0 | [SPARK-28345](https://issues.apache.org/jira/browse/SPARK-28345) | Improvement | PythonUDF predicate should be able to pushdown to join |
+| 3.0.0 | [SPARK-28351](https://issues.apache.org/jira/browse/SPARK-28351) | prose | Support DELETE/UPDATE/MERGE Operators in Catalyst |
 | 3.0.0 | [SPARK-28356](https://issues.apache.org/jira/browse/SPARK-28356) | Improvement | Do not reduce the number of partitions for repartition in adaptive execution |
+| 3.0.0 | [SPARK-28432](https://issues.apache.org/jira/browse/SPARK-28432) | prose | make_date |
+| 3.0.0 | [SPARK-28459](https://issues.apache.org/jira/browse/SPARK-28459) | prose | make_timestamp |
 | 3.0.0 | [SPARK-28477](https://issues.apache.org/jira/browse/SPARK-28477) | Improvement | Rewrite `CASE WHEN cond THEN ifTrue OTHERWISE ifFalse` END into `IF(cond, ifTrue, ifFalse)` |
 | 3.0.0 | [SPARK-28545](https://issues.apache.org/jira/browse/SPARK-28545) | Improvement | Add the hash map size to the directional log of ObjectAggregationIterator |
 | 3.0.0 | [SPARK-28588](https://issues.apache.org/jira/browse/SPARK-28588) | Umbrella | Build a SQL reference doc |
 | 3.0.0 | [SPARK-28595](https://issues.apache.org/jira/browse/SPARK-28595) | Improvement | explain should not trigger partition listing |
 | 3.0.0 | [SPARK-28598](https://issues.apache.org/jira/browse/SPARK-28598) | Improvement | Few date time manipulation functions does not provide versions supporting Column as input through the Dataframe API |
+| 3.0.0 | [SPARK-28608](https://issues.apache.org/jira/browse/SPARK-28608) | prose | Thrift-server test coverage |
 | 3.0.0 | [SPARK-28644](https://issues.apache.org/jira/browse/SPARK-28644) | Improvement | Port HIVE-10646: ColumnValue does not handle NULL_TYPE |
+| 3.0.0 | [SPARK-28690](https://issues.apache.org/jira/browse/SPARK-28690) | prose | date_part |
 | 3.0.0 | [SPARK-28702](https://issues.apache.org/jira/browse/SPARK-28702) | Improvement | Display useful error message (instead of NPE) for invalid Dataset operations (e.g. calling actions inside of transformations) |
 | 3.0.0 | [SPARK-28715](https://issues.apache.org/jira/browse/SPARK-28715) | Improvement | Introduce collectInPlanAndSubqueries and subqueriesAll in QueryPlan |
 | 3.0.0 | [SPARK-28716](https://issues.apache.org/jira/browse/SPARK-28716) | Improvement | Add id to Exchange and Subquery's stringArgs method for easier identifying their reuses in query plans |
 | 3.0.0 | [SPARK-28746](https://issues.apache.org/jira/browse/SPARK-28746) | Improvement | Add repartitionby hint to support RepartitionByExpression |
+| 3.0.0 | [SPARK-28753](https://issues.apache.org/jira/browse/SPARK-28753) | prose | Dynamic subquery reuse |
 | 3.0.0 | [SPARK-28835](https://issues.apache.org/jira/browse/SPARK-28835) | Improvement | Introduce TPCDSSchema |
 | 3.0.0 | [SPARK-28836](https://issues.apache.org/jira/browse/SPARK-28836) | Improvement | Remove the canonicalize(attributes) method from PlanExpression |
 | 3.0.0 | [SPARK-28837](https://issues.apache.org/jira/browse/SPARK-28837) | Improvement | CTAS/RTAS should use nullable schema |
@@ -763,11 +791,15 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-29191](https://issues.apache.org/jira/browse/SPARK-29191) | Improvement | Add tag ExtendedSQLTest for SQLQueryTestSuite |
 | 3.0.0 | [SPARK-29343](https://issues.apache.org/jira/browse/SPARK-29343) | Improvement | Eliminate sorts without limit in the subquery of Join/Aggregation |
 | 3.0.0 | [SPARK-29346](https://issues.apache.org/jira/browse/SPARK-29346) | New Feature | Create Aggregating Accumulator |
+| 3.0.0 | [SPARK-29393](https://issues.apache.org/jira/browse/SPARK-29393) | prose | make_interval |
 | 3.0.0 | [SPARK-29473](https://issues.apache.org/jira/browse/SPARK-29473) | Improvement | move statement logical plans to a new file |
+| 3.0.0 | [SPARK-29544](https://issues.apache.org/jira/browse/SPARK-29544) | prose | Skew join optimization |
 | 3.0.0 | [SPARK-29545](https://issues.apache.org/jira/browse/SPARK-29545) | Improvement | Implement bitwise integer aggregates bit_xor |
 | 3.0.0 | [SPARK-29746](https://issues.apache.org/jira/browse/SPARK-29746) | Improvement | implement validateInputType in Normalizer |
+| 3.0.0 | [SPARK-29800](https://issues.apache.org/jira/browse/SPARK-29800) | prose | Rule RewriteNonCorrelatedExists |
 | 3.0.0 | [SPARK-29855](https://issues.apache.org/jira/browse/SPARK-29855) | Improvement | typed literals with negative sign with proper result or exception |
 | 3.0.0 | [SPARK-29930](https://issues.apache.org/jira/browse/SPARK-29930) | Improvement | Remove SQL configs declared to be removed in Spark 3.0 |
+| 3.0.0 | [SPARK-29938](https://issues.apache.org/jira/browse/SPARK-29938) | prose | Add batching in INSERT and ALTER TABLE ADD PARTITION command |
 | 3.0.0 | [SPARK-29945](https://issues.apache.org/jira/browse/SPARK-29945) | Improvement | do not handle negative sign specially in the parser |
 | 3.0.0 | [SPARK-29968](https://issues.apache.org/jira/browse/SPARK-29968) | Improvement | Remove the Predicate code from SparkPlan |
 | 3.0.0 | [SPARK-29977](https://issues.apache.org/jira/browse/SPARK-29977) | Improvement | Remove newMutableProjection/newOrdering/newNaturalAscendingOrdering from SparkPlan |
@@ -785,6 +817,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-30213](https://issues.apache.org/jira/browse/SPARK-30213) | New Feature | Remove the mutable status in QueryStage when enable AQE |
 | 3.0.0 | [SPARK-30278](https://issues.apache.org/jira/browse/SPARK-30278) | Improvement | Update Spark SQL document menu for new changes |
 | 3.0.0 | [SPARK-30326](https://issues.apache.org/jira/browse/SPARK-30326) | Improvement | Raise exception if analyzer exceed max iterations |
+| 3.0.0 | [SPARK-30341](https://issues.apache.org/jira/browse/SPARK-30341) | prose | Overflow check for interval arithmetic operations |
 | 3.0.0 | [SPARK-30342](https://issues.apache.org/jira/browse/SPARK-30342) | Improvement | Update LIST JAR/FILE command |
 | 3.0.0 | [SPARK-30343](https://issues.apache.org/jira/browse/SPARK-30343) | Improvement | Skip unnecessary checks in RewriteDistinctAggregates |
 | 3.0.0 | [SPARK-30350](https://issues.apache.org/jira/browse/SPARK-30350) | Improvement | Fix ScalaReflection to use an empty array for getting its class object |
@@ -800,6 +833,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-30615](https://issues.apache.org/jira/browse/SPARK-30615) | New Feature | normalize the column name in AlterTable |
 | 3.0.0 | [SPARK-30620](https://issues.apache.org/jira/browse/SPARK-30620) | Improvement | avoid unnecessary serialization in AggregateExpression |
 | 3.0.0 | [SPARK-30644](https://issues.apache.org/jira/browse/SPARK-30644) | Improvement | Remove query index from the golden files of SQLQueryTestSuite |
+| 3.0.0 | [SPARK-30667](https://issues.apache.org/jira/browse/SPARK-30667) | prose | Support simple all gather in barrier task context |
 | 3.0.0 | [SPARK-30671](https://issues.apache.org/jira/browse/SPARK-30671) | New Feature | SparkSession emptyDataFrame should not create an RDD |
 | 3.0.0 | [SPARK-30725](https://issues.apache.org/jira/browse/SPARK-30725) | Improvement | Make all legacy SQL configs as internal configs |
 | 3.0.0 | [SPARK-30762](https://issues.apache.org/jira/browse/SPARK-30762) | Story | Add dtype="float32" support to vector_to_array UDF |
@@ -809,6 +843,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-30953](https://issues.apache.org/jira/browse/SPARK-30953) | Improvement | InsertAdaptiveSparkPlan should apply AQE on child plan of write commands |
 | 3.0.0 | [SPARK-31010](https://issues.apache.org/jira/browse/SPARK-31010) | Improvement | forbid untyped scala UDF API by default |
 | 3.0.0 | [SPARK-31060](https://issues.apache.org/jira/browse/SPARK-31060) | Improvement | Handle column names containing `dots` in data source `Filter` |
+| 3.0.0 | [SPARK-31113](https://issues.apache.org/jira/browse/SPARK-31113) | prose | Add SHOW VIEWS command |
 | 3.0.0 | [SPARK-31187](https://issues.apache.org/jira/browse/SPARK-31187) | Improvement | Sort the whole-stage codegen debug output by codegenStageId |
 | 3.0.0 | [SPARK-31190](https://issues.apache.org/jira/browse/SPARK-31190) | Improvement | ScalaReflection should not erasure user defined AnyVal type |
 | 3.0.0 | [SPARK-31292](https://issues.apache.org/jira/browse/SPARK-31292) | Improvement | Replace toSet.toSeq with distinct for readability |
@@ -820,22 +855,99 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.0.0 | [SPARK-31498](https://issues.apache.org/jira/browse/SPARK-31498) | Improvement | Dump public static sql configurations through doc generation |
 | 3.0.0 | [SPARK-31529](https://issues.apache.org/jira/browse/SPARK-31529) | Improvement | Remove extra whitespaces in the formatted explain |
 | 3.0.0 | [SPARK-31678](https://issues.apache.org/jira/browse/SPARK-31678) | Improvement | PrintStackTrace for Spark SQL CLI when error occurs |
+| 3.0.3 | [SPARK-34697](https://issues.apache.org/jira/browse/SPARK-34697) | prose | Allow DESCRIBE FUNCTION and SHOW FUNCTIONS explain about (string concatenation operator) |
+| 3.0.3 | [SPARK-34897](https://issues.apache.org/jira/browse/SPARK-34897) | prose | Support reconcile schemas based on index after nested column pruning |
+| 3.1.1 | [SPARK-21117](https://issues.apache.org/jira/browse/SPARK-21117) | prose | width_bucket |
+| 3.1.1 | [SPARK-24884](https://issues.apache.org/jira/browse/SPARK-24884) | prose | regexp_extract_all |
+| 3.1.1 | [SPARK-25154](https://issues.apache.org/jira/browse/SPARK-25154) | prose | Support NOT IN subqueries inside nested OR conditions |
+| 3.1.1 | [SPARK-26341](https://issues.apache.org/jira/browse/SPARK-26341) | prose | Expose executor memory metrics at the stage level, in the Stages tab |
+| 3.1.1 | [SPARK-27217](https://issues.apache.org/jira/browse/SPARK-27217) | prose | Prune unnecessary nested fields from aggregate and expand |
+| 3.1.1 | [SPARK-27951](https://issues.apache.org/jira/browse/SPARK-27951) | prose | nth_value |
+| 3.1.1 | [SPARK-28067](https://issues.apache.org/jira/browse/SPARK-28067) | prose | Overflow check for aggregate sum with decimals |
+| 3.1.1 | [SPARK-29150](https://issues.apache.org/jira/browse/SPARK-29150) | prose | Expose RDD APIs for Stage Level Scheduling |
+| 3.1.1 | [SPARK-29153](https://issues.apache.org/jira/browse/SPARK-29153) | prose | Merge resource profiles within a stage |
+| 3.1.1 | [SPARK-29358](https://issues.apache.org/jira/browse/SPARK-29358) | prose | Support to fill nulls for missing columns in unionByName |
+| 3.1.1 | [SPARK-29721](https://issues.apache.org/jira/browse/SPARK-29721) | prose | Prune unnecessary nested fields from generate without project |
+| 3.1.1 | [SPARK-30276](https://issues.apache.org/jira/browse/SPARK-30276) | prose | Support filter expression allows simultaneous use of DISTINCT |
+| 3.1.1 | [SPARK-30724](https://issues.apache.org/jira/browse/SPARK-30724) | prose | Support ‘LIKE ANY’ and ‘LIKE ALL’ operators |
+| 3.1.1 | [SPARK-30791](https://issues.apache.org/jira/browse/SPARK-30791) | prose | Add ‘sameSemantics’ and ‘sementicHash’ methods in Dataset |
+| 3.1.1 | [SPARK-31197](https://issues.apache.org/jira/browse/SPARK-31197) | prose | Only exit executor when tasks and block migration are finished |
+| 3.1.1 | [SPARK-31255](https://issues.apache.org/jira/browse/SPARK-31255) | prose | Add SupportsMetadataColumns API on DataSourceV2 |
+| 3.1.1 | [SPARK-31257](https://issues.apache.org/jira/browse/SPARK-31257) | prose | Unify create table SQL syntax |
+| 3.1.1 | [SPARK-31350](https://issues.apache.org/jira/browse/SPARK-31350) | prose | Rule CoalesceBucketsInJoin |
+| 3.1.1 | [SPARK-31694](https://issues.apache.org/jira/browse/SPARK-31694) | prose | Add SupportsPartitions APIs on DataSourceV2 |
+| 3.1.1 | [SPARK-31705](https://issues.apache.org/jira/browse/SPARK-31705) | prose | Push more possible predicates through Join via CNF conversion |
+| 3.1.1 | [SPARK-31736](https://issues.apache.org/jira/browse/SPARK-31736) | prose | Prune unnecessary nested fields from repartition-by-expression and join |
+| 3.1.1 | [SPARK-31826](https://issues.apache.org/jira/browse/SPARK-31826) | prose | Support composed type of case class in UDF |
+| 3.1.1 | [SPARK-31875](https://issues.apache.org/jira/browse/SPARK-31875) | prose | Provide a option to disable user supplied Hints |
+| 3.1.1 | [SPARK-31910](https://issues.apache.org/jira/browse/SPARK-31910) | prose | Enable Java 8 time API in thrift server |
+| 3.1.1 | [SPARK-31999](https://issues.apache.org/jira/browse/SPARK-31999) | prose | Support REFRESH FUNCTION command |
+| 3.1.1 | [SPARK-32004](https://issues.apache.org/jira/browse/SPARK-32004) | prose | Removed references to slave, blacklist and whitelist |
+| 3.1.1 | [SPARK-32030](https://issues.apache.org/jira/browse/SPARK-32030) | prose | Support unlimited MATCHED and NOT MATCHED in MERGE INTO |
+| 3.1.1 | [SPARK-32058](https://issues.apache.org/jira/browse/SPARK-32058) | prose | Use Apache Hadoop 3.2.0 by default |
+| 3.1.1 | [SPARK-32059](https://issues.apache.org/jira/browse/SPARK-32059) | prose | Prune unnecessary nested fields from window and sort |
+| 3.1.1 | [SPARK-32154](https://issues.apache.org/jira/browse/SPARK-32154) | prose | Enable Java 8 time API in UDFs |
+| 3.1.1 | [SPARK-32163](https://issues.apache.org/jira/browse/SPARK-32163) | prose | Prune unnecessary nested fields over cosmetic variations |
+| 3.1.1 | [SPARK-32207](https://issues.apache.org/jira/browse/SPARK-32207) | prose | Support ‘F’-suffixed float literals |
+| 3.1.1 | [SPARK-32274](https://issues.apache.org/jira/browse/SPARK-32274) | prose | Make SQL cache serialization pluggable |
+| 3.1.1 | [SPARK-32276](https://issues.apache.org/jira/browse/SPARK-32276) | prose | Remove redundant sorts before repartition nodes |
+| 3.1.1 | [SPARK-32290](https://issues.apache.org/jira/browse/SPARK-32290) | prose | Rule ExtractSingleColumnNullAwareAntiJoin |
+| 3.1.1 | [SPARK-32337](https://issues.apache.org/jira/browse/SPARK-32337) | prose | EXPLAIN command enhancement |
+| 3.1.1 | [SPARK-32383](https://issues.apache.org/jira/browse/SPARK-32383) | prose | Preserve hash join (BHJ and SHJ) stream side ordering |
+| 3.1.1 | [SPARK-32406](https://issues.apache.org/jira/browse/SPARK-32406) | prose | Support RESET syntax to reset single configuration |
+| 3.1.1 | [SPARK-32517](https://issues.apache.org/jira/browse/SPARK-32517) | prose | Add StorageLevel.DISK_ONLY_3 |
+| 3.1.1 | [SPARK-32540](https://issues.apache.org/jira/browse/SPARK-32540) | prose | Rule EliminateAggregateFilter |
+| 3.1.1 | [SPARK-32573](https://issues.apache.org/jira/browse/SPARK-32573) | prose | Rule EliminateNullAwareAntiJoin |
+| 3.1.1 | [SPARK-32585](https://issues.apache.org/jira/browse/SPARK-32585) | prose | Support enumeration in encoders |
+| 3.1.1 | [SPARK-32592](https://issues.apache.org/jira/browse/SPARK-32592) | prose | Support DataFrameReader.table to take the specified options |
+| 3.1.1 | [SPARK-32793](https://issues.apache.org/jira/browse/SPARK-32793) | prose | raise_error |
+| 3.1.1 | [SPARK-32858](https://issues.apache.org/jira/browse/SPARK-32858) | prose | Rule UnwrapCastInBinaryComparison |
+| 3.1.1 | [SPARK-32859](https://issues.apache.org/jira/browse/SPARK-32859) | prose | Rule DisableUnnecessaryBucketedScan |
+| 3.1.1 | [SPARK-32971](https://issues.apache.org/jira/browse/SPARK-32971) | prose | Support dynamic PVC creation/deletion |
+| 3.1.1 | [SPARK-32976](https://issues.apache.org/jira/browse/SPARK-32976) | prose | Support column list in INSERT statement |
+| 3.1.1 | [SPARK-33092](https://issues.apache.org/jira/browse/SPARK-33092) | prose | Enhanced subexpression elimination |
+| 3.1.1 | [SPARK-33099](https://issues.apache.org/jira/browse/SPARK-33099) | prose | Respect executor idle timeout conf in ExecutorPodsAllocator |
 | 3.1.1 | [SPARK-33138](https://issues.apache.org/jira/browse/SPARK-33138) | Improvement | unify temp view and permanent view behaviors |
+| 3.1.1 | [SPARK-33166](https://issues.apache.org/jira/browse/SPARK-33166) | prose | Provide Search Function in Spark docs site |
+| 3.1.1 | [SPARK-33231](https://issues.apache.org/jira/browse/SPARK-33231) | prose | Make pod allocation executor timeouts configurable and allow scheduling with pending pods |
+| 3.1.1 | [SPARK-33337](https://issues.apache.org/jira/browse/SPARK-33337) | prose | Support subexpression elimination in conditional expressions |
+| 3.1.1 | [SPARK-33364](https://issues.apache.org/jira/browse/SPARK-33364) | prose | Introduce the “purge” option in TableCatalog.dropTable for v2 catalog |
+| 3.1.1 | [SPARK-33427](https://issues.apache.org/jira/browse/SPARK-33427) | prose | Support subexpression elimination for interpreted expression evaluation |
+| 3.1.1 | [SPARK-33469](https://issues.apache.org/jira/browse/SPARK-33469) | prose | current_timezone |
+| 3.1.1 | [SPARK-33476](https://issues.apache.org/jira/browse/SPARK-33476) | prose | Generalize ExecutorSource to expose user-given file system schemes |
+| 3.1.1 | [SPARK-33507](https://issues.apache.org/jira/browse/SPARK-33507) | prose | Unify and complete cache behaviors |
+| 3.1.1 | [SPARK-33540](https://issues.apache.org/jira/browse/SPARK-33540) | prose | Support subexpression elimination for interpreted predicate |
+| 3.1.1 | [SPARK-33544](https://issues.apache.org/jira/browse/SPARK-33544) | prose | Optimize size of CreateArray/CreateMap to be the size of its children |
+| 3.1.1 | [SPARK-33627](https://issues.apache.org/jira/browse/SPARK-33627) | prose | unix_seconds, unix_millis and unix_micros |
+| 3.1.1 | [SPARK-33646](https://issues.apache.org/jira/browse/SPARK-33646) | prose | date_from_unix_date and unix_date |
 | 3.1.1 | [SPARK-33818](https://issues.apache.org/jira/browse/SPARK-33818) | Improvement | Doc `spark.sql.parser.quotedRegexColumnNames` |
 | 3.1.1 | [SPARK-33938](https://issues.apache.org/jira/browse/SPARK-33938) | Improvement | Optimize Like Any/All by LikeSimplification |
 | 3.1.1 | [SPARK-34191](https://issues.apache.org/jira/browse/SPARK-34191) | Improvement | udf type hint should allow dectorator with named returnType |
+| 3.1.2 | [SPARK-34697](https://issues.apache.org/jira/browse/SPARK-34697) | prose | Allow DESCRIBE FUNCTION and SHOW FUNCTIONS explain about string concatenation operator |
+| 3.1.2 | [SPARK-34897](https://issues.apache.org/jira/browse/SPARK-34897) | prose | Support reconcile schemas based on index after nested column pruning |
+| 3.2.0 | [SPARK-23862](https://issues.apache.org/jira/browse/SPARK-23862) | prose | Support Java enums from Scala Dataset API |
+| 3.2.0 | [SPARK-23889](https://issues.apache.org/jira/browse/SPARK-23889) | prose | Add interfaces to pass the required sorting and clustering for writes |
 | 3.2.0 | [SPARK-26138](https://issues.apache.org/jira/browse/SPARK-26138) | Improvement | Pushdown limit through InnerLike when condition is empty |
+| 3.2.0 | [SPARK-26164](https://issues.apache.org/jira/browse/SPARK-26164) | prose | Allow concurrent writers for writing dynamic partitions and bucket table |
 | 3.2.0 | [SPARK-28220](https://issues.apache.org/jira/browse/SPARK-28220) | Improvement | join foldable condition not pushed down when parent filter is totally pushed down |
+| 3.2.0 | [SPARK-28379](https://issues.apache.org/jira/browse/SPARK-28379) | prose | Allow non-aggregated single row correlated scalar subquery |
 | 3.2.0 | [SPARK-28940](https://issues.apache.org/jira/browse/SPARK-28940) | Improvement | Subquery reuse across all subquery levels |
 | 3.2.0 | [SPARK-29375](https://issues.apache.org/jira/browse/SPARK-29375) | Improvement | Exchange reuse across all subquery levels |
 | 3.2.0 | [SPARK-30027](https://issues.apache.org/jira/browse/SPARK-30027) | Improvement | Support codegen for filter exprs in HashAggregateExec |
+| 3.2.0 | [SPARK-30789](https://issues.apache.org/jira/browse/SPARK-30789) | prose | RESPECT) NULLS for LEAD/LAG/NTH_VALUE/FIRST_VALUE/LAST_VALUE |
 | 3.2.0 | [SPARK-31897](https://issues.apache.org/jira/browse/SPARK-31897) | Improvement | Enable codegen for GenerateExec |
 | 3.2.0 | [SPARK-31936](https://issues.apache.org/jira/browse/SPARK-31936) | Improvement | Implement ScriptTransform in sql/core |
 | 3.2.0 | [SPARK-32855](https://issues.apache.org/jira/browse/SPARK-32855) | Improvement | Improve DPP for some join type do not support broadcast filtering side |
+| 3.2.0 | [SPARK-32975](https://issues.apache.org/jira/browse/SPARK-32975) | prose | Add config for driver readiness timeout before executors start |
 | 3.2.0 | [SPARK-33122](https://issues.apache.org/jira/browse/SPARK-33122) | Improvement | Remove redundant aggregates in the Optimzier |
+| 3.2.0 | [SPARK-33245](https://issues.apache.org/jira/browse/SPARK-33245) | prose | bit_get |
 | 3.2.0 | [SPARK-33307](https://issues.apache.org/jira/browse/SPARK-33307) | Improvement | Refactor GROUPING ANALYTICS |
+| 3.2.0 | [SPARK-33411](https://issues.apache.org/jira/browse/SPARK-33411) | prose | Cardinality estimation of union, sort, and range operator |
 | 3.2.0 | [SPARK-33497](https://issues.apache.org/jira/browse/SPARK-33497) | Improvement | Override maxRows in some LogicalPlan |
+| 3.2.0 | [SPARK-33539](https://issues.apache.org/jira/browse/SPARK-33539) | prose | Standardize exception messages in Spark |
 | 3.2.0 | [SPARK-33678](https://issues.apache.org/jira/browse/SPARK-33678) | Improvement | Numerical product aggregation |
+| 3.2.0 | [SPARK-33679](https://issues.apache.org/jira/browse/SPARK-33679) | prose | Enable adaptive query execution by default |
+| 3.2.0 | [SPARK-33687](https://issues.apache.org/jira/browse/SPARK-33687) | prose | Support analyzing all tables in a specific database |
 | 3.2.0 | [SPARK-33690](https://issues.apache.org/jira/browse/SPARK-33690) | Improvement | Escape meta-characters in showString |
 | 3.2.0 | [SPARK-33735](https://issues.apache.org/jira/browse/SPARK-33735) | Improvement | Handle UPDATE in ReplaceNullWithFalseInPredicate |
 | 3.2.0 | [SPARK-33736](https://issues.apache.org/jira/browse/SPARK-33736) | Improvement | Handle MERGE in ReplaceNullWithFalseInPredicate |
@@ -843,6 +955,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.2.0 | [SPARK-33769](https://issues.apache.org/jira/browse/SPARK-33769) | Improvement | improve the next-day function of the sql component to deal with Column type |
 | 3.2.0 | [SPARK-33800](https://issues.apache.org/jira/browse/SPARK-33800) | Improvement | Remove command name in AnalysisException message when a relation is not resolved |
 | 3.2.0 | [SPARK-33828](https://issues.apache.org/jira/browse/SPARK-33828) | Umbrella | SQL Adaptive Query Execution QA |
+| 3.2.0 | [SPARK-33870](https://issues.apache.org/jira/browse/SPARK-33870) | prose | Enable spark.storage.replication.proactive by default |
 | 3.2.0 | [SPARK-33939](https://issues.apache.org/jira/browse/SPARK-33939) | Improvement | Make Column.named use UnresolvedAlias to assign name |
 | 3.2.0 | [SPARK-33951](https://issues.apache.org/jira/browse/SPARK-33951) | Improvement | Distinguish the error between filter and distinct |
 | 3.2.0 | [SPARK-33964](https://issues.apache.org/jira/browse/SPARK-33964) | Improvement | Combine distinct unions in more cases |
@@ -854,16 +967,21 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.2.0 | [SPARK-34030](https://issues.apache.org/jira/browse/SPARK-34030) | Improvement | Fold RepartitionExpression num partition should at Optimizer |
 | 3.2.0 | [SPARK-34046](https://issues.apache.org/jira/browse/SPARK-34046) | Improvement | Use join hint in test cases for Join |
 | 3.2.0 | [SPARK-34081](https://issues.apache.org/jira/browse/SPARK-34081) | Improvement | Only pushdown LeftSemi/LeftAnti over Aggregate if join can be planned as broadcast join |
+| 3.2.0 | [SPARK-34119](https://issues.apache.org/jira/browse/SPARK-34119) | prose | Keep necessary stats after partition pruning |
 | 3.2.0 | [SPARK-34120](https://issues.apache.org/jira/browse/SPARK-34120) | Umbrella | Improve the statistics estimation |
+| 3.2.0 | [SPARK-34138](https://issues.apache.org/jira/browse/SPARK-34138) | prose | Keep dependants cached while refreshing v1 tables |
 | 3.2.0 | [SPARK-34147](https://issues.apache.org/jira/browse/SPARK-34147) | Improvement | Keep data partitioning in TPCDSQueryBenchmark when CBO is enabled |
 | 3.2.0 | [SPARK-34150](https://issues.apache.org/jira/browse/SPARK-34150) | Improvement | Strip Null literal.sql in resolve alias |
 | 3.2.0 | [SPARK-34165](https://issues.apache.org/jira/browse/SPARK-34165) | New Feature | Add countDistinct option to Dataset#summary |
 | 3.2.0 | [SPARK-34182](https://issues.apache.org/jira/browse/SPARK-34182) | Improvement | [AVRO] Improve error messages when matching Catalyst-to-Avro schemas |
+| 3.2.0 | [SPARK-34198](https://issues.apache.org/jira/browse/SPARK-34198) | prose | Add RocksDB StateStore implementation |
+| 3.2.0 | [SPARK-34218](https://issues.apache.org/jira/browse/SPARK-34218) | prose | Support Scala 2.13 |
 | 3.2.0 | [SPARK-34222](https://issues.apache.org/jira/browse/SPARK-34222) | Improvement | Enhance Boolean Simplification Rule |
 | 3.2.0 | [SPARK-34234](https://issues.apache.org/jira/browse/SPARK-34234) | Improvement | Remove TreeNodeException that didn't work |
 | 3.2.0 | [SPARK-34283](https://issues.apache.org/jira/browse/SPARK-34283) | Improvement | Combines all adjacent 'Union' operators into a single 'Union' when using 'Dataset.union.distinct.union.distinct' |
 | 3.2.0 | [SPARK-34308](https://issues.apache.org/jira/browse/SPARK-34308) | Improvement | Escape meta-characters in printSchema |
 | 3.2.0 | [SPARK-34317](https://issues.apache.org/jira/browse/SPARK-34317) | Improvement | Introduce relationTypeMismatchHint to UnresolvedTable for a better error message |
+| 3.2.0 | [SPARK-34340](https://issues.apache.org/jira/browse/SPARK-34340) | prose | Enable Zstandard buffer pool by default |
 | 3.2.0 | [SPARK-34343](https://issues.apache.org/jira/browse/SPARK-34343) | Improvement | Add missing test for some non-array types in PostgreSQL |
 | 3.2.0 | [SPARK-34356](https://issues.apache.org/jira/browse/SPARK-34356) | Improvement | OVR transform fix potential column conflict |
 | 3.2.0 | [SPARK-34388](https://issues.apache.org/jira/browse/SPARK-34388) | Improvement | Propogate the registered UDF names to ScalaUDAF and ScalaAggregator |
@@ -874,9 +992,11 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.2.0 | [SPARK-34502](https://issues.apache.org/jira/browse/SPARK-34502) | Improvement | Remove unused parameters in join methods |
 | 3.2.0 | [SPARK-34514](https://issues.apache.org/jira/browse/SPARK-34514) | Improvement | Push down limit for LEFT SEMI and LEFT ANTI join |
 | 3.2.0 | [SPARK-34524](https://issues.apache.org/jira/browse/SPARK-34524) | Improvement | simplify v2 partition commands resolution |
+| 3.2.0 | [SPARK-34527](https://issues.apache.org/jira/browse/SPARK-34527) | prose | Resolve duplicated common columns from USING/NATURAL JOIN |
 | 3.2.0 | [SPARK-34548](https://issues.apache.org/jira/browse/SPARK-34548) | Improvement | Remove unnecessary children from Union under Distince and Deduplicate |
 | 3.2.0 | [SPARK-34573](https://issues.apache.org/jira/browse/SPARK-34573) | Improvement | SQLConf sqlConfEntries map has a global lock, should not lock on get |
 | 3.2.0 | [SPARK-34575](https://issues.apache.org/jira/browse/SPARK-34575) | Improvement | Push down limit through window when partitionSpec is empty |
+| 3.2.0 | [SPARK-34581](https://issues.apache.org/jira/browse/SPARK-34581) | prose | Don’t optimize out grouping expressions from aggregate expressions without aggregate function |
 | 3.2.0 | [SPARK-34598](https://issues.apache.org/jira/browse/SPARK-34598) | Improvement | RewritePredicateSubquery Rule must not update Filters without subqueries |
 | 3.2.0 | [SPARK-34609](https://issues.apache.org/jira/browse/SPARK-34609) | Improvement | unify resolveExpressionBottomUp and resolveExpressionTopDown |
 | 3.2.0 | [SPARK-34622](https://issues.apache.org/jira/browse/SPARK-34622) | Improvement | Push down limit through Project |
@@ -885,12 +1005,15 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.2.0 | [SPARK-34638](https://issues.apache.org/jira/browse/SPARK-34638) | Improvement | Spark SQL reads unnecessary nested fields (another type of pruning case) |
 | 3.2.0 | [SPARK-34639](https://issues.apache.org/jira/browse/SPARK-34639) | Improvement | always remove unnecessary Alias in Analyzer.resolveExpression |
 | 3.2.0 | [SPARK-34661](https://issues.apache.org/jira/browse/SPARK-34661) | Improvement | Replaces `OriginalType` with `LogicalTypeAnnotation` in VectorizedColumnReader |
+| 3.2.0 | [SPARK-34705](https://issues.apache.org/jira/browse/SPARK-34705) | prose | Add code-gen for all join types of sort-merge join |
+| 3.2.0 | [SPARK-34706](https://issues.apache.org/jira/browse/SPARK-34706) | prose | Broadcast nested loop join improvement |
 | 3.2.0 | [SPARK-34728](https://issues.apache.org/jira/browse/SPARK-34728) | Improvement | Remove all SQLConf.get if extends from SQLConfHelper |
 | 3.2.0 | [SPARK-34758](https://issues.apache.org/jira/browse/SPARK-34758) | Improvement | Simplify Analyzer.resolveLiteralFunction |
 | 3.2.0 | [SPARK-34781](https://issues.apache.org/jira/browse/SPARK-34781) | Improvement | Eliminate LEFT SEMI/ANTI join to its left child side with AQE |
 | 3.2.0 | [SPARK-34807](https://issues.apache.org/jira/browse/SPARK-34807) | Improvement | Push down filter through window after TransposeWindow |
 | 3.2.0 | [SPARK-34808](https://issues.apache.org/jira/browse/SPARK-34808) | Improvement | Removes outer join if it only has distinct on streamed side |
 | 3.2.0 | [SPARK-34853](https://issues.apache.org/jira/browse/SPARK-34853) | Improvement | Move partitioning and ordering to common limit trait |
+| 3.2.0 | [SPARK-34882](https://issues.apache.org/jira/browse/SPARK-34882) | prose | Replace if with filter clause in RewriteDistinctAggregates |
 | 3.2.0 | [SPARK-34884](https://issues.apache.org/jira/browse/SPARK-34884) | Improvement | Improve dynamic partition pruning evaluation |
 | 3.2.0 | [SPARK-34894](https://issues.apache.org/jira/browse/SPARK-34894) | Improvement | Use 'io.connectionTimeout' as a hint instead of `spark.network.timeout` |
 | 3.2.0 | [SPARK-34906](https://issues.apache.org/jira/browse/SPARK-34906) | Improvement | Refactor TreeNode's children handling methods into specialized traits |
@@ -902,13 +1025,19 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.2.0 | [SPARK-34946](https://issues.apache.org/jira/browse/SPARK-34946) | Improvement | Block unsupported correlated scalar subquery in Aggregate |
 | 3.2.0 | [SPARK-34969](https://issues.apache.org/jira/browse/SPARK-34969) | Improvement | Followup for Refactor TreeNode's children handling methods into specialized traits (SPARK-34906) |
 | 3.2.0 | [SPARK-35041](https://issues.apache.org/jira/browse/SPARK-35041) | Improvement | Revise the overflow in UTF8String |
+| 3.2.0 | [SPARK-35042](https://issues.apache.org/jira/browse/SPARK-35042) | prose | Support traversal pruning in transform/resolve functions and their call sites |
+| 3.2.0 | [SPARK-35080](https://issues.apache.org/jira/browse/SPARK-35080) | prose | Only allow a subset of correlated equality predicates when a subquery is aggregated |
 | 3.2.0 | [SPARK-35109](https://issues.apache.org/jira/browse/SPARK-35109) | Improvement | Fix minor exception messages of HashedRelation and HashJoin |
 | 3.2.0 | [SPARK-35141](https://issues.apache.org/jira/browse/SPARK-35141) | Improvement | Support two level map for final hash aggregation |
+| 3.2.0 | [SPARK-35162](https://issues.apache.org/jira/browse/SPARK-35162) | prose | try_add |
 | 3.2.0 | [SPARK-35204](https://issues.apache.org/jira/browse/SPARK-35204) | Improvement | CatalystTypeConverters of date/timestamp should accept both the old and new Java time classes |
 | 3.2.0 | [SPARK-35209](https://issues.apache.org/jira/browse/SPARK-35209) | Improvement | CLONE - CatalystTypeConverters of date/timestamp should accept both the old and new Java time classes |
 | 3.2.0 | [SPARK-35225](https://issues.apache.org/jira/browse/SPARK-35225) | Improvement | EXPLAIN command should handle empty output of an analyzed plan |
+| 3.2.0 | [SPARK-35264](https://issues.apache.org/jira/browse/SPARK-35264) | prose | Support AQE side broadcast hash join threshold |
 | 3.2.0 | [SPARK-35281](https://issues.apache.org/jira/browse/SPARK-35281) | Improvement | StaticInvoke should not apply boxing if return type is primitive |
+| 3.2.0 | [SPARK-35290](https://issues.apache.org/jira/browse/SPARK-35290) | prose | Append new nested struct fields rather than sort for unionByName with null filling |
 | 3.2.0 | [SPARK-35316](https://issues.apache.org/jira/browse/SPARK-35316) | Improvement | UnwrapCastInBinaryComparison support In/InSet predicate |
+| 3.2.0 | [SPARK-35331](https://issues.apache.org/jira/browse/SPARK-35331) | prose | Support resolving missing attributes for distribute/cluster by/repartition hint |
 | 3.2.0 | [SPARK-35347](https://issues.apache.org/jira/browse/SPARK-35347) | Improvement | Use MethodUtils for method looking up in Invoke and StaticInvoke |
 | 3.2.0 | [SPARK-35362](https://issues.apache.org/jira/browse/SPARK-35362) | Improvement | Update null count in the column stats for UNION stats estimation |
 | 3.2.0 | [SPARK-35368](https://issues.apache.org/jira/browse/SPARK-35368) | Improvement | [SQL]Update histogram statistics for RANGE operator stats estimation |
@@ -916,7 +1045,12 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.2.0 | [SPARK-35400](https://issues.apache.org/jira/browse/SPARK-35400) | Improvement | improve error message for correlated subquery |
 | 3.2.0 | [SPARK-35408](https://issues.apache.org/jira/browse/SPARK-35408) | Improvement | Improve parameter validation in DataFrame.show |
 | 3.2.0 | [SPARK-35411](https://issues.apache.org/jira/browse/SPARK-35411) | Improvement | Essential information missing in TreeNode json string |
+| 3.2.0 | [SPARK-35448](https://issues.apache.org/jira/browse/SPARK-35448) | prose | Subexpression elimination enhancements |
 | 3.2.0 | [SPARK-35479](https://issues.apache.org/jira/browse/SPARK-35479) | Improvement | Format PartitionFilters IN strings in scan nodes |
+| 3.2.0 | [SPARK-35535](https://issues.apache.org/jira/browse/SPARK-35535) | prose | Support LocalScan |
+| 3.2.0 | [SPARK-35553](https://issues.apache.org/jira/browse/SPARK-35553) | prose | Improve correlated subqueries |
+| 3.2.0 | [SPARK-35576](https://issues.apache.org/jira/browse/SPARK-35576) | prose | Redact the sensitive info in the result of Set command |
+| 3.2.0 | [SPARK-35602](https://issues.apache.org/jira/browse/SPARK-35602) | prose | Update state schema to be able to accept long length JSON |
 | 3.2.0 | [SPARK-35604](https://issues.apache.org/jira/browse/SPARK-35604) | Improvement | Fix condition check for FULL OUTER sort merge join |
 | 3.2.0 | [SPARK-35689](https://issues.apache.org/jira/browse/SPARK-35689) | Improvement | Add logging for null value retrieval for SymmetricHashJoinStateManager |
 | 3.2.0 | [SPARK-35701](https://issues.apache.org/jira/browse/SPARK-35701) | Improvement | Contention on SQLConf.sqlConfEntries and SQLConf.staticConfKeys |
@@ -929,10 +1063,287 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.2.0 | [SPARK-35906](https://issues.apache.org/jira/browse/SPARK-35906) | Improvement | Remove order by if the maximum number of rows less than or equal to 1 |
 | 3.2.0 | [SPARK-35923](https://issues.apache.org/jira/browse/SPARK-35923) | Improvement | Coalesce empty partition with mixed CoalescedPartitionSpec and PartialReducerPartitionSpec |
 | 3.2.0 | [SPARK-36161](https://issues.apache.org/jira/browse/SPARK-36161) | Improvement | dropDuplicates does not type check argument |
+| 3.2.0 | [SPARK-36224](https://issues.apache.org/jira/browse/SPARK-36224) | prose | Use Void as the type name of NullType |
+| 3.2.0 | [SPARK-36241](https://issues.apache.org/jira/browse/SPARK-36241) | prose | Support creating tables with null column |
 | 3.2.0 | [SPARK-36320](https://issues.apache.org/jira/browse/SPARK-36320) | Improvement | Fix Series/Index.copy() to drop extra columns. |
 | 3.2.0 | [SPARK-36331](https://issues.apache.org/jira/browse/SPARK-36331) | Improvement | Add SQLSTATE guideline |
 | 3.2.0 | [SPARK-36444](https://issues.apache.org/jira/browse/SPARK-36444) | Improvement | Remove OptimizeSubqueries from batch of PartitionPruning |
+| 3.2.0 | [SPARK-36447](https://issues.apache.org/jira/browse/SPARK-36447) | prose | Avoid inlining non-deterministic With-CTEs |
 | 3.2.0 | [SPARK-36637](https://issues.apache.org/jira/browse/SPARK-36637) | Improvement | Bad error message when using non-existing named window |
+| 3.2.2 | [SPARK-37670](https://issues.apache.org/jira/browse/SPARK-37670) | prose | Support predicate pushdown and column pruning for de-duped CTEs |
+| 3.2.2 | [SPARK-38180](https://issues.apache.org/jira/browse/SPARK-38180) | prose | Allow safe up-cast expressions in correlated equality predicates |
+| 3.2.2 | [SPARK-38809](https://issues.apache.org/jira/browse/SPARK-38809) | prose | Implement option to skip null values in symmetric hash impl of stream-stream joins |
+| 3.2.3 | [SPARK-38697](https://issues.apache.org/jira/browse/SPARK-38697) | prose | Extend SparkSessionExtensions to inject rules into AQE Optimizer |
+| 3.2.3 | [SPARK-40562](https://issues.apache.org/jira/browse/SPARK-40562) | prose | Add spark.sql.legacy.groupingIdWithAppendedUserGroupBy |
+| 3.2.3 | [SPARK-40801](https://issues.apache.org/jira/browse/SPARK-40801) | prose | Upgrade Apache Commons Text to 1.10 |
+| 3.2.3 | [SPARK-41188](https://issues.apache.org/jira/browse/SPARK-41188) | prose | Set executorEnv OMP_NUM_THREADS to be spark.task.cpus by default for spark executor JVM processes |
+| 3.3.0 | [SPARK-12567](https://issues.apache.org/jira/browse/SPARK-12567) | prose | AES functions |
+| 3.3.0 | [SPARK-16280](https://issues.apache.org/jira/browse/SPARK-16280) | prose | Implements histogram_numeric aggregation function which supports partial aggregation |
+| 3.3.0 | [SPARK-20384](https://issues.apache.org/jira/browse/SPARK-20384) | prose | Support value class in nested schema for Dataset |
+| 3.3.0 | [SPARK-32268](https://issues.apache.org/jira/browse/SPARK-32268) | prose | Row-level Runtime Filtering |
+| 3.3.0 | [SPARK-34079](https://issues.apache.org/jira/browse/SPARK-34079) | prose | Merge non-correlated scalar subqueries |
+| 3.3.0 | [SPARK-34806](https://issues.apache.org/jira/browse/SPARK-34806) | prose | Helper class for batch Dataset.observe() |
+| 3.3.0 | [SPARK-35320](https://issues.apache.org/jira/browse/SPARK-35320) | prose | Align error message for unsupported key types in MapType in Json reader |
+| 3.3.0 | [SPARK-35352](https://issues.apache.org/jira/browse/SPARK-35352) | prose | Add code-gen for full outer sort merge join |
+| 3.3.0 | [SPARK-35867](https://issues.apache.org/jira/browse/SPARK-35867) | prose | Enable vectorized read for VectorizedPlainValuesReader.readBooleans |
+| 3.3.0 | [SPARK-36194](https://issues.apache.org/jira/browse/SPARK-36194) | prose | Add a logical plan visitor to propagate the distinct attributes |
+| 3.3.0 | [SPARK-36280](https://issues.apache.org/jira/browse/SPARK-36280) | prose | Remove redundant aliases after RewritePredicateSubquery |
+| 3.3.0 | [SPARK-36359](https://issues.apache.org/jira/browse/SPARK-36359) | prose | Coalesce drop all expressions after the first non nullable expression |
+| 3.3.0 | [SPARK-36371](https://issues.apache.org/jira/browse/SPARK-36371) | prose | Support raw string literal |
+| 3.3.0 | [SPARK-36418](https://issues.apache.org/jira/browse/SPARK-36418) | prose | Use CAST in parsing of dates/timestamps with default pattern |
+| 3.3.0 | [SPARK-36424](https://issues.apache.org/jira/browse/SPARK-36424) | prose | Support eliminate limits in AQE Optimizer |
+| 3.3.0 | [SPARK-36508](https://issues.apache.org/jira/browse/SPARK-36508) | prose | Disallow binary operations between Interval and String literal |
+| 3.3.0 | [SPARK-36546](https://issues.apache.org/jira/browse/SPARK-36546) | prose | Add array support to union by name |
+| 3.3.0 | [SPARK-36554](https://issues.apache.org/jira/browse/SPARK-36554) | prose | Expose make_date expression in functions.scala |
+| 3.3.0 | [SPARK-36607](https://issues.apache.org/jira/browse/SPARK-36607) | prose | Support BooleanType in UnwrapCastInBinaryComparison |
+| 3.3.0 | [SPARK-36642](https://issues.apache.org/jira/browse/SPARK-36642) | prose | Add df.withMetadata: a syntax sugar to update the metadata of a dataframe |
+| 3.3.0 | [SPARK-36665](https://issues.apache.org/jira/browse/SPARK-36665) | prose | Add more Not operator simplifications |
+| 3.3.0 | [SPARK-36674](https://issues.apache.org/jira/browse/SPARK-36674) | prose | SOME) - case insensitive LIKE |
+| 3.3.0 | [SPARK-36703](https://issues.apache.org/jira/browse/SPARK-36703) | prose | Remove the Sort if it is the child of RepartitionByExpression |
+| 3.3.0 | [SPARK-36718](https://issues.apache.org/jira/browse/SPARK-36718) | prose | Only collapse projects if we don’t duplicate expensive expressions |
+| 3.3.0 | [SPARK-36719](https://issues.apache.org/jira/browse/SPARK-36719) | prose | Supporting Netty Logging at the network layer |
+| 3.3.0 | [SPARK-36754](https://issues.apache.org/jira/browse/SPARK-36754) | prose | array_intersect handles duplicated Double.NaN and Float.NaN |
+| 3.3.0 | [SPARK-36895](https://issues.apache.org/jira/browse/SPARK-36895) | prose | Add Create Index syntax support |
+| 3.3.0 | [SPARK-36963](https://issues.apache.org/jira/browse/SPARK-36963) | prose | Add max_by/min_by to sql.functions |
+| 3.3.0 | [SPARK-37047](https://issues.apache.org/jira/browse/SPARK-37047) | prose | Add lpad and rpad functions for binary strings |
+| 3.3.0 | [SPARK-37150](https://issues.apache.org/jira/browse/SPARK-37150) | prose | Migrate DESCRIBE NAMESPACE to use V2 command by default |
+| 3.3.0 | [SPARK-37165](https://issues.apache.org/jira/browse/SPARK-37165) | prose | Add REPEATABLE in TABLESAMPLE to specify seed |
+| 3.3.0 | [SPARK-37179](https://issues.apache.org/jira/browse/SPARK-37179) | prose | Add a config to allow casting between Datetime and Numeric |
+| 3.3.0 | [SPARK-37219](https://issues.apache.org/jira/browse/SPARK-37219) | prose | Add AS OF syntax support |
+| 3.3.0 | [SPARK-37273](https://issues.apache.org/jira/browse/SPARK-37273) | prose | Hidden File Metadata Support for Spark SQL |
+| 3.3.0 | [SPARK-37292](https://issues.apache.org/jira/browse/SPARK-37292) | prose | Removes outer join if it only has DISTINCT on streamed side with alias |
+| 3.3.0 | [SPARK-37316](https://issues.apache.org/jira/browse/SPARK-37316) | prose | Add code-gen for existence sort merge join |
+| 3.3.0 | [SPARK-37356](https://issues.apache.org/jira/browse/SPARK-37356) | prose | Add fine grained locking to BlockInfoManager |
+| 3.3.0 | [SPARK-37357](https://issues.apache.org/jira/browse/SPARK-37357) | prose | Add small partition factor for rebalance partitions |
+| 3.3.0 | [SPARK-37375](https://issues.apache.org/jira/browse/SPARK-37375) | prose | Storage Partitioned Join |
+| 3.3.0 | [SPARK-37379](https://issues.apache.org/jira/browse/SPARK-37379) | prose | Add tree pattern pruning to CTESubstitution rule |
+| 3.3.0 | [SPARK-37438](https://issues.apache.org/jira/browse/SPARK-37438) | prose | Use store assignment rules for resolving function invocation |
+| 3.3.0 | [SPARK-37455](https://issues.apache.org/jira/browse/SPARK-37455) | prose | Replace hash with sort aggregate if child is already sorted |
+| 3.3.0 | [SPARK-37475](https://issues.apache.org/jira/browse/SPARK-37475) | prose | Add scale parameter to floor and ceil functions |
+| 3.3.0 | [SPARK-37494](https://issues.apache.org/jira/browse/SPARK-37494) | prose | Unify V1 and V2 options output of SHOW CREATE TABLE command |
+| 3.3.0 | [SPARK-37508](https://issues.apache.org/jira/browse/SPARK-37508) | prose | Add CONTAINS() string function |
+| 3.3.0 | [SPARK-37520](https://issues.apache.org/jira/browse/SPARK-37520) | prose | Add the startswith() and endswith() string functions |
+| 3.3.0 | [SPARK-37552](https://issues.apache.org/jira/browse/SPARK-37552) | prose | Add the convert_timezone() function |
+| 3.3.0 | [SPARK-37557](https://issues.apache.org/jira/browse/SPARK-37557) | prose | Replace object hash with sort aggregate if child is already sorted |
+| 3.3.0 | [SPARK-37564](https://issues.apache.org/jira/browse/SPARK-37564) | prose | Add code-gen for sort aggregate without grouping keys |
+| 3.3.0 | [SPARK-37586](https://issues.apache.org/jira/browse/SPARK-37586) | prose | Add the mode and padding args to aes_encrypt()/aes_decrypt() |
+| 3.3.0 | [SPARK-37591](https://issues.apache.org/jira/browse/SPARK-37591) | prose | Support the GCM mode by aes_encrypt()/aes_decrypt() |
+| 3.3.0 | [SPARK-37593](https://issues.apache.org/jira/browse/SPARK-37593) | prose | Reduce default page size by LONG_ARRAY_OFFSET if G1GC and ON_HEAP are used |
+| 3.3.0 | [SPARK-37636](https://issues.apache.org/jira/browse/SPARK-37636) | prose | Migrate CREATE NAMESPACE to use V2 command by default |
+| 3.3.0 | [SPARK-37666](https://issues.apache.org/jira/browse/SPARK-37666) | prose | Set GCM as the default mode in aes_encrypt()/aes_decrypt() |
+| 3.3.0 | [SPARK-37675](https://issues.apache.org/jira/browse/SPARK-37675) | prose | Push-based merge finalization bugs in the RemoteBlockPushResolver |
+| 3.3.0 | [SPARK-37707](https://issues.apache.org/jira/browse/SPARK-37707) | prose | Allow store assignment and implicit cast among datetime types |
+| 3.3.0 | [SPARK-37726](https://issues.apache.org/jira/browse/SPARK-37726) | prose | Add spill size metrics for sort merge join |
+| 3.3.0 | [SPARK-37753](https://issues.apache.org/jira/browse/SPARK-37753) | prose | Fine tune logic to demote Broadcast hash join in DynamicJoinSelection |
+| 3.3.0 | [SPARK-37777](https://issues.apache.org/jira/browse/SPARK-37777) | prose | Update the SQL syntax of SHOW FUNCTIONS |
+| 3.3.0 | [SPARK-37814](https://issues.apache.org/jira/browse/SPARK-37814) | prose | Migrating from log4j 1 to log4j 2 |
+| 3.3.0 | [SPARK-37878](https://issues.apache.org/jira/browse/SPARK-37878) | prose | Migrate SHOW CREATE TABLE to use V2 command by default |
+| 3.3.0 | [SPARK-37896](https://issues.apache.org/jira/browse/SPARK-37896) | prose | Implement a ConstantColumnVector and improve performance of the hidden file metadata |
+| 3.3.0 | [SPARK-37904](https://issues.apache.org/jira/browse/SPARK-37904) | prose | Improve RebalancePartitions in rules of Optimizer |
+| 3.3.0 | [SPARK-37915](https://issues.apache.org/jira/browse/SPARK-37915) | prose | Combine unions if there is a project between them |
+| 3.3.0 | [SPARK-37922](https://issues.apache.org/jira/browse/SPARK-37922) | prose | Combine to one cast if we can safely up-cast two casts |
+| 3.3.0 | [SPARK-37929](https://issues.apache.org/jira/browse/SPARK-37929) | prose | Support cascade mode for dropNamespace API |
+| 3.3.0 | [SPARK-38060](https://issues.apache.org/jira/browse/SPARK-38060) | prose | Respect allowNonNumericNumbers when parsing quoted NaN and Infinity values in JSON reader |
+| 3.3.0 | [SPARK-38063](https://issues.apache.org/jira/browse/SPARK-38063) | prose | Support split_part Function |
+| 3.3.0 | [SPARK-38148](https://issues.apache.org/jira/browse/SPARK-38148) | prose | Do not add dynamic partition pruning if there exists static partition pruning |
+| 3.3.0 | [SPARK-38162](https://issues.apache.org/jira/browse/SPARK-38162) | prose | Optimize one row plan in normal and AQE Optimizer |
+| 3.3.0 | [SPARK-38194](https://issues.apache.org/jira/browse/SPARK-38194) | prose | Make memory overhead factor configurable |
+| 3.3.0 | [SPARK-38195](https://issues.apache.org/jira/browse/SPARK-38195) | prose | Add the TIMESTAMPADD() function |
+| 3.3.0 | [SPARK-38284](https://issues.apache.org/jira/browse/SPARK-38284) | prose | Add the TIMESTAMPDIFF() function |
+| 3.3.0 | [SPARK-38322](https://issues.apache.org/jira/browse/SPARK-38322) | prose | Support query stage show runtime statistics in formatted explain mode |
+| 3.3.0 | [SPARK-38410](https://issues.apache.org/jira/browse/SPARK-38410) | prose | Support specify initial partition number for rebalance |
+| 3.3.0 | [SPARK-38489](https://issues.apache.org/jira/browse/SPARK-38489) | prose | Aggregate.groupOnly support foldable expressions |
+| 3.3.0 | [SPARK-38565](https://issues.apache.org/jira/browse/SPARK-38565) | prose | Support Left Semi join in row level runtime filters |
+| 3.3.0 | [SPARK-38625](https://issues.apache.org/jira/browse/SPARK-38625) | prose | Add APIs for group-based row-level operations |
+| 3.3.0 | [SPARK-38767](https://issues.apache.org/jira/browse/SPARK-38767) | prose | Support ignoreCorruptFiles and ignoreMissingFiles in Data Source options |
+| 3.3.0 | [SPARK-38781](https://issues.apache.org/jira/browse/SPARK-38781) | prose | Error Message Improvements |
+| 3.3.1 | [SPARK-38404](https://issues.apache.org/jira/browse/SPARK-38404) | prose | Improve CTE resolution when a nested CTE references an outer CTE |
+| 3.3.1 | [SPARK-38796](https://issues.apache.org/jira/browse/SPARK-38796) | prose | Update to_number and try_to_number functions to allow PR with positive numbers |
+| 3.3.1 | [SPARK-39633](https://issues.apache.org/jira/browse/SPARK-39633) | prose | Support timestamp in seconds for TimeTravel using Dataframe options |
+| 3.3.1 | [SPARK-40213](https://issues.apache.org/jira/browse/SPARK-40213) | prose | Support ASCII value conversion for Latin-1 characters |
+| 3.3.1 | [SPARK-40562](https://issues.apache.org/jira/browse/SPARK-40562) | prose | Add spark.sql.legacy.groupingIdWithAppendedUserGroupBy |
+| 3.3.2 | [SPARK-38404](https://issues.apache.org/jira/browse/SPARK-38404) | prose | Improve CTE resolution when a nested CTE references an outer CTE |
+| 3.3.2 | [SPARK-38697](https://issues.apache.org/jira/browse/SPARK-38697) | prose | Extend SparkSessionExtensions to inject rules into AQE Optimizer |
+| 3.3.2 | [SPARK-38796](https://issues.apache.org/jira/browse/SPARK-38796) | prose | Update to_number and try_to_number functions to allow PR with positive numbers |
+| 3.3.2 | [SPARK-39633](https://issues.apache.org/jira/browse/SPARK-39633) | prose | Support timestamp in seconds for TimeTravel using Dataframe options |
+| 3.3.2 | [SPARK-40213](https://issues.apache.org/jira/browse/SPARK-40213) | prose | Support ASCII value conversion for Latin-1 characters |
+| 3.3.2 | [SPARK-40562](https://issues.apache.org/jira/browse/SPARK-40562) | prose | Add spark.sql.legacy.groupingIdWithAppendedUserGroupBy |
+| 3.3.2 | [SPARK-40801](https://issues.apache.org/jira/browse/SPARK-40801) | prose | Upgrade Apache Commons Text to 1.10 |
+| 3.3.2 | [SPARK-41188](https://issues.apache.org/jira/browse/SPARK-41188) | prose | Set executorEnv OMP_NUM_THREADS to be spark.task.cpus by default for spark executor JVM processes |
+| 3.3.2 | [SPARK-41350](https://issues.apache.org/jira/browse/SPARK-41350) | prose | Allow simple name access of using join hidden columns after subquery alias |
+| 3.4.0 | [SPARK-27561](https://issues.apache.org/jira/browse/SPARK-27561) | prose | Support “Lateral Column Alias References” |
+| 3.4.0 | [SPARK-28330](https://issues.apache.org/jira/browse/SPARK-28330) | prose | Support result offset clause |
+| 3.4.0 | [SPARK-28516](https://issues.apache.org/jira/browse/SPARK-28516) | prose | Support TO_CHAR and TRY_TO_CHAR functions to format Decimal values as strings |
+| 3.4.0 | [SPARK-32170](https://issues.apache.org/jira/browse/SPARK-32170) | prose | Improve the speculation through the stage task metrics |
+| 3.4.0 | [SPARK-34079](https://issues.apache.org/jira/browse/SPARK-34079) | prose | Merge non-correlated scalar subqueries |
+| 3.4.0 | [SPARK-35242](https://issues.apache.org/jira/browse/SPARK-35242) | prose | Support changing session catalog’s default database |
+| 3.4.0 | [SPARK-35662](https://issues.apache.org/jira/browse/SPARK-35662) | prose | Support TIMESTAMP WITHOUT TIMEZONE data type |
+| 3.4.0 | [SPARK-36114](https://issues.apache.org/jira/browse/SPARK-36114) | prose | Support subqueries with correlated non-equality predicates |
+| 3.4.0 | [SPARK-36124](https://issues.apache.org/jira/browse/SPARK-36124) | prose | Support subqueries with correlation through UNION/INTERSECT/EXCEPT |
+| 3.4.0 | [SPARK-36462](https://issues.apache.org/jira/browse/SPARK-36462) | prose | Add the ability to selectively disable watching or polling |
+| 3.4.0 | [SPARK-36703](https://issues.apache.org/jira/browse/SPARK-36703) | prose | Remove the Sort if it is the child of RepartitionByExpression |
+| 3.4.0 | [SPARK-38034](https://issues.apache.org/jira/browse/SPARK-38034) | prose | Optimize TransposeWindow rule |
+| 3.4.0 | [SPARK-38063](https://issues.apache.org/jira/browse/SPARK-38063) | prose | Support SPLIT_PART function |
+| 3.4.0 | [SPARK-38194](https://issues.apache.org/jira/browse/SPARK-38194) | prose | Make memory overhead factor configurable |
+| 3.4.0 | [SPARK-38334](https://issues.apache.org/jira/browse/SPARK-38334) | prose | Implement support for DEFAULT values for columns in tables |
+| 3.4.0 | [SPARK-38573](https://issues.apache.org/jira/browse/SPARK-38573) | prose | Support Auto Partition Statistics Collection |
+| 3.4.0 | [SPARK-38589](https://issues.apache.org/jira/browse/SPARK-38589) | prose | Support TRY_AVG function |
+| 3.4.0 | [SPARK-38590](https://issues.apache.org/jira/browse/SPARK-38590) | prose | Support TRY_TO_BINARY function |
+| 3.4.0 | [SPARK-38591](https://issues.apache.org/jira/browse/SPARK-38591) | prose | Add flatMapSortedGroups and cogroupSorted |
+| 3.4.0 | [SPARK-38679](https://issues.apache.org/jira/browse/SPARK-38679) | prose | Expose the number partitions in a stage to TaskContext |
+| 3.4.0 | [SPARK-38767](https://issues.apache.org/jira/browse/SPARK-38767) | prose | Support ignoreCorruptFiles and ignoreMissingFiles in Data Source options |
+| 3.4.0 | [SPARK-38832](https://issues.apache.org/jira/browse/SPARK-38832) | prose | Remove unnecessary distinct in aggregate expression by distinctKeys |
+| 3.4.0 | [SPARK-38841](https://issues.apache.org/jira/browse/SPARK-38841) | prose | Enable Bloom filter Joins by default |
+| 3.4.0 | [SPARK-38864](https://issues.apache.org/jira/browse/SPARK-38864) | prose | Add unpivot / melt |
+| 3.4.0 | [SPARK-38886](https://issues.apache.org/jira/browse/SPARK-38886) | prose | Remove outer join if aggregate functions are duplicate agnostic on streamed side |
+| 3.4.0 | [SPARK-38992](https://issues.apache.org/jira/browse/SPARK-38992) | prose | Avoid using bash -c in ShellBasedGroupsMappingProvider |
+| 3.4.0 | [SPARK-39062](https://issues.apache.org/jira/browse/SPARK-39062) | prose | Add stage level resource scheduling support for standalone cluster |
+| 3.4.0 | [SPARK-39172](https://issues.apache.org/jira/browse/SPARK-39172) | prose | Remove left/right outer join if only left/right side columns are selected and the join keys on the other side are unique |
+| 3.4.0 | [SPARK-39213](https://issues.apache.org/jira/browse/SPARK-39213) | prose | Support ANY_VALUE aggregate function |
+| 3.4.0 | [SPARK-39217](https://issues.apache.org/jira/browse/SPARK-39217) | prose | Makes DPP support the pruning side has Union |
+| 3.4.0 | [SPARK-39235](https://issues.apache.org/jira/browse/SPARK-39235) | prose | Make Catalog API be compatible with 3-layer-namespace |
+| 3.4.0 | [SPARK-39305](https://issues.apache.org/jira/browse/SPARK-39305) | prose | Support EQUAL_NUL function |
+| 3.4.0 | [SPARK-39306](https://issues.apache.org/jira/browse/SPARK-39306) | prose | Support scalar subquery in time travel |
+| 3.4.0 | [SPARK-39320](https://issues.apache.org/jira/browse/SPARK-39320) | prose | Support aggregate function MEDIAN |
+| 3.4.0 | [SPARK-39405](https://issues.apache.org/jira/browse/SPARK-39405) | prose | ) and NumPy input support in PySpark |
+| 3.4.0 | [SPARK-39457](https://issues.apache.org/jira/browse/SPARK-39457) | prose | Support IPv6-only environment |
+| 3.4.0 | [SPARK-39618](https://issues.apache.org/jira/browse/SPARK-39618) | prose | Support REGEXP_COUNT function |
+| 3.4.0 | [SPARK-39625](https://issues.apache.org/jira/browse/SPARK-39625) | prose | Add Dataset.as(StructType) |
+| 3.4.0 | [SPARK-39633](https://issues.apache.org/jira/browse/SPARK-39633) | prose | Support timestamp in seconds for TimeTravel using Dataframe options |
+| 3.4.0 | [SPARK-39695](https://issues.apache.org/jira/browse/SPARK-39695) | prose | Support REGEXP_SUBSTR function |
+| 3.4.0 | [SPARK-39744](https://issues.apache.org/jira/browse/SPARK-39744) | prose | Support REGEXP_INSTR function |
+| 3.4.0 | [SPARK-39795](https://issues.apache.org/jira/browse/SPARK-39795) | prose | Support TRY_TO_TIMESTAMP function |
+| 3.4.0 | [SPARK-39808](https://issues.apache.org/jira/browse/SPARK-39808) | prose | Support aggregate function MODE |
+| 3.4.0 | [SPARK-39853](https://issues.apache.org/jira/browse/SPARK-39853) | prose | Support stage level task resource profile for standalone cluster when dynamic allocation disabled |
+| 3.4.0 | [SPARK-39876](https://issues.apache.org/jira/browse/SPARK-39876) | prose | Support UNPIVOT function |
+| 3.4.0 | [SPARK-39911](https://issues.apache.org/jira/browse/SPARK-39911) | prose | Optimize global Sort to RepartitionByExpression |
+| 3.4.0 | [SPARK-39925](https://issues.apache.org/jira/browse/SPARK-39925) | prose | Support ARRAY_SORT(column, comparator) |
+| 3.4.0 | [SPARK-39957](https://issues.apache.org/jira/browse/SPARK-39957) | prose | Delay onDisconnected to enable Driver receives ExecutorExitCode |
+| 3.4.0 | [SPARK-39983](https://issues.apache.org/jira/browse/SPARK-39983) | prose | Do not cache unserialized broadcast relations on the driver |
+| 3.4.0 | [SPARK-39991](https://issues.apache.org/jira/browse/SPARK-39991) | prose | Use available column statistics from completed query stages |
+| 3.4.0 | [SPARK-40040](https://issues.apache.org/jira/browse/SPARK-40040) | prose | Push local limit to both sides if join condition is empty |
+| 3.4.0 | [SPARK-40045](https://issues.apache.org/jira/browse/SPARK-40045) | prose | Optimize the order of filtering predicates |
+| 3.4.0 | [SPARK-40086](https://issues.apache.org/jira/browse/SPARK-40086) | prose | Improve AliasAwareOutputPartitioning and AliasAwareQueryOutputOrdering to take all aliases into account |
+| 3.4.0 | [SPARK-40098](https://issues.apache.org/jira/browse/SPARK-40098) | prose | Format error messages in the Thrift Server |
+| 3.4.0 | [SPARK-40109](https://issues.apache.org/jira/browse/SPARK-40109) | prose | Support GET function |
+| 3.4.0 | [SPARK-40112](https://issues.apache.org/jira/browse/SPARK-40112) | prose | Improve the TO_BINARY function |
+| 3.4.0 | [SPARK-40163](https://issues.apache.org/jira/browse/SPARK-40163) | prose | Add SparkSession.config(Map) |
+| 3.4.0 | [SPARK-40211](https://issues.apache.org/jira/browse/SPARK-40211) | prose | Allow customize initial partitions number in take() behavior |
+| 3.4.0 | [SPARK-40235](https://issues.apache.org/jira/browse/SPARK-40235) | prose | Use interruptible lock instead of synchronized in Executor.updateDependencies() |
+| 3.4.0 | [SPARK-40261](https://issues.apache.org/jira/browse/SPARK-40261) | prose | Exclude DirectTaskResult metadata when calculating result size |
+| 3.4.0 | [SPARK-40281](https://issues.apache.org/jira/browse/SPARK-40281) | prose | Provide a memory profiler for PySpark user-defined functions |
+| 3.4.0 | [SPARK-40352](https://issues.apache.org/jira/browse/SPARK-40352) | prose | Add function aliases: LEN, DATEPART, DATEADD, DATE_DIFF, CURDATE |
+| 3.4.0 | [SPARK-40406](https://issues.apache.org/jira/browse/SPARK-40406) | prose | Change default logging to stderr to consistent with the behavior of log4j |
+| 3.4.0 | [SPARK-40487](https://issues.apache.org/jira/browse/SPARK-40487) | prose | Make defaultJoin in BroadcastNestedLoopJoinExec running in parallel |
+| 3.4.0 | [SPARK-40501](https://issues.apache.org/jira/browse/SPARK-40501) | prose | Add PushProjectionThroughLimit for Optimizer |
+| 3.4.0 | [SPARK-40622](https://issues.apache.org/jira/browse/SPARK-40622) | prose | Remove the limitation that single task result must fit in 2GB |
+| 3.4.0 | [SPARK-40654](https://issues.apache.org/jira/browse/SPARK-40654) | prose | Protobuf support for Spark - from_protobuf AND to_protobuf |
+| 3.4.0 | [SPARK-40697](https://issues.apache.org/jira/browse/SPARK-40697) | prose | Add read-side char padding to cover external data files |
+| 3.4.0 | [SPARK-40921](https://issues.apache.org/jira/browse/SPARK-40921) | prose | Add WHEN NOT MATCHED BY SOURCE clause to MERGE INTO |
+| 3.4.0 | [SPARK-40944](https://issues.apache.org/jira/browse/SPARK-40944) | prose | Relax ordering constraint for CREATE TABLE column options |
+| 3.4.0 | [SPARK-40956](https://issues.apache.org/jira/browse/SPARK-40956) | prose | SQL Equivalent for Dataframe overwrite command |
+| 3.4.0 | [SPARK-41017](https://issues.apache.org/jira/browse/SPARK-41017) | prose | Support column pruning with multiple nondeterministic Filters |
+| 3.4.0 | [SPARK-41048](https://issues.apache.org/jira/browse/SPARK-41048) | prose | Improve output partitioning and ordering with AQE cache |
+| 3.4.0 | [SPARK-41090](https://issues.apache.org/jira/browse/SPARK-41090) | prose | Throw Exception for db_name.view_name when creating temp view by Dataset API |
+| 3.4.0 | [SPARK-41167](https://issues.apache.org/jira/browse/SPARK-41167) | prose | Improve multi like performance by creating a balanced expression tree predicate |
+| 3.4.0 | [SPARK-41183](https://issues.apache.org/jira/browse/SPARK-41183) | prose | Add an extension API to do plan normalization for caching |
+| 3.4.0 | [SPARK-41195](https://issues.apache.org/jira/browse/SPARK-41195) | prose | Support PIVOT/UNPIVOT with join children |
+| 3.4.0 | [SPARK-41226](https://issues.apache.org/jira/browse/SPARK-41226) | prose | Refactor Spark types by introducing physical types |
+| 3.4.0 | [SPARK-41232](https://issues.apache.org/jira/browse/SPARK-41232) | prose | Support ARRAY_APPEND function |
+| 3.4.0 | [SPARK-41234](https://issues.apache.org/jira/browse/SPARK-41234) | prose | Support ARRAY_INSERT function |
+| 3.4.0 | [SPARK-41235](https://issues.apache.org/jira/browse/SPARK-41235) | prose | Support high-order function: ARRAY_COMPACT |
+| 3.4.0 | [SPARK-41271](https://issues.apache.org/jira/browse/SPARK-41271) | prose | Support parameterized SQL |
+| 3.4.0 | [SPARK-41323](https://issues.apache.org/jira/browse/SPARK-41323) | prose | Support CURRENT_SCHEMA |
+| 3.4.0 | [SPARK-41360](https://issues.apache.org/jira/browse/SPARK-41360) | prose | Avoid BlockManager re-registration if the executor has been lost |
+| 3.4.0 | [SPARK-41396](https://issues.apache.org/jira/browse/SPARK-41396) | prose | OneOf field support and recursion checks |
+| 3.4.0 | [SPARK-41405](https://issues.apache.org/jira/browse/SPARK-41405) | prose | Centralize the column resolution logic |
+| 3.4.0 | [SPARK-41407](https://issues.apache.org/jira/browse/SPARK-41407) | prose | Pull out v1 write to WriteFiles |
+| 3.4.0 | [SPARK-41441](https://issues.apache.org/jira/browse/SPARK-41441) | prose | Support Generate with no required child output to host outer references |
+| 3.4.0 | [SPARK-41594](https://issues.apache.org/jira/browse/SPARK-41594) | prose | Support table-valued generator functions in the FROM clause |
+| 3.4.0 | [SPARK-41635](https://issues.apache.org/jira/browse/SPARK-41635) | prose | GROUP BY ALL |
+| 3.4.0 | [SPARK-41637](https://issues.apache.org/jira/browse/SPARK-41637) | prose | ORDER BY ALL |
+| 3.4.0 | [SPARK-41805](https://issues.apache.org/jira/browse/SPARK-41805) | prose | Reuse expressions in WindowSpecDefinition |
+| 3.4.0 | [SPARK-41893](https://issues.apache.org/jira/browse/SPARK-41893) | prose | Publish SBOM artifacts |
+| 3.4.0 | [SPARK-41958](https://issues.apache.org/jira/browse/SPARK-41958) | prose | Disallow arbitrary custom classpath with proxy user in cluster mode |
+| 3.4.0 | [SPARK-41970](https://issues.apache.org/jira/browse/SPARK-41970) | prose | Introduce SparkPath for typesafety |
+| 3.4.0 | [SPARK-41994](https://issues.apache.org/jira/browse/SPARK-41994) | prose | Harden SQLSTATE usage for error classes |
+| 3.4.0 | [SPARK-42070](https://issues.apache.org/jira/browse/SPARK-42070) | prose | Change the default value of argument of Mask function from -1 to NULL |
+| 3.4.0 | [SPARK-42081](https://issues.apache.org/jira/browse/SPARK-42081) | prose | Improve the plan change validation |
+| 3.4.0 | [SPARK-42137](https://issues.apache.org/jira/browse/SPARK-42137) | prose | Enable spark.kryo.unsafe by default |
+| 3.4.0 | [SPARK-42191](https://issues.apache.org/jira/browse/SPARK-42191) | prose | Support LUHN_CHECK function |
+| 3.4.1 | [SPARK-43043](https://issues.apache.org/jira/browse/SPARK-43043) | prose | Improve the performance of MapOutputTracker.updateMapOutput |
+| 3.4.1 | [SPARK-43071](https://issues.apache.org/jira/browse/SPARK-43071) | prose | Support SELECT DEFAULT with ORDER BY, LIMIT, OFFSET for INSERT source relation |
+| 3.4.1 | [SPARK-43085](https://issues.apache.org/jira/browse/SPARK-43085) | prose | Support column DEFAULT assignment for multi-part table names |
+| 3.4.2 | [SPARK-44940](https://issues.apache.org/jira/browse/SPARK-44940) | prose | Improve performance of JSON parsing when spark.sql.json.enablePartialResults is enabled |
+| 3.4.4 | [SPARK-49193](https://issues.apache.org/jira/browse/SPARK-49193) | prose | Improve the performance of RowSetUtils.toColumnBasedSet |
+| 3.5.0 | [SPARK-16484](https://issues.apache.org/jira/browse/SPARK-16484) | prose | Add support for Datasketches HllSketch |
+| 3.5.0 | [SPARK-36124](https://issues.apache.org/jira/browse/SPARK-36124) | prose | Support subqueries with correlation through INTERSECT/EXCEPT |
+| 3.5.0 | [SPARK-37099](https://issues.apache.org/jira/browse/SPARK-37099) | prose | Introduce the group limit of Window for rank-based filter to optimize top-k computation |
+| 3.5.0 | [SPARK-39851](https://issues.apache.org/jira/browse/SPARK-39851) | prose | Improve join stats estimation if one side can keep uniqueness |
+| 3.5.0 | [SPARK-40045](https://issues.apache.org/jira/browse/SPARK-40045) | prose | Optimize the order of filtering predicates |
+| 3.5.0 | [SPARK-40822](https://issues.apache.org/jira/browse/SPARK-40822) | prose | Stable derived column aliases |
+| 3.5.0 | [SPARK-41231](https://issues.apache.org/jira/browse/SPARK-41231) | prose | Built-in SQL Function Improvement |
+| 3.5.0 | [SPARK-41235](https://issues.apache.org/jira/browse/SPARK-41235) | prose | High-order function: array_compact implementation |
+| 3.5.0 | [SPARK-41497](https://issues.apache.org/jira/browse/SPARK-41497) | prose | Fixing accumulator undercount in the case of the retry task with rdd cache |
+| 3.5.0 | [SPARK-41631](https://issues.apache.org/jira/browse/SPARK-41631) | prose | Support implicit lateral column alias resolution on Aggregate |
+| 3.5.0 | [SPARK-42038](https://issues.apache.org/jira/browse/SPARK-42038) | prose | SPJ: Support partially clustered distribution |
+| 3.5.0 | [SPARK-42101](https://issues.apache.org/jira/browse/SPARK-42101) | prose | Make AQE support InMemoryTableScanExec |
+| 3.5.0 | [SPARK-42123](https://issues.apache.org/jira/browse/SPARK-42123) | prose | Include column default values in DESCRIBE and SHOW CREATE TABLE output |
+| 3.5.0 | [SPARK-42191](https://issues.apache.org/jira/browse/SPARK-42191) | prose | Support udf ‘luhn_check’ |
+| 3.5.0 | [SPARK-42217](https://issues.apache.org/jira/browse/SPARK-42217) | prose | Support implicit lateral column alias in queries with Window |
+| 3.5.0 | [SPARK-42277](https://issues.apache.org/jira/browse/SPARK-42277) | prose | Use RocksDB for spark.history.store.hybridStore.diskBackend by default |
+| 3.5.0 | [SPARK-42376](https://issues.apache.org/jira/browse/SPARK-42376) | prose | Introduce watermark propagation among operators |
+| 3.5.0 | [SPARK-42423](https://issues.apache.org/jira/browse/SPARK-42423) | prose | Add metadata column file block start and length |
+| 3.5.0 | [SPARK-42521](https://issues.apache.org/jira/browse/SPARK-42521) | prose | Add NULLs for INSERTs with user-specified lists of fewer columns than the target table |
+| 3.5.0 | [SPARK-42525](https://issues.apache.org/jira/browse/SPARK-42525) | prose | Collapse two adjacent windows with the same partition/order in subquery |
+| 3.5.0 | [SPARK-42528](https://issues.apache.org/jira/browse/SPARK-42528) | prose | Optimize PercentileHeap |
+| 3.5.0 | [SPARK-42577](https://issues.apache.org/jira/browse/SPARK-42577) | prose | Add max attempts limitation for stages to avoid potential infinite retry |
+| 3.5.0 | [SPARK-42583](https://issues.apache.org/jira/browse/SPARK-42583) | prose | Remove the outer join if they are all distinct aggregate functions |
+| 3.5.0 | [SPARK-42602](https://issues.apache.org/jira/browse/SPARK-42602) | prose | Add reason argument to TaskScheduler.cancelTasks |
+| 3.5.0 | [SPARK-42683](https://issues.apache.org/jira/browse/SPARK-42683) | prose | Automatically rename conflicting metadata columns |
+| 3.5.0 | [SPARK-42701](https://issues.apache.org/jira/browse/SPARK-42701) | prose | Add the try_aes_decrypt() function |
+| 3.5.0 | [SPARK-42706](https://issues.apache.org/jira/browse/SPARK-42706) | prose | Document the Spark SQL error classes in user-facing documentation |
+| 3.5.0 | [SPARK-42750](https://issues.apache.org/jira/browse/SPARK-42750) | prose | Support Insert By Name statement |
+| 3.5.0 | [SPARK-42769](https://issues.apache.org/jira/browse/SPARK-42769) | prose | Add SPARK_DRIVER_POD_IP env variable to executor pods |
+| 3.5.0 | [SPARK-42815](https://issues.apache.org/jira/browse/SPARK-42815) | prose | Subexpression elimination support shortcut expression |
+| 3.5.0 | [SPARK-42931](https://issues.apache.org/jira/browse/SPARK-42931) | prose | Introduce dropDuplicatesWithinWatermark |
+| 3.5.0 | [SPARK-42986](https://issues.apache.org/jira/browse/SPARK-42986) | prose | Migrate PySpark errors onto error classes |
+| 3.5.0 | [SPARK-43038](https://issues.apache.org/jira/browse/SPARK-43038) | prose | Support the CBC mode by aes_encrypt()/aes_decrypt() |
+| 3.5.0 | [SPARK-43043](https://issues.apache.org/jira/browse/SPARK-43043) | prose | Improve the performance of MapOutputTracker.updateMapOutput |
+| 3.5.0 | [SPARK-43061](https://issues.apache.org/jira/browse/SPARK-43061) | prose | Introduce PartitionEvaluator for SQL operator execution |
+| 3.5.0 | [SPARK-43071](https://issues.apache.org/jira/browse/SPARK-43071) | prose | Support SELECT DEFAULT with ORDER BY, LIMIT, OFFSET for INSERT source relation |
+| 3.5.0 | [SPARK-43088](https://issues.apache.org/jira/browse/SPARK-43088) | prose | Respect RequiresDistributionAndOrdering in CTAS/RTAS |
+| 3.5.0 | [SPARK-43107](https://issues.apache.org/jira/browse/SPARK-43107) | prose | Coalesce buckets in join applied on broadcast join stream side |
+| 3.5.0 | [SPARK-43205](https://issues.apache.org/jira/browse/SPARK-43205) | prose | IDENTIFIER clause |
+| 3.5.0 | [SPARK-43290](https://issues.apache.org/jira/browse/SPARK-43290) | prose | Adds support for aes_encrypt IVs and AAD |
+| 3.5.0 | [SPARK-43300](https://issues.apache.org/jira/browse/SPARK-43300) | prose | NonFateSharingCache wrapper for Guava Cache |
+| 3.5.0 | [SPARK-43311](https://issues.apache.org/jira/browse/SPARK-43311) | prose | RocksDB state store provider memory management enhancements |
+| 3.5.0 | [SPARK-43324](https://issues.apache.org/jira/browse/SPARK-43324) | prose | Handle UPDATE commands for delta-based sources |
+| 3.5.0 | [SPARK-43421](https://issues.apache.org/jira/browse/SPARK-43421) | prose | Implement changelog checkpointing for RocksDB state store |
+| 3.5.0 | [SPARK-43492](https://issues.apache.org/jira/browse/SPARK-43492) | prose | Add 3-args function aliases DATE_ADD and DATE_DIFF |
+| 3.5.0 | [SPARK-43504](https://issues.apache.org/jira/browse/SPARK-43504) | prose | Mounts the hadoop config map on the executor pod |
+| 3.5.0 | [SPARK-43529](https://issues.apache.org/jira/browse/SPARK-43529) | prose | Support general constant expressions as CREATE/REPLACE TABLE OPTIONS values |
+| 3.5.0 | [SPARK-43718](https://issues.apache.org/jira/browse/SPARK-43718) | prose | Set nullable correctly for keys in USING joins |
+| 3.5.0 | [SPARK-43775](https://issues.apache.org/jira/browse/SPARK-43775) | prose | DataSource V2: Allow representing updates as deletes and inserts |
+| 3.5.0 | [SPARK-43782](https://issues.apache.org/jira/browse/SPARK-43782) | prose | Support log level configuration with static Spark conf |
+| 3.5.0 | [SPARK-43792](https://issues.apache.org/jira/browse/SPARK-43792) | prose | Add optional pattern for Catalog.listCatalogs |
+| 3.5.0 | [SPARK-43815](https://issues.apache.org/jira/browse/SPARK-43815) | prose | Add to_varchar alias for to_char |
+| 3.5.0 | [SPARK-43881](https://issues.apache.org/jira/browse/SPARK-43881) | prose | Add optional pattern for Catalog.listDatabases |
+| 3.5.0 | [SPARK-43885](https://issues.apache.org/jira/browse/SPARK-43885) | prose | DataSource V2: Handle MERGE commands for delta-based sources |
+| 3.5.0 | [SPARK-43922](https://issues.apache.org/jira/browse/SPARK-43922) | prose | Add named argument support for SQL functions |
+| 3.5.0 | [SPARK-43963](https://issues.apache.org/jira/browse/SPARK-43963) | prose | DataSource V2: Handle MERGE commands for group-based sources |
+| 3.5.0 | [SPARK-43975](https://issues.apache.org/jira/browse/SPARK-43975) | prose | DataSource V2: Handle UPDATE commands for group-based sources |
+| 3.5.0 | [SPARK-44021](https://issues.apache.org/jira/browse/SPARK-44021) | prose | Add spark.sql.files.maxPartitionNum |
+| 3.5.0 | [SPARK-44042](https://issues.apache.org/jira/browse/SPARK-44042) | prose | PySpark Test Framework |
+| 3.5.0 | [SPARK-44066](https://issues.apache.org/jira/browse/SPARK-44066) | prose | Support positional parameters in Scala/Java sql() |
+| 3.5.0 | [SPARK-44131](https://issues.apache.org/jira/browse/SPARK-44131) | prose | Add call_function for Scala API |
+| 3.5.0 | [SPARK-44145](https://issues.apache.org/jira/browse/SPARK-44145) | prose | Callback when ready for execution |
+| 3.5.0 | [SPARK-44154](https://issues.apache.org/jira/browse/SPARK-44154) | prose | Implement bitmap functions |
+| 3.5.0 | [SPARK-44200](https://issues.apache.org/jira/browse/SPARK-44200) | prose | Support TABLE argument parser rule for TableValuedFunction |
+| 3.5.0 | [SPARK-44251](https://issues.apache.org/jira/browse/SPARK-44251) | prose | Set nullable correctly on coalesced join key in full outer USING join |
+| 3.5.0 | [SPARK-44264](https://issues.apache.org/jira/browse/SPARK-44264) | prose | DeepSpeed Distributor |
+| 3.5.0 | [SPARK-44503](https://issues.apache.org/jira/browse/SPARK-44503) | prose | Add SQL grammar for PARTITION BY and ORDER BY clause after TABLE arguments for TVF calls |
+| 3.5.1 | [SPARK-46170](https://issues.apache.org/jira/browse/SPARK-46170) | prose | Support inject adaptive query post planner strategy rules in SparkSessionExtensions |
 | 4.1.1 | [SPARK-54728](https://issues.apache.org/jira/browse/SPARK-54728) | Improvement | Remove a wrong note in dataframe.isEmpty |
 | 4.1.2 | [SPARK-54785](https://issues.apache.org/jira/browse/SPARK-54785) | Improvement | Add support for binary sketch aggregations in KLL |
 | 4.1.2 | [SPARK-55070](https://issues.apache.org/jira/browse/SPARK-55070) | Improvement | Allow hidden column in dataframe column resolution |

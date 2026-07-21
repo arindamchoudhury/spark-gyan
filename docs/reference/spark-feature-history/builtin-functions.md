@@ -12,6 +12,10 @@
 
 2.0.0 filled out core SQL functions — `IFNULL`/`NULLIF`/`NVL`/`NVL2` (SPARK-14541), `CreateMap` (SPARK-14061), `assert_true`, and XPath UDFs (SPARK-16270) — while porting window functions fully into `SQLContext` (SPARK-12544). 2.2.0 let SELECT aliases be reused in GROUP BY and later expressions (SPARK-14471) and added `input_file_block_start`/`input_file_block_length` (SPARK-18702). 2.3.0 was a UDF-focused release end to end: general UDF enhancements (SPARK-19285), a more comprehensive built-in function library (SPARK-20746), and generated documentation for all of them (SPARK-21485). The era closes with 2.4.0's headline addition — higher-order functions like `transform`, `filter`, `exists`, and `aggregate`, plus 30-odd new built-ins for arrays and maps that avoid exploding them into rows first (SPARK-23899).
 
+### 3.x era — `try_*` functions and SQL-standard additions
+
+3.0.0 added a large batch of SQL-standard functions in one release: inverse hyperbolic trig (`sinh`/`cosh`/`tanh` and their inverses), `bit_and`/`bit_or`, `max_by`/`min_by`, and an index-aware `filter` higher-order function (SPARK-28962). 3.1.1 added `json_array_length`, `json_object_keys`, `current_catalog`, and timestamp constructors (`timestamp_seconds`/`millis`/`micros`). 3.2.0 introduced `try_cast` (SPARK-34881), the first of the `try_*` family that returns null instead of raising under ANSI mode, alongside `regexp`-as-function and datetime arithmetic helpers. 3.3.0 and 3.4.0 kept extending the SQL-standard surface — `SEC`/`CSC`, `TO_NUMBER`/`TRY_TO_NUMBER` (SPARK-38796), URL encode/decode, and the `MASK` data-masking function (SPARK-40687). 3.5.0 added named-argument support for built-in functions (SPARK-44059), letting SQL calls pass arguments by name rather than position.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -127,9 +131,12 @@
 | 3.0.0 | [SPARK-27653](https://issues.apache.org/jira/browse/SPARK-27653) | New Feature | Add max_by() / min_by() SQL aggregate functions |
 | 3.0.0 | [SPARK-27672](https://issues.apache.org/jira/browse/SPARK-27672) | Improvement | Add since info to string expressions |
 | 3.0.0 | [SPARK-27673](https://issues.apache.org/jira/browse/SPARK-27673) | Improvement | Add since info to random. regex, null expressions |
+| 3.0.0 | [SPARK-27879](https://issues.apache.org/jira/browse/SPARK-27879) | prose | bit_and, bit_or |
+| 3.0.0 | [SPARK-28133](https://issues.apache.org/jira/browse/SPARK-28133) | prose | sinh, cosh, tanh, asinh, acosh, atanh |
 | 3.0.0 | [SPARK-28521](https://issues.apache.org/jira/browse/SPARK-28521) | Improvement | Fix error message for built-in functions |
 | 3.0.0 | [SPARK-28581](https://issues.apache.org/jira/browse/SPARK-28581) | Improvement | Replace _FUNC_ in UDF ExpressionInfo |
 | 3.0.0 | [SPARK-28782](https://issues.apache.org/jira/browse/SPARK-28782) | Improvement | explode() fails on aggregate expressions |
+| 3.0.0 | [SPARK-28962](https://issues.apache.org/jira/browse/SPARK-28962) | prose | filter can now take the index as input as well as the element |
 | 3.0.0 | [SPARK-29233](https://issues.apache.org/jira/browse/SPARK-29233) | Improvement | Add regex expression checks for executorEnv in K8S mode |
 | 3.0.0 | [SPARK-29237](https://issues.apache.org/jira/browse/SPARK-29237) | Improvement | Use _FUNC_ in expression examples |
 | 3.0.0 | [SPARK-29491](https://issues.apache.org/jira/browse/SPARK-29491) | Improvement | Add bit_count function support |
@@ -146,6 +153,10 @@
 | 3.0.0 | [SPARK-31474](https://issues.apache.org/jira/browse/SPARK-31474) | Improvement | Consistancy between dayofweek/dow in extract expression and dayofweek function |
 | 3.0.0 | [SPARK-31476](https://issues.apache.org/jira/browse/SPARK-31476) | Improvement | Add an ExpressionInfo entry for EXTRACT |
 | 3.0.0 | [SPARK-31562](https://issues.apache.org/jira/browse/SPARK-31562) | Improvement | Update ExpressionDescription for substring, current_date, and current_timestamp |
+| 3.1.1 | [SPARK-30352](https://issues.apache.org/jira/browse/SPARK-30352) | prose | current_catalog |
+| 3.1.1 | [SPARK-31008](https://issues.apache.org/jira/browse/SPARK-31008) | prose | json_array_length |
+| 3.1.1 | [SPARK-31009](https://issues.apache.org/jira/browse/SPARK-31009) | prose | json_object_keys |
+| 3.1.1 | [SPARK-31710](https://issues.apache.org/jira/browse/SPARK-31710) | prose | timestamp_seconds, timestamp_millis, timestamp_micros |
 | 3.1.1 | [SPARK-34244](https://issues.apache.org/jira/browse/SPARK-34244) | Improvement | Remove the Scala function version of regexp_extract_all |
 | 3.2.0 | [SPARK-33527](https://issues.apache.org/jira/browse/SPARK-33527) | New Feature | Extend the function of decode so as consistent with mainstream databases |
 | 3.2.0 | [SPARK-33597](https://issues.apache.org/jira/browse/SPARK-33597) | New Feature | Support REGEXP_LIKE for consistent with mainstream databases |
@@ -158,6 +169,7 @@
 | 3.2.0 | [SPARK-34350](https://issues.apache.org/jira/browse/SPARK-34350) | Improvement | replace withTimeZone defined in OracleIntegrationSuite with DateTimeTestUtils.withDefaultTimeZone |
 | 3.2.0 | [SPARK-34376](https://issues.apache.org/jira/browse/SPARK-34376) | New Feature | Support regexp as a function |
 | 3.2.0 | [SPARK-34451](https://issues.apache.org/jira/browse/SPARK-34451) | Improvement | Add alternatives for datetime rebasing SQL configs and deprecate legacy configs |
+| 3.2.0 | [SPARK-34881](https://issues.apache.org/jira/browse/SPARK-34881) | prose | try_cast |
 | 3.2.0 | [SPARK-35005](https://issues.apache.org/jira/browse/SPARK-35005) | Improvement | Improve error msg if UTF8String concatWs length overflow |
 | 3.2.0 | [SPARK-35206](https://issues.apache.org/jira/browse/SPARK-35206) | Improvement | Extract common get project path ability as function to SparkFunctionSuite |
 | 3.2.0 | [SPARK-35273](https://issues.apache.org/jira/browse/SPARK-35273) | Improvement | CombineFilters support non-deterministic expressions |
@@ -166,5 +178,12 @@
 | 3.2.0 | [SPARK-35618](https://issues.apache.org/jira/browse/SPARK-35618) | Improvement | Resolve star expressions in subquery |
 | 3.2.0 | [SPARK-35899](https://issues.apache.org/jira/browse/SPARK-35899) | Improvement | Add a utility to convert connector expressions to Catalyst expressions |
 | 3.2.0 | [SPARK-36567](https://issues.apache.org/jira/browse/SPARK-36567) | Improvement | Support foldable special datetime values in CAST |
+| 3.2.1 | [SPARK-30789](https://issues.apache.org/jira/browse/SPARK-30789) | prose | Support IGNORE/RESPECT NULLS for LEAD/LAG/NTH_VALUE/FIRST_VALUE/LAST_VALUE |
+| 3.3.0 | [SPARK-36683](https://issues.apache.org/jira/browse/SPARK-36683) | prose | Add new built-in SQL functions: SEC and CSC |
+| 3.3.0 | [SPARK-38783](https://issues.apache.org/jira/browse/SPARK-38783) | prose | New built-in functions and their extensions |
+| 3.4.0 | [SPARK-38796](https://issues.apache.org/jira/browse/SPARK-38796) | prose | Support the TO_NUMBER and TRY_TO_NUMBER SQL functions according to a new specification |
+| 3.4.0 | [SPARK-39741](https://issues.apache.org/jira/browse/SPARK-39741) | prose | Support url encode/decode as built-in function and tidy up url-related functions |
+| 3.4.0 | [SPARK-40687](https://issues.apache.org/jira/browse/SPARK-40687) | prose | Support data masking built-in function MASK |
+| 3.5.0 | [SPARK-44059](https://issues.apache.org/jira/browse/SPARK-44059) | prose | Add analyzer support of named arguments for built-in functions |
 | 4.1.1 | [SPARK-54843](https://issues.apache.org/jira/browse/SPARK-54843) | Improvement | Try_to_number expression not working for empty string input |
 <!-- AUTO:timeline END -->

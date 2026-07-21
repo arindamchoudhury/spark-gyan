@@ -18,6 +18,10 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 
 2.0.0 opened the era with a simpler, more performant accumulator API and off-heap memory management for both caching and runtime execution — moving data structures outside the JVM heap to reduce GC pressure. 2.2.0 fixed uncancellable tasks that could starve a job of resources (SPARK-18761) and ported the RDD API onto the same commit protocol used by DataFrame writes (SPARK-18191). The line closes with 2.4.0's Barrier Execution Mode (SPARK-24374), a scheduler addition that lets all tasks in a stage start together and communicate directly — built specifically so deep-learning frameworks like Horovod could run gang-scheduled distributed training jobs on top of RDDs.
 
+### 3.x era — GPU-aware and stage-level scheduling
+
+3.0.0's core-scheduler work centered on one SPIP: accelerator-aware task scheduling (SPARK-24615), which taught the driver and executors to discover, request, and track GPU/FPGA resources end to end — a driver resource-request interface (SPARK-27488), fractional resource support (SPARK-29151), and per-executor `ResourceProfile` tracking (SPARK-29306). 3.1.1 generalized that machinery with the stage-level scheduling SPIP (SPARK-27495), letting different stages of the same job request different resource profiles instead of one fixed executor shape for the whole application. 3.2.0 built on both: barrier-mode tasks were guaranteed to launch together within a stage (SPARK-24818), and `SparkSessionExtensions` gained `ServiceLoader`-based discovery (SPARK-35380) alongside routine scheduler and executor-metrics polish.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->

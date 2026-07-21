@@ -12,6 +12,10 @@
 
 2.0.0 was transformative for SparkR: three new user-defined-function forms (`dapply`, `gapply`, `lapply`) for partition-based UDFs and hyperparameter tuning, save/load support for all ML models, broader GLM family/link support, and DataFrame functionality (window functions, JDBC/CSV readers, `SparkSession`) reaching parity with Scala/Python. 2.2.0 added a Structured Streaming API for R (SPARK-19654) and completed Catalog API coverage (SPARK-20159). 2.3.0 extended that streaming API with `withWatermark`, triggers, `partitionBy`, and stream-stream joins (SPARK-22933), plus DDL-formatted UDF schemas (SPARK-21266). 2.4.0 was largely array-function catch-up — `array_intersect`, `array_join`, `array_sort`, `flatten`, `map_entries`, and a dozen more — bringing R's function surface in line with the array/map functions Scala and Python had gained via higher-order functions.
 
+### 3.x era — higher-order functions and steady function parity
+
+3.0.0 added eager execution for the R shell/IDE (SPARK-24572) and the `forall` higher-order function, alongside routine parity work (`overlay`, `from_csv`/`schema_of_csv`). 3.1.1 added a full SparkR interface for higher-order functions (SPARK-30682), `from_avro`/`to_avro` (SPARK-33304), and bumped the minimum Arrow version to 1.0.0 (SPARK-32452). 3.2.0 added `current_user` (SPARK-21957) and subexpression elimination for higher-order functions. 3.3.0 migrated SparkR's documentation to pkgdown (SPARK-37474) and added `max_by`/`min_by`, `ILIKE`, `sec`/`csc`/`cot` — closing gaps with the Scala/Python function surface. 3.4.0 added `unpivot`/`melt`, comparator-based `array_sort`, R 4.2.0 support, and Catalog-API compatibility with the three-layer namespace (SPARK-39579) — SparkR tracking the same catalog changes landing in Spark SQL rather than diverging on its own feature set.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -149,6 +153,7 @@
 | 2.4.0 | [SPARK-25117](https://issues.apache.org/jira/browse/SPARK-25117) | prose | EXCEPT ALL and INTERSECT ALL support added in R |
 | 2.4.0 | [SPARK-25234](https://issues.apache.org/jira/browse/SPARK-25234) | prose | Avoid integer overflow in SparkR parallelize |
 | 3.0.0 | [SPARK-21291](https://issues.apache.org/jira/browse/SPARK-21291) | Improvement | R partitionBy API |
+| 3.0.0 | [SPARK-24572](https://issues.apache.org/jira/browse/SPARK-24572) | prose | “eager execution” for R shell, IDE |
 | 3.0.0 | [SPARK-26107](https://issues.apache.org/jira/browse/SPARK-26107) | Improvement | Extend ReplaceNullWithFalseInPredicate to support higher-order functions: ArrayExists, ArrayFilter, MapFilter |
 | 3.0.0 | [SPARK-26180](https://issues.apache.org/jira/browse/SPARK-26180) | Improvement | Add a withCreateTempDir function to the SparkCore test case |
 | 3.0.0 | [SPARK-26227](https://issues.apache.org/jira/browse/SPARK-26227) | Improvement | from_[csv\|json] should accept schema_of_[csv\|json] in R API |
@@ -161,6 +166,14 @@
 | 3.0.0 | [SPARK-30607](https://issues.apache.org/jira/browse/SPARK-30607) | Improvement | overlay wrappers for SparkR and PySpark |
 | 3.0.0 | [SPARK-31510](https://issues.apache.org/jira/browse/SPARK-31510) | Improvement | Set setwd in R documentation build |
 | 3.0.0 | [SPARK-31785](https://issues.apache.org/jira/browse/SPARK-31785) | Improvement | Add a helper function to test all parquet readers |
+| 3.0.1 | [SPARK-32451](https://issues.apache.org/jira/browse/SPARK-32451) | prose | Support Apache Arrow 1.0.0 in SparkR |
+| 3.1.1 | [SPARK-30682](https://issues.apache.org/jira/browse/SPARK-30682) | prose | Add SparkR interface for higher order functions |
+| 3.1.1 | [SPARK-32452](https://issues.apache.org/jira/browse/SPARK-32452) | prose | Minimum Arrow version bumped up to 1.0.0 |
+| 3.1.1 | [SPARK-32946](https://issues.apache.org/jira/browse/SPARK-32946) | prose | Support withColumn in SparkR functions |
+| 3.1.1 | [SPARK-32949](https://issues.apache.org/jira/browse/SPARK-32949) | prose | Support timestamp_seconds in SparkR functions |
+| 3.1.1 | [SPARK-33030](https://issues.apache.org/jira/browse/SPARK-33030) | prose | Support nth_value in SparkR functions |
+| 3.1.1 | [SPARK-33304](https://issues.apache.org/jira/browse/SPARK-33304) | prose | Support from_avro and to_avro |
+| 3.1.1 | [SPARK-33622](https://issues.apache.org/jira/browse/SPARK-33622) | prose | Support array_to_vector in SparkR functions |
 | 3.1.1 | [SPARK-34132](https://issues.apache.org/jira/browse/SPARK-34132) | Improvement | Update Roxygen version references to 7.1.1 |
 | 3.2.0 | [SPARK-21957](https://issues.apache.org/jira/browse/SPARK-21957) | New Feature | Add current_user function |
 | 3.2.0 | [SPARK-34481](https://issues.apache.org/jira/browse/SPARK-34481) | Improvement | Refactor dataframe reader/writer path option logic |
@@ -169,5 +182,17 @@
 | 3.2.0 | [SPARK-35230](https://issues.apache.org/jira/browse/SPARK-35230) | Improvement | Move custom metric classes to proper package |
 | 3.2.0 | [SPARK-35580](https://issues.apache.org/jira/browse/SPARK-35580) | Improvement | Support subexpression elimination for higher order functions |
 | 3.2.0 | [SPARK-35636](https://issues.apache.org/jira/browse/SPARK-35636) | Improvement | Do not push down extract value in higher order function that references both sides of a join |
+| 3.2.0 | [SPARK-35885](https://issues.apache.org/jira/browse/SPARK-35885) | prose | Use keyserver.ubuntu.com as a keyserver for CRAN |
 | 3.2.0 | [SPARK-36631](https://issues.apache.org/jira/browse/SPARK-36631) | Improvement | Ask users if they want to download and install SparkR in non Spark scripts |
+| 3.3.0 | [SPARK-36688](https://issues.apache.org/jira/browse/SPARK-36688) | prose | Add cot as an R function |
+| 3.3.0 | [SPARK-36824](https://issues.apache.org/jira/browse/SPARK-36824) | prose | Add sec and csc as R functions |
+| 3.3.0 | [SPARK-36899](https://issues.apache.org/jira/browse/SPARK-36899) | prose | Support ILIKE API on R |
+| 3.3.0 | [SPARK-36976](https://issues.apache.org/jira/browse/SPARK-36976) | prose | Add max_by/min_by API to SparkR |
+| 3.3.0 | [SPARK-37108](https://issues.apache.org/jira/browse/SPARK-37108) | prose | Expose make_date expression in R |
+| 3.3.0 | [SPARK-37474](https://issues.apache.org/jira/browse/SPARK-37474) | prose | Migrate SparkR docs to pkgdown |
+| 3.4.0 | [SPARK-39372](https://issues.apache.org/jira/browse/SPARK-39372) | prose | Support R 4.2.0 |
+| 3.4.0 | [SPARK-39579](https://issues.apache.org/jira/browse/SPARK-39579) | prose | Make Catalog API be compatible with 3-layer-namespace |
+| 3.4.0 | [SPARK-40114](https://issues.apache.org/jira/browse/SPARK-40114) | prose | Arrow 9.0.0 support with SparkR |
+| 3.4.0 | [SPARK-40167](https://issues.apache.org/jira/browse/SPARK-40167) | prose | Add array_sort(column, comparator) |
+| 3.4.0 | [SPARK-41267](https://issues.apache.org/jira/browse/SPARK-41267) | prose | Add unpivot / melt |
 <!-- AUTO:timeline END -->

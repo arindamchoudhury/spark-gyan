@@ -18,6 +18,10 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 
 2.0.0 removed the Akka dependency so user applications could bring their own Akka version, dropped the requirement for a fat assembly jar in production deployments, and added multi-executor support to coarse-grained Mesos mode. The headline addition came in 2.3.0: an experimental Kubernetes scheduler backend (SPARK-18278), letting Spark submit jobs natively to a Kubernetes-managed cluster instead of requiring Mesos or YARN — though the release notes flagged that configuration, container images, and entrypoints should still be expected to change. 2.4.0 filled out that backend fast: PySpark and R bindings for Kubernetes (SPARK-23984, SPARK-24433), client-mode support (SPARK-23146), and the ability to mount Kubernetes volumes into executors (SPARK-23529).
 
+### 3.x era — Kubernetes reaches GA, decommissioning matures
+
+3.0.0 added Kerberos support for Spark on Kubernetes (SPARK-23257) and GPU-aware scheduling across Standalone, YARN, and Kubernetes. 3.1.1 was the Kubernetes GA release (SPARK-33005, "Kubernetes GA Preparation"), paired with experimental node decommissioning (SPARK-20624) that could migrate both RDD blocks (SPARK-20732) and shuffle blocks (SPARK-20629) off a draining executor, plus a fallback-storage option (SPARK-33545) when no peer executor was available. 3.2.0 added a pending-pods limit and early driver-service cleanup on Kubernetes. 3.3.0 added executor rolling (SPARK-37810) and Volcano-based scheduling on Kubernetes (SPARK-36061). 3.4.0 made customized Kubernetes schedulers — YuniKorn and Volcano — GA (SPARK-42802) and enabled RDD/shuffle-block decommissioning by default (SPARK-40198), completing the arc from experimental decommissioning to an always-on safety net.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -162,6 +166,7 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 3.0.0 | [SPARK-20327](https://issues.apache.org/jira/browse/SPARK-20327) | Improvement | Add CLI support for YARN custom resources, like GPUs |
 | 3.0.0 | [SPARK-22404](https://issues.apache.org/jira/browse/SPARK-22404) | Improvement | Provide an option to use unmanaged AM in yarn-client mode |
 | 3.0.0 | [SPARK-23155](https://issues.apache.org/jira/browse/SPARK-23155) | Improvement | YARN-aggregated executor/driver logs appear unavailable when NM is down |
+| 3.0.0 | [SPARK-23257](https://issues.apache.org/jira/browse/SPARK-23257) | prose | Kerberos Support for Spark on K8S |
 | 3.0.0 | [SPARK-24434](https://issues.apache.org/jira/browse/SPARK-24434) | New Feature | Support user-specified driver and executor pod templates |
 | 3.0.0 | [SPARK-24516](https://issues.apache.org/jira/browse/SPARK-24516) | Improvement | PySpark Bindings for K8S - make Python 3 the default |
 | 3.0.0 | [SPARK-24793](https://issues.apache.org/jira/browse/SPARK-24793) | Improvement | Make spark-submit more useful with k8s |
@@ -220,7 +225,15 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 3.0.0 | [SPARK-31696](https://issues.apache.org/jira/browse/SPARK-31696) | New Feature | Support spark.kubernetes.driver.service.annotation |
 | 3.0.0 | [SPARK-31766](https://issues.apache.org/jira/browse/SPARK-31766) | Improvement | Add Spark version prefix to K8s UUID test image tag |
 | 3.0.0 | [SPARK-31780](https://issues.apache.org/jira/browse/SPARK-31780) | Improvement | Add R test tag to exclude R K8s image building and test |
+| 3.1.1 | [SPARK-20624](https://issues.apache.org/jira/browse/SPARK-20624) | prose | Experimental node decommissioning for Kubernates and Standalone |
+| 3.1.1 | [SPARK-20629](https://issues.apache.org/jira/browse/SPARK-20629) | prose | Migrate shuffle blocks during decommission |
+| 3.1.1 | [SPARK-20732](https://issues.apache.org/jira/browse/SPARK-20732) | prose | Migrate RDD blocks during decommission |
+| 3.1.1 | [SPARK-31198](https://issues.apache.org/jira/browse/SPARK-31198) | prose | Graceful decommissioning as part of dynamic scaling |
+| 3.1.1 | [SPARK-31394](https://issues.apache.org/jira/browse/SPARK-31394) | prose | Adds support for Kubernetes NFS volume mounts |
 | 3.1.1 | [SPARK-33005](https://issues.apache.org/jira/browse/SPARK-33005) | Umbrella | Kubernetes GA Preparation |
+| 3.1.1 | [SPARK-33185](https://issues.apache.org/jira/browse/SPARK-33185) | prose | Set up yarn.Client to print direct links to driver stdout/stderr |
+| 3.1.1 | [SPARK-33288](https://issues.apache.org/jira/browse/SPARK-33288) | prose | Stage level scheduling support for Kubernetes |
+| 3.1.1 | [SPARK-33545](https://issues.apache.org/jira/browse/SPARK-33545) | prose | Support fallback storage during decommission |
 | 3.1.1 | [SPARK-35222](https://issues.apache.org/jira/browse/SPARK-35222) | Improvement | [SPARK-35222] In YARN mode, for better user experience, when Spark is started, not only the AppID is printed, but the Tracking URL is also printed to allow users to better track Spark Job |
 | 3.2.0 | [SPARK-595](https://issues.apache.org/jira/browse/SPARK-595) | New Feature | Document "local-cluster" mode |
 | 3.2.0 | [SPARK-33724](https://issues.apache.org/jira/browse/SPARK-33724) | Improvement | Allow decommissioning script location to be configured |
@@ -228,6 +241,7 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 3.2.0 | [SPARK-34104](https://issues.apache.org/jira/browse/SPARK-34104) | Improvement | Allow users to specify a maximum decommissioning time |
 | 3.2.0 | [SPARK-34105](https://issues.apache.org/jira/browse/SPARK-34105) | Improvement | In addition to killing exlcuded/flakey executors which should support decommissioning |
 | 3.2.0 | [SPARK-34316](https://issues.apache.org/jira/browse/SPARK-34316) | New Feature | Support spark.kubernetes.executor.disableConfigMap |
+| 3.2.0 | [SPARK-34472](https://issues.apache.org/jira/browse/SPARK-34472) | prose | Ship ivySettings file to the Driver in YARN cluster mode |
 | 3.2.0 | [SPARK-34486](https://issues.apache.org/jira/browse/SPARK-34486) | Improvement | Upgrade kubernetes-client to 4.13.2 |
 | 3.2.0 | [SPARK-34539](https://issues.apache.org/jira/browse/SPARK-34539) | Improvement | Zinc standalone server is useless after scala-maven-plugin 4.x |
 | 3.2.0 | [SPARK-34869](https://issues.apache.org/jira/browse/SPARK-34869) | Improvement | Extend k8s "EXTRA LOGS FOR THE FAILED TEST" section with describe pods output |
@@ -246,5 +260,26 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 3.2.0 | [SPARK-35692](https://issues.apache.org/jira/browse/SPARK-35692) | Improvement | Use int to replace long for EXECUTOR_ID_COUNTER in Kubernetes |
 | 3.2.0 | [SPARK-35699](https://issues.apache.org/jira/browse/SPARK-35699) | Improvement | Improve error message when creating k8s pod failed. |
 | 3.2.0 | [SPARK-35969](https://issues.apache.org/jira/browse/SPARK-35969) | Improvement | Make the pod prefix more readable and tallied with K8S DNS Label Names |
+| 3.2.0 | [SPARK-36052](https://issues.apache.org/jira/browse/SPARK-36052) | prose | Introducing a limit for pending PODs |
 | 3.2.0 | [SPARK-36774](https://issues.apache.org/jira/browse/SPARK-36774) | Improvement | Use SparkSubmitTestUtils to core and use it in SparkSubmitSuite |
+| 3.2.1 | [SPARK-37208](https://issues.apache.org/jira/browse/SPARK-37208) | prose | Support mapping Spark gpu/fpga resource types to custom YARN resource type |
+| 3.3.0 | [SPARK-33701](https://issues.apache.org/jira/browse/SPARK-33701) | prose | Adaptive shuffle merge finalization for push-based shuffle |
+| 3.3.0 | [SPARK-36057](https://issues.apache.org/jira/browse/SPARK-36057) | prose | Support Customized Kubernetes Schedulers |
+| 3.3.0 | [SPARK-36061](https://issues.apache.org/jira/browse/SPARK-36061) | prose | Add Volcano build-in integration and PodGroup template support for Spark on Kubernetes (experimental). |
+| 3.3.0 | [SPARK-37145](https://issues.apache.org/jira/browse/SPARK-37145) | prose | Add KubernetesCustom[Driver/Executor]FeatureConfigStep developer API |
+| 3.3.0 | [SPARK-37208](https://issues.apache.org/jira/browse/SPARK-37208) | prose | Support mapping Spark gpu/fpga resource types to custom YARN resource type |
+| 3.3.0 | [SPARK-37810](https://issues.apache.org/jira/browse/SPARK-37810) | prose | Executor Rolling in Kubernetes environment |
+| 3.3.0 | [SPARK-38817](https://issues.apache.org/jira/browse/SPARK-38817) | prose | Upgrade kubernetes-client to 5.12.2 |
+| 3.4.0 | [SPARK-30835](https://issues.apache.org/jira/browse/SPARK-30835) | prose | Add support for YARN decommissioning when ESS is disabled |
+| 3.4.0 | [SPARK-40198](https://issues.apache.org/jira/browse/SPARK-40198) | prose | Enable RDD and shuffle block decommission by default |
+| 3.4.0 | [SPARK-41469](https://issues.apache.org/jira/browse/SPARK-41469) | prose | Avoid unnecessary task rerun on decommissioned executor lost if shuffle data migrated |
+| 3.4.0 | [SPARK-41949](https://issues.apache.org/jira/browse/SPARK-41949) | prose | Make stage scheduling support local-cluster mode |
+| 3.4.0 | [SPARK-42802](https://issues.apache.org/jira/browse/SPARK-42802) | prose | Customized K8s Scheduler (Apache YuniKorn and Volcano) GA |
+| 3.4.3 | [SPARK-46945](https://issues.apache.org/jira/browse/SPARK-46945) | prose | Add spark.kubernetes.legacy.useReadWriteOnceAccessMode for old K8s clusters |
+| 3.5.0 | [SPARK-41469](https://issues.apache.org/jira/browse/SPARK-41469) | prose | Avoid unnecessary task rerun on decommissioned executor lost if shuffle data migrated |
+| 3.5.0 | [SPARK-42764](https://issues.apache.org/jira/browse/SPARK-42764) | prose | Parameterize the max number of attempts for driver props fetcher in KubernetesExecutorBackend |
+| 3.5.0 | [SPARK-43014](https://issues.apache.org/jira/browse/SPARK-43014) | prose | Support spark.kubernetes.setSubmitTimeInDriver |
+| 3.5.1 | [SPARK-45250](https://issues.apache.org/jira/browse/SPARK-45250) | prose | Support stage level task resource profile for yarn cluster when dynamic allocation disabled |
+| 3.5.1 | [SPARK-45495](https://issues.apache.org/jira/browse/SPARK-45495) | prose | Support stage level task resource profile for k8s cluster when dynamic allocation disabled |
+| 3.5.1 | [SPARK-46945](https://issues.apache.org/jira/browse/SPARK-46945) | prose | Add spark.kubernetes.legacy.useReadWriteOnceAccessMode for old K8s clusters |
 <!-- AUTO:timeline END -->

@@ -18,6 +18,10 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 
 2.0.0's web UI work was broad but incremental: HTTPS support (SPARK-2750), per-executor core counts (SPARK-3611), SQL UI support on the History Server (SPARK-11206), and visualization plus metrics for whole-stage-codegen operators (SPARK-12902, SPARK-12915) — tying the new SQL execution model into the existing UI. The notable 2.x change was structural rather than cosmetic: 2.3.0 shipped a new History Server backend, Spark History Server V2 (SPARK-18085), built around a more efficient event-storage mechanism designed to scale to large applications that the original file-replay-based backend struggled with — event volume having grown considerably since 2.0.0's codegen and optimizer instrumentation landed.
 
+### 3.x era — RocksDB-backed history server, Connect gets a UI page
+
+3.0.0 improved History Server concurrency (SPARK-29043) and added stage-level-scheduling UI support alongside observable metrics. 3.1.1 exposed executor memory metrics in the web UI (SPARK-23432). 3.2.0 added task/executor metrics distributions to the REST API (SPARK-34488) and a hash-aggregate fallback metric. 3.3.0 added RocksDB as a backend option for the History Server (SPARK-37680) and renamed the SQL tab to "SQL / DataFrame" to reflect pandas-API usage (SPARK-38657). 3.4.0 made RocksDB the default History Server disk backend (SPARK-42277) and improved UI scalability and driver stability for large applications (SPARK-41053). 3.5.0 added a dedicated Spark UI page for Spark Connect (SPARK-44394) — giving the newly introduced Connect architecture its own observability surface — plus per-query error-message display and a heap-histogram column in the Executors tab.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -171,6 +175,7 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 | 3.0.0 | [SPARK-28475](https://issues.apache.org/jira/browse/SPARK-28475) | Improvement | Add regex MetricFilter to GraphiteSink |
 | 3.0.0 | [SPARK-28594](https://issues.apache.org/jira/browse/SPARK-28594) | Improvement | Allow event logs for running streaming apps to be rolled over |
 | 3.0.0 | [SPARK-28942](https://issues.apache.org/jira/browse/SPARK-28942) | Improvement | [Spark][WEB UI]Spark in local mode hostname display localhost in the Host Column of Task Summary Page |
+| 3.0.0 | [SPARK-29043](https://issues.apache.org/jira/browse/SPARK-29043) | prose | Improve the concurrent performance of History Server |
 | 3.0.0 | [SPARK-29168](https://issues.apache.org/jira/browse/SPARK-29168) | Improvement | Use a unique color on selected item on timeline view |
 | 3.0.0 | [SPARK-29273](https://issues.apache.org/jira/browse/SPARK-29273) | Improvement | Spark peakExecutionMemory metrics is zero |
 | 3.0.0 | [SPARK-29348](https://issues.apache.org/jira/browse/SPARK-29348) | New Feature | Add observable metrics |
@@ -196,12 +201,16 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 | 3.0.0 | [SPARK-31079](https://issues.apache.org/jira/browse/SPARK-31079) | Improvement | Add RuleExecutor metrics in Explain Formatted |
 | 3.0.0 | [SPARK-31081](https://issues.apache.org/jira/browse/SPARK-31081) | Improvement | Make display of stageId/stageAttemptId/taskId of sql metrics toggleable |
 | 3.0.0 | [SPARK-31275](https://issues.apache.org/jira/browse/SPARK-31275) | Improvement | Improve the metrics format in ExecutionPage for StageId |
+| 3.1.1 | [SPARK-23432](https://issues.apache.org/jira/browse/SPARK-23432) | prose | Expose executor memory metrics in the web UI for executors |
+| 3.1.1 | [SPARK-29303](https://issues.apache.org/jira/browse/SPARK-29303) | prose | Add UI support for stage level scheduling |
+| 3.2.0 | [SPARK-26399](https://issues.apache.org/jira/browse/SPARK-26399) | prose | Add new stage-level REST APIs and parameters |
 | 3.2.0 | [SPARK-33763](https://issues.apache.org/jira/browse/SPARK-33763) | Improvement | Add metrics for better tracking of dynamic allocation |
 | 3.2.0 | [SPARK-33991](https://issues.apache.org/jira/browse/SPARK-33991) | Improvement | Repair enumeration conversion error for AllJobsPage |
 | 3.2.0 | [SPARK-34005](https://issues.apache.org/jira/browse/SPARK-34005) | Improvement | Update peak memory metrics for each Executor on task end. |
 | 3.2.0 | [SPARK-34092](https://issues.apache.org/jira/browse/SPARK-34092) | Improvement | support filtering by task status in REST API call for a specific stage |
 | 3.2.0 | [SPARK-34123](https://issues.apache.org/jira/browse/SPARK-34123) | Improvement | Faster way to display/render entries in HistoryPage (Spark history server summary page) |
 | 3.2.0 | [SPARK-34288](https://issues.apache.org/jira/browse/SPARK-34288) | Improvement | Add a tip info for the `resources` column in the executors page |
+| 3.2.0 | [SPARK-34488](https://issues.apache.org/jira/browse/SPARK-34488) | prose | Support task and executor Metrics Distributions in the REST API |
 | 3.2.0 | [SPARK-34592](https://issues.apache.org/jira/browse/SPARK-34592) | Improvement | Mark indeterminate RDD in Web UI |
 | 3.2.0 | [SPARK-34764](https://issues.apache.org/jira/browse/SPARK-34764) | Improvement | Propagate reason for executor loss to the UI |
 | 3.2.0 | [SPARK-34787](https://issues.apache.org/jira/browse/SPARK-34787) | Improvement | Option variable in Spark historyServer log should be displayed as actual value instead of Some(XX) |
@@ -212,7 +221,29 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 | 3.2.0 | [SPARK-35311](https://issues.apache.org/jira/browse/SPARK-35311) | Improvement | Add exposed SS UI state information metrics to the documentation |
 | 3.2.0 | [SPARK-35402](https://issues.apache.org/jira/browse/SPARK-35402) | Improvement | Increase the max thread pool size of jetty server in HistoryServer UI |
 | 3.2.0 | [SPARK-35487](https://issues.apache.org/jira/browse/SPARK-35487) | Improvement | Upgrade dropwizard metrics to 4.2.0 |
+| 3.2.0 | [SPARK-35529](https://issues.apache.org/jira/browse/SPARK-35529) | prose | Add fallback metrics for hash aggregate |
 | 3.2.0 | [SPARK-35639](https://issues.apache.org/jira/browse/SPARK-35639) | Improvement | Add metrics about coalesced partitions to CustomShuffleReader in AQE |
 | 3.2.0 | [SPARK-36030](https://issues.apache.org/jira/browse/SPARK-36030) | Improvement | Support DS v2 metrics at writing path |
 | 3.2.0 | [SPARK-39153](https://issues.apache.org/jira/browse/SPARK-39153) | Improvement | When we look at spark UI or History, we can see the failed tasks first |
+| 3.2.1 | [SPARK-34399](https://issues.apache.org/jira/browse/SPARK-34399) | prose | Add file commit time to metrics and shown in SQL Tab UI |
+| 3.3.0 | [SPARK-34399](https://issues.apache.org/jira/browse/SPARK-34399) | prose | Add commit duration to SQL tab’s graph node |
+| 3.3.0 | [SPARK-34735](https://issues.apache.org/jira/browse/SPARK-34735) | prose | Add modified configs for SQL execution in UI |
+| 3.3.0 | [SPARK-36038](https://issues.apache.org/jira/browse/SPARK-36038) | prose | Speculation metrics summary at stage level |
+| 3.3.0 | [SPARK-36237](https://issues.apache.org/jira/browse/SPARK-36237) | prose | Attach and start handler after application started in UI |
+| 3.3.0 | [SPARK-36400](https://issues.apache.org/jira/browse/SPARK-36400) | prose | Make ThriftServer recognize spark.sql.redaction.string.regex |
+| 3.3.0 | [SPARK-37469](https://issues.apache.org/jira/browse/SPARK-37469) | prose | Unified shuffle read block time to shuffle read fetch wait time in StagePage |
+| 3.3.0 | [SPARK-37680](https://issues.apache.org/jira/browse/SPARK-37680) | prose | Support RocksDB backend in Spark History Server |
+| 3.3.0 | [SPARK-38656](https://issues.apache.org/jira/browse/SPARK-38656) | prose | Show options for Pandas API on Spark in UI |
+| 3.3.0 | [SPARK-38657](https://issues.apache.org/jira/browse/SPARK-38657) | prose | Rename ‘SQL’ to ‘SQL / DataFrame’ in SQL UI page |
+| 3.4.0 | [SPARK-39110](https://issues.apache.org/jira/browse/SPARK-39110) | prose | Show metrics properties in the environment tab |
+| 3.4.0 | [SPARK-39225](https://issues.apache.org/jira/browse/SPARK-39225) | prose | Support spark.history.fs.update.batchSize |
+| 3.4.0 | [SPARK-39489](https://issues.apache.org/jira/browse/SPARK-39489) | prose | Improve event logging JsonProtocol performance by using Jackson instead of Json4s |
+| 3.4.0 | [SPARK-41053](https://issues.apache.org/jira/browse/SPARK-41053) | prose | Better Spark UI scalability and Driver stability for large applications |
+| 3.4.0 | [SPARK-41752](https://issues.apache.org/jira/browse/SPARK-41752) | prose | Group nested executions under the root execution |
+| 3.4.0 | [SPARK-42277](https://issues.apache.org/jira/browse/SPARK-42277) | prose | Use RocksDB for spark.history.store.hybridStore.diskBackend by default |
+| 3.5.0 | [SPARK-44153](https://issues.apache.org/jira/browse/SPARK-44153) | prose | Support Heap Histogram column in Executors tab |
+| 3.5.0 | [SPARK-44309](https://issues.apache.org/jira/browse/SPARK-44309) | prose | Display Add/Remove Time of Executors on Executors Tab |
+| 3.5.0 | [SPARK-44367](https://issues.apache.org/jira/browse/SPARK-44367) | prose | Show error message on UI for each failed query |
+| 3.5.0 | [SPARK-44394](https://issues.apache.org/jira/browse/SPARK-44394) | prose | Add a Spark UI page for Spark Connect |
+| 3.5.4 | [SPARK-49294](https://issues.apache.org/jira/browse/SPARK-49294) | prose | Add width attribute for shuffle-write-time checkbox |
 <!-- AUTO:timeline END -->

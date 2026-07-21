@@ -16,6 +16,10 @@ Security features were minimal in the 0.x line, appearing only as deployment-mod
 
 Security work in the 2.x line focused on secure-cluster plumbing rather than new access-control models. 2.0.0 added support for group-based ACLs (SPARK-4224). 2.1.0 improved delegation-token handling on secure clusters (SPARK-14743) and decoupled I/O encryption key propagation from `UserGroupInformation` (SPARK-18547). 2.2.0 was the busiest release: an AES-based authentication mechanism for Spark's own RPC (SPARK-19139), AES support for over-the-wire encryption (SPARK-13331), a configurable additional SSL port on the History Server (SPARK-17874), and generalizing `HDFSCredentialProvider` so non-HDFS secure filesystems could plug into the same credential machinery (SPARK-19021). Nearly every 2.x entry here is an `Improvement` rather than a `New Feature` — this is hardening work on an existing security model, not a new one.
 
+### 3.x era — Kerberos on Kubernetes, then quiet maintenance
+
+3.0.0's security entries are almost all Kubernetes-focused: Kerberos support in client-mode K8s deployments (SPARK-25815), a configurable auth-secret source for the K8s backend (SPARK-26239), and delegation-token renewal without a keytab (SPARK-26595), alongside consolidation of YARN/Mesos token-renewal code. 3.2.0 contributes four small entries — submitting to Kubernetes with only a token (SPARK-33720), `SecurityManager` cleanup, and a Jetty upgrade fixing CVE-2020-27223. From 3.3.x onward the area goes quiet in the main line, with only scattered maintenance-release entries (3.4.4, 3.5.2, 3.5.9) patching individual CVEs rather than adding new security capability — the security model itself, hardened through the 2.x line, stayed largely stable through 3.x.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -67,6 +71,8 @@ Security work in the 2.x line focused on secure-cluster plumbing rather than new
 | 3.2.0 | [SPARK-33925](https://issues.apache.org/jira/browse/SPARK-33925) | Improvement | Remove unused SecurityManager in Utils.fetchFile |
 | 3.2.0 | [SPARK-34520](https://issues.apache.org/jira/browse/SPARK-34520) | Improvement | Remove unused SecurityManager references |
 | 3.2.0 | [SPARK-34752](https://issues.apache.org/jira/browse/SPARK-34752) | Improvement | Upgrade Jetty to 9.4.37 to fix CVE-2020-27223 |
+| 3.4.4 | [SPARK-47172](https://issues.apache.org/jira/browse/SPARK-47172) | prose | Add support for AES-GCM for RPC encryption |
+| 3.5.2 | [SPARK-47172](https://issues.apache.org/jira/browse/SPARK-47172) | prose | Upgrade Transport block cipher mode to GCM |
 | 3.5.9 | [SPARK-56998](https://issues.apache.org/jira/browse/SPARK-56998) | Improvement | Add SECURITY.md + AGENTS.md Security section for scan-agent discoverability |
 | 3.5.9 | [SPARK-57962](https://issues.apache.org/jira/browse/SPARK-57962) | Improvement | Guard against path traversal in install_spark tar extraction |
 | 4.0.3 | [SPARK-56998](https://issues.apache.org/jira/browse/SPARK-56998) | Improvement | Add SECURITY.md + AGENTS.md Security section for scan-agent discoverability |

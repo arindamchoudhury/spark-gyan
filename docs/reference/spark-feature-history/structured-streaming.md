@@ -8,6 +8,10 @@
 
 Structured Streaming did not exist before 2.0.0: it shipped as an experimental high-level streaming API built on Spark SQL and Catalyst (SPARK-8360), letting streaming sources and sinks be programmed against with the same DataFrame/Dataset code as static data, with query plans incrementalized automatically. 2.1.0 added Kafka 0.10 support (SPARK-17346), event-time watermarking (SPARK-18124), and runtime metrics (SPARK-17731). 2.2.0 added `mapGroupsWithState` for arbitrary stateful operations (SPARK-19067), watermark-aware `dropDuplicates` (SPARK-19497), a Kafka sink, and General Availability — the experimental label came off (SPARK-20844). 2.3.0 added the Continuous Processing execution engine for sub-millisecond latency, stream-stream joins, and an experimental Streaming API V2 for pluggable sources/sinks spanning batch, micro-batch, and continuous execution. 2.4.0 added `foreachBatch` for exposing each micro-batch as a DataFrame (SPARK-24565) and a Python API for `foreach`/`ForeachWriter` (SPARK-24396).
 
+### 3.x era — RocksDB state store and stateful processing mature
+
+3.0.0 added a dedicated Structured Streaming UI (SPARK-29543) and an API for observing arbitrary metrics on streaming queries (SPARK-29345). 3.2.0 introduced session windows (SPARK-10816) and the RocksDB state store (SPARK-34198, shared with sql-catalyst), giving stateful operators a state backend that didn't need to fit in JVM heap. 3.3.0 added `Trigger.AvailableNow` (SPARK-36533) for running a streaming query like a series of bounded batches, and optimized the RocksDB write path (SPARK-37224). 3.4.0 added async progress tracking (SPARK-39591) and arbitrary stateful processing for Python (SPARK-40434), extending a Scala/Java-only capability to PySpark. 3.5.0 rounded out the state-store story with changelog checkpointing for RocksDB (SPARK-43421), watermark propagation among operators (SPARK-42376), and `dropDuplicatesWithinWatermark` (SPARK-42931).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -93,10 +97,30 @@ Structured Streaming did not exist before 2.0.0: it shipped as an experimental h
 | 3.0.0 | [SPARK-31004](https://issues.apache.org/jira/browse/SPARK-31004) | Improvement | Show message for empty Streaming Queries instead of empty timelines and histograms. |
 | 3.0.0 | [SPARK-31324](https://issues.apache.org/jira/browse/SPARK-31324) | Improvement | StreamingQuery stop() timeout exception should include the stream ID |
 | 3.0.0 | [SPARK-31792](https://issues.apache.org/jira/browse/SPARK-31792) | Improvement | Introduce the structured streaming UI in the Web UI page |
+| 3.1.1 | [SPARK-24634](https://issues.apache.org/jira/browse/SPARK-24634) | prose | Add a new metric regarding number of rows later than watermark |
+| 3.1.1 | [SPARK-27188](https://issues.apache.org/jira/browse/SPARK-27188) | prose | Provide a new option to have retention on output files |
+| 3.1.1 | [SPARK-27237](https://issues.apache.org/jira/browse/SPARK-27237) | prose | Introduce State schema validation among query restart |
+| 3.1.1 | [SPARK-28367](https://issues.apache.org/jira/browse/SPARK-28367) | prose | Kafka connector infinite wait because metadata never updated |
+| 3.1.1 | [SPARK-30462](https://issues.apache.org/jira/browse/SPARK-30462) | prose | Streamline the logic on file stream source and sink metadata log |
+| 3.1.1 | [SPARK-30866](https://issues.apache.org/jira/browse/SPARK-30866) | prose | Cache fetched list of files beyond maxFilesPerTrigger as unread file |
+| 3.1.1 | [SPARK-30900](https://issues.apache.org/jira/browse/SPARK-30900) | prose | Avoid reading compact metadata log twice if the query restarts from compact batch |
+| 3.1.1 | [SPARK-31642](https://issues.apache.org/jira/browse/SPARK-31642) | prose | Pagination support for Structured Streaming UI pages |
+| 3.1.1 | [SPARK-31894](https://issues.apache.org/jira/browse/SPARK-31894) | prose | Introduce schema validation for streaming state store |
+| 3.1.1 | [SPARK-31953](https://issues.apache.org/jira/browse/SPARK-31953) | prose | Add Spark Structured Streaming History Server Support |
+| 3.1.1 | [SPARK-32568](https://issues.apache.org/jira/browse/SPARK-32568) | prose | Upgrade Kafka to 2.6.0 |
+| 3.1.1 | [SPARK-32862](https://issues.apache.org/jira/browse/SPARK-32862) | prose | Left semi stream-stream join |
+| 3.1.1 | [SPARK-32863](https://issues.apache.org/jira/browse/SPARK-32863) | prose | Full outer stream-stream join |
+| 3.1.1 | [SPARK-32885](https://issues.apache.org/jira/browse/SPARK-32885) | prose | Add DataStreamReader.table API |
+| 3.1.1 | [SPARK-32896](https://issues.apache.org/jira/browse/SPARK-32896) | prose | Add DataStreamWriter.toTable API |
+| 3.1.1 | [SPARK-33223](https://issues.apache.org/jira/browse/SPARK-33223) | prose | State information in Structured Streaming UI |
+| 3.1.1 | [SPARK-33224](https://issues.apache.org/jira/browse/SPARK-33224) | prose | Watermark gap information in Structured Streaming UI |
+| 3.1.1 | [SPARK-33263](https://issues.apache.org/jira/browse/SPARK-33263) | prose | Support to use a different compression codec in state store |
+| 3.1.1 | [SPARK-33287](https://issues.apache.org/jira/browse/SPARK-33287) | prose | Expose state custom metrics information on SS UI |
 | 3.2.0 | [SPARK-10816](https://issues.apache.org/jira/browse/SPARK-10816) | New Feature | EventTime based sessionization (session window) |
 | 3.2.0 | [SPARK-29223](https://issues.apache.org/jira/browse/SPARK-29223) | Improvement | Kafka source: offset by timestamp - allow specifying timestamp for "all partitions" |
 | 3.2.0 | [SPARK-33660](https://issues.apache.org/jira/browse/SPARK-33660) | Improvement | Update Kafka Headers Documentation in Structured Streaming |
 | 3.2.0 | [SPARK-33827](https://issues.apache.org/jira/browse/SPARK-33827) | Improvement | Unload State Store asap once it becomes inactive |
+| 3.2.0 | [SPARK-33913](https://issues.apache.org/jira/browse/SPARK-33913) | prose | Upgrade Kafka client to 2.8.0 |
 | 3.2.0 | [SPARK-34297](https://issues.apache.org/jira/browse/SPARK-34297) | Improvement | Add metrics for data loss and offset out range for KafkaMicroBatchStream |
 | 3.2.0 | [SPARK-34482](https://issues.apache.org/jira/browse/SPARK-34482) | Improvement | Correct the active SparkSession for streaming query |
 | 3.2.0 | [SPARK-34854](https://issues.apache.org/jira/browse/SPARK-34854) | Improvement | Report metrics for streaming source through progress reporter with Kafka source use-case |
@@ -108,6 +132,29 @@ Structured Streaming did not exist before 2.0.0: it shipped as an experimental h
 | 3.2.0 | [SPARK-35880](https://issues.apache.org/jira/browse/SPARK-35880) | Improvement | [SS] Track the number of duplicates dropped in streaming dedupe operator |
 | 3.2.0 | [SPARK-35896](https://issues.apache.org/jira/browse/SPARK-35896) | Improvement | [SS] Include more granular metrics for stateful operators in StreamingQueryProgress |
 | 3.2.0 | [SPARK-35897](https://issues.apache.org/jira/browse/SPARK-35897) | Improvement | Support user defined initial state with flatMapGroupsWithState in Structured Streaming |
+| 3.2.0 | [SPARK-36132](https://issues.apache.org/jira/browse/SPARK-36132) | prose | Support initial state for flatMapGroupsWithState in batch mode |
 | 3.2.0 | [SPARK-36314](https://issues.apache.org/jira/browse/SPARK-36314) | Improvement | Update Sessionization example to use native support of session window |
 | 3.2.0 | [SPARK-36455](https://issues.apache.org/jira/browse/SPARK-36455) | Improvement | Provide an example of complex session window via flatMapGroupsWithState |
+| 3.3.0 | [SPARK-36533](https://issues.apache.org/jira/browse/SPARK-36533) | prose | Introduce Trigger.AvailableNow for running streaming queries like Trigger.Once in multiple batches |
+| 3.3.0 | [SPARK-36649](https://issues.apache.org/jira/browse/SPARK-36649) | prose | Support Trigger.AvailableNow on Kafka data source |
+| 3.3.0 | [SPARK-36837](https://issues.apache.org/jira/browse/SPARK-36837) | prose | Upgrade Kafka to 3.1.0 |
+| 3.3.0 | [SPARK-37062](https://issues.apache.org/jira/browse/SPARK-37062) | prose | Introduce a new data source for providing consistent set of rows per microbatch |
+| 3.3.0 | [SPARK-37224](https://issues.apache.org/jira/browse/SPARK-37224) | prose | Optimize write path on RocksDB state store provider |
+| 3.3.0 | [SPARK-38204](https://issues.apache.org/jira/browse/SPARK-38204) | prose | Use StatefulOpClusteredDistribution for stateful operators with respecting backward compatibility |
+| 3.3.0 | [SPARK-39218](https://issues.apache.org/jira/browse/SPARK-39218) | prose | Make foreachBatch streaming query stop gracefully |
+| 3.4.0 | [SPARK-38564](https://issues.apache.org/jira/browse/SPARK-38564) | prose | Support collecting metrics from streaming sinks |
+| 3.4.0 | [SPARK-39564](https://issues.apache.org/jira/browse/SPARK-39564) | prose | Expose the information of catalog table to the logical plan in streaming query |
+| 3.4.0 | [SPARK-39591](https://issues.apache.org/jira/browse/SPARK-39591) | prose | Async Progress Tracking in Structured Streaming |
+| 3.4.0 | [SPARK-40039](https://issues.apache.org/jira/browse/SPARK-40039) | prose | Introducing a streaming checkpoint file manager based on Hadoop’s Abortable interface |
+| 3.4.0 | [SPARK-40434](https://issues.apache.org/jira/browse/SPARK-40434) | prose | Python Arbitrary Stateful Processing in Structured Streaming |
+| 3.4.0 | [SPARK-40653](https://issues.apache.org/jira/browse/SPARK-40653) | prose | Protobuf Support in Structured Streaming |
+| 3.4.0 | [SPARK-40844](https://issues.apache.org/jira/browse/SPARK-40844) | prose | Flip the default value of Kafka offset fetching config |
+| 3.4.0 | [SPARK-41379](https://issues.apache.org/jira/browse/SPARK-41379) | prose | Provide cloned spark session in DataFrame in user function for foreachBatch sink in PySpark |
+| 3.5.0 | [SPARK-42353](https://issues.apache.org/jira/browse/SPARK-42353) | prose | Cleanup orphan sst and log files in RocksDB checkpoint directory |
+| 3.5.0 | [SPARK-42792](https://issues.apache.org/jira/browse/SPARK-42792) | prose | Add support for WRITE_FLUSH_BYTES for RocksDB used in streaming stateful operators |
+| 3.5.0 | [SPARK-42819](https://issues.apache.org/jira/browse/SPARK-42819) | prose | Add support for setting max_write_buffer_number and write_buffer_size for RocksDB used in streaming |
+| 3.5.0 | [SPARK-42968](https://issues.apache.org/jira/browse/SPARK-42968) | prose | Add option to skip commit coordinator as part of StreamingWrite API for DSv2 sources/sinks |
+| 3.5.0 | [SPARK-43120](https://issues.apache.org/jira/browse/SPARK-43120) | prose | Add support for tracking pinned blocks memory usage for RocksDB state store |
+| 3.5.0 | [SPARK-43183](https://issues.apache.org/jira/browse/SPARK-43183) | prose | Introduce a new callback onQueryIdle() to StreamingQueryListener |
+| 3.5.0 | [SPARK-43482](https://issues.apache.org/jira/browse/SPARK-43482) | prose | Expand QueryTerminatedEvent to contain error class if it exists in exception |
 <!-- AUTO:timeline END -->

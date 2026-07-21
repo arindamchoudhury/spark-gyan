@@ -18,6 +18,10 @@ MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed
 
 2.0.0 pushed algorithm parity across languages: SparkR gained MLlib APIs for GLMs, naive Bayes, k-means, and survival regression, PySpark added LDA, Gaussian Mixture Models, and generalized linear regression, and the DataFrame-based API gained Bisecting K-Means and `MaxAbsScaler`. 2.1.0 made model persistence backward-compatible with Spark 1.x saved models (SPARK-16000). 2.2.0 added FPGrowth frequent-pattern mining (SPARK-14503), DataFrame-native ChiSquare tests and correlation (SPARK-19635, SPARK-19636), and Gradient Boosted Trees in Python/R (SPARK-18239). 2.3.0 was the busiest release, adding multi-column support to `Bucketizer`/`QuantileDiscretizer`, `ClusteringEvaluator` with silhouette metrics (SPARK-14516), and Huber-loss robust linear regression (SPARK-3181) — collectively closing the gap between the older `spark.mllib` RDD API and the newer DataFrame-based `spark.ml`.
 
+### 3.x era — blockified linear models and ML on Connect
+
+3.0.0 rounded out the DataFrame-based ML API with Gaussian Naive Bayes (SPARK-16872), sample weights for decision trees and random forests, and closer Scala/Python parity (SPARK-28958). 3.1.1's headline work was blockifying input vectors for the linear models — LinearSVC, LogisticRegression, LinearRegression, and AFT (SPARK-30642, SPARK-30659, SPARK-30660, SPARK-31656) — batching instances into blocks for faster BLAS-level computation, alongside a vectorized BLAS implementation carried into 3.2.0 (SPARK-33882). 3.2.0 also added `UnivariateFeatureSelector` to unify the older selector classes. 3.3.0 and 3.4.0 were comparatively quiet, mostly incremental optimizer and ALS-shuffle work. 3.5.0 introduced the first ML-on-Spark-Connect surface (SPARK-43516): estimator/transformer/model/evaluator interfaces, pipeline and cross-validator support, and PyTorch Distributor compatibility with Connect (SPARK-42993).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -574,6 +578,7 @@ MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed
 | 2.4.0 | [SPARK-22119](https://issues.apache.org/jira/browse/SPARK-22119) | prose | Cosine distance measure added to KMeans/BisectingKMeans/ClusteringEvaluator |
 | 2.4.0 | [SPARK-23783](https://issues.apache.org/jira/browse/SPARK-23783) | prose | New generic export trait for ML pipelines |
 | 3.0.0 | [SPARK-9478](https://issues.apache.org/jira/browse/SPARK-9478) | Improvement | Add sample weights to Random Forest |
+| 3.0.0 | [SPARK-9612](https://issues.apache.org/jira/browse/SPARK-9612) | prose | ), GBTClassifier/Regressor |
 | 3.0.0 | [SPARK-11215](https://issues.apache.org/jira/browse/SPARK-11215) | Improvement | Add multiple columns support to StringIndexer |
 | 3.0.0 | [SPARK-16692](https://issues.apache.org/jira/browse/SPARK-16692) | Improvement | multilabel classification to DataFrame, ML |
 | 3.0.0 | [SPARK-16838](https://issues.apache.org/jira/browse/SPARK-16838) | Improvement | Add PMML export for ML KMeans in PySpark |
@@ -582,6 +587,7 @@ MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed
 | 3.0.0 | [SPARK-19368](https://issues.apache.org/jira/browse/SPARK-19368) | Improvement | Very bad performance in BlockMatrix.toIndexedRowMatrix() |
 | 3.0.0 | [SPARK-19591](https://issues.apache.org/jira/browse/SPARK-19591) | New Feature | Add sample weights to decision trees |
 | 3.0.0 | [SPARK-19714](https://issues.apache.org/jira/browse/SPARK-19714) | Improvement | Clarify Bucketizer handling of invalid input |
+| 3.0.0 | [SPARK-19827](https://issues.apache.org/jira/browse/SPARK-19827) | prose | R API for PowerIterationClustering was added |
 | 3.0.0 | [SPARK-20604](https://issues.apache.org/jira/browse/SPARK-20604) | Improvement | Allow Imputer to handle all numeric types |
 | 3.0.0 | [SPARK-21481](https://issues.apache.org/jira/browse/SPARK-21481) | Improvement | Add indexOf method in ml.feature.HashingTF similar to mllib.feature.HashingTF |
 | 3.0.0 | [SPARK-22796](https://issues.apache.org/jira/browse/SPARK-22796) | New Feature | Add multiple column support to PySpark QuantileDiscretizer |
@@ -626,6 +632,8 @@ MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed
 | 3.0.0 | [SPARK-28866](https://issues.apache.org/jira/browse/SPARK-28866) | Improvement | Persist item factors RDD when checkpointing in ALS |
 | 3.0.0 | [SPARK-28927](https://issues.apache.org/jira/browse/SPARK-28927) | Improvement | Improve error for ArrayIndexOutOfBoundsException and Not-stable AUC metrics in ALS for datasets with 12 billion instances |
 | 3.0.0 | [SPARK-28933](https://issues.apache.org/jira/browse/SPARK-28933) | Improvement | Reduce unnecessary shuffle in ALS when initializing factors |
+| 3.0.0 | [SPARK-28958](https://issues.apache.org/jira/browse/SPARK-28958) | prose | ML function parity between Scala and Python |
+| 3.0.0 | [SPARK-29093](https://issues.apache.org/jira/browse/SPARK-29093) | prose | , value) instead. See |
 | 3.0.0 | [SPARK-29258](https://issues.apache.org/jira/browse/SPARK-29258) | Improvement | parity between ml.evaluator and mllib.metrics |
 | 3.0.0 | [SPARK-29363](https://issues.apache.org/jira/browse/SPARK-29363) | Improvement | o.a.s.ml.regression.Regressor should be public |
 | 3.0.0 | [SPARK-29380](https://issues.apache.org/jira/browse/SPARK-29380) | Improvement | RFormula avoid repeated 'first' jobs to get vector size |
@@ -673,17 +681,68 @@ MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed
 | 3.0.0 | [SPARK-30995](https://issues.apache.org/jira/browse/SPARK-30995) | Improvement | Latex doesn't work correctly in FMClassifier/FMRegressor Scala doc |
 | 3.0.0 | [SPARK-31606](https://issues.apache.org/jira/browse/SPARK-31606) | Improvement | reduce the perf regression of vectorized parquet reader caused by datetime rebase |
 | 3.0.0 | [SPARK-31610](https://issues.apache.org/jira/browse/SPARK-31610) | Improvement | Expose hashFuncVersion property in HashingTF |
+| 3.1.1 | [SPARK-19939](https://issues.apache.org/jira/browse/SPARK-19939) | prose | Add support for association rules in ML |
+| 3.1.1 | [SPARK-20249](https://issues.apache.org/jira/browse/SPARK-20249) | prose | Add training summary for LinearSVCModel |
+| 3.1.1 | [SPARK-23631](https://issues.apache.org/jira/browse/SPARK-23631) | prose | Add summary to RandomForestClassificationModel |
+| 3.1.1 | [SPARK-30642](https://issues.apache.org/jira/browse/SPARK-30642) | prose | LinearSVC blockify input vectors |
+| 3.1.1 | [SPARK-30659](https://issues.apache.org/jira/browse/SPARK-30659) | prose | LogisticRegression blockify input vectors |
+| 3.1.1 | [SPARK-30660](https://issues.apache.org/jira/browse/SPARK-30660) | prose | LinearRegression blockify input vectors |
+| 3.1.1 | [SPARK-30818](https://issues.apache.org/jira/browse/SPARK-30818) | prose | Add SparkR LinearRegression wrapper |
+| 3.1.1 | [SPARK-30819](https://issues.apache.org/jira/browse/SPARK-30819) | prose | Add FMRegressor wrapper to SparkR |
+| 3.1.1 | [SPARK-30820](https://issues.apache.org/jira/browse/SPARK-30820) | prose | Add FMClassifier to SparkR |
+| 3.1.1 | [SPARK-31007](https://issues.apache.org/jira/browse/SPARK-31007) | prose | KMeans optimization based on triangle-inequality |
+| 3.1.1 | [SPARK-31032](https://issues.apache.org/jira/browse/SPARK-31032) | prose | GMM compute summary and update distributions in one job |
+| 3.1.1 | [SPARK-31077](https://issues.apache.org/jira/browse/SPARK-31077) | prose | Remove ChiSqSelector dependency on mllib.ChiSqSelectorModel |
+| 3.1.1 | [SPARK-31301](https://issues.apache.org/jira/browse/SPARK-31301) | prose | Flatten the result dataframe of tests in testChiSquare |
+| 3.1.1 | [SPARK-31436](https://issues.apache.org/jira/browse/SPARK-31436) | prose | MinHash keyDistance optimization |
+| 3.1.1 | [SPARK-31656](https://issues.apache.org/jira/browse/SPARK-31656) | prose | AFT blockify input vectors |
+| 3.1.1 | [SPARK-31734](https://issues.apache.org/jira/browse/SPARK-31734) | prose | Add weight support in ClusteringEvaluator |
+| 3.1.1 | [SPARK-31768](https://issues.apache.org/jira/browse/SPARK-31768) | prose | Add getMetrics in Evaluators |
+| 3.1.1 | [SPARK-31777](https://issues.apache.org/jira/browse/SPARK-31777) | prose | Add user-specified fold column to CrossValidator |
+| 3.1.1 | [SPARK-31925](https://issues.apache.org/jira/browse/SPARK-31925) | prose | Summary.totalIterations greater than maxIters |
+| 3.1.1 | [SPARK-31944](https://issues.apache.org/jira/browse/SPARK-31944) | prose | Add instance weight support in LinearRegressionSummary |
+| 3.1.1 | [SPARK-32140](https://issues.apache.org/jira/browse/SPARK-32140) | prose | Add training summary to FMClassificationModel |
+| 3.1.1 | [SPARK-32298](https://issues.apache.org/jira/browse/SPARK-32298) | prose | tree models prediction optimization |
+| 3.1.1 | [SPARK-32310](https://issues.apache.org/jira/browse/SPARK-32310) | prose | ML params default value parity in feature and tuning |
+| 3.1.1 | [SPARK-32449](https://issues.apache.org/jira/browse/SPARK-32449) | prose | Add summary to MultilayerPerceptronClassificationModel |
+| 3.1.1 | [SPARK-32907](https://issues.apache.org/jira/browse/SPARK-32907) | prose | adaptively blockify instances - LinearSVC |
+| 3.1.1 | [SPARK-32974](https://issues.apache.org/jira/browse/SPARK-32974) | prose | FeatureHasher transform optimization |
+| 3.1.1 | [SPARK-33040](https://issues.apache.org/jira/browse/SPARK-33040) | prose | Add SparkR wrapper for vector_to_array |
+| 3.1.1 | [SPARK-33111](https://issues.apache.org/jira/browse/SPARK-33111) | prose | aft transform optimization |
+| 3.1.1 | [SPARK-33520](https://issues.apache.org/jira/browse/SPARK-33520) | prose | make CrossValidator/TrainValidateSplit/OneVsRest Reader/Writer support Python backend estimator/evaluator |
+| 3.1.1 | [SPARK-33556](https://issues.apache.org/jira/browse/SPARK-33556) | prose | Add array_to_vector function for dataframe column |
 | 3.1.1 | [SPARK-34080](https://issues.apache.org/jira/browse/SPARK-34080) | New Feature | Add UnivariateFeatureSelector to deprecate existing selectors |
 | 3.2.0 | [SPARK-33518](https://issues.apache.org/jira/browse/SPARK-33518) | Improvement | Improve performance of ML ALS recommendForAll by GEMV |
 | 3.2.0 | [SPARK-33609](https://issues.apache.org/jira/browse/SPARK-33609) | Improvement | word2vec reduce broadcast size |
+| 3.2.0 | [SPARK-33882](https://issues.apache.org/jira/browse/SPARK-33882) | prose | Add a vectorized BLAS implementation |
 | 3.2.0 | [SPARK-34045](https://issues.apache.org/jira/browse/SPARK-34045) | Improvement | OneVsRestModel.transform should not call setter of submodels |
 | 3.2.0 | [SPARK-34047](https://issues.apache.org/jira/browse/SPARK-34047) | Improvement | save tree models in single partition |
 | 3.2.0 | [SPARK-34080](https://issues.apache.org/jira/browse/SPARK-34080) | New Feature | Add UnivariateFeatureSelector to deprecate existing selectors |
 | 3.2.0 | [SPARK-34189](https://issues.apache.org/jira/browse/SPARK-34189) | Improvement | w2v findSynonyms optimization |
 | 3.2.0 | [SPARK-34256](https://issues.apache.org/jira/browse/SPARK-34256) | Improvement | VectorSlicer refine numFeatures checking and toString method |
 | 3.2.0 | [SPARK-34291](https://issues.apache.org/jira/browse/SPARK-34291) | Improvement | LSH hashDistance optimization |
+| 3.2.0 | [SPARK-34797](https://issues.apache.org/jira/browse/SPARK-34797) | prose | Refactor Logistic Aggregator - support virtual centering |
 | 3.2.0 | [SPARK-35150](https://issues.apache.org/jira/browse/SPARK-35150) | Improvement | Accelerate fallback BLAS with dev.ludovic.netlib |
 | 3.2.0 | [SPARK-35306](https://issues.apache.org/jira/browse/SPARK-35306) | Improvement | Add benchmark results for BLASBenchmark created by Github Actions machines |
+| 3.2.0 | [SPARK-35707](https://issues.apache.org/jira/browse/SPARK-35707) | prose | optimize sparse GEMM by skipping bound checking |
 | 3.2.0 | [SPARK-36578](https://issues.apache.org/jira/browse/SPARK-36578) | Improvement | Minor UnivariateFeatureSelector API doc improvement |
+| 3.3.0 | [SPARK-35310](https://issues.apache.org/jira/browse/SPARK-35310) | prose | Update to breeze 1.2 |
+| 3.3.0 | [SPARK-35848](https://issues.apache.org/jira/browse/SPARK-35848) | prose | Optimize some treeAggregates in MLlib by delaying allocations |
+| 3.3.0 | [SPARK-36425](https://issues.apache.org/jira/browse/SPARK-36425) | prose | Support CrossValidatorModel get standard deviation of metrics for each paramMap |
+| 3.3.0 | [SPARK-36481](https://issues.apache.org/jira/browse/SPARK-36481) | prose | Expose LogisticRegression.setInitialModel, like KMeans et al do |
+| 3.3.0 | [SPARK-37118](https://issues.apache.org/jira/browse/SPARK-37118) | prose | Add distanceMeasure param to trainKMeansModel |
+| 3.3.0 | [SPARK-37419](https://issues.apache.org/jira/browse/SPARK-37419) | prose | Rewrite _shared_params_code_gen.py to inline type hints for ml/param/shared.py |
+| 3.4.0 | [SPARK-30661](https://issues.apache.org/jira/browse/SPARK-30661) | prose | KMeans blockify input vectors |
+| 3.4.0 | [SPARK-38584](https://issues.apache.org/jira/browse/SPARK-38584) | prose | Unify the data validation |
+| 3.4.0 | [SPARK-39446](https://issues.apache.org/jira/browse/SPARK-39446) | prose | Add relevance score for nDCG evaluation |
+| 3.4.0 | [SPARK-40476](https://issues.apache.org/jira/browse/SPARK-40476) | prose | Reduce the shuffle size of ALS |
+| 3.5.0 | [SPARK-42526](https://issues.apache.org/jira/browse/SPARK-42526) | prose | Add Classifier.getNumClasses back |
+| 3.5.0 | [SPARK-42993](https://issues.apache.org/jira/browse/SPARK-42993) | prose | Make PyTorch Distributor compatible with Spark Connect |
+| 3.5.0 | [SPARK-43516](https://issues.apache.org/jira/browse/SPARK-43516) | prose | Base interfaces of sparkML for spark3.5: estimator/transformer/model/evaluator |
+| 3.5.0 | [SPARK-43783](https://issues.apache.org/jira/browse/SPARK-43783) | prose | Make MLv2 (ML on spark connect) supports pandas >= 2.0 |
+| 3.5.0 | [SPARK-43981](https://issues.apache.org/jira/browse/SPARK-43981) | prose | Basic saving / loading implementation for ML on spark connect |
+| 3.5.0 | [SPARK-43982](https://issues.apache.org/jira/browse/SPARK-43982) | prose | Implement pipeline estimator for ML on spark connect |
+| 3.5.0 | [SPARK-43983](https://issues.apache.org/jira/browse/SPARK-43983) | prose | Implement cross validator estimator |
+| 3.5.0 | [SPARK-44250](https://issues.apache.org/jira/browse/SPARK-44250) | prose | Implement classification evaluator |
 | 4.1.1 | [SPARK-54689](https://issues.apache.org/jira/browse/SPARK-54689) | Improvement | Make org.apache.spark.sql.pipelines internal package and make EstimatorUtils private |
 <!-- AUTO:timeline END -->

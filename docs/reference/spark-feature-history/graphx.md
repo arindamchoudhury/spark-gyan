@@ -18,6 +18,10 @@ Before GraphX, graph processing lived in Bagel, Spark's Pregel-inspired module; 
 
 GraphX saw comparatively little 2.x investment. 2.0.0 and 2.1.0 were maintenance: parameter checks for GraphX algorithms (SPARK-13816), a parallel implementation of personalized PageRank (SPARK-11496), and a fix so strongly-connected-components no longer skipped caching its returned RDD (SPARK-16478). A long-standing fix finally landed twice in the changelog: Pregel checkpointing periodically to avoid `StackOverflowError` on deep iterative jobs (SPARK-5484, recorded against both 2.2.0 and 2.3.0). 2.2.0 also improved PageRank's initial value for faster convergence (SPARK-18845), and 2.3.0 closed the line with small performance improvements scattered across several GraphX operators (SPARK-21491).
 
+### 3.x era — two tuning knobs, no new capability
+
+GraphX's 3.x footprint is two catalog entries and no new capability. 3.0.0 let static PageRank checkpoint from a previous computation instead of always starting cold (SPARK-29877). 3.2.0 added a flag to turn off the normalization static PageRank applies by default (SPARK-35357). Both are narrow tuning knobs on an algorithm that was already mature by the 2.x line; GraphX did not gain a new operator, algorithm, or API surface anywhere from 3.0.0 through 3.5.x, consistent with a module in pure maintenance mode while graph-processing investment shifted to GraphFrames outside the core project.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->

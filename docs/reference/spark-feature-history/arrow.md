@@ -8,6 +8,10 @@
 
 Arrow first appears in the changelog at 2.3.0, bundled at version 0.8.0 alongside a Netty upgrade to 4.1.17 — the same release that introduced scalar Pandas UDFs and faster `toPandas()`/`createDataFrame()` conversion elsewhere in PySpark. 2.4.0 bumped the bundled Arrow to 0.10.0 (SPARK-23874) and switched Pandas DataFrame conversion to the Arrow stream format for both creating Spark DataFrames from pandas and collecting them back (SPARK-23030), replacing a row-at-a-time Python serialization loop with Arrow's columnar wire format. These two releases mark Arrow's shift from an internal dependency bump to a user-facing performance feature that later PySpark and pandas-on-Spark work builds directly on top of.
 
+### 3.x era — from version bumps to Arrow-optimized UDFs
+
+3.0.0's Arrow work was almost entirely version-upgrade maintenance — bumping the minimum PyArrow version (SPARK-27276), moving SparkR to the Arrow 0.15 API (SPARK-29378), and fixing `toPandas`/`createDataFrame` edge cases around `NaT` and exceptions. 3.1.1 upgraded Arrow to 2.0.0 (SPARK-33213) and added `MapType` support for PySpark-with-Arrow (SPARK-24554). 3.2.0 trimmed `toPandas` memory usage via Arrow's `self_destruct` option (SPARK-32953). The real shift came in 3.5.0, which introduced Arrow-optimized Python UDFs (SPARK-40307) — moving scalar UDF serialization off pickle and onto Arrow — plus large-variable-width-vector support, barrier-mode `mapInPandas`/`mapInArrow` (SPARK-42896), and Arrow-optimized Python UDTFs (SPARK-43964), turning Arrow from a pandas-conversion detail into a first-class UDF execution path.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -28,7 +32,14 @@ Arrow first appears in the changelog at 2.3.0, bundled at version 0.8.0 alongsid
 | 3.0.0 | [SPARK-29378](https://issues.apache.org/jira/browse/SPARK-29378) | Improvement | Upgrade SparkR to use Arrow 0.15 API |
 | 3.0.0 | [SPARK-30640](https://issues.apache.org/jira/browse/SPARK-30640) | Improvement | Prevent unnessary copies of data in Arrow to Pandas conversion with Timestamps |
 | 3.0.0 | [SPARK-31701](https://issues.apache.org/jira/browse/SPARK-31701) | Improvement | Bump up the minimum Arrow version as 0.15.1 in SparkR |
+| 3.1.1 | [SPARK-24554](https://issues.apache.org/jira/browse/SPARK-24554) | prose | Add MapType support for PySpark with Arrow |
+| 3.1.1 | [SPARK-33213](https://issues.apache.org/jira/browse/SPARK-33213) | prose | Upgrade Apache Arrow to 2.0.0 |
 | 3.2.0 | [SPARK-32953](https://issues.apache.org/jira/browse/SPARK-32953) | Improvement | Lower memory usage in toPandas with Arrow self_destruct |
 | 3.2.0 | [SPARK-33489](https://issues.apache.org/jira/browse/SPARK-33489) | Improvement | Support null for conversion from and to Arrow type |
+| 3.5.0 | [SPARK-39979](https://issues.apache.org/jira/browse/SPARK-39979) | prose | Add option to use large variable width vectors for arrow UDF operations |
+| 3.5.0 | [SPARK-40307](https://issues.apache.org/jira/browse/SPARK-40307) | prose | Introduce Arrow Python UDFs |
+| 3.5.0 | [SPARK-41971](https://issues.apache.org/jira/browse/SPARK-41971) | prose | Use deduplicated field names when creating Arrow RecordBatch |
+| 3.5.0 | [SPARK-42896](https://issues.apache.org/jira/browse/SPARK-42896) | prose | Make mapInPandas / mapInArrow support barrier mode execution |
+| 3.5.0 | [SPARK-43964](https://issues.apache.org/jira/browse/SPARK-43964) | prose | Support arrow-optimized Python UDTFs |
 | 4.1.2 | [SPARK-56344](https://issues.apache.org/jira/browse/SPARK-56344) | Improvement | Update outdated PyArrow minimum version in arrow_pandas.rst documentation (branch-4.1) |
 <!-- AUTO:timeline END -->

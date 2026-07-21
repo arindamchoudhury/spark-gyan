@@ -18,6 +18,10 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 
 2.0.0 switched Spark's default build to Scala 2.11 (SPARK-6363), retiring 2.10 as the primary target and triggering cleanup — removing 2.10-specific build references (SPARK-13189), upgrading to Scala 2.11.8 (SPARK-13825), and bumping Kryo to 3.0. 2.1.0-2.2.0 were mostly dependency and tooling maintenance: Py4J upgrades, Netty version bumps, and sbt/Maven plugin updates. The next language shift arrived late in the line: 2.4.0 added experimental Scala 2.12 support (SPARK-14220), letting Spark be built and written against 2.12 for the first time, and 2.4.1 promoted that support to general availability, explicitly flagging that Scala 2.11 support would be dropped in Spark 3.0.
 
+### 3.x era — Java 17, Scala 2.13, and Apple Silicon
+
+3.0.0 dropped Scala 2.11 support (SPARK-26132) and standardized on Scala 2.12.8, alongside routine dependency bumps (Py4J, Janino, jsr305). 3.2.0 added Scala 2.13 cross-building (SPARK-34218) and deprecated Python 3.6 (SPARK-35936). 3.3.0 was the milestone release for the build itself: Spark could be built and run on Java 17 (SPARK-33772), and it gained native support for Apple Silicon (SPARK-35781), alongside a log4j2 migration and upgrade (SPARK-38544) driven by the Log4Shell CVEs. 3.4.0 added Python 3.11 support (SPARK-41454) and updated cloudpickle, breeze, and Kafka client dependencies. 3.5.0 continued the pattern with dozens of dependency upgrades — Parquet, Kafka, RocksDB, Netty, Arrow — a build increasingly focused on keeping a wide dependency surface current rather than changing the build model itself.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -210,7 +214,12 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 | 3.0.0 | [SPARK-31644](https://issues.apache.org/jira/browse/SPARK-31644) | Improvement | Make Spark's guava version configurable from the maven command line. |
 | 3.0.0 | [SPARK-31778](https://issues.apache.org/jira/browse/SPARK-31778) | Improvement | Support cross-building docker images |
 | 3.0.0 | [SPARK-31889](https://issues.apache.org/jira/browse/SPARK-31889) | Improvement | Docker release script does not allocate enough memory to reliably publish |
+| 3.0.2 | [SPARK-33405](https://issues.apache.org/jira/browse/SPARK-33405) | prose | Upgrade commons-compress to 1.20 |
+| 3.0.2 | [SPARK-33725](https://issues.apache.org/jira/browse/SPARK-33725) | prose | Upgrade snappy-java to 1.1.8.2 |
+| 3.0.2 | [SPARK-33831](https://issues.apache.org/jira/browse/SPARK-33831) | prose | Update Jetty to 9.4.34 |
 | 3.1.1 | [SPARK-34158](https://issues.apache.org/jira/browse/SPARK-34158) | Improvement | Incorrect url of the only developer Matei in pom.xml |
+| 3.1.3 | [SPARK-36129](https://issues.apache.org/jira/browse/SPARK-36129) | prose | Upgrade commons-compress to 1.21 |
+| 3.1.3 | [SPARK-36734](https://issues.apache.org/jira/browse/SPARK-36734) | prose | Upgrade ORC to 1.5.13 |
 | 3.2.0 | [SPARK-25075](https://issues.apache.org/jira/browse/SPARK-25075) | Umbrella | Build and test Spark against Scala 2.13 |
 | 3.2.0 | [SPARK-33084](https://issues.apache.org/jira/browse/SPARK-33084) | Improvement | Add jar support ivy path |
 | 3.2.0 | [SPARK-33662](https://issues.apache.org/jira/browse/SPARK-33662) | New Feature | Setting version to 3.2.0-SNAPSHOT |
@@ -268,6 +277,125 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 | 3.2.0 | [SPARK-36092](https://issues.apache.org/jira/browse/SPARK-36092) | Improvement | Migrate to GitHub Actions Codecov from Jenkins |
 | 3.2.0 | [SPARK-36345](https://issues.apache.org/jira/browse/SPARK-36345) | Improvement | Add mlflow/sklearn to GHA docker image |
 | 3.2.0 | [SPARK-36547](https://issues.apache.org/jira/browse/SPARK-36547) | Improvement | Downgrade scala-maven-plugin to 4.3.0 |
+| 3.2.1 | [SPARK-37113](https://issues.apache.org/jira/browse/SPARK-37113) | prose | Upgrade Parquet to 1.12.2 |
+| 3.2.1 | [SPARK-37238](https://issues.apache.org/jira/browse/SPARK-37238) | prose | Upgrade ORC to 1.6.12 |
+| 3.2.1 | [SPARK-37656](https://issues.apache.org/jira/browse/SPARK-37656) | prose | Upgrade SBT to 1.5.7 |
+| 3.2.2 | [SPARK-36808](https://issues.apache.org/jira/browse/SPARK-36808) | prose | Upgrade Kafka to 2.8.1 |
+| 3.2.2 | [SPARK-37934](https://issues.apache.org/jira/browse/SPARK-37934) | prose | Upgrade Jetty version to 9.4.44 |
+| 3.2.2 | [SPARK-37977](https://issues.apache.org/jira/browse/SPARK-37977) | prose | Upgrade ORC to 1.6.13 |
+| 3.2.2 | [SPARK-38563](https://issues.apache.org/jira/browse/SPARK-38563) | prose | Upgrade Py4J to 0.10.9.5 |
+| 3.2.2 | [SPARK-38905](https://issues.apache.org/jira/browse/SPARK-38905) | prose | Upgrade ORC to 1.6.14 |
+| 3.2.2 | [SPARK-39183](https://issues.apache.org/jira/browse/SPARK-39183) | prose | Upgrade Apache Xerces Java to 2.12.2 |
+| 3.2.4 | [SPARK-41030](https://issues.apache.org/jira/browse/SPARK-41030) | prose | Upgrade Apache Ivy to 2.5.1 |
+| 3.3.0 | [SPARK-33772](https://issues.apache.org/jira/browse/SPARK-33772) | prose | Build and Run Spark on Java 17 |
+| 3.3.0 | [SPARK-35781](https://issues.apache.org/jira/browse/SPARK-35781) | prose | Spark on Apple Silicon |
+| 3.3.0 | [SPARK-37734](https://issues.apache.org/jira/browse/SPARK-37734) | prose | Upgrade h2 from 1.4.195 to 2.0.202 |
+| 3.3.0 | [SPARK-38544](https://issues.apache.org/jira/browse/SPARK-38544) | prose | Upgrade log4j2 to 2.17.2 |
+| 3.3.0 | [SPARK-38563](https://issues.apache.org/jira/browse/SPARK-38563) | prose | Upgrade to Py4J 0.10.9.5 |
+| 3.3.0 | [SPARK-38665](https://issues.apache.org/jira/browse/SPARK-38665) | prose | Upgrade jackson due to CVE-2020-36518 |
+| 3.3.0 | [SPARK-38784](https://issues.apache.org/jira/browse/SPARK-38784) | prose | Upgrade Jetty to 9.4.46 |
+| 3.3.0 | [SPARK-38866](https://issues.apache.org/jira/browse/SPARK-38866) | prose | Update ORC to 1.7.4 |
+| 3.3.0 | [SPARK-38924](https://issues.apache.org/jira/browse/SPARK-38924) | prose | Update datatables to 1.10.25 |
+| 3.3.0 | [SPARK-39183](https://issues.apache.org/jira/browse/SPARK-39183) | prose | Upgrade Apache Xerces Java to 2.12.2 |
+| 3.3.0 | [SPARK-39250](https://issues.apache.org/jira/browse/SPARK-39250) | prose | Upgrade Jackson to 2.13.3 |
+| 3.3.1 | [SPARK-39725](https://issues.apache.org/jira/browse/SPARK-39725) | prose | Upgrade jetty to 9.4.48.v20220622 |
+| 3.3.1 | [SPARK-39947](https://issues.apache.org/jira/browse/SPARK-39947) | prose | Upgrade Jersey to 2.36 |
+| 3.3.1 | [SPARK-40134](https://issues.apache.org/jira/browse/SPARK-40134) | prose | Update ORC to 1.7.6 |
+| 3.3.1 | [SPARK-40326](https://issues.apache.org/jira/browse/SPARK-40326) | prose | Upgrade fasterxml.jackson.version to 2.13.4 |
+| 3.3.1 | [SPARK-40782](https://issues.apache.org/jira/browse/SPARK-40782) | prose | Upgrade jackson-databind to 2.13.4.1 |
+| 3.3.2 | [SPARK-41030](https://issues.apache.org/jira/browse/SPARK-41030) | prose | Upgrade Apache Ivy to 2.5.1 |
+| 3.3.2 | [SPARK-41031](https://issues.apache.org/jira/browse/SPARK-41031) | prose | Upgrade org.tukaani:xz to 1.9 |
+| 3.3.2 | [SPARK-41202](https://issues.apache.org/jira/browse/SPARK-41202) | prose | Update ORC to 1.7.7 |
+| 3.3.2 | [SPARK-41686](https://issues.apache.org/jira/browse/SPARK-41686) | prose | Upgrade Apache Ivy to 2.5.1 |
+| 3.3.2 | [SPARK-42179](https://issues.apache.org/jira/browse/SPARK-42179) | prose | Upgrade ORC to 1.7.8 |
+| 3.3.4 | [SPARK-45885](https://issues.apache.org/jira/browse/SPARK-45885) | prose | Upgrade ORC to 1.7.10 |
+| 3.4.0 | [SPARK-39616](https://issues.apache.org/jira/browse/SPARK-39616) | prose | Update breeze to 2.0 |
+| 3.4.0 | [SPARK-40251](https://issues.apache.org/jira/browse/SPARK-40251) | prose | Update dev.ludovic.netlib to 3.0.2 |
+| 3.4.0 | [SPARK-40991](https://issues.apache.org/jira/browse/SPARK-40991) | prose | Update cloudpickle to v2.2.0 |
+| 3.4.0 | [SPARK-41454](https://issues.apache.org/jira/browse/SPARK-41454) | prose | Support Python 3.11 |
+| 3.4.0 | [SPARK-41561](https://issues.apache.org/jira/browse/SPARK-41561) | prose | Update slf4j version to 2.0.6 |
+| 3.4.0 | [SPARK-42109](https://issues.apache.org/jira/browse/SPARK-42109) | prose | Upgrade Apache Kafka to 3.3.2 |
+| 3.4.0 | [SPARK-42129](https://issues.apache.org/jira/browse/SPARK-42129) | prose | Update rocksdbjni to 7.9.2 |
+| 3.4.0 | [SPARK-42161](https://issues.apache.org/jira/browse/SPARK-42161) | prose | Update Apache Arrow to 11.0.0 |
+| 3.4.0 | [SPARK-42362](https://issues.apache.org/jira/browse/SPARK-42362) | prose | Update kubernetes-client version to 6.4.1 |
+| 3.4.1 | [SPARK-43949](https://issues.apache.org/jira/browse/SPARK-43949) | prose | Upgrade cloudpickle to 2.2.1 |
+| 3.4.1 | [SPARK-44053](https://issues.apache.org/jira/browse/SPARK-44053) | prose | Update ORC to 1.8.4 |
+| 3.4.1 | [SPARK-44070](https://issues.apache.org/jira/browse/SPARK-44070) | prose | Upgrade snappy-java to 1.1.10.1 |
+| 3.4.2 | [SPARK-44415](https://issues.apache.org/jira/browse/SPARK-44415) | prose | Upgrade snappy-java to 1.1.10.2 |
+| 3.4.2 | [SPARK-44513](https://issues.apache.org/jira/browse/SPARK-44513) | prose | Upgrade snappy-java to 1.1.10.3 |
+| 3.4.2 | [SPARK-45103](https://issues.apache.org/jira/browse/SPARK-45103) | prose | Update ORC to 1.8.5 |
+| 3.4.2 | [SPARK-45884](https://issues.apache.org/jira/browse/SPARK-45884) | prose | Update ORC to 1.8.6 |
+| 3.4.3 | [SPARK-45445](https://issues.apache.org/jira/browse/SPARK-45445) | prose | Upgrade snappy to 1.1.10.5 |
+| 3.4.3 | [SPARK-47428](https://issues.apache.org/jira/browse/SPARK-47428) | prose | Upgrade Jetty to 9.4.54.v20240208 |
+| 3.4.3 | [SPARK-47844](https://issues.apache.org/jira/browse/SPARK-47844) | prose | Update ORC to 1.8.7 |
+| 3.4.4 | [SPARK-43394](https://issues.apache.org/jira/browse/SPARK-43394) | prose | Upgrade maven to 3.8.8 |
+| 3.4.4 | [SPARK-45590](https://issues.apache.org/jira/browse/SPARK-45590) | prose | Upgrade okio to 1.17.6 from 1.15.0 |
+| 3.5.0 | [SPARK-41569](https://issues.apache.org/jira/browse/SPARK-41569) | prose | Upgrade rocksdbjni to 8.3.2 |
+| 3.5.0 | [SPARK-41587](https://issues.apache.org/jira/browse/SPARK-41587) | prose | Upgrade org.scalatestplus:selenium-4-4 to org.scalatestplus:selenium-4-7 |
+| 3.5.0 | [SPARK-41634](https://issues.apache.org/jira/browse/SPARK-41634) | prose | Upgrade minimatch to 3.1.2 |
+| 3.5.0 | [SPARK-41704](https://issues.apache.org/jira/browse/SPARK-41704) | prose | Upgrade sbt-assembly from 2.0.0 to 2.1.0 |
+| 3.5.0 | [SPARK-41711](https://issues.apache.org/jira/browse/SPARK-41711) | prose | Upgrade protobuf-java to 3.23.4 |
+| 3.5.0 | [SPARK-41714](https://issues.apache.org/jira/browse/SPARK-41714) | prose | Update maven-checkstyle-plugin from 3.1.2 to 3.2.0 |
+| 3.5.0 | [SPARK-41750](https://issues.apache.org/jira/browse/SPARK-41750) | prose | Upgrade dev.ludovic.netlib to 3.0.3 |
+| 3.5.0 | [SPARK-41787](https://issues.apache.org/jira/browse/SPARK-41787) | prose | Upgrade silencer to 1.7.13 |
+| 3.5.0 | [SPARK-41798](https://issues.apache.org/jira/browse/SPARK-41798) | prose | Upgrade hive-storage-api to 2.8.1 |
+| 3.5.0 | [SPARK-41802](https://issues.apache.org/jira/browse/SPARK-41802) | prose | Upgrade Apache httpcore to 4.4.16 |
+| 3.5.0 | [SPARK-42161](https://issues.apache.org/jira/browse/SPARK-42161) | prose | Upgrade Apache Arrow to 12.0.1 |
+| 3.5.0 | [SPARK-42218](https://issues.apache.org/jira/browse/SPARK-42218) | prose | Upgrade Netty to 4.1.93 |
+| 3.5.0 | [SPARK-42242](https://issues.apache.org/jira/browse/SPARK-42242) | prose | Upgrade snappy-java to 1.1.10.3 |
+| 3.5.0 | [SPARK-42274](https://issues.apache.org/jira/browse/SPARK-42274) | prose | Upgrade compress-lzf to 1.1.2 |
+| 3.5.0 | [SPARK-42354](https://issues.apache.org/jira/browse/SPARK-42354) | prose | Upgrade FasterXML jackson to 2.15.2 |
+| 3.5.0 | [SPARK-42362](https://issues.apache.org/jira/browse/SPARK-42362) | prose | Upgrade kubernetes-client to 6.7.2 |
+| 3.5.0 | [SPARK-42385](https://issues.apache.org/jira/browse/SPARK-42385) | prose | Upgrade RoaringBitmap to 0.9.45 |
+| 3.5.0 | [SPARK-42396](https://issues.apache.org/jira/browse/SPARK-42396) | prose | Upgrade Apache Kafka to 3.4.1 |
+| 3.5.0 | [SPARK-42409](https://issues.apache.org/jira/browse/SPARK-42409) | prose | Upgrade zstd-jni to 1.5.5-5 |
+| 3.5.0 | [SPARK-42488](https://issues.apache.org/jira/browse/SPARK-42488) | prose | Upgrade commons-crypto to 1.2.0 |
+| 3.5.0 | [SPARK-42489](https://issues.apache.org/jira/browse/SPARK-42489) | prose | Upgrade scala-parser-combinators from 2.1.1 to 2.2.0 |
+| 3.5.0 | [SPARK-42524](https://issues.apache.org/jira/browse/SPARK-42524) | prose | Upgrade numpy and pandas in the release Dockerfile |
+| 3.5.0 | [SPARK-42536](https://issues.apache.org/jira/browse/SPARK-42536) | prose | Upgrade log4j2 to 2.20.0 |
+| 3.5.0 | [SPARK-42654](https://issues.apache.org/jira/browse/SPARK-42654) | prose | Upgrade dropwizard metrics 4.2.19 |
+| 3.5.0 | [SPARK-42717](https://issues.apache.org/jira/browse/SPARK-42717) | prose | Upgrade mysql-connector-java from 8.0.31 to 8.0.32 |
+| 3.5.0 | [SPARK-42780](https://issues.apache.org/jira/browse/SPARK-42780) | prose | Upgrade Tink to 1.9.0 |
+| 3.5.0 | [SPARK-42820](https://issues.apache.org/jira/browse/SPARK-42820) | prose | Update ORC to 1.9.0 |
+| 3.5.0 | [SPARK-42871](https://issues.apache.org/jira/browse/SPARK-42871) | prose | Upgrade slf4j to 2.0.7 |
+| 3.5.0 | [SPARK-42888](https://issues.apache.org/jira/browse/SPARK-42888) | prose | Upgrade gcs-connector to 2.2.14 |
+| 3.5.0 | [SPARK-43008](https://issues.apache.org/jira/browse/SPARK-43008) | prose | Upgrade joda-time from 2.12.2 to 2.12.5 |
+| 3.5.0 | [SPARK-43102](https://issues.apache.org/jira/browse/SPARK-43102) | prose | Upgrade commons-compress to 1.23.0 |
+| 3.5.0 | [SPARK-43344](https://issues.apache.org/jira/browse/SPARK-43344) | prose | Upgrade mlflow to 2.3.1 |
+| 3.5.0 | [SPARK-43447](https://issues.apache.org/jira/browse/SPARK-43447) | prose | Support R 4.3.1 |
+| 3.5.0 | [SPARK-43519](https://issues.apache.org/jira/browse/SPARK-43519) | prose | Upgrade Parquet to 1.13.1 |
+| 3.5.0 | [SPARK-43537](https://issues.apache.org/jira/browse/SPARK-43537) | prose | Upgrade ASM to 9.5 |
+| 3.5.0 | [SPARK-43739](https://issues.apache.org/jira/browse/SPARK-43739) | prose | Upgrade commons-io to 2.12.0 |
+| 3.5.0 | [SPARK-43832](https://issues.apache.org/jira/browse/SPARK-43832) | prose | Upgrade Scala to 2.12.18 |
+| 3.5.0 | [SPARK-44041](https://issues.apache.org/jira/browse/SPARK-44041) | prose | Upgrade Ammonite to 2.5.9 |
+| 3.5.0 | [SPARK-44151](https://issues.apache.org/jira/browse/SPARK-44151) | prose | Upgrade commons-codec to 1.16.0 |
+| 3.5.0 | [SPARK-44183](https://issues.apache.org/jira/browse/SPARK-44183) | prose | Increate PyArrow minimum version to 4.0.0 |
+| 3.5.0 | [SPARK-44195](https://issues.apache.org/jira/browse/SPARK-44195) | prose | Add JobTag APIs to SparkR SparkContext |
+| 3.5.0 | [SPARK-44277](https://issues.apache.org/jira/browse/SPARK-44277) | prose | Upgrade to Avro 1.11.2 |
+| 3.5.0 | [SPARK-44279](https://issues.apache.org/jira/browse/SPARK-44279) | prose | Upgrade optionator to ^0.9.3 |
+| 3.5.0 | [SPARK-44316](https://issues.apache.org/jira/browse/SPARK-44316) | prose | Upgrade Jersey to 2.40 |
+| 3.5.0 | [SPARK-44349](https://issues.apache.org/jira/browse/SPARK-44349) | prose | Add math functions to SparkR |
+| 3.5.0 | [SPARK-44393](https://issues.apache.org/jira/browse/SPARK-44393) | prose | Upgrade H2 from 2.1.214 to 2.2.220 |
+| 3.5.0 | [SPARK-44441](https://issues.apache.org/jira/browse/SPARK-44441) | prose | Upgrade bcprov-jdk15on and bcpkix-jdk15on to 1.70 |
+| 3.5.0 | [SPARK-45052](https://issues.apache.org/jira/browse/SPARK-45052) | prose | Upgrade jetty to 9.4.52.v20230823 |
+| 3.5.1 | [SPARK-45883](https://issues.apache.org/jira/browse/SPARK-45883) | prose | Upgrade ORC to 1.9.2 |
+| 3.5.1 | [SPARK-47023](https://issues.apache.org/jira/browse/SPARK-47023) | prose | Upgrade aircompressor to 0.26 |
+| 3.5.2 | [SPARK-46335](https://issues.apache.org/jira/browse/SPARK-46335) | prose | Upgrade Maven to 3.9.6 |
+| 3.5.2 | [SPARK-47083](https://issues.apache.org/jira/browse/SPARK-47083) | prose | Upgrade commons-codec to 1.16.1 |
+| 3.5.2 | [SPARK-47111](https://issues.apache.org/jira/browse/SPARK-47111) | prose | Upgrade PostgreSQL JDBC driver to 42.7.2 |
+| 3.5.2 | [SPARK-47428](https://issues.apache.org/jira/browse/SPARK-47428) | prose | Upgrade Jetty to 9.4.54.v20240208 |
+| 3.5.2 | [SPARK-47507](https://issues.apache.org/jira/browse/SPARK-47507) | prose | Upgrade ORC to 1.9.3 |
+| 3.5.2 | [SPARK-47790](https://issues.apache.org/jira/browse/SPARK-47790) | prose | Upgrade commons-io to 2.16.1 |
+| 3.5.2 | [SPARK-48494](https://issues.apache.org/jira/browse/SPARK-48494) | prose | Update airlift:aircompressor to 0.27 |
+| 3.5.2 | [SPARK-48920](https://issues.apache.org/jira/browse/SPARK-48920) | prose | Upgrade ORC to 1.9.4 |
+| 3.5.4 | [SPARK-50150](https://issues.apache.org/jira/browse/SPARK-50150) | prose | Upgrade Jetty to 9.4.56.v20240826 |
+| 3.5.4 | [SPARK-50316](https://issues.apache.org/jira/browse/SPARK-50316) | prose | Upgrade ORC to 1.9.5 |
+| 3.5.5 | [SPARK-50886](https://issues.apache.org/jira/browse/SPARK-50886) | prose | Upgrade Avro to 1.11.4 |
+| 3.5.6 | [SPARK-52025](https://issues.apache.org/jira/browse/SPARK-52025) | prose | Upgrade ORC to 1.9.6 |
+| 3.5.7 | [SPARK-52635](https://issues.apache.org/jira/browse/SPARK-52635) | prose | Upgrade ORC to 1.9.7 |
+| 3.5.7 | [SPARK-53532](https://issues.apache.org/jira/browse/SPARK-53532) | prose | Upgrade Jetty to 9.4.58.v20250814 |
+| 3.5.8 | [SPARK-54649](https://issues.apache.org/jira/browse/SPARK-54649) | prose | Upgrade Jersey to 2.47 |
+| 3.5.8 | [SPARK-54900](https://issues.apache.org/jira/browse/SPARK-54900) | prose | Upgrade ORC to 1.9.8 |
 | 3.5.9 | [SPARK-55115](https://issues.apache.org/jira/browse/SPARK-55115) | Improvement | Use master branch's Dockerfile for release builds |
 | 4.0.4 | [SPARK-57254](https://issues.apache.org/jira/browse/SPARK-57254) | Improvement | Do not trigger CI when unrelated file is changed |
 | 4.0.4 | [SPARK-57976](https://issues.apache.org/jira/browse/SPARK-57976) | Improvement | Fix python3.9 pip for branch-4.0 |

@@ -12,6 +12,10 @@ The 1.x line spent less time on ANSI semantics and more on nailing down type pre
 
 The 2.x line kept extending type coercion into composite types rather than touching ANSI mode directly. 2.0.0 taught `RowEncoder` to accept arrays as the external type for `ArrayType` (SPARK-15351) and JSON schema inference to treat floating-point numbers as `BigDecimal` (SPARK-12749). 2.1.0 added `BigDecimal` literal parsing and parsed scientific-notation decimals as `Decimal` rather than `Double` (SPARK-17246, SPARK-17258). 2.2.0 was the busiest release here: session-local timezone support (SPARK-18350) let each session control how timestamps were interpreted, general type coercion and implicit casts were extended to cover `ArrayType` (SPARK-18624, SPARK-19435), and `ArrayType` gained `to_json` support (SPARK-19849). SPARK-20463 (2.3.0) folded in broader ANSI SQL compliance and Hive-compatibility fixes.
 
+### 3.x era — ANSI mode reaches general availability
+
+3.0.0 built out the ANSI groundwork: a store-assignment policy for table inserts (SPARK-28495, made default in SPARK-28885), ANSI SQL filter clauses, `OVERLAY`, and reserved-keyword parsing (SPARK-26215). 3.1.1 added char/varchar data types (SPARK-33480) and runtime errors instead of silent nulls under ANSI mode (SPARK-33275). 3.2.0 was the milestone release: ANSI SQL mode reached general availability (SPARK-35030), alongside ANSI SQL `INTERVAL` types (SPARK-27790) and `LATERAL` subqueries (SPARK-34382). 3.3.0 added a wave of ANSI aggregate functions — `REGR_R2`, `REGR_SXY`, and others — plus `TRY_AVG` and stricter reserved-keyword handling (SPARK-37724). 3.4.0 extended ANSI casting to intervals and decimals and rounded out the `REGR_*` family, while later 3.5.x point releases stayed largely maintenance on the same framework.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -60,13 +64,17 @@ The 2.x line kept extending type coercion into composite types rather than touch
 | 2.2.0 | [SPARK-19441](https://issues.apache.org/jira/browse/SPARK-19441) | Improvement | Remove IN type coercion from PromoteStrings |
 | 2.2.0 | [SPARK-19849](https://issues.apache.org/jira/browse/SPARK-19849) | Improvement | Support ArrayType in to_json function/expression |
 | 2.3.0 | [SPARK-20463](https://issues.apache.org/jira/browse/SPARK-20463) | prose | Improved ANSI SQL compliance and Hive compatibility |
+| 3.0.0 | — | prose | Better ANSI SQL compatibility |
 | 3.0.0 | [SPARK-20964](https://issues.apache.org/jira/browse/SPARK-20964) | Improvement | Make some keywords reserved along with the ANSI/SQL standard |
+| 3.0.0 | [SPARK-23128](https://issues.apache.org/jira/browse/SPARK-23128) | prose | Basic framework |
 | 3.0.0 | [SPARK-23836](https://issues.apache.org/jira/browse/SPARK-23836) | Improvement | Support returning StructType to the level support in GroupedMap Arrow's "scalar" UDFS (or similar) |
 | 3.0.0 | [SPARK-26163](https://issues.apache.org/jira/browse/SPARK-26163) | Improvement | Parsing decimals from JSON using locale |
+| 3.0.0 | [SPARK-26215](https://issues.apache.org/jira/browse/SPARK-26215) | prose | SQL Parser defines ANSI compliant reserved keywords |
 | 3.0.0 | [SPARK-26246](https://issues.apache.org/jira/browse/SPARK-26246) | Improvement | Infer timestamp types from JSON |
 | 3.0.0 | [SPARK-26805](https://issues.apache.org/jira/browse/SPARK-26805) | Improvement | Eliminate double checking of stringToDate and stringToTimestamp inputs |
 | 3.0.0 | [SPARK-26902](https://issues.apache.org/jira/browse/SPARK-26902) | Improvement | Support java.time.Instant as an external type of TimestampType |
 | 3.0.0 | [SPARK-26903](https://issues.apache.org/jira/browse/SPARK-26903) | Improvement | Remove the TimeZone cache |
+| 3.0.0 | [SPARK-26976](https://issues.apache.org/jira/browse/SPARK-26976) | prose | Forbid reserved keywords as identifiers when ANSI mode is on |
 | 3.0.0 | [SPARK-27008](https://issues.apache.org/jira/browse/SPARK-27008) | Improvement | Support java.time.LocalDate as an external type of DateType |
 | 3.0.0 | [SPARK-27031](https://issues.apache.org/jira/browse/SPARK-27031) | Improvement | Avoid double formatting in timestampToString |
 | 3.0.0 | [SPARK-27109](https://issues.apache.org/jira/browse/SPARK-27109) | Improvement | Refactoring of TimestampFormatter and DateFormatter |
@@ -76,7 +84,15 @@ The 2.x line kept extending type coercion into composite types rather than touch
 | 3.0.0 | [SPARK-27414](https://issues.apache.org/jira/browse/SPARK-27414) | Improvement | make it clear that date type is timezone independent |
 | 3.0.0 | [SPARK-27422](https://issues.apache.org/jira/browse/SPARK-27422) | Improvement | CurrentDate should return local date |
 | 3.0.0 | [SPARK-27438](https://issues.apache.org/jira/browse/SPARK-27438) | Improvement | Increase precision of to_timestamp |
+| 3.0.0 | [SPARK-27924](https://issues.apache.org/jira/browse/SPARK-27924) | prose | Support ANSI SQL Boolean-Predicate syntax |
+| 3.0.0 | [SPARK-27986](https://issues.apache.org/jira/browse/SPARK-27986) | prose | Support ANSI SQL filter clause for aggregate expression |
+| 3.0.0 | [SPARK-28077](https://issues.apache.org/jira/browse/SPARK-28077) | prose | Support ANSI SQL OVERLAY function |
+| 3.0.0 | [SPARK-28083](https://issues.apache.org/jira/browse/SPARK-28083) | prose | Support ANSI SQL: LIKE … ESCAPE syntax |
+| 3.0.0 | [SPARK-28177](https://issues.apache.org/jira/browse/SPARK-28177) | prose | Post shuffle partition number adjustment |
 | 3.0.0 | [SPARK-28469](https://issues.apache.org/jira/browse/SPARK-28469) | Improvement | Change CalendarIntervalType's readable string representation from calendarinterval to interval |
+| 3.0.0 | [SPARK-28495](https://issues.apache.org/jira/browse/SPARK-28495) | prose | Introduce ANSI store assignment policy for table insertion |
+| 3.0.0 | [SPARK-28880](https://issues.apache.org/jira/browse/SPARK-28880) | prose | Support ANSI nested bracketed comments |
+| 3.0.0 | [SPARK-28885](https://issues.apache.org/jira/browse/SPARK-28885) | prose | Follow ANSI store assignment rule in table insertion by default |
 | 3.0.0 | [SPARK-28989](https://issues.apache.org/jira/browse/SPARK-28989) | New Feature | Introduce ANSI SQL Dialect |
 | 3.0.0 | [SPARK-29607](https://issues.apache.org/jira/browse/SPARK-29607) | Improvement | Move static methods from CalendarInterval to IntervalUtils |
 | 3.0.0 | [SPARK-29757](https://issues.apache.org/jira/browse/SPARK-29757) | Improvement | Move calendar interval constants together |
@@ -87,6 +103,7 @@ The 2.x line kept extending type coercion into composite types rather than touch
 | 3.0.0 | [SPARK-29860](https://issues.apache.org/jira/browse/SPARK-29860) | Improvement | [SQL] Fix data type mismatch issue for inSubQuery |
 | 3.0.0 | [SPARK-29870](https://issues.apache.org/jira/browse/SPARK-29870) | Improvement | Unify the logic of multi-units interval string to CalendarInterval |
 | 3.0.0 | [SPARK-29927](https://issues.apache.org/jira/browse/SPARK-29927) | Improvement | Parse timestamps in microsecond precision by `to_timestamp`, `to_unix_timestamp`, `unix_timestamp` |
+| 3.0.0 | [SPARK-29941](https://issues.apache.org/jira/browse/SPARK-29941) | prose | Add ANSI type aliases for char and decimal |
 | 3.0.0 | [SPARK-29943](https://issues.apache.org/jira/browse/SPARK-29943) | Improvement | Improve error messages for unsupported data type |
 | 3.0.0 | [SPARK-30066](https://issues.apache.org/jira/browse/SPARK-30066) | Improvement | Columnar execution support for interval types |
 | 3.0.0 | [SPARK-30252](https://issues.apache.org/jira/browse/SPARK-30252) | Improvement | Disallow negative scale of Decimal under ansi mode |
@@ -102,16 +119,57 @@ The 2.x line kept extending type coercion into composite types rather than touch
 | 3.0.0 | [SPARK-31527](https://issues.apache.org/jira/browse/SPARK-31527) | Improvement | date add/subtract interval only allow those day precision in ansi mode |
 | 3.0.0 | [SPARK-31750](https://issues.apache.org/jira/browse/SPARK-31750) | Improvement | Eliminate UpCast if child's dataType is DecimalType |
 | 3.0.0 | [SPARK-31834](https://issues.apache.org/jira/browse/SPARK-31834) | Improvement | Improve error message for incompatible data types |
+| 3.1.1 | [SPARK-28880](https://issues.apache.org/jira/browse/SPARK-28880) | prose | Support ANSI nested bracketed comments |
+| 3.1.1 | [SPARK-32272](https://issues.apache.org/jira/browse/SPARK-32272) | prose | Add SQL standard command SET TIME ZONE |
+| 3.1.1 | [SPARK-33275](https://issues.apache.org/jira/browse/SPARK-33275) | prose | ANSI mode: runtime errors instead of returning null |
+| 3.1.1 | [SPARK-33354](https://issues.apache.org/jira/browse/SPARK-33354) | prose | ANSI mode: new explicit cast syntax rules |
+| 3.1.1 | [SPARK-33480](https://issues.apache.org/jira/browse/SPARK-33480) | prose | Support char/varchar data type |
 | 3.1.1 | [SPARK-34083](https://issues.apache.org/jira/browse/SPARK-34083) | Improvement | Using TPCDS original definitions for char/varchar columns |
 | 3.1.1 | [SPARK-34130](https://issues.apache.org/jira/browse/SPARK-34130) | Improvement | Impove preformace for char varchar padding and length check with StaticInvoke |
 | 3.2.0 | [SPARK-7768](https://issues.apache.org/jira/browse/SPARK-7768) | New Feature | Make user-defined type (UDT) API public |
+| 3.2.0 | [SPARK-27790](https://issues.apache.org/jira/browse/SPARK-27790) | prose | Support for ANSI SQL INTERVAL types |
 | 3.2.0 | [SPARK-34164](https://issues.apache.org/jira/browse/SPARK-34164) | Improvement | Improve write side varchar check to visit only last few tailing spaces |
+| 3.2.0 | [SPARK-34199](https://issues.apache.org/jira/browse/SPARK-34199) | prose | Block count(table.*) to follow ANSI standard and other SQL engines |
 | 3.2.0 | [SPARK-34246](https://issues.apache.org/jira/browse/SPARK-34246) | New Feature | New type coercion syntax rules in ANSI mode |
+| 3.2.0 | [SPARK-34382](https://issues.apache.org/jira/browse/SPARK-34382) | prose | Support LATERAL subqueries |
 | 3.2.0 | [SPARK-34665](https://issues.apache.org/jira/browse/SPARK-34665) | Improvement | Revise the type coercion section of ANSI Compliance |
 | 3.2.0 | [SPARK-34908](https://issues.apache.org/jira/browse/SPARK-34908) | Improvement | Add test cases for char and varchar with functions |
 | 3.2.0 | [SPARK-34944](https://issues.apache.org/jira/browse/SPARK-34944) | Improvement | Employ correct data type for web_returns and store_returns in TPCDS tests |
 | 3.2.0 | [SPARK-35028](https://issues.apache.org/jira/browse/SPARK-35028) | New Feature | ANSI mode: disallow group by aliases |
+| 3.2.0 | [SPARK-35030](https://issues.apache.org/jira/browse/SPARK-35030) | prose | ANSI SQL mode GA |
 | 3.2.0 | [SPARK-35103](https://issues.apache.org/jira/browse/SPARK-35103) | Improvement | Improve the performance of type coercion rules |
+| 3.2.0 | [SPARK-35152](https://issues.apache.org/jira/browse/SPARK-35152) | prose | ANSI mode: IntegralDivide throws an exception on overflow |
 | 3.2.0 | [SPARK-35446](https://issues.apache.org/jira/browse/SPARK-35446) | Improvement | Override getJDBCType in MySQLDialect to map FloatType to FLOAT |
 | 3.2.0 | [SPARK-35706](https://issues.apache.org/jira/browse/SPARK-35706) | Improvement | Consider making the ':' in STRUCT data type definition optional |
+| 3.2.0 | [SPARK-35955](https://issues.apache.org/jira/browse/SPARK-35955) | prose | ANSI mode: Check for overflow in Average |
+| 3.3.0 | [SPARK-27790](https://issues.apache.org/jira/browse/SPARK-27790) | prose | Support ANSI SQL INTERVAL types |
+| 3.3.0 | [SPARK-33354](https://issues.apache.org/jira/browse/SPARK-33354) | prose | New explicit cast syntax rules in ANSI mode |
+| 3.3.0 | [SPARK-36841](https://issues.apache.org/jira/browse/SPARK-36841) | prose | Add ansi syntax set catalog xxx to change the current catalog |
+| 3.3.0 | [SPARK-36931](https://issues.apache.org/jira/browse/SPARK-36931) | prose | Support reading and writing ANSI intervals from/to ORC data sources |
+| 3.3.0 | [SPARK-37133](https://issues.apache.org/jira/browse/SPARK-37133) | prose | Add a config to optionally enforce ANSI reserved keywords |
+| 3.3.0 | [SPARK-37641](https://issues.apache.org/jira/browse/SPARK-37641) | prose | Support ANSI Aggregate Function: regr_r2 |
+| 3.3.0 | [SPARK-37671](https://issues.apache.org/jira/browse/SPARK-37671) | prose | ANSI Aggregation Function |
+| 3.3.0 | [SPARK-37714](https://issues.apache.org/jira/browse/SPARK-37714) | prose | Allow casting between numeric type and timestamp type |
+| 3.3.0 | [SPARK-37724](https://issues.apache.org/jira/browse/SPARK-37724) | prose | Disable ANSI reserved keywords by default |
+| 3.3.0 | [SPARK-37750](https://issues.apache.org/jira/browse/SPARK-37750) | prose | Optionally return null result if element not exists in array/map |
+| 3.3.0 | [SPARK-38589](https://issues.apache.org/jira/browse/SPARK-38589) | prose | New SQL function: try_avg |
+| 3.3.0 | [SPARK-38860](https://issues.apache.org/jira/browse/SPARK-38860) | prose | ANSI enhancements |
+| 3.4.0 | [SPARK-37623](https://issues.apache.org/jira/browse/SPARK-37623) | prose | Support ANSI Aggregate Function: REGR_INTERCEPT |
+| 3.4.0 | [SPARK-37641](https://issues.apache.org/jira/browse/SPARK-37641) | prose | Support ANSI Aggregate Function: REGR_R2 |
+| 3.4.0 | [SPARK-37672](https://issues.apache.org/jira/browse/SPARK-37672) | prose | Support ANSI Aggregate Function: REGR_SXX |
+| 3.4.0 | [SPARK-37681](https://issues.apache.org/jira/browse/SPARK-37681) | prose | Support ANSI Aggregate Function: REGR_SXY |
+| 3.4.0 | [SPARK-37691](https://issues.apache.org/jira/browse/SPARK-37691) | prose | Support ANSI Aggregation Function: PERCENTILE_DISC |
+| 3.4.0 | [SPARK-37702](https://issues.apache.org/jira/browse/SPARK-37702) | prose | Support ANSI Aggregate Function: REGR_SYY |
+| 3.4.0 | [SPARK-38219](https://issues.apache.org/jira/browse/SPARK-38219) | prose | Support ANSI aggregation function PERCENTILE_CONT as window function |
+| 3.4.0 | [SPARK-39138](https://issues.apache.org/jira/browse/SPARK-39138) | prose | Support ANSI general value specification and function - USER |
+| 3.4.0 | [SPARK-39230](https://issues.apache.org/jira/browse/SPARK-39230) | prose | Support ANSI Aggregate Function: REGR_SLOPE |
+| 3.4.0 | [SPARK-39451](https://issues.apache.org/jira/browse/SPARK-39451) | prose | Support casting intervals to integrals in ANSI mode |
+| 3.4.0 | [SPARK-39470](https://issues.apache.org/jira/browse/SPARK-39470) | prose | Support cast of ANSI intervals to decimals |
+| 3.4.0 | [SPARK-40008](https://issues.apache.org/jira/browse/SPARK-40008) | prose | Support casting of integrals to ANSI intervals |
+| 3.4.0 | [SPARK-40014](https://issues.apache.org/jira/browse/SPARK-40014) | prose | Support cast of decimals to ANSI intervals |
+| 3.4.0 | [SPARK-40066](https://issues.apache.org/jira/browse/SPARK-40066) | prose | ANSI SQL mode: always return null on invalid access to map column |
+| 3.4.0 | [SPARK-40151](https://issues.apache.org/jira/browse/SPARK-40151) | prose | Return wider ANSI interval types from the percentile functions |
+| 3.4.0 | [SPARK-40585](https://issues.apache.org/jira/browse/SPARK-40585) | prose | Support double quoted identifiers |
+| 3.4.1 | [SPARK-43425](https://issues.apache.org/jira/browse/SPARK-43425) | prose | Add TimestampNTZType to ColumnarBatchRow |
+| 3.5.5 | [SPARK-50624](https://issues.apache.org/jira/browse/SPARK-50624) | prose | Add TimestampNTZType to ColumnarRow/MutableColumnarRow |
 <!-- AUTO:timeline END -->

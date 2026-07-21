@@ -18,6 +18,10 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 
 2.0.0 formalized off-heap memory as a first-class concept: off-heap caching support (SPARK-13992) and off-heap storage bookkeeping in `MemoryManager` (SPARK-14135), alongside a wave of Tungsten-adjacent work — `BytesToBytesMap` performance, spilling in generated aggregates, and consolidating the various in-memory/disk store abstractions into `BlockManager`. 2.2.0 exposed that off-heap usage more visibly in monitoring (SPARK-17019). 2.3.0 added ZStandard as a shuffle compression codec (SPARK-19112) and a read-ahead input stream that amortizes disk I/O cost in the spill reader (SPARK-21113). 2.4.0 closed a long-standing limitation by supporting block replication and message sends larger than 2GB (SPARK-24296, SPARK-24307), and lowered `BlockManager` memory overhead by limiting its thread-pool sizes (SPARK-25181).
 
+### 3.x era — push-based shuffle and shuffled hash join gains
+
+3.0.0 added a local shuffle reader that skips the network round-trip when a post-shuffle partition is already co-located (SPARK-28560), plus dynamic allocation without an external shuffle service (SPARK-27963). 3.1.1 made the shuffled hash join a first-class citizen: code generation, full-outer-join support, build-side partitioning preservation, and bucket coalescing (SPARK-32421, SPARK-32399, SPARK-32330, SPARK-32286), alongside host-local shuffle-data reading (SPARK-32077). 3.2.0's headline was push-based shuffle (SPARK-30602), pre-merging shuffle blocks on the reduce side to cut small-block I/O, plus per-block checksums (SPARK-35275). 3.3.0 extended push-based shuffle with adaptive merge finalization, and 3.4.0 added RocksDB support for the external shuffle service's state store (SPARK-38888) alongside further shuffled-hash-join codegen for outer joins, carried into 3.5.0.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -147,6 +151,7 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 2.4.0 | [SPARK-24296](https://issues.apache.org/jira/browse/SPARK-24296) | prose | Support replicating blocks larger than 2GB |
 | 2.4.0 | [SPARK-24307](https://issues.apache.org/jira/browse/SPARK-24307) | prose | Support sending messages over 2GB from memory |
 | 2.4.0 | [SPARK-25181](https://issues.apache.org/jira/browse/SPARK-25181) | prose | Limited BlockManager thread pool sizes lower memory overhead |
+| 3.0.0 | [SPARK-9853](https://issues.apache.org/jira/browse/SPARK-9853) | prose | Optimize reading contiguous shuffle blocks |
 | 3.0.0 | [SPARK-24355](https://issues.apache.org/jira/browse/SPARK-24355) | Improvement | Improve Spark shuffle server responsiveness to non-ChunkFetch requests |
 | 3.0.0 | [SPARK-25118](https://issues.apache.org/jira/browse/SPARK-25118) | Improvement | Need a solution to persist Spark application console outputs when running in shell/yarn client mode |
 | 3.0.0 | [SPARK-25341](https://issues.apache.org/jira/browse/SPARK-25341) | Improvement | Support rolling back a shuffle map stage and re-generate the shuffle files |
@@ -173,6 +178,7 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 3.0.0 | [SPARK-27963](https://issues.apache.org/jira/browse/SPARK-27963) | New Feature | Allow dynamic allocation without an external shuffle service |
 | 3.0.0 | [SPARK-28118](https://issues.apache.org/jira/browse/SPARK-28118) | Improvement | Add `spark.eventLog.compression.codec` configuration |
 | 3.0.0 | [SPARK-28154](https://issues.apache.org/jira/browse/SPARK-28154) | Improvement | GMM fix double caching |
+| 3.0.0 | [SPARK-28560](https://issues.apache.org/jira/browse/SPARK-28560) | prose | Local shuffle reader |
 | 3.0.0 | [SPARK-28593](https://issues.apache.org/jira/browse/SPARK-28593) | Improvement | Rename ShuffleClient to BlockStoreClient which more close to its usage |
 | 3.0.0 | [SPARK-29182](https://issues.apache.org/jira/browse/SPARK-29182) | Improvement | Cache preferred locations of checkpointed RDD |
 | 3.0.0 | [SPARK-29298](https://issues.apache.org/jira/browse/SPARK-29298) | Improvement | Separate block manager heartbeat endpoint from driver endpoint |
@@ -187,6 +193,19 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 3.0.0 | [SPARK-31442](https://issues.apache.org/jira/browse/SPARK-31442) | Improvement | Print shuffle id at coalesce partitions target size |
 | 3.0.0 | [SPARK-31619](https://issues.apache.org/jira/browse/SPARK-31619) | Improvement | Rename config name "spark.dynamicAllocation.shuffleTimeout" to "spark.dynamicAllocation.shuffleTracking.timeout" |
 | 3.0.0 | [SPARK-31646](https://issues.apache.org/jira/browse/SPARK-31646) | Improvement | Remove unused registeredConnections counter from ShuffleMetrics |
+| 3.1.1 | [SPARK-25299](https://issues.apache.org/jira/browse/SPARK-25299) | prose | Remote storage for persisting shuffle data |
+| 3.1.1 | [SPARK-31798](https://issues.apache.org/jira/browse/SPARK-31798) | prose | Shuffle writer metadata APIs |
+| 3.1.1 | [SPARK-31869](https://issues.apache.org/jira/browse/SPARK-31869) | prose | Remove shuffle by preserving output partitioning of broadcast hash join |
+| 3.1.1 | [SPARK-32077](https://issues.apache.org/jira/browse/SPARK-32077) | prose | Host-local shuffle data reading without shuffle service |
+| 3.1.1 | [SPARK-32282](https://issues.apache.org/jira/browse/SPARK-32282) | prose | Remove shuffle by improving reordering join keys |
+| 3.1.1 | [SPARK-32286](https://issues.apache.org/jira/browse/SPARK-32286) | prose | Coalesce bucketed tables for shuffled hash join |
+| 3.1.1 | [SPARK-32330](https://issues.apache.org/jira/browse/SPARK-32330) | prose | Preserve shuffled hash join build side partitioning |
+| 3.1.1 | [SPARK-32399](https://issues.apache.org/jira/browse/SPARK-32399) | prose | Support full outer join in shuffled hash join |
+| 3.1.1 | [SPARK-32421](https://issues.apache.org/jira/browse/SPARK-32421) | prose | Add code-gen for shuffled hash join |
+| 3.1.1 | [SPARK-32461](https://issues.apache.org/jira/browse/SPARK-32461) | prose | Shuffled hash join improvement |
+| 3.1.1 | [SPARK-32470](https://issues.apache.org/jira/browse/SPARK-32470) | prose | Remove task result size check for shuffle map stage |
+| 3.1.1 | [SPARK-33037](https://issues.apache.org/jira/browse/SPARK-33037) | prose | Allow to use a custom shuffle manager with external shuffle service |
+| 3.1.1 | [SPARK-33399](https://issues.apache.org/jira/browse/SPARK-33399) | prose | Remove shuffle by normalizing output partitioning and sortorder |
 | 3.2.0 | [SPARK-29330](https://issues.apache.org/jira/browse/SPARK-29330) | Improvement | Allow users to chose the name of Spark Shuffle service |
 | 3.2.0 | [SPARK-30602](https://issues.apache.org/jira/browse/SPARK-30602) | Improvement | SPIP: Support push-based shuffle to improve shuffle efficiency |
 | 3.2.0 | [SPARK-32384](https://issues.apache.org/jira/browse/SPARK-32384) | Improvement | repartitionAndSortWithinPartitions avoid shuffle with same partitioner |
@@ -202,6 +221,8 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 3.2.0 | [SPARK-34915](https://issues.apache.org/jira/browse/SPARK-34915) | Improvement | Cache Maven, SBT and Scala in all jobs that use them |
 | 3.2.0 | [SPARK-35049](https://issues.apache.org/jira/browse/SPARK-35049) | Improvement | Remove unused MapOutputTracker in BlockStoreShuffleReader |
 | 3.2.0 | [SPARK-35263](https://issues.apache.org/jira/browse/SPARK-35263) | Improvement | Refactor ShuffleBlockFetcherIteratorSuite to reduce duplicated code |
+| 3.2.0 | [SPARK-35275](https://issues.apache.org/jira/browse/SPARK-35275) | prose | Add checksum for shuffle blocks |
+| 3.2.0 | [SPARK-35282](https://issues.apache.org/jira/browse/SPARK-35282) | prose | Support AQE side shuffled hash join formula using rule |
 | 3.2.0 | [SPARK-35354](https://issues.apache.org/jira/browse/SPARK-35354) | Improvement | Minor cleanup to replace BaseJoinExec with ShuffledJoin in CoalesceBucketsInJoin |
 | 3.2.0 | [SPARK-35396](https://issues.apache.org/jira/browse/SPARK-35396) | Improvement | Support to manual close/release entries in MemoryStore and InMemoryRelation instead of replying on GC |
 | 3.2.0 | [SPARK-35416](https://issues.apache.org/jira/browse/SPARK-35416) | Improvement | Support PersistentVolumeClaim Reuse |
@@ -213,5 +234,32 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 3.2.0 | [SPARK-36105](https://issues.apache.org/jira/browse/SPARK-36105) | Improvement | OptimizeLocalShuffleReader support reading data of multiple mappers in one task |
 | 3.2.0 | [SPARK-36217](https://issues.apache.org/jira/browse/SPARK-36217) | Improvement | Rename CustomShuffleReader and OptimizeLocalShuffleReader |
 | 3.2.0 | [SPARK-36221](https://issues.apache.org/jira/browse/SPARK-36221) | Improvement | Make sure CustomShuffleReaderExec has at least one partition |
+| 3.2.4 | [SPARK-42090](https://issues.apache.org/jira/browse/SPARK-42090) | prose | Introduce sasl retry count in RetryingBlockTransferor |
+| 3.3.0 | [SPARK-32567](https://issues.apache.org/jira/browse/SPARK-32567) | prose | Add code-gen for full outer shuffled hash join |
+| 3.3.0 | [SPARK-33832](https://issues.apache.org/jira/browse/SPARK-33832) | prose | Support optimize skewed join even if introduce extra shuffle |
+| 3.3.0 | [SPARK-34826](https://issues.apache.org/jira/browse/SPARK-34826) | prose | Adaptive fetch of shuffle mergers for Push based shuffle |
+| 3.3.0 | [SPARK-36794](https://issues.apache.org/jira/browse/SPARK-36794) | prose | Ignore duplicated join keys when building relation for SEMI/ANTI shuffled hash join |
+| 3.3.0 | [SPARK-36967](https://issues.apache.org/jira/browse/SPARK-36967) | prose | Report accurate shuffle block size if its skewed |
+| 3.3.0 | [SPARK-37023](https://issues.apache.org/jira/browse/SPARK-37023) | prose | Avoid fetching merge status when shuffleMergeEnabled is false for a shuffleDependency during retry |
+| 3.3.0 | [SPARK-37695](https://issues.apache.org/jira/browse/SPARK-37695) | prose | Skip diagnosis ob merged blocks from push-based shuffle |
+| 3.3.1 | [SPARK-40703](https://issues.apache.org/jira/browse/SPARK-40703) | prose | Introduce shuffle on SinglePartition to improve parallelism |
+| 3.3.2 | [SPARK-40703](https://issues.apache.org/jira/browse/SPARK-40703) | prose | Introduce shuffle on SinglePartition to improve parallelism |
+| 3.3.2 | [SPARK-42090](https://issues.apache.org/jira/browse/SPARK-42090) | prose | Introduce sasl retry count in RetryingBlockTransferor |
+| 3.4.0 | [SPARK-3984](https://issues.apache.org/jira/browse/SPARK-3984) | prose | Enable spark.dynamicAllocation.shuffleTracking.enabled by default |
+| 3.4.0 | [SPARK-33236](https://issues.apache.org/jira/browse/SPARK-33236) | prose | Enable Push-based shuffle service to store state in NM level DB for work preserving restart |
+| 3.4.0 | [SPARK-33573](https://issues.apache.org/jira/browse/SPARK-33573) | prose | Shuffle server side metrics for Push-based shuffle (ââ |
+| 3.4.0 | [SPARK-36620](https://issues.apache.org/jira/browse/SPARK-36620) | prose | Add Push Based Shuffle client side read metrics |
+| 3.4.0 | [SPARK-37618](https://issues.apache.org/jira/browse/SPARK-37618) | prose | Remove shuffle blocks using the shuffle service for released executors |
+| 3.4.0 | [SPARK-38888](https://issues.apache.org/jira/browse/SPARK-38888) | prose | Add RocksDB support for shuffle service state store |
+| 3.4.0 | [SPARK-38909](https://issues.apache.org/jira/browse/SPARK-38909) | prose | Encapsulate LevelDB used to store remote/external shuffle state as DB |
+| 3.4.0 | [SPARK-40186](https://issues.apache.org/jira/browse/SPARK-40186) | prose | Ensure mergedShuffleCleaner have been shutdown before db close |
+| 3.4.0 | [SPARK-41986](https://issues.apache.org/jira/browse/SPARK-41986) | prose | Introduce shuffle on SinglePartition |
+| 3.5.0 | [SPARK-36612](https://issues.apache.org/jira/browse/SPARK-36612) | prose | Support left outer join build left or right outer join build right in shuffled hash join |
+| 3.5.0 | [SPARK-40082](https://issues.apache.org/jira/browse/SPARK-40082) | prose | Schedule mergeFinalize when push merge shuffleMapStage retry but no running tasks |
+| 3.5.0 | [SPARK-41413](https://issues.apache.org/jira/browse/SPARK-41413) | prose | Avoid shuffle in Storage-Partitioned Join when partition keys mismatch, but join expressions are compatible |
+| 3.5.0 | [SPARK-42689](https://issues.apache.org/jira/browse/SPARK-42689) | prose | Allow ShuffleDriverComponent to declare if shuffle data is reliably stored |
+| 3.5.0 | [SPARK-42779](https://issues.apache.org/jira/browse/SPARK-42779) | prose | Allow V2 writes to indicate advisory shuffle partition size |
+| 3.5.0 | [SPARK-43179](https://issues.apache.org/jira/browse/SPARK-43179) | prose | Allowing apps to control whether their metadata gets saved in the db by the External Shuffle Service |
+| 3.5.0 | [SPARK-44060](https://issues.apache.org/jira/browse/SPARK-44060) | prose | Codegen Support for build side outer shuffled hash join |
 | 4.1.1 | [SPARK-54850](https://issues.apache.org/jira/browse/SPARK-54850) | Improvement | Improve extractShuffleIds to find AdaptiveSparkPlanExec anywhere in plan tree |
 <!-- AUTO:timeline END -->

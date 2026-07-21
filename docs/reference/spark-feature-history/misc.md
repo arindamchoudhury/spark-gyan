@@ -16,6 +16,10 @@ The misc bucket stays thin in the 1.x line: 1.0.0 added internal instrumentation
 
 As in earlier lines, most of the 2.x misc bucket is internal cleanup, testing, and documentation rather than user-facing capability: style-checker rules, deprecated-method removal ahead of the 2.0 API break (SPARK-11806), JSON-formatted logical/physical plan output for tooling (SPARK-12321), and an improved thread-dump page (SPARK-9516). A few entries reflect Spark's growing maturity as a project rather than a product — TPCDS query support for benchmarking (SPARK-12540), a Java linting script (SPARK-6990), and infinite-scrolling log viewers (SPARK-8171). The pattern from the 1.x line holds: as the codebase, test suite, and contributor base keep expanding, the cross-cutting bucket grows roughly in proportion, with no single 2.x release standing out as thematically different from the rest.
 
+### 3.x era — the grab-bag keeps growing with the codebase
+
+The grab-bag stays busy in 3.0.0 — a new binary-file data source (SPARK-25348), JDK 11 build and run support (SPARK-24417), the accelerator-aware scheduling SPIP's user-facing documentation and Python API (SPARK-27492, SPARK-28234), and `spark.sql.dialect` (SPARK-28997) — a mix of new capability and the internal cleanup that dominated earlier eras. 3.1.1's fourteen entries are almost entirely `Improvement`-tagged code-hygiene passes: replacing `map`/`filter` chains with `exists`/`forall`, moving `spark.sql.hive` to a private package, tightening API docs. 3.2.0's 115 entries follow the same pattern at larger scale — dozens of micro-refactors (redundant collection conversions, `for`/`foreach` over `map`) alongside a few real fixes like tightened ML parameter bounds and Kubernetes pod-feature-step extensibility. As in the 1.x and 2.x lines, the bucket's size tracks the growing codebase rather than any single 3.x theme.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->

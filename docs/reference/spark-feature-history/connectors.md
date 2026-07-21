@@ -12,6 +12,10 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 
 2.0.0 brought CSV in-house from Databricks' spark-csv package (SPARK-12420) and made the vectorized, columnar Parquet reader the default (SPARK-13518). 2.2.0 added multi-line CSV parsing (SPARK-19610). 2.3.0 extended vectorization to ORC, improving scan throughput 2-5x (SPARK-16060), and introduced a built-in image data source for reading images straight into a DataFrame (SPARK-21866). 2.4.0 was the connectors release: Avro became a built-in data source with logical-type support (SPARK-24768), the native ORC reader was switched on by default including for Hive serde tables (SPARK-23456, SPARK-22279), ORC filter pushdown was enabled by default (SPARK-21783), Parquet was upgraded to 1.10.0 with better predicate pushdown (SPARK-23972, SPARK-25419), and `count()` over JSON/CSV got a dedicated speedup (SPARK-24959).
 
+### 3.x era — DSv2 migration and vectorized readers mature
+
+3.0.0 migrated the built-in Parquet, ORC, CSV, JSON, Kafka, Text, and Avro sources onto DSv2 (SPARK-27589) and added Hive 3.1 metastore support. 3.1.1 pushed more filter kinds down to Parquet/Avro/JSON (contains, starts/ends-with, not-equals) and added JDBC catalog and connection-provider APIs. 3.2.0 upgraded Parquet to 1.12.1, added column-index support to the vectorized reader, and extended the vectorized ORC reader to nested columns. 3.3.0 supported complex types in the Parquet vectorized reader (SPARK-34863) and added min/max/count aggregate pushdown for both Parquet and ORC. 3.4.0 brought a PyTorch Distributor (SPARK-41589) and UDT support in the vectorized Parquet reader, while 3.5.0 added JDBC catalog char/varchar support and Avro custom-decimal handling — steady maturation of the DSv2-based readers rather than a single headline feature.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -287,8 +291,11 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 2.4.0 | [SPARK-24959](https://issues.apache.org/jira/browse/SPARK-24959) | prose | Speed up count() for JSON and CSV |
 | 2.4.0 | [SPARK-25419](https://issues.apache.org/jira/browse/SPARK-25419) | prose | Parquet predicate pushdown improvement |
 | 3.0.0 | [SPARK-11412](https://issues.apache.org/jira/browse/SPARK-11412) | New Feature | Support merge schema for ORC |
+| 3.0.0 | [SPARK-15616](https://issues.apache.org/jira/browse/SPARK-15616) | prose | Rule PruneHiveTablePartitions |
+| 3.0.0 | [SPARK-17636](https://issues.apache.org/jira/browse/SPARK-17636) | prose | Parquet predicate pushdown for nested fields |
 | 3.0.0 | [SPARK-23534](https://issues.apache.org/jira/browse/SPARK-23534) | Improvement | Spark run on Hadoop 3.0.0 |
 | 3.0.0 | [SPARK-23710](https://issues.apache.org/jira/browse/SPARK-23710) | Umbrella | Upgrade the built-in Hive to 2.3.5 for hadoop-3.2 |
+| 3.0.0 | [SPARK-23977](https://issues.apache.org/jira/browse/SPARK-23977) | prose | Support High Performance S3A committers |
 | 3.0.0 | [SPARK-24360](https://issues.apache.org/jira/browse/SPARK-24360) | Improvement | Support Hive 3.1 metastore |
 | 3.0.0 | [SPARK-24540](https://issues.apache.org/jira/browse/SPARK-24540) | Improvement | Support for multiple character delimiter in Spark CSV read |
 | 3.0.0 | [SPARK-24766](https://issues.apache.org/jira/browse/SPARK-24766) | Improvement | CreateHiveTableAsSelect and InsertIntoHiveDir won't generate decimal column stats in parquet |
@@ -301,6 +308,7 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 3.0.0 | [SPARK-25465](https://issues.apache.org/jira/browse/SPARK-25465) | Improvement | Refactor Parquet test suites in project Hive |
 | 3.0.0 | [SPARK-25501](https://issues.apache.org/jira/browse/SPARK-25501) | Improvement | Kafka delegation token support |
 | 3.0.0 | [SPARK-25595](https://issues.apache.org/jira/browse/SPARK-25595) | Improvement | Ignore corrupt Avro file if flag IGNORE_CORRUPT_FILES enabled |
+| 3.0.0 | [SPARK-25603](https://issues.apache.org/jira/browse/SPARK-25603) | prose | Generalize Nested Column Pruning |
 | 3.0.0 | [SPARK-25635](https://issues.apache.org/jira/browse/SPARK-25635) | New Feature | Support selective direct encoding in native ORC write |
 | 3.0.0 | [SPARK-25638](https://issues.apache.org/jira/browse/SPARK-25638) | Improvement | Convert structs to CSV strings |
 | 3.0.0 | [SPARK-25672](https://issues.apache.org/jira/browse/SPARK-25672) | Improvement | Inferring schema from CSV string literal |
@@ -344,6 +352,7 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 3.0.0 | [SPARK-27399](https://issues.apache.org/jira/browse/SPARK-27399) | Improvement | Spark streaming of kafka 0.10 contains some scattered config |
 | 3.0.0 | [SPARK-27500](https://issues.apache.org/jira/browse/SPARK-27500) | Umbrella | Add tests for built-in Hive 2.3 |
 | 3.0.0 | [SPARK-27528](https://issues.apache.org/jira/browse/SPARK-27528) | Improvement | Use Parquet logical type TIMESTAMP_MICROS by default |
+| 3.0.0 | [SPARK-27589](https://issues.apache.org/jira/browse/SPARK-27589) | prose | Built-in source migration using DSV2: parquet, ORC, CSV, JSON, Kafka, Text, Avro |
 | 3.0.0 | [SPARK-27687](https://issues.apache.org/jira/browse/SPARK-27687) | Improvement | Kafka consumer cache parameter rename and documentation |
 | 3.0.0 | [SPARK-27699](https://issues.apache.org/jira/browse/SPARK-27699) | Improvement | Partially push down disjunctive predicated in Parquet/ORC |
 | 3.0.0 | [SPARK-27748](https://issues.apache.org/jira/browse/SPARK-27748) | Improvement | Kafka consumer/producer password/token redaction |
@@ -394,6 +403,9 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 3.0.0 | [SPARK-29613](https://issues.apache.org/jira/browse/SPARK-29613) | Improvement | Upgrade to Kafka 2.3.1 |
 | 3.0.0 | [SPARK-29617](https://issues.apache.org/jira/browse/SPARK-29617) | Improvement | Upgrade to ORC 1.5.7 |
 | 3.0.0 | [SPARK-29687](https://issues.apache.org/jira/browse/SPARK-29687) | Improvement | Fix jdbc metrics counter type to long |
+| 3.0.0 | [SPARK-29724](https://issues.apache.org/jira/browse/SPARK-29724) | prose | JDBC tab in SHS |
+| 3.0.0 | [SPARK-29768](https://issues.apache.org/jira/browse/SPARK-29768) | prose | Column pruning through nondeterministic expressions |
+| 3.0.0 | [SPARK-29805](https://issues.apache.org/jira/browse/SPARK-29805) | prose | ) and turned on by default |
 | 3.0.0 | [SPARK-30032](https://issues.apache.org/jira/browse/SPARK-30032) | Improvement | Upgrade to ORC 1.5.8 |
 | 3.0.0 | [SPARK-30034](https://issues.apache.org/jira/browse/SPARK-30034) | Umbrella | Use Apache Hive 2.3 dependency by default |
 | 3.0.0 | [SPARK-30091](https://issues.apache.org/jira/browse/SPARK-30091) | Improvement | Document mergeSchema option directly in the Python Parquet APIs |
@@ -406,17 +418,42 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 3.0.0 | [SPARK-30783](https://issues.apache.org/jira/browse/SPARK-30783) | Improvement | Hive 2.3 profile should exclude hive-service-rpc |
 | 3.0.0 | [SPARK-31026](https://issues.apache.org/jira/browse/SPARK-31026) | New Feature | Parquet predicate pushdown on columns with dots |
 | 3.0.0 | [SPARK-31064](https://issues.apache.org/jira/browse/SPARK-31064) | New Feature | New Parquet Predicate Filter APIs with multi-part Identifier Support |
+| 3.0.0 | [SPARK-31126](https://issues.apache.org/jira/browse/SPARK-31126) | prose | Upgrade Kafka to 2.4.1 |
 | 3.0.0 | [SPARK-31184](https://issues.apache.org/jira/browse/SPARK-31184) | Improvement | Support getTablesByType API of Hive Client |
 | 3.0.0 | [SPARK-31327](https://issues.apache.org/jira/browse/SPARK-31327) | Improvement | write spark version to avro file metadata |
 | 3.0.0 | [SPARK-31388](https://issues.apache.org/jira/browse/SPARK-31388) | Improvement | org.apache.spark.sql.hive.thriftserver.CliSuite result matching is flaky |
 | 3.0.0 | [SPARK-31398](https://issues.apache.org/jira/browse/SPARK-31398) | Improvement | Speed up reading dates in ORC |
 | 3.0.0 | [SPARK-31582](https://issues.apache.org/jira/browse/SPARK-31582) | New Feature | Being able to not populate Hadoop classpath |
 | 3.0.0 | [SPARK-31596](https://issues.apache.org/jira/browse/SPARK-31596) | Improvement | Generate SQL Configurations from hive module to configuration doc |
+| 3.1.1 | [SPARK-12312](https://issues.apache.org/jira/browse/SPARK-12312) | prose | Support JDBC Kerberos with keytab |
+| 3.1.1 | [SPARK-20628](https://issues.apache.org/jira/browse/SPARK-20628) | prose | Basic framework |
+| 3.1.1 | [SPARK-25557](https://issues.apache.org/jira/browse/SPARK-25557) | prose | Nested column predicate pushdown for ORC |
+| 3.1.1 | [SPARK-30613](https://issues.apache.org/jira/browse/SPARK-30613) | prose | Support Hive style REPLACE COLUMNS syntax |
+| 3.1.1 | [SPARK-30648](https://issues.apache.org/jira/browse/SPARK-30648) | prose | Support filters pushdown in JSON datasource |
+| 3.1.1 | [SPARK-31486](https://issues.apache.org/jira/browse/SPARK-31486) | prose | Add spark.submit.waitForCompletion configuration to control spark-submit exit in Standalone cluster mode |
+| 3.1.1 | [SPARK-31960](https://issues.apache.org/jira/browse/SPARK-31960) | prose | Do not propagate Hadoopâs classpath for Spark distribution with built-in Hadoop |
+| 3.1.1 | [SPARK-32001](https://issues.apache.org/jira/browse/SPARK-32001) | prose | Create JDBC authentication provider developer API |
+| 3.1.1 | [SPARK-32047](https://issues.apache.org/jira/browse/SPARK-32047) | prose | Add JDBC connection provider disable possibility |
+| 3.1.1 | [SPARK-32270](https://issues.apache.org/jira/browse/SPARK-32270) | prose | Leverage SQL text data source during CSV schema inference |
+| 3.1.1 | [SPARK-32346](https://issues.apache.org/jira/browse/SPARK-32346) | prose | Support filters pushdown in Avro datasource |
+| 3.1.1 | [SPARK-32375](https://issues.apache.org/jira/browse/SPARK-32375) | prose | Implement catalog APIs for JDBC |
+| 3.1.1 | [SPARK-32639](https://issues.apache.org/jira/browse/SPARK-32639) | prose | Allow complex type in mapâs key type in Parquet |
+| 3.1.1 | [SPARK-33050](https://issues.apache.org/jira/browse/SPARK-33050) | prose | Upgrade Apache ORC to 1.5.12 |
+| 3.1.1 | [SPARK-33088](https://issues.apache.org/jira/browse/SPARK-33088) | prose | Enhance ExecutorPlugin API to include methods for task start and end events |
+| 3.1.1 | [SPARK-33160](https://issues.apache.org/jira/browse/SPARK-33160) | prose | Allow saving/loading INT96 in Parquet without rebasing |
+| 3.1.1 | [SPARK-33458](https://issues.apache.org/jira/browse/SPARK-33458) | prose | Support contains, starts-with and ends-with filters |
+| 3.1.1 | [SPARK-33477](https://issues.apache.org/jira/browse/SPARK-33477) | prose | Support filter by date type |
+| 3.1.1 | [SPARK-33504](https://issues.apache.org/jira/browse/SPARK-33504) | prose | Redact sensitive attributes of application log in SHS |
+| 3.1.1 | [SPARK-33530](https://issues.apache.org/jira/browse/SPARK-33530) | prose | Support –archives option natively |
+| 3.1.1 | [SPARK-33537](https://issues.apache.org/jira/browse/SPARK-33537) | prose | Hive Metastore partition filter pushdown improvement |
+| 3.1.1 | [SPARK-33582](https://issues.apache.org/jira/browse/SPARK-33582) | prose | Support filter by not-equals |
 | 3.1.1 | [SPARK-33790](https://issues.apache.org/jira/browse/SPARK-33790) | Improvement | Reduce the rpc call of getFileStatus in SingleFileEventLogFileReader |
 | 3.2.0 | [SPARK-26345](https://issues.apache.org/jira/browse/SPARK-26345) | Umbrella | Parquet support Column indexes |
+| 3.2.0 | [SPARK-26836](https://issues.apache.org/jira/browse/SPARK-26836) | prose | Supporting Avro schema evolution for partitioned Hive tables with “avro.schema.literal” |
 | 3.2.0 | [SPARK-29250](https://issues.apache.org/jira/browse/SPARK-29250) | Improvement | Upgrade to Hadoop 3.3.1 |
 | 3.2.0 | [SPARK-32668](https://issues.apache.org/jira/browse/SPARK-32668) | Improvement | HiveGenericUDTF initialize UDTF should use StructObjectInspector method |
 | 3.2.0 | [SPARK-32703](https://issues.apache.org/jira/browse/SPARK-32703) | Improvement | Replace deprecated API calls from SpecificParquetRecordReaderBase |
+| 3.2.0 | [SPARK-32792](https://issues.apache.org/jira/browse/SPARK-32792) | prose | Improve Parquet In filter pushdown |
 | 3.2.0 | [SPARK-32864](https://issues.apache.org/jira/browse/SPARK-32864) | Improvement | Support ORC forced positional evolution |
 | 3.2.0 | [SPARK-33212](https://issues.apache.org/jira/browse/SPARK-33212) | Improvement | Upgrade to Hadoop 3.2.2 and move to shaded clients for Hadoop 3.x profile |
 | 3.2.0 | [SPARK-33526](https://issues.apache.org/jira/browse/SPARK-33526) | Improvement | Add config to control if cancel invoke interrupt task on thriftserver |
@@ -428,9 +465,11 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 3.2.0 | [SPARK-33812](https://issues.apache.org/jira/browse/SPARK-33812) | Improvement | splt the histogram column stats when saving to hive metastore as table property |
 | 3.2.0 | [SPARK-33932](https://issues.apache.org/jira/browse/SPARK-33932) | Improvement | Clean up KafkaOffsetReader API document |
 | 3.2.0 | [SPARK-33937](https://issues.apache.org/jira/browse/SPARK-33937) | Improvement | Move the old partition data to trash instead of deleting it when inserting rewrite hive table |
+| 3.2.0 | [SPARK-33940](https://issues.apache.org/jira/browse/SPARK-33940) | prose | Upgrade univocity-parsers to 2.9.1 |
 | 3.2.0 | [SPARK-34029](https://issues.apache.org/jira/browse/SPARK-34029) | Improvement | Add OrcEncryptionSuite and FakeKeyProvider |
 | 3.2.0 | [SPARK-34186](https://issues.apache.org/jira/browse/SPARK-34186) | Improvement | Fix DockerJDBCIntegrationSuites to reflect the change of SPARK-33888 |
 | 3.2.0 | [SPARK-34271](https://issues.apache.org/jira/browse/SPARK-34271) | Improvement | Use majorMinorPatchVersion for Hive version parsing |
+| 3.2.0 | [SPARK-34289](https://issues.apache.org/jira/browse/SPARK-34289) | prose | Support column index in Parquet vectorized reader |
 | 3.2.0 | [SPARK-34357](https://issues.apache.org/jira/browse/SPARK-34357) | Improvement | Map JDBC SQL TIME type to TimestampType with time portion fixed regardless of timezone |
 | 3.2.0 | [SPARK-34365](https://issues.apache.org/jira/browse/SPARK-34365) | Improvement | Support configurable Avro schema field matching for positional or by-name |
 | 3.2.0 | [SPARK-34377](https://issues.apache.org/jira/browse/SPARK-34377) | New Feature | Support parquet datasource options to control datetime rebasing in read |
@@ -438,29 +477,97 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 3.2.0 | [SPARK-34404](https://issues.apache.org/jira/browse/SPARK-34404) | New Feature | Support Avro datasource options to control datetime rebasing in read |
 | 3.2.0 | [SPARK-34416](https://issues.apache.org/jira/browse/SPARK-34416) | Improvement | Support avroSchemaUrl in addition to avroSchema |
 | 3.2.0 | [SPARK-34535](https://issues.apache.org/jira/browse/SPARK-34535) | Improvement | Cleanup unused symbol in Orc related code |
+| 3.2.0 | [SPARK-34538](https://issues.apache.org/jira/browse/SPARK-34538) | prose | Hive Metastore support filter by NOT IN |
 | 3.2.0 | [SPARK-34542](https://issues.apache.org/jira/browse/SPARK-34542) | Improvement | Upgrade Parquet to 1.12.0 |
 | 3.2.0 | [SPARK-34562](https://issues.apache.org/jira/browse/SPARK-34562) | Improvement | Leverage parquet bloom filters |
 | 3.2.0 | [SPARK-34578](https://issues.apache.org/jira/browse/SPARK-34578) | Improvement | Ignore ORC encryption tests when ORC is loaded by old Hadoop library by other tests |
 | 3.2.0 | [SPARK-34597](https://issues.apache.org/jira/browse/SPARK-34597) | Improvement | Replaces `ParquetFileReader.readFooter` with `ParquetFileReader.open and getFooter` |
 | 3.2.0 | [SPARK-34712](https://issues.apache.org/jira/browse/SPARK-34712) | Improvement | Refactor UT about hive UT |
 | 3.2.0 | [SPARK-34778](https://issues.apache.org/jira/browse/SPARK-34778) | Improvement | Upgrade to Avro 1.10.2 |
+| 3.2.0 | [SPARK-34786](https://issues.apache.org/jira/browse/SPARK-34786) | prose | Read Parquet unsigned int64 logical type that stored as signed int64 physical type to decimal(20, 0) |
 | 3.2.0 | [SPARK-34809](https://issues.apache.org/jira/browse/SPARK-34809) | Improvement | Enable spark.hadoopRDD.ignoreEmptySplits by default |
 | 3.2.0 | [SPARK-34815](https://issues.apache.org/jira/browse/SPARK-34815) | Improvement | Update CSVBenchmark |
 | 3.2.0 | [SPARK-34816](https://issues.apache.org/jira/browse/SPARK-34816) | Improvement | Support for Parquet unsigned LogicalTypes |
+| 3.2.0 | [SPARK-34817](https://issues.apache.org/jira/browse/SPARK-34817) | prose | Read parquet unsigned types that are stored as int32 physical type in parquet |
 | 3.2.0 | [SPARK-34843](https://issues.apache.org/jira/browse/SPARK-34843) | Improvement | JDBCRelation columnPartition function improperly determines stride size. Upper bound is skewed due to stride alignment. |
 | 3.2.0 | [SPARK-34852](https://issues.apache.org/jira/browse/SPARK-34852) | Improvement | Close Hive session state should use withHiveState |
+| 3.2.0 | [SPARK-34859](https://issues.apache.org/jira/browse/SPARK-34859) | prose | Handle column index when using vectorized Parquet reader |
+| 3.2.0 | [SPARK-34862](https://issues.apache.org/jira/browse/SPARK-34862) | prose | Support nested column in ORC vectorized reader |
 | 3.2.0 | [SPARK-34973](https://issues.apache.org/jira/browse/SPARK-34973) | Improvement | Cleanup unused fields and methods in vectorized Parquet reader |
 | 3.2.0 | [SPARK-35003](https://issues.apache.org/jira/browse/SPARK-35003) | Improvement | Improve performance for reading smallint in vectorized Parquet reader |
 | 3.2.0 | [SPARK-35044](https://issues.apache.org/jira/browse/SPARK-35044) | Improvement | Support retrieve hadoop configurations via SET syntax |
 | 3.2.0 | [SPARK-35047](https://issues.apache.org/jira/browse/SPARK-35047) | Improvement | Allow Json datasources to write non-ascii characters as codepoints |
+| 3.2.0 | [SPARK-35226](https://issues.apache.org/jira/browse/SPARK-35226) | prose | Support refreshKrb5Config option in JDBC data sources |
 | 3.2.0 | [SPARK-35325](https://issues.apache.org/jira/browse/SPARK-35325) | Improvement | Add nested column ORC encryption test case |
 | 3.2.0 | [SPARK-35383](https://issues.apache.org/jira/browse/SPARK-35383) | Improvement | Improve s3a magic committer support by inferring missing configs |
 | 3.2.0 | [SPARK-35611](https://issues.apache.org/jira/browse/SPARK-35611) | Improvement | Introduce the strategy on mismatched offset for start offset timestamp on Kafka data source |
 | 3.2.0 | [SPARK-35612](https://issues.apache.org/jira/browse/SPARK-35612) | Improvement | Support LZ4 compression in ORC data source |
 | 3.2.0 | [SPARK-35658](https://issues.apache.org/jira/browse/SPARK-35658) | Improvement | Document Parquet encryption feature in Spark |
 | 3.2.0 | [SPARK-35747](https://issues.apache.org/jira/browse/SPARK-35747) | Improvement | Avoid printing full Exception stack trace, if HBase/Kafka/Hive services are not running in a secure cluster |
+| 3.2.0 | [SPARK-35783](https://issues.apache.org/jira/browse/SPARK-35783) | prose | Set the list of read columns in the task configuration to reduce reading of ORC data |
 | 3.2.0 | [SPARK-35844](https://issues.apache.org/jira/browse/SPARK-35844) | Improvement | Add hadoop-cloud profile to PUBLISH_PROFILES |
 | 3.2.0 | [SPARK-35990](https://issues.apache.org/jira/browse/SPARK-35990) | Improvement | Remove avro-sbt plugin dependency |
+| 3.2.0 | [SPARK-36128](https://issues.apache.org/jira/browse/SPARK-36128) | prose | Apply spark.sql.hive.metastorePartitionPruning for non-Hive tables that uses Hive metastore for partition management |
 | 3.2.0 | [SPARK-36269](https://issues.apache.org/jira/browse/SPARK-36269) | Improvement | Fix only set data columns to Hive column names config |
 | 3.2.0 | [SPARK-36482](https://issues.apache.org/jira/browse/SPARK-36482) | Improvement | Bump orc to 1.6.10 |
+| 3.2.0 | [SPARK-36726](https://issues.apache.org/jira/browse/SPARK-36726) | prose | Upgrade Apache Parquet used to version 1.12.1 |
+| 3.3.0 | [SPARK-27442](https://issues.apache.org/jira/browse/SPARK-27442) | prose | Remove check field name when reading/writing data in parquet |
+| 3.3.0 | [SPARK-30062](https://issues.apache.org/jira/browse/SPARK-30062) | prose | Add the IMMEDIATE statement to the DB2 dialect truncate implementation |
+| 3.3.0 | [SPARK-32709](https://issues.apache.org/jira/browse/SPARK-32709) | prose | Support writing Hive bucketed table (Parquet/ORC format with Hive hash) |
+| 3.3.0 | [SPARK-32712](https://issues.apache.org/jira/browse/SPARK-32712) | prose | Support writing Hive bucketed table (Hive file formats with Hive hash) |
+| 3.3.0 | [SPARK-34863](https://issues.apache.org/jira/browse/SPARK-34863) | prose | Support complex types for Parquet vectorized reader |
+| 3.3.0 | [SPARK-34960](https://issues.apache.org/jira/browse/SPARK-34960) | prose | Aggregate push down for ORC |
+| 3.3.0 | [SPARK-35437](https://issues.apache.org/jira/browse/SPARK-35437) | prose | Use expressions to filter Hive partitions at client side |
+| 3.3.0 | [SPARK-35561](https://issues.apache.org/jira/browse/SPARK-35561) | prose | Remove leading zeros from empty static number type partition |
+| 3.3.0 | [SPARK-35912](https://issues.apache.org/jira/browse/SPARK-35912) | prose | Add a legacy configuration for respecting nullability in DataFrame.schema.csv/json(ds) |
+| 3.3.0 | [SPARK-36163](https://issues.apache.org/jira/browse/SPARK-36163) | prose | Propagate correct JDBC properties in JDBC connector provider and add “connectionProvider” option |
+| 3.3.0 | [SPARK-36404](https://issues.apache.org/jira/browse/SPARK-36404) | prose | Support nested columns in ORC vectorized reader for data source V2 |
+| 3.3.0 | [SPARK-36536](https://issues.apache.org/jira/browse/SPARK-36536) | prose | Use CAST for datetime in CSV/JSON by default |
+| 3.3.0 | [SPARK-36645](https://issues.apache.org/jira/browse/SPARK-36645) | prose | Aggregate (Min/Max/Count) push down for Parquet |
+| 3.3.0 | [SPARK-36663](https://issues.apache.org/jira/browse/SPARK-36663) | prose | Support number-only column names in ORC data sources |
+| 3.3.0 | [SPARK-36876](https://issues.apache.org/jira/browse/SPARK-36876) | prose | Support Dynamic Partition pruning for HiveTableScanExec |
+| 3.3.0 | [SPARK-36879](https://issues.apache.org/jira/browse/SPARK-36879) | prose | Support Parquet V2 data page encoding (DELTA_BINARY_PACKED) for the vectorized path |
+| 3.3.0 | [SPARK-36913](https://issues.apache.org/jira/browse/SPARK-36913) | prose | Implement createIndex and IndexExists in DS V2 JDBC (MySQL dialect) |
+| 3.3.0 | [SPARK-36914](https://issues.apache.org/jira/browse/SPARK-36914) | prose | Implement dropIndex and listIndexes in JDBC (MySQL dialect) |
+| 3.3.0 | [SPARK-37286](https://issues.apache.org/jira/browse/SPARK-37286) | prose | Move compileAggregates from JDBCRDD to JdbcDialect |
+| 3.3.0 | [SPARK-37483](https://issues.apache.org/jira/browse/SPARK-37483) | prose | Support push down top N to JDBC data source V2 |
+| 3.3.0 | [SPARK-37705](https://issues.apache.org/jira/browse/SPARK-37705) | prose | Rebase timestamps in the session time zone saved in Parquet/Avro metadata |
+| 3.3.0 | [SPARK-37864](https://issues.apache.org/jira/browse/SPARK-37864) | prose | Support vectorized read boolean values use RLE encoding with Parquet DataPage V2 |
+| 3.3.0 | [SPARK-37867](https://issues.apache.org/jira/browse/SPARK-37867) | prose | Support aggregate functions of build-in JDBC dialect |
+| 3.3.0 | [SPARK-37965](https://issues.apache.org/jira/browse/SPARK-37965) | prose | Remove check field name when reading/writing existing data in ORC |
+| 3.3.0 | [SPARK-37974](https://issues.apache.org/jira/browse/SPARK-37974) | prose | Implement vectorized DELTA_BYTE_ARRAY and DELTA_LENGTH_BYTE_ARRAY encodings for Parquet V2 support |
+| 3.3.0 | [SPARK-38054](https://issues.apache.org/jira/browse/SPARK-38054) | prose | Supports list namespaces in JDBC V2 MySQL dialect |
+| 3.3.0 | [SPARK-38094](https://issues.apache.org/jira/browse/SPARK-38094) | prose | Enable matching schema column names by field ids |
+| 3.3.0 | [SPARK-38196](https://issues.apache.org/jira/browse/SPARK-38196) | prose | Reactor framework so as JDBC dialect could compile expression by itself |
+| 3.3.0 | [SPARK-38236](https://issues.apache.org/jira/browse/SPARK-38236) | prose | Treat table location as absolute when the first letter of its path is slash in create/alter table |
+| 3.3.0 | [SPARK-38361](https://issues.apache.org/jira/browse/SPARK-38361) | prose | Add factory method getConnection into JDBCDialect |
+| 3.3.0 | [SPARK-38432](https://issues.apache.org/jira/browse/SPARK-38432) | prose | Refactor framework so as JDBC dialect could compile filter by self way |
+| 3.3.0 | [SPARK-38437](https://issues.apache.org/jira/browse/SPARK-38437) | prose | Lenient serialization of datetime from datasource |
+| 3.3.0 | [SPARK-38633](https://issues.apache.org/jira/browse/SPARK-38633) | prose | Support push down Cast to JDBC data source V2 |
+| 3.3.0 | [SPARK-39193](https://issues.apache.org/jira/browse/SPARK-39193) | prose | Fasten Timestamp type inference of default format in JSON/CSV data source |
+| 3.3.1 | [SPARK-39951](https://issues.apache.org/jira/browse/SPARK-39951) | prose | Update Parquet V2 columnar check for nested fields |
+| 3.3.1 | [SPARK-40280](https://issues.apache.org/jira/browse/SPARK-40280) | prose | Add support for parquet push down for annotated int and long |
+| 3.3.2 | [SPARK-39951](https://issues.apache.org/jira/browse/SPARK-39951) | prose | Update Parquet V2 columnar check for nested fields |
+| 3.3.2 | [SPARK-40280](https://issues.apache.org/jira/browse/SPARK-40280) | prose | Add support for parquet push down for annotated int and long |
+| 3.4.0 | [SPARK-37259](https://issues.apache.org/jira/browse/SPARK-37259) | prose | Support CTE and temp table queries with MSSQL JDBC |
+| 3.4.0 | [SPARK-37980](https://issues.apache.org/jira/browse/SPARK-37980) | prose | Extend METADATA column to support row indexes for Parquet files |
+| 3.4.0 | [SPARK-39002](https://issues.apache.org/jira/browse/SPARK-39002) | prose | StringEndsWith/Contains support push down to Parquet so that we can leverage dictionary filter |
+| 3.4.0 | [SPARK-39086](https://issues.apache.org/jira/browse/SPARK-39086) | prose | Support UDT in Spark Parquet vectorized reader |
+| 3.4.0 | [SPARK-39469](https://issues.apache.org/jira/browse/SPARK-39469) | prose | Infer DATE type for CSV schema inference |
+| 3.4.0 | [SPARK-41096](https://issues.apache.org/jira/browse/SPARK-41096) | prose | Support reading parquet FIXED_LEN_BYTE_ARRAY type |
+| 3.4.0 | [SPARK-41589](https://issues.apache.org/jira/browse/SPARK-41589) | prose | Implement PyTorch Distributor |
+| 3.4.0 | [SPARK-42051](https://issues.apache.org/jira/browse/SPARK-42051) | prose | Codegen Support for HiveGenericUDF |
+| 3.5.0 | [SPARK-25050](https://issues.apache.org/jira/browse/SPARK-25050) | prose | Avro: writing complex unions |
+| 3.5.0 | [SPARK-39280](https://issues.apache.org/jira/browse/SPARK-39280) | prose | Speed up Timestamp type inference with user-provided format in JSON/CSV data source |
+| 3.5.0 | [SPARK-39281](https://issues.apache.org/jira/browse/SPARK-39281) | prose | Speed up Timestamp type inference with legacy format in JSON/CSV data source |
+| 3.5.0 | [SPARK-41516](https://issues.apache.org/jira/browse/SPARK-41516) | prose | Allow jdbc dialects to override the query used to create a table |
+| 3.5.0 | [SPARK-42051](https://issues.apache.org/jira/browse/SPARK-42051) | prose | Codegen Support for HiveGenericUDF |
+| 3.5.0 | [SPARK-42052](https://issues.apache.org/jira/browse/SPARK-42052) | prose | Codegen Support for HiveSimpleUDF |
+| 3.5.0 | [SPARK-42169](https://issues.apache.org/jira/browse/SPARK-42169) | prose | Implement code generation for to_csv function (StructsToCsv) |
+| 3.5.0 | [SPARK-42237](https://issues.apache.org/jira/browse/SPARK-42237) | prose | Change binary to unsupported dataType in CSV format |
+| 3.5.0 | [SPARK-42904](https://issues.apache.org/jira/browse/SPARK-42904) | prose | Char/Varchar Support for JDBC Catalog |
+| 3.5.0 | [SPARK-43119](https://issues.apache.org/jira/browse/SPARK-43119) | prose | Support Get SQL Keywords Dynamically Thru JDBC API and TVF |
+| 3.5.0 | [SPARK-43273](https://issues.apache.org/jira/browse/SPARK-43273) | prose | Support lz4raw compression codec for Parquet |
+| 3.5.0 | [SPARK-43333](https://issues.apache.org/jira/browse/SPARK-43333) | prose | Allow Avro to convert union type to SQL with field name stable with type |
+| 3.5.0 | [SPARK-43901](https://issues.apache.org/jira/browse/SPARK-43901) | prose | Avro to Support custom decimal type backed by Long |
 <!-- AUTO:timeline END -->

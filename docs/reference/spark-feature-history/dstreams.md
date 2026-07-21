@@ -18,6 +18,10 @@ Spark Streaming debuted as an alpha extension in 0.7.0, offering `map`/`filter`/
 
 Even as Structured Streaming emerged as Spark's new streaming API in 2.0.0, the older DStream API kept receiving updates: 2.0.0 added experimental support for the Kafka 0.10 consumer API (SPARK-12177), dynamic topic subscription without restarting the streaming context (SPARK-10320), and dynamic allocation for Kinesis streams (SPARK-7661). 2.2.0 extended Kinesis further with a builder-style configuration interface (SPARK-19911), cross-account reads via STS (SPARK-19405), and fixes to checkpoint recovery performance and deaggregation. Most of the remaining 2.x catalog entries here are maintenance — checkpoint-directory error handling, wildcard topic filters, `updateStateByKey` batch-time access — consistent with a mature API receiving upkeep while Structured Streaming absorbed new streaming investment.
 
+### 3.x era — legacy Kafka/Kinesis upkeep only
+
+The 3.x line treats DStreams purely as legacy maintenance: 3.0.0's handful of entries are a Kinesis client upgrade (SPARK-29677), a `FileInputDStream` listing-performance fix (SPARK-17159), and write-ahead-log robustness fixes for erasure-coded and missing parent directories (SPARK-25871, SPARK-26094). 3.2.0 contributes a single entry, an internal WAL commit-phase optimization for Structured Streaming rather than DStreams itself (SPARK-34383). No new DStream-facing feature appears anywhere in the 3.x catalog — by this point Structured Streaming was the only streaming API receiving active feature development, and DStreams simply kept running on inherited code.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
