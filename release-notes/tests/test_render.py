@@ -1,5 +1,8 @@
 import json
 from pathlib import Path
+
+import pytest
+
 from catalog.render import render_timeline, replace_auto_block, write_pages
 
 RECS = [
@@ -18,6 +21,13 @@ def test_replace_auto_block_preserves_prose():
     out = replace_auto_block(page, "NEW TABLE")
     assert "Intro prose." in out and "Outro." in out
     assert "OLD" not in out and "NEW TABLE" in out
+
+def test_replace_auto_block_raises_on_malformed_markers():
+    """START present without a matching END means the page is half-deleted/malformed;
+    replace_auto_block must raise rather than silently appending a duplicate block."""
+    page = "Intro prose.\n<!-- AUTO:timeline START -->\nOLD (no end marker here)\nOutro."
+    with pytest.raises(ValueError, match="malformed AUTO markers: START without END"):
+        replace_auto_block(page, "NEW TABLE")
 
 def test_write_pages_merges_prose_records(tmp_path):
     """Test that write_pages merges prose records from _prose.jsonl into timelines."""

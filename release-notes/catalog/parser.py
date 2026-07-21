@@ -46,7 +46,7 @@ class Item:
 
 
 _H2_RE = re.compile(r"<h2[^>]*>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
-_LI_RE = re.compile(r"<li>(.*?)</li>", re.IGNORECASE | re.DOTALL)
+_LI_RE = re.compile(r"<li\b[^>]*>(.*?)</li>", re.IGNORECASE | re.DOTALL)
 _ID_RE = re.compile(r"SPARK-\d+")
 _TAG_RE = re.compile(r"<[^>]+>")
 

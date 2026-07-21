@@ -33,6 +33,8 @@ def replace_auto_block(page_text: str, new_block: str) -> str:
     replacement = f"{START}\n{new_block}\n{END}"
     if pattern.search(page_text):
         return pattern.sub(lambda _: replacement, page_text)
+    if START in page_text:
+        raise ValueError("malformed AUTO markers: START without END")
     return page_text.rstrip() + "\n\n" + replacement + "\n"
 
 def _template(display: str) -> str:

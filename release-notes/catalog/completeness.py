@@ -1,7 +1,7 @@
 """Per-release no-loss invariant."""
 import re
 
-_LI_COUNT_RE = re.compile(r"<li>", re.IGNORECASE)
+_LI_COUNT_RE = re.compile(r"<li\b", re.IGNORECASE)
 
 def check_release(block_text: str, items) -> dict:
     total_li = len(_LI_COUNT_RE.findall(block_text))
