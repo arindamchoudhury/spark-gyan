@@ -14,6 +14,10 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 
 1.0.0 introduced `spark-submit`, a single tool for launching applications against any cluster manager — local, standalone, Mesos, or YARN — replacing manager-specific launch scripts. 1.2.0 added dynamic allocation, an elastic scaling mechanism letting a long-running ETL job give back idle executors and reclaim them later; it shipped first on YARN, with other cluster managers to follow. 1.4.0 extended Mesos with a cluster deploy mode (SPARK-6338) and Docker-based executor images (SPARK-2691), and added YARN support to the Spark EC2 launch scripts (SPARK-3674) — broadening deployment options beyond the standalone manager that had dominated the 0.x line.
 
+### 2.x era — Kubernetes joins Mesos, YARN, and standalone
+
+2.0.0 removed the Akka dependency so user applications could bring their own Akka version, dropped the requirement for a fat assembly jar in production deployments, and added multi-executor support to coarse-grained Mesos mode. The headline addition came in 2.3.0: an experimental Kubernetes scheduler backend (SPARK-18278), letting Spark submit jobs natively to a Kubernetes-managed cluster instead of requiring Mesos or YARN — though the release notes flagged that configuration, container images, and entrypoints should still be expected to change. 2.4.0 filled out that backend fast: PySpark and R bindings for Kubernetes (SPARK-23984, SPARK-24433), client-mode support (SPARK-23146), and the ability to mount Kubernetes volumes into executors (SPARK-23529).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -97,6 +101,9 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 1.6.3 | [SPARK-2424](https://issues.apache.org/jira/browse/SPARK-2424) | Improvement | ApplicationState.MAX_NUM_RETRY should be configurable |
 | 1.6.3 | [SPARK-16956](https://issues.apache.org/jira/browse/SPARK-16956) | New Feature | Make ApplicationState.MAX_NUM_RETRY configurable |
 | 1.6.3 | [SPARK-17316](https://issues.apache.org/jira/browse/SPARK-17316) | Improvement | Don't block StandaloneSchedulerBackend.executorRemoved |
+| 2.0.0 | — | prose | No longer requires fat assembly jar for production deployment |
+| 2.0.0 | — | prose | Akka dependency removed |
+| 2.0.0 | — | prose | Multiple Mesos executors supported in coarse-grained mode |
 | 2.0.0 | [SPARK-2930](https://issues.apache.org/jira/browse/SPARK-2930) | Improvement | clarify docs on using webhdfs with spark.yarn.access.namenodes |
 | 2.0.0 | [SPARK-4117](https://issues.apache.org/jira/browse/SPARK-4117) | Improvement | Spark on Yarn handle AM being told command from RM |
 | 2.0.0 | [SPARK-5095](https://issues.apache.org/jira/browse/SPARK-5095) | Improvement | Support launching multiple mesos executors in coarse grained mesos mode |
@@ -147,6 +154,11 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 2.2.0 | [SPARK-20085](https://issues.apache.org/jira/browse/SPARK-20085) | Improvement | Configurable mesos labels for executors |
 | 2.2.0 | [SPARK-20521](https://issues.apache.org/jira/browse/SPARK-20521) | Improvement | The default of 'spark.worker.cleanup.appDataTtl' should be 604800 in spark-standalone.md. |
 | 2.2.0 | [SPARK-20796](https://issues.apache.org/jira/browse/SPARK-20796) | Improvement | the location of start-master.sh in spark-standalone.md is wrong |
+| 2.3.0 | [SPARK-18278](https://issues.apache.org/jira/browse/SPARK-18278) | prose | Kubernetes scheduler backend (experimental) |
+| 2.4.0 | [SPARK-23146](https://issues.apache.org/jira/browse/SPARK-23146) | prose | Client mode support for Kubernetes cluster backend |
+| 2.4.0 | [SPARK-23529](https://issues.apache.org/jira/browse/SPARK-23529) | prose | Support for mounting Kubernetes volumes |
+| 2.4.0 | [SPARK-23984](https://issues.apache.org/jira/browse/SPARK-23984) | prose | PySpark bindings for Kubernetes |
+| 2.4.0 | [SPARK-24433](https://issues.apache.org/jira/browse/SPARK-24433) | prose | R bindings for Kubernetes |
 | 3.0.0 | [SPARK-20327](https://issues.apache.org/jira/browse/SPARK-20327) | Improvement | Add CLI support for YARN custom resources, like GPUs |
 | 3.0.0 | [SPARK-22404](https://issues.apache.org/jira/browse/SPARK-22404) | Improvement | Provide an option to use unmanaged AM in yarn-client mode |
 | 3.0.0 | [SPARK-23155](https://issues.apache.org/jira/browse/SPARK-23155) | Improvement | YARN-aggregated executor/driver logs appear unavailable when NM is down |

@@ -8,6 +8,10 @@
 
 The 1.x line spent less time on ANSI semantics and more on nailing down type precision and low-level representation. 1.5.0 settled `TimestampType` on microsecond precision (SPARK-8866), added `CalendarIntervalType` for time intervals (SPARK-8943), and overhauled expression type coercion, casting, and type checking (SPARK-8947). The same release taught the Tungsten unsafe row format to hold `ArrayType`, `MapType`, `StructType`, and `BinaryType` values directly, plus decimals wider than 18 digits (SPARK-9644). 1.6.0 added decimal support for `ceil`/`floor` (SPARK-11076), an orderable `ArrayType` (SPARK-11738), and `BigDecimal`/`Date`/`Timestamp` support in the new Encoder API (SPARK-12195) — groundwork for the strict typing later formalized as ANSI mode.
 
+### 2.x era — array coercion and session-local time semantics
+
+The 2.x line kept extending type coercion into composite types rather than touching ANSI mode directly. 2.0.0 taught `RowEncoder` to accept arrays as the external type for `ArrayType` (SPARK-15351) and JSON schema inference to treat floating-point numbers as `BigDecimal` (SPARK-12749). 2.1.0 added `BigDecimal` literal parsing and parsed scientific-notation decimals as `Decimal` rather than `Double` (SPARK-17246, SPARK-17258). 2.2.0 was the busiest release here: session-local timezone support (SPARK-18350) let each session control how timestamps were interpreted, general type coercion and implicit casts were extended to cover `ArrayType` (SPARK-18624, SPARK-19435), and `ArrayType` gained `to_json` support (SPARK-19849). SPARK-20463 (2.3.0) folded in broader ANSI SQL compliance and Hive-compatibility fixes.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -55,6 +59,7 @@ The 1.x line spent less time on ANSI semantics and more on nailing down type pre
 | 2.2.0 | [SPARK-19435](https://issues.apache.org/jira/browse/SPARK-19435) | Improvement | Type coercion between ArrayTypes |
 | 2.2.0 | [SPARK-19441](https://issues.apache.org/jira/browse/SPARK-19441) | Improvement | Remove IN type coercion from PromoteStrings |
 | 2.2.0 | [SPARK-19849](https://issues.apache.org/jira/browse/SPARK-19849) | Improvement | Support ArrayType in to_json function/expression |
+| 2.3.0 | [SPARK-20463](https://issues.apache.org/jira/browse/SPARK-20463) | prose | Improved ANSI SQL compliance and Hive compatibility |
 | 3.0.0 | [SPARK-20964](https://issues.apache.org/jira/browse/SPARK-20964) | Improvement | Make some keywords reserved along with the ANSI/SQL standard |
 | 3.0.0 | [SPARK-23836](https://issues.apache.org/jira/browse/SPARK-23836) | Improvement | Support returning StructType to the level support in GroupedMap Arrow's "scalar" UDFS (or similar) |
 | 3.0.0 | [SPARK-26163](https://issues.apache.org/jira/browse/SPARK-26163) | Improvement | Parsing decimals from JSON using locale |

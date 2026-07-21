@@ -14,6 +14,10 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 
 1.0.0 added support for Java 8's lambda syntax in the Java API, letting Java callers write concise anonymous functions instead of verbose `Function` implementations. The same release taught Spark to garbage-collect intermediate job state automatically once the RDDs referencing it fell out of scope, rather than requiring a manual `unpersist()` or accumulating stale state for the life of the `SparkContext`. 1.0.0 also added `SparkContext.wholeTextFiles`, letting small text files be read as individual (filename, content) records instead of being split line by line — useful for corpora made of many small documents.
 
+### 2.x era — off-heap memory and barrier execution bookend the line
+
+2.0.0 opened the era with a simpler, more performant accumulator API and off-heap memory management for both caching and runtime execution — moving data structures outside the JVM heap to reduce GC pressure. 2.2.0 fixed uncancellable tasks that could starve a job of resources (SPARK-18761) and ported the RDD API onto the same commit protocol used by DataFrame writes (SPARK-18191). The line closes with 2.4.0's Barrier Execution Mode (SPARK-24374), a scheduler addition that lets all tasks in a stage start together and communicate directly — built specifically so deep-learning frameworks like Horovod could run gang-scheduled distributed training jobs on top of RDDs.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -102,6 +106,8 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 | 1.6.0 | [SPARK-11799](https://issues.apache.org/jira/browse/SPARK-11799) | Improvement | Make it explicit in executor logs that uncaught exceptions are thrown during executor shutdown |
 | 1.6.3 | [SPARK-17485](https://issues.apache.org/jira/browse/SPARK-17485) | Improvement | Failed remote cached block reads can lead to whole job failure |
 | 1.6.3 | [SPARK-17649](https://issues.apache.org/jira/browse/SPARK-17649) | Improvement | Log how many Spark events got dropped in LiveListenerBus |
+| 2.0.0 | — | prose | Simpler, more performant accumulator API |
+| 2.0.0 | — | prose | Off-heap memory management for caching and execution |
 | 2.0.0 | [SPARK-7727](https://issues.apache.org/jira/browse/SPARK-7727) | Improvement | Avoid inner classes in RuleExecutor |
 | 2.0.0 | [SPARK-9819](https://issues.apache.org/jira/browse/SPARK-9819) | Improvement | reduceBy(KeyAnd)Window should specify which is the accumulator argument in invReduceFunc |
 | 2.0.0 | [SPARK-10001](https://issues.apache.org/jira/browse/SPARK-10001) | Improvement | Allow Ctrl-C in spark-shell to kill running job |
@@ -184,10 +190,12 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 | 2.2.0 | [SPARK-17724](https://issues.apache.org/jira/browse/SPARK-17724) | Improvement | Unevaluated new lines in tooltip in DAG Visualization of a job |
 | 2.2.0 | [SPARK-17769](https://issues.apache.org/jira/browse/SPARK-17769) | Improvement | Some FetchFailure refactoring in the DAGScheduler |
 | 2.2.0 | [SPARK-17931](https://issues.apache.org/jira/browse/SPARK-17931) | Improvement | taskScheduler has some unneeded serialization |
+| 2.2.0 | [SPARK-18191](https://issues.apache.org/jira/browse/SPARK-18191) | prose | RDD API ported to use commit protocol |
 | 2.2.0 | [SPARK-18268](https://issues.apache.org/jira/browse/SPARK-18268) | Improvement | ALS.run fail with UnsupportedOperationException if run on an empty ratings RDD |
 | 2.2.0 | [SPARK-18708](https://issues.apache.org/jira/browse/SPARK-18708) | Improvement | Improve documentation in SparkContext.scala file |
 | 2.2.0 | [SPARK-18740](https://issues.apache.org/jira/browse/SPARK-18740) | Improvement | Log spark.app.name in driver log |
 | 2.2.0 | [SPARK-18742](https://issues.apache.org/jira/browse/SPARK-18742) | Improvement | Clarify that user-defined BroadcastFactory is not supported |
+| 2.2.0 | [SPARK-18761](https://issues.apache.org/jira/browse/SPARK-18761) | prose | Fix for uncancellable/unkillable tasks starving job resources |
 | 2.2.0 | [SPARK-18975](https://issues.apache.org/jira/browse/SPARK-18975) | Improvement | Add an API to remove SparkListener from SparkContext |
 | 2.2.0 | [SPARK-18991](https://issues.apache.org/jira/browse/SPARK-18991) | Improvement | Change ContextCleaner.referenceBuffer to ConcurrentHashMap to make it faster |
 | 2.2.0 | [SPARK-19010](https://issues.apache.org/jira/browse/SPARK-19010) | Improvement | Include Kryo exception in case of overflow |
@@ -214,6 +222,7 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 | 2.2.0 | [SPARK-20410](https://issues.apache.org/jira/browse/SPARK-20410) | Improvement | Make SparkConf a def instead of a val in SharedSQLContext |
 | 2.2.0 | [SPARK-20955](https://issues.apache.org/jira/browse/SPARK-20955) | Improvement | A lot of duplicated "executorId" strings in "TaskUIData"s |
 | 2.2.0 | [SPARK-21060](https://issues.apache.org/jira/browse/SPARK-21060) | Improvement | Css style about paging function is error in the executor page. |
+| 2.4.0 | [SPARK-24374](https://issues.apache.org/jira/browse/SPARK-24374) | prose | Barrier Execution Mode in the scheduler |
 | 3.0.0 | [SPARK-13704](https://issues.apache.org/jira/browse/SPARK-13704) | Improvement | TaskSchedulerImpl.createTaskSetManager can be expensive, and result in lost executors due to blocked heartbeats |
 | 3.0.0 | [SPARK-16775](https://issues.apache.org/jira/browse/SPARK-16775) | Improvement | Remove deprecated accumulator v1 APIs |
 | 3.0.0 | [SPARK-18161](https://issues.apache.org/jira/browse/SPARK-18161) | Improvement | Default PickleSerializer pickle protocol doesn't handle > 4GB objects |

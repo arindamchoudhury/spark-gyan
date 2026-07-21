@@ -8,6 +8,10 @@
 
 1.4.0 substantially grew the expression library available to DataFrames and SQL: mathematical functions (SPARK-6829), window functions for ranking and analytics (SPARK-1442), and `rollup`/`cube` for multi-dimensional aggregation (SPARK-7320) all landed in the same release, turning Spark SQL from a basic query engine into one with real analytic-function support. 1.5.0 added `expr()`, letting a raw SQL expression string be used as a DataFrame column (SPARK-8668) — a small addition that bridged the DataFrame and SQL-string worlds and remains a common escape hatch when the typed column API lacks an operator you need.
 
+### 2.x era — higher-order functions cap a decade of expression growth
+
+2.0.0 filled out core SQL functions — `IFNULL`/`NULLIF`/`NVL`/`NVL2` (SPARK-14541), `CreateMap` (SPARK-14061), `assert_true`, and XPath UDFs (SPARK-16270) — while porting window functions fully into `SQLContext` (SPARK-12544). 2.2.0 let SELECT aliases be reused in GROUP BY and later expressions (SPARK-14471) and added `input_file_block_start`/`input_file_block_length` (SPARK-18702). 2.3.0 was a UDF-focused release end to end: general UDF enhancements (SPARK-19285), a more comprehensive built-in function library (SPARK-20746), and generated documentation for all of them (SPARK-21485). The era closes with 2.4.0's headline addition — higher-order functions like `transform`, `filter`, `exists`, and `aggregate`, plus 30-odd new built-ins for arrays and maps that avoid exploding them into rows first (SPARK-23899).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -93,10 +97,15 @@
 | 2.2.0 | [SPARK-18601](https://issues.apache.org/jira/browse/SPARK-18601) | Improvement | Simplify Create/Get complex expression pairs in optimizer |
 | 2.2.0 | [SPARK-18702](https://issues.apache.org/jira/browse/SPARK-18702) | New Feature | input_file_block_start and input_file_block_length function |
 | 2.2.0 | [SPARK-19127](https://issues.apache.org/jira/browse/SPARK-19127) | Improvement | Inconsistencies in dense_rank and rank documentation |
+| 2.2.0 | [SPARK-19518](https://issues.apache.org/jira/browse/SPARK-19518) | Improvement | IGNORE NULLS in first_value / last_value should be supported in SQL statements |
 | 2.2.0 | [SPARK-19850](https://issues.apache.org/jira/browse/SPARK-19850) | Improvement | Support aliased expressions in function parameters |
 | 2.2.0 | [SPARK-20303](https://issues.apache.org/jira/browse/SPARK-20303) | Improvement | Rename createTempFunction to registerFunction |
 | 2.2.0 | [SPARK-20350](https://issues.apache.org/jira/browse/SPARK-20350) | Improvement | Apply Complementation Laws during boolean expression simplification |
 | 2.2.0 | [SPARK-20409](https://issues.apache.org/jira/browse/SPARK-20409) | Improvement | fail early if aggregate function in GROUP BY |
+| 2.3.0 | [SPARK-19285](https://issues.apache.org/jira/browse/SPARK-19285) | prose | UDF enhancements |
+| 2.3.0 | [SPARK-20746](https://issues.apache.org/jira/browse/SPARK-20746) | prose | More comprehensive SQL built-in functions |
+| 2.3.0 | [SPARK-21485](https://issues.apache.org/jira/browse/SPARK-21485) | prose | Spark SQL documentation generation for built-in functions |
+| 2.4.0 | [SPARK-23899](https://issues.apache.org/jira/browse/SPARK-23899) | prose | Higher-order functions and 30+ built-in functions for complex data types |
 | 3.0.0 | [SPARK-12045](https://issues.apache.org/jira/browse/SPARK-12045) | Improvement | Use joda's DateTime to replace Calendar |
 | 3.0.0 | [SPARK-20636](https://issues.apache.org/jira/browse/SPARK-20636) | Improvement | Eliminate unnecessary shuffle with adjacent Window expressions |
 | 3.0.0 | [SPARK-23356](https://issues.apache.org/jira/browse/SPARK-23356) | Improvement | Pushes Project to both sides of Union when expression is non-deterministic |

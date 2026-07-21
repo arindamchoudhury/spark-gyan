@@ -4,13 +4,18 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 2.x era — Arrow lands as the PySpark/pandas bridge
+
+Arrow first appears in the changelog at 2.3.0, bundled at version 0.8.0 alongside a Netty upgrade to 4.1.17 — the same release that introduced scalar Pandas UDFs and faster `toPandas()`/`createDataFrame()` conversion elsewhere in PySpark. 2.4.0 bumped the bundled Arrow to 0.10.0 (SPARK-23874) and switched Pandas DataFrame conversion to the Arrow stream format for both creating Spark DataFrames from pandas and collecting them back (SPARK-23030), replacing a row-at-a-time Python serialization loop with Arrow's columnar wire format. These two releases mark Arrow's shift from an internal dependency bump to a user-facing performance feature that later PySpark and pandas-on-Spark work builds directly on top of.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 2.3.0 | — | prose | Arrow upgraded to 0.8.0 and Netty to 4.1.17 |
+| 2.4.0 | [SPARK-23030](https://issues.apache.org/jira/browse/SPARK-23030) | prose | Arrow stream format used for creating from/collecting Pandas DataFrames |
+| 2.4.0 | [SPARK-23874](https://issues.apache.org/jira/browse/SPARK-23874) | prose | Arrow upgraded to 0.10.0 in PySpark |
 | 3.0.0 | [SPARK-25811](https://issues.apache.org/jira/browse/SPARK-25811) | Improvement | Support PyArrow's feature to raise an error for unsafe cast |
 | 3.0.0 | [SPARK-26759](https://issues.apache.org/jira/browse/SPARK-26759) | Umbrella | Arrow optimization in SparkR's interoperability |
 | 3.0.0 | [SPARK-27276](https://issues.apache.org/jira/browse/SPARK-27276) | Improvement | Increase the minimum pyarrow version to 0.12.1 |

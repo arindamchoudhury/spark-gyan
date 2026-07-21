@@ -12,6 +12,10 @@ Security features were minimal in the 0.x line, appearing only as deployment-mod
 
 1.0.0 integrated Spark with the Hadoop/YARN security model for secured clusters, authenticating job submission, transferring HDFS credentials securely, and authenticating inter-component communication — the first Spark-native security work, rather than purely OS-level isolation. 1.1.0 added support for tight firewall rules across all the network ports Spark uses, and 1.2.1 locked down file permissions on temporary file storage. 1.3.0 added SSL encryption for some communication endpoints, and 1.4.0 extended security to long-running YARN applications (SPARK-5342) — a gap that mattered increasingly as Spark moved from short batch jobs to long-lived streaming and shared clusters.
 
+### 2.x era — AES encryption and delegation-token hardening
+
+Security work in the 2.x line focused on secure-cluster plumbing rather than new access-control models. 2.0.0 added support for group-based ACLs (SPARK-4224). 2.1.0 improved delegation-token handling on secure clusters (SPARK-14743) and decoupled I/O encryption key propagation from `UserGroupInformation` (SPARK-18547). 2.2.0 was the busiest release: an AES-based authentication mechanism for Spark's own RPC (SPARK-19139), AES support for over-the-wire encryption (SPARK-13331), a configurable additional SSL port on the History Server (SPARK-17874), and generalizing `HDFSCredentialProvider` so non-HDFS secure filesystems could plug into the same credential machinery (SPARK-19021). Nearly every 2.x entry here is an `Improvement` rather than a `New Feature` — this is hardening work on an existing security model, not a new one.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->

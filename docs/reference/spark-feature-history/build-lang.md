@@ -14,6 +14,10 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 
 1.2.0 added Scala 2.11 support alongside the existing 2.10 build, and 1.3.0 shaded Spark's Jetty dependency to stop it colliding with user programs' own Jetty versions. Through 1.5.0-1.6.0 the build matured: Maven moved to 3.3.3 with a `--force` flag for `build/mvn` to always use the downloaded version, `dev/change-scala-version.sh` gained guidance on accepted versions, and the default point release settled on Scala 2.10.5 (SPARK-11491) ahead of 2.11 becoming default later. Dependencies were tightened too, with repeated Tachyon client bumps (0.7.0 through 0.8.2) and Snappy upgraded to 1.1.2 for faster compression.
 
+### 2.x era — Scala 2.11 default, then the 2.12 transition begins
+
+2.0.0 switched Spark's default build to Scala 2.11 (SPARK-6363), retiring 2.10 as the primary target and triggering cleanup — removing 2.10-specific build references (SPARK-13189), upgrading to Scala 2.11.8 (SPARK-13825), and bumping Kryo to 3.0. 2.1.0-2.2.0 were mostly dependency and tooling maintenance: Py4J upgrades, Netty version bumps, and sbt/Maven plugin updates. The next language shift arrived late in the line: 2.4.0 added experimental Scala 2.12 support (SPARK-14220), letting Spark be built and written against 2.12 for the first time, and 2.4.1 promoted that support to general availability, explicitly flagging that Scala 2.11 support would be dropped in Spark 3.0.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -63,6 +67,8 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 | 1.6.0 | [SPARK-11491](https://issues.apache.org/jira/browse/SPARK-11491) | Improvement | Use Scala 2.10.5 |
 | 1.6.0 | [SPARK-12065](https://issues.apache.org/jira/browse/SPARK-12065) | Improvement | Upgrade Tachyon dependency to 0.8.2 |
 | 1.6.3 | [SPARK-17378](https://issues.apache.org/jira/browse/SPARK-17378) | Improvement | Upgrade snappy-java to 1.1.2.6 |
+| 2.0.0 | — | prose | Kryo bumped to 3.0 |
+| 2.0.0 | — | prose | Default build uses Scala 2.11 instead of 2.10 |
 | 2.0.0 | [SPARK-6363](https://issues.apache.org/jira/browse/SPARK-6363) | Improvement | Switch to Scala 2.11 for default build |
 | 2.0.0 | [SPARK-10359](https://issues.apache.org/jira/browse/SPARK-10359) | New Feature | Enumerate Spark's dependencies in a file and diff against it for new pull requests |
 | 2.0.0 | [SPARK-12269](https://issues.apache.org/jira/browse/SPARK-12269) | Improvement | Update aws-java-sdk version |
@@ -119,6 +125,8 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 | 2.2.0 | [SPARK-20064](https://issues.apache.org/jira/browse/SPARK-20064) | Improvement | Bump the PySpark verison number to 2.2 |
 | 2.2.0 | [SPARK-20449](https://issues.apache.org/jira/browse/SPARK-20449) | Improvement | Upgrade breeze version to 0.13.1 |
 | 2.2.0 | [SPARK-20759](https://issues.apache.org/jira/browse/SPARK-20759) | Improvement | SCALA_VERSION in _config.yml,LICENSE and Dockerfile should be consistent with pom.xml |
+| 2.4.0 | [SPARK-14220](https://issues.apache.org/jira/browse/SPARK-14220) | prose | Experimental Scala 2.12 support |
+| 2.4.1 | — | prose | Scala 2.12 support reaches General Availability |
 | 3.0.0 | [SPARK-17875](https://issues.apache.org/jira/browse/SPARK-17875) | Improvement | Remove unneeded direct dependence on Netty 3.x |
 | 3.0.0 | [SPARK-23153](https://issues.apache.org/jira/browse/SPARK-23153) | Improvement | Support application dependencies in submission client's local file system |
 | 3.0.0 | [SPARK-24920](https://issues.apache.org/jira/browse/SPARK-24920) | Improvement | Spark should allow sharing netty's memory pools across all uses |
@@ -185,6 +193,7 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 | 3.0.0 | [SPARK-29483](https://issues.apache.org/jira/browse/SPARK-29483) | Improvement | Bump Jackson to 2.10.0 |
 | 3.0.0 | [SPARK-29646](https://issues.apache.org/jira/browse/SPARK-29646) | Improvement | Allow pyspark version name format `${versionNumber}-preview` in release script |
 | 3.0.0 | [SPARK-29729](https://issues.apache.org/jira/browse/SPARK-29729) | Improvement | Upgrade ASM to 7.2 |
+| 3.0.0 | [SPARK-29739](https://issues.apache.org/jira/browse/SPARK-29739) | Improvement | Use `java` instead of `cc` in test_pipe_functions |
 | 3.0.0 | [SPARK-29747](https://issues.apache.org/jira/browse/SPARK-29747) | Improvement | Upgrade Joda-Time library from 2.9.3 to 2.10.5 |
 | 3.0.0 | [SPARK-30142](https://issues.apache.org/jira/browse/SPARK-30142) | Improvement | Upgrade Maven to 3.6.3 |
 | 3.0.0 | [SPARK-30156](https://issues.apache.org/jira/browse/SPARK-30156) | Improvement | Upgrade Jersey from 2.29 to 2.29.1 |

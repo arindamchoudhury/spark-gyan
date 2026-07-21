@@ -4,28 +4,37 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 2.x era — Structured Streaming is born
+
+Structured Streaming did not exist before 2.0.0: it shipped as an experimental high-level streaming API built on Spark SQL and Catalyst (SPARK-8360), letting streaming sources and sinks be programmed against with the same DataFrame/Dataset code as static data, with query plans incrementalized automatically. 2.1.0 added Kafka 0.10 support (SPARK-17346), event-time watermarking (SPARK-18124), and runtime metrics (SPARK-17731). 2.2.0 added `mapGroupsWithState` for arbitrary stateful operations (SPARK-19067), watermark-aware `dropDuplicates` (SPARK-19497), a Kafka sink, and General Availability — the experimental label came off (SPARK-20844). 2.3.0 added the Continuous Processing execution engine for sub-millisecond latency, stream-stream joins, and an experimental Streaming API V2 for pluggable sources/sinks spanning batch, micro-batch, and continuous execution. 2.4.0 added `foreachBatch` for exposing each micro-batch as a DataFrame (SPARK-24565) and a Python API for `foreach`/`ForeachWriter` (SPARK-24396).
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 2.0.0 | — | prose | Structured Streaming initial experimental release |
 | 2.0.0 | [SPARK-14214](https://issues.apache.org/jira/browse/SPARK-14214) | Improvement | Update State Store to give a more get/put hashmap-style interface |
 | 2.0.0 | [SPARK-16031](https://issues.apache.org/jira/browse/SPARK-16031) | New Feature | Add debug-only socket source in Structured Streaming |
 | 2.0.0 | [SPARK-16061](https://issues.apache.org/jira/browse/SPARK-16061) | Improvement | The property "spark.streaming.stateStore.maintenanceInterval" should be renamed to "spark.sql.streaming.stateStore.maintenanceInterval" |
 | 2.0.1 | [SPARK-17640](https://issues.apache.org/jira/browse/SPARK-17640) | Improvement | Avoid using -1 as the default batchId for FileStreamSource.FileEntry |
+| 2.0.2 | — | prose | Structured Streaming gains Kafka 0.10 support |
+| 2.0.2 | — | prose | Structured Streaming gains runtime metrics |
 | 2.0.2 | [SPARK-17780](https://issues.apache.org/jira/browse/SPARK-17780) | Improvement | Report NoClassDefFoundError in StreamExecution |
 | 2.0.2 | [SPARK-18044](https://issues.apache.org/jira/browse/SPARK-18044) | Improvement | FileStreamSource should not infer partitions in every batch |
 | 2.1.0 | [SPARK-8360](https://issues.apache.org/jira/browse/SPARK-8360) | Umbrella | Structured Streaming (aka Streaming DataFrames) |
 | 2.1.0 | [SPARK-15406](https://issues.apache.org/jira/browse/SPARK-15406) | New Feature | Structured streaming support for consuming from Kafka |
 | 2.1.0 | [SPARK-15472](https://issues.apache.org/jira/browse/SPARK-15472) | New Feature | Add support for writing partitioned `csv`, `json`, `text` formats in Structured Streaming |
 | 2.1.0 | [SPARK-16411](https://issues.apache.org/jira/browse/SPARK-16411) | Improvement | Add textFile API to structured streaming. |
+| 2.1.0 | [SPARK-17267](https://issues.apache.org/jira/browse/SPARK-17267) | prose | Long-running Structured Streaming query requirements addressed |
+| 2.1.0 | [SPARK-17346](https://issues.apache.org/jira/browse/SPARK-17346) | prose | Kafka 0.10 support in Structured Streaming |
 | 2.1.0 | [SPARK-17510](https://issues.apache.org/jira/browse/SPARK-17510) | Improvement | Set Streaming MaxRate Independently For Multiple Streams |
 | 2.1.0 | [SPARK-17640](https://issues.apache.org/jira/browse/SPARK-17640) | Improvement | Avoid using -1 as the default batchId for FileStreamSource.FileEntry |
+| 2.1.0 | [SPARK-17731](https://issues.apache.org/jira/browse/SPARK-17731) | prose | Metrics for Structured Streaming |
 | 2.1.0 | [SPARK-17780](https://issues.apache.org/jira/browse/SPARK-17780) | Improvement | Report NoClassDefFoundError in StreamExecution |
 | 2.1.0 | [SPARK-18044](https://issues.apache.org/jira/browse/SPARK-18044) | Improvement | FileStreamSource should not infer partitions in every batch |
 | 2.1.0 | [SPARK-18124](https://issues.apache.org/jira/browse/SPARK-18124) | New Feature | Observed delay based event time watermarks |
+| 2.1.0 | [SPARK-18192](https://issues.apache.org/jira/browse/SPARK-18192) | prose | All file formats supported in Structured Streaming |
 | 2.1.0 | [SPARK-18493](https://issues.apache.org/jira/browse/SPARK-18493) | Improvement | Add withWatermark and checkpoint to python dataframe |
 | 2.1.0 | [SPARK-18498](https://issues.apache.org/jira/browse/SPARK-18498) | Improvement | Clean up HDFSMetadataLog API for better testing |
 | 2.1.0 | [SPARK-18513](https://issues.apache.org/jira/browse/SPARK-18513) | Improvement | Record and recover watermark |
@@ -46,6 +55,20 @@ _TODO: connective prose added during the era passes._
 | 2.2.0 | [SPARK-19497](https://issues.apache.org/jira/browse/SPARK-19497) | New Feature | dropDuplicates with watermark |
 | 2.2.0 | [SPARK-19599](https://issues.apache.org/jira/browse/SPARK-19599) | Improvement | Clean up HDFSMetadataLog |
 | 2.2.0 | [SPARK-19719](https://issues.apache.org/jira/browse/SPARK-19719) | New Feature | Structured Streaming write to Kafka |
+| 2.2.0 | [SPARK-19968](https://issues.apache.org/jira/browse/SPARK-19968) | prose | Cached Kafka producer lowers Kafka-to-Kafka streaming latency |
+| 2.2.0 | [SPARK-20844](https://issues.apache.org/jira/browse/SPARK-20844) | prose | Structured Streaming APIs reach General Availability |
+| 2.3.0 | — | prose | Continuous Processing execution engine (sub-millisecond latency) |
+| 2.3.0 | — | prose | Stream-stream joins |
+| 2.3.0 | — | prose | Streaming API V2 (experimental) |
+| 2.3.0 | — | prose | ML Prediction now works with Structured Streaming |
+| 2.4.0 | [SPARK-18057](https://issues.apache.org/jira/browse/SPARK-18057) | prose | Kafka client upgraded from 0.10.0.1 to 2.0.0 |
+| 2.4.0 | [SPARK-24156](https://issues.apache.org/jira/browse/SPARK-24156) | prose | Faster output generation/state cleanup for stateful ops with no input data |
+| 2.4.0 | [SPARK-24396](https://issues.apache.org/jira/browse/SPARK-24396) | prose | Python API for foreach and ForeachWriter |
+| 2.4.0 | [SPARK-24565](https://issues.apache.org/jira/browse/SPARK-24565) | prose | foreachBatch exposes microbatch output rows as a DataFrame |
+| 2.4.0 | [SPARK-24662](https://issues.apache.org/jira/browse/SPARK-24662) | prose | LIMIT operator support for streams in Append or Complete mode |
+| 2.4.0 | [SPARK-24730](https://issues.apache.org/jira/browse/SPARK-24730) | prose | Choose min or max watermark across multiple input streams |
+| 2.4.0 | [SPARK-24763](https://issues.apache.org/jira/browse/SPARK-24763) | prose | Remove redundant key data from value in streaming aggregation |
+| 2.4.0 | [SPARK-25005](https://issues.apache.org/jira/browse/SPARK-25005) | prose | kafka.isolation.level to read only committed records |
 | 3.0.0 | [SPARK-20568](https://issues.apache.org/jira/browse/SPARK-20568) | New Feature | Delete files after processing in structured streaming |
 | 3.0.0 | [SPARK-23539](https://issues.apache.org/jira/browse/SPARK-23539) | New Feature | Add support for Kafka headers in Structured Streaming |
 | 3.0.0 | [SPARK-26121](https://issues.apache.org/jira/browse/SPARK-26121) | Improvement | [Structured Streaming] Allow users to define prefix of Kafka's consumer group (group.id) |

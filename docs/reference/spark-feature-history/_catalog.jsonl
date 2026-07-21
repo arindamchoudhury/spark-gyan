@@ -1602,7 +1602,7 @@
 {"spark_id": "SPARK-29723", "release": "3.0.0", "area": "misc", "type": "Improvement", "title": "Get date and time parts of an interval as java classes"}
 {"spark_id": "SPARK-29729", "release": "3.0.0", "area": "build-lang", "type": "Improvement", "title": "Upgrade ASM to 7.2"}
 {"spark_id": "SPARK-29731", "release": "3.0.0", "area": "web-ui", "type": "Improvement", "title": "Use public JIRA REST API to read-only access"}
-{"spark_id": "SPARK-29739", "release": "3.0.0", "area": "geospatial", "type": "Improvement", "title": "Use `java` instead of `cc` in test_pipe_functions"}
+{"spark_id": "SPARK-29739", "release": "3.0.0", "area": "build-lang", "type": "Improvement", "title": "Use `java` instead of `cc` in test_pipe_functions"}
 {"spark_id": "SPARK-29746", "release": "3.0.0", "area": "sql-catalyst", "type": "Improvement", "title": "implement validateInputType in Normalizer"}
 {"spark_id": "SPARK-29747", "release": "3.0.0", "area": "build-lang", "type": "Improvement", "title": "Upgrade Joda-Time library from 2.9.3 to 2.10.5"}
 {"spark_id": "SPARK-29751", "release": "3.0.0", "area": "mllib", "type": "Improvement", "title": "Scalers use Summarizer instead of MultivariateOnlineSummarizer"}
@@ -2184,7 +2184,7 @@
 {"spark_id": "SPARK-19501", "release": "2.2.0", "area": "deploy", "type": "Improvement", "title": "Slow checking if there are many spark.yarn.jars, which are already on HDFS"}
 {"spark_id": "SPARK-19508", "release": "2.2.0", "area": "misc", "type": "Improvement", "title": "Improve error message when binding service fails"}
 {"spark_id": "SPARK-19516", "release": "2.2.0", "area": "core-rdd", "type": "Improvement", "title": "update public doc to use SparkSession instead of SparkContext"}
-{"spark_id": "SPARK-19518", "release": "2.2.0", "area": "geospatial", "type": "Improvement", "title": "IGNORE NULLS in first_value / last_value should be supported in SQL statements"}
+{"spark_id": "SPARK-19518", "release": "2.2.0", "area": "builtin-functions", "type": "Improvement", "title": "IGNORE NULLS in first_value / last_value should be supported in SQL statements"}
 {"spark_id": "SPARK-19525", "release": "2.2.0", "area": "core-rdd", "type": "Improvement", "title": "Enable Compression of RDD Checkpoints"}
 {"spark_id": "SPARK-19537", "release": "2.2.0", "area": "shuffle-storage", "type": "Improvement", "title": "Move the pendingPartitions variable from Stage to ShuffleMapStage"}
 {"spark_id": "SPARK-19540", "release": "2.2.0", "area": "core-rdd", "type": "Improvement", "title": "Add ability to clone SparkSession with an identical copy of the SessionState"}

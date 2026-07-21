@@ -8,6 +8,10 @@
 
 1.4.0 was the first release to package SparkR at all, an R binding built on the new DataFrame API rather than raw RDDs — R users got a `data.frame`-like interface backed by Spark's distributed execution from day one. 1.4.1 quickly followed with support for initializing SparkR with Spark packages (SPARK-8506) and user-defined schemas when reading from data sources (SPARK-8085). 1.5.0 focused on usability: clearer R-facing error messages (SPARK-8742) and aliases that made DataFrame functions read more idiomatically to R users (SPARK-9315). 1.6.0 extended SparkR into modeling, adding R-like summary statistics for generalized linear models (SPARK-9836) and feature interaction terms in the R formula interface (SPARK-9681).
 
+### 2.x era — UDFs, structured streaming, and array functions for R
+
+2.0.0 was transformative for SparkR: three new user-defined-function forms (`dapply`, `gapply`, `lapply`) for partition-based UDFs and hyperparameter tuning, save/load support for all ML models, broader GLM family/link support, and DataFrame functionality (window functions, JDBC/CSV readers, `SparkSession`) reaching parity with Scala/Python. 2.2.0 added a Structured Streaming API for R (SPARK-19654) and completed Catalog API coverage (SPARK-20159). 2.3.0 extended that streaming API with `withWatermark`, triggers, `partitionBy`, and stream-stream joins (SPARK-22933), plus DDL-formatted UDF schemas (SPARK-21266). 2.4.0 was largely array-function catch-up — `array_intersect`, `array_join`, `array_sort`, `flatten`, `map_entries`, and a dozen more — bringing R's function surface in line with the array/map functions Scala and Python had gained via higher-order functions.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -47,6 +51,10 @@
 | 1.6.0 | [SPARK-12034](https://issues.apache.org/jira/browse/SPARK-12034) | Improvement | Eliminate warnings in SparkR test cases |
 | 1.6.0 | [SPARK-12144](https://issues.apache.org/jira/browse/SPARK-12144) | New Feature | Support more external data source API in SparkR |
 | 1.6.0 | [SPARK-12364](https://issues.apache.org/jira/browse/SPARK-12364) | Improvement | Add ML example for SparkR |
+| 2.0.0 | — | prose | SparkR UDFs: dapply, gapply, lapply |
+| 2.0.0 | — | prose | SparkR GLMs support more families and link functions |
+| 2.0.0 | — | prose | Save/load support for all SparkR ML models |
+| 2.0.0 | — | prose | More SparkR DataFrame functionality: window functions, JDBC/CSV, SparkSession |
 | 2.0.0 | [SPARK-7264](https://issues.apache.org/jira/browse/SPARK-7264) | New Feature | SparkR API for parallel functions |
 | 2.0.0 | [SPARK-11395](https://issues.apache.org/jira/browse/SPARK-11395) | New Feature | Support over and window specification in SparkR |
 | 2.0.0 | [SPARK-11774](https://issues.apache.org/jira/browse/SPARK-11774) | New Feature | Implement "struct", "encode","decode" in SparkR |
@@ -113,12 +121,33 @@
 | 2.2.0 | [SPARK-18903](https://issues.apache.org/jira/browse/SPARK-18903) | Improvement | uiWebUrl is not accessible to SparkR |
 | 2.2.0 | [SPARK-19282](https://issues.apache.org/jira/browse/SPARK-19282) | Improvement | RandomForestRegressionModel should expose getMaxDepth in R |
 | 2.2.0 | [SPARK-19391](https://issues.apache.org/jira/browse/SPARK-19391) | Improvement | Tweedie GLM API in SparkR |
+| 2.2.0 | [SPARK-19399](https://issues.apache.org/jira/browse/SPARK-19399) | prose | Coalesce on DataFrame and coalesce on column in SparkR |
 | 2.2.0 | [SPARK-19456](https://issues.apache.org/jira/browse/SPARK-19456) | New Feature | Add LinearSVC R API |
 | 2.2.0 | [SPARK-19572](https://issues.apache.org/jira/browse/SPARK-19572) | Improvement | Allow to disable hive in sparkR shell |
 | 2.2.0 | [SPARK-19616](https://issues.apache.org/jira/browse/SPARK-19616) | Improvement | weightCol and aggregationDepth should be improved for some SparkR APIs |
+| 2.2.0 | [SPARK-19654](https://issues.apache.org/jira/browse/SPARK-19654) | prose | Structured Streaming API for R |
 | 2.2.0 | [SPARK-19669](https://issues.apache.org/jira/browse/SPARK-19669) | New Feature | Open up visibility for sharedState, sessionState, and a few other functions |
+| 2.2.0 | [SPARK-19795](https://issues.apache.org/jira/browse/SPARK-19795) | prose | SparkR column functions to_json/from_json |
+| 2.2.0 | [SPARK-20020](https://issues.apache.org/jira/browse/SPARK-20020) | prose | SparkR DataFrame checkpointing support |
 | 2.2.0 | [SPARK-20092](https://issues.apache.org/jira/browse/SPARK-20092) | Improvement | Trigger AppVeyor R tests for changes in Scala code related with R API |
+| 2.2.0 | [SPARK-20159](https://issues.apache.org/jira/browse/SPARK-20159) | prose | Complete Catalog API support in R |
 | 2.2.0 | [SPARK-20360](https://issues.apache.org/jira/browse/SPARK-20360) | Improvement | Create repr functions for interpreters to use |
+| 2.3.0 | [SPARK-15767](https://issues.apache.org/jira/browse/SPARK-15767) | prose | Several new SparkML API wrappers in SparkR |
+| 2.3.0 | [SPARK-20726](https://issues.apache.org/jira/browse/SPARK-20726) | prose | Several new DataFrame API wrappers in SparkR |
+| 2.3.0 | [SPARK-21266](https://issues.apache.org/jira/browse/SPARK-21266) | prose | SparkR UDF with DDL-formatted schema support |
+| 2.3.0 | [SPARK-22933](https://issues.apache.org/jira/browse/SPARK-22933) | prose | Structured Streaming APIs for R: withWatermark, trigger, partitionBy, stream-stream joins |
+| 2.4.0 | [SPARK-23770](https://issues.apache.org/jira/browse/SPARK-23770) | prose | repartitionByRange API added in SparkR |
+| 2.4.0 | [SPARK-24054](https://issues.apache.org/jira/browse/SPARK-24054) | prose | array_position / element_at functions added to SparkR |
+| 2.4.0 | [SPARK-24069](https://issues.apache.org/jira/browse/SPARK-24069) | prose | array_min / array_max functions added to SparkR |
+| 2.4.0 | [SPARK-24185](https://issues.apache.org/jira/browse/SPARK-24185) | prose | flatten function added to SparkR |
+| 2.4.0 | [SPARK-24187](https://issues.apache.org/jira/browse/SPARK-24187) | prose | array_join function added to SparkR |
+| 2.4.0 | [SPARK-24197](https://issues.apache.org/jira/browse/SPARK-24197) | prose | array_sort function added to SparkR |
+| 2.4.0 | [SPARK-24198](https://issues.apache.org/jira/browse/SPARK-24198) | prose | slice function added to SparkR |
+| 2.4.0 | [SPARK-24331](https://issues.apache.org/jira/browse/SPARK-24331) | prose | arrays_overlap, array_repeat, map_entries added to SparkR |
+| 2.4.0 | [SPARK-24537](https://issues.apache.org/jira/browse/SPARK-24537) | prose | array_remove/array_zip/map_from_arrays/array_distinct added to SparkR |
+| 2.4.0 | [SPARK-25007](https://issues.apache.org/jira/browse/SPARK-25007) | prose | array_intersect/array_except/array_union/shuffle added to SparkR |
+| 2.4.0 | [SPARK-25117](https://issues.apache.org/jira/browse/SPARK-25117) | prose | EXCEPT ALL and INTERSECT ALL support added in R |
+| 2.4.0 | [SPARK-25234](https://issues.apache.org/jira/browse/SPARK-25234) | prose | Avoid integer overflow in SparkR parallelize |
 | 3.0.0 | [SPARK-21291](https://issues.apache.org/jira/browse/SPARK-21291) | Improvement | R partitionBy API |
 | 3.0.0 | [SPARK-26107](https://issues.apache.org/jira/browse/SPARK-26107) | Improvement | Extend ReplaceNullWithFalseInPredicate to support higher-order functions: ArrayExists, ArrayFilter, MapFilter |
 | 3.0.0 | [SPARK-26180](https://issues.apache.org/jira/browse/SPARK-26180) | Improvement | Add a withCreateTempDir function to the SparkCore test case |

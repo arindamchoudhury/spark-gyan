@@ -8,6 +8,10 @@
 
 The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added JSON dataset support (SPARK-2060) and improved Parquet reading/writing, including nested records and arrays (SPARK-1293); 1.1.0 layered in automatic JSON schema inference and a public types API for building `SchemaRDD`s from custom sources. 1.2.0 introduced the external data sources API, letting Parquet and JSON be rewritten against it and mounted as temporary tables with predicate pushdown. 1.3.0 added a JDBC data source for MySQL/Postgres and Parquet schema merging, and 1.4.0 brought ORCFile support (SPARK-2883). 1.5.0 was Parquet-heavy — upgrade to Parquet 1.7, predicate pushdown on by default, faster metadata discovery, Hive 1.2 metastore support — with 1.6.0 further speeding up Parquet scans on flat schemas (SPARK-11787).
 
+### 2.x era — vectorized readers and built-in Avro/image sources
+
+2.0.0 brought CSV in-house from Databricks' spark-csv package (SPARK-12420) and made the vectorized, columnar Parquet reader the default (SPARK-13518). 2.2.0 added multi-line CSV parsing (SPARK-19610). 2.3.0 extended vectorization to ORC, improving scan throughput 2-5x (SPARK-16060), and introduced a built-in image data source for reading images straight into a DataFrame (SPARK-21866). 2.4.0 was the connectors release: Avro became a built-in data source with logical-type support (SPARK-24768), the native ORC reader was switched on by default including for Hive serde tables (SPARK-23456, SPARK-22279), ORC filter pushdown was enabled by default (SPARK-21783), Parquet was upgraded to 1.10.0 with better predicate pushdown (SPARK-23972, SPARK-25419), and `count()` over JSON/CSV got a dedicated speedup (SPARK-24959).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -92,6 +96,9 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 1.6.0 | [SPARK-11881](https://issues.apache.org/jira/browse/SPARK-11881) | Improvement | [SQL] JDBC Postgres fetchsize parameter ignored |
 | 1.6.0 | [SPARK-12103](https://issues.apache.org/jira/browse/SPARK-12103) | Improvement | Clarify documentation of KafkaUtils createStream with multiple topics |
 | 1.6.0 | [SPARK-12166](https://issues.apache.org/jira/browse/SPARK-12166) | Improvement | Unset hadoop related environment in testing |
+| 2.0.0 | — | prose | Native CSV data source (from Databricks spark-csv) |
+| 2.0.0 | — | prose | Improved Parquet scan throughput via vectorization |
+| 2.0.0 | — | prose | Improved ORC performance |
 | 2.0.0 | [SPARK-5292](https://issues.apache.org/jira/browse/SPARK-5292) | New Feature | optimize join for table that are already sharded/support for hive bucket |
 | 2.0.0 | [SPARK-5718](https://issues.apache.org/jira/browse/SPARK-5718) | Improvement | Add native offset management for ReliableKafkaReceiver |
 | 2.0.0 | [SPARK-6482](https://issues.apache.org/jira/browse/SPARK-6482) | Improvement | Remove synchronization of Hive Native commands |
@@ -246,6 +253,7 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 2.2.0 | [SPARK-19448](https://issues.apache.org/jira/browse/SPARK-19448) | Improvement | unify some duplication function in MetaStoreRelation |
 | 2.2.0 | [SPARK-19464](https://issues.apache.org/jira/browse/SPARK-19464) | Improvement | Remove support for Hadoop 2.5 and earlier |
 | 2.2.0 | [SPARK-19570](https://issues.apache.org/jira/browse/SPARK-19570) | Improvement | Allow to disable hive in pyspark shell |
+| 2.2.0 | [SPARK-19610](https://issues.apache.org/jira/browse/SPARK-19610) | prose | Support for parsing multi-line CSV files |
 | 2.2.0 | [SPARK-19660](https://issues.apache.org/jira/browse/SPARK-19660) | Improvement | Replace the configuration property names that are deprecated in the version of Hadoop 2.6 |
 | 2.2.0 | [SPARK-19664](https://issues.apache.org/jira/browse/SPARK-19664) | Improvement | put 'hive.metastore.warehouse.dir' in hadoopConf place |
 | 2.2.0 | [SPARK-19678](https://issues.apache.org/jira/browse/SPARK-19678) | Improvement | remove MetastoreRelation |
@@ -262,6 +270,22 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 2.2.0 | [SPARK-20160](https://issues.apache.org/jira/browse/SPARK-20160) | Improvement | Move ParquetConversions and OrcConversions Out Of HiveSessionCatalog |
 | 2.2.0 | [SPARK-20166](https://issues.apache.org/jira/browse/SPARK-20166) | Improvement | Use XXX for ISO timezone instead of ZZ which is FastDateFormat specific in CSV/JSON time related options |
 | 2.2.0 | [SPARK-20600](https://issues.apache.org/jira/browse/SPARK-20600) | Improvement | KafkaRelation should be pretty printed in web UI (Details for Query) |
+| 2.3.0 | [SPARK-16060](https://issues.apache.org/jira/browse/SPARK-16060) | prose | Vectorized ORC reader improves scan throughput 2-5x |
+| 2.3.0 | [SPARK-21866](https://issues.apache.org/jira/browse/SPARK-21866) | prose | Built-in image data source (reading images into DataFrame) |
+| 2.4.0 | [SPARK-4502](https://issues.apache.org/jira/browse/SPARK-4502) | prose | Nested schema pruning for Parquet tables |
+| 2.4.0 | [SPARK-21783](https://issues.apache.org/jira/browse/SPARK-21783) | prose | ORC filter push-down turned on by default |
+| 2.4.0 | [SPARK-22279](https://issues.apache.org/jira/browse/SPARK-22279) | prose | Native ORC reader used for Hive serde tables by default |
+| 2.4.0 | [SPARK-22666](https://issues.apache.org/jira/browse/SPARK-22666) | prose | Spark datasource for image format |
+| 2.4.0 | [SPARK-22814](https://issues.apache.org/jira/browse/SPARK-22814) | prose | Date/Timestamp supported in JDBC partition column |
+| 2.4.0 | [SPARK-23456](https://issues.apache.org/jira/browse/SPARK-23456) | prose | Native ORC reader on by default |
+| 2.4.0 | [SPARK-23786](https://issues.apache.org/jira/browse/SPARK-23786) | prose | CSV schema validation checks column names |
+| 2.4.0 | [SPARK-23972](https://issues.apache.org/jira/browse/SPARK-23972) | prose | Parquet upgraded from 1.8.2 to 1.10.0 |
+| 2.4.0 | [SPARK-24244](https://issues.apache.org/jira/browse/SPARK-24244) | prose | CSV parser parses only required columns |
+| 2.4.0 | [SPARK-24423](https://issues.apache.org/jira/browse/SPARK-24423) | prose | Option query for specifying JDBC read query |
+| 2.4.0 | [SPARK-24768](https://issues.apache.org/jira/browse/SPARK-24768) | prose | Built-in Avro data source with logical type support |
+| 2.4.0 | [SPARK-24771](https://issues.apache.org/jira/browse/SPARK-24771) | prose | Avro updated from 1.7.7 to 1.8 |
+| 2.4.0 | [SPARK-24959](https://issues.apache.org/jira/browse/SPARK-24959) | prose | Speed up count() for JSON and CSV |
+| 2.4.0 | [SPARK-25419](https://issues.apache.org/jira/browse/SPARK-25419) | prose | Parquet predicate pushdown improvement |
 | 3.0.0 | [SPARK-11412](https://issues.apache.org/jira/browse/SPARK-11412) | New Feature | Support merge schema for ORC |
 | 3.0.0 | [SPARK-23534](https://issues.apache.org/jira/browse/SPARK-23534) | Improvement | Spark run on Hadoop 3.0.0 |
 | 3.0.0 | [SPARK-23710](https://issues.apache.org/jira/browse/SPARK-23710) | Umbrella | Upgrade the built-in Hive to 2.3.5 for hadoop-3.2 |

@@ -8,6 +8,10 @@
 
 The data sources API gained write support in 1.3.0, letting external sources implement table creation and insertion rather than only reads. 1.4.0 added partitioning support (SPARK-5947), so a data source could expose Hive-style partition directories that Spark could prune and discover automatically. 1.6.0 rounded the API out with the ability to run a SQL query directly against files without first registering a table (SPARK-11197), made `LogicalRelation` public for library authors extending the API (SPARK-7275), and consolidated the different internal representations of table identifiers (SPARK-10104) — cleanup that anticipated the more formal DSv2 interface built in later releases.
 
+### 2.x era — catalog internals prepare the ground for DSv2
+
+Before Data Source API V2 existed, 2.0.0-2.2.0 spent three releases rebuilding the catalog machinery underneath it: a native database/table system catalog (SPARK-13075), bucketed table support (SPARK-12538), `CatalogTable` replacing ad hoc storage-format representations (SPARK-16691, SPARK-16731), and unified logical plans for `CREATE TABLE`/CTAS (SPARK-16879). That groundwork led to 2.3.0's actual milestone: Data Source API V2 (SPARK-15689), an experimental interface for plugging in new sources and sinks meant to fix the V1 API's limitations around performance and extensibility. The release notes were explicit that the API was still under active development and breaking changes should be expected — a caveat that held for several releases afterward.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -100,6 +104,7 @@ The data sources API gained write support in 1.3.0, letting external sources imp
 | 2.2.0 | [SPARK-20385](https://issues.apache.org/jira/browse/SPARK-20385) | Improvement | 'Submitted Time' field, the date format needs to be formatted, in running Drivers table or Completed Drivers table in master web ui |
 | 2.2.0 | [SPARK-20420](https://issues.apache.org/jira/browse/SPARK-20420) | Improvement | Add events to the external catalog |
 | 2.2.0 | [SPARK-20967](https://issues.apache.org/jira/browse/SPARK-20967) | Improvement | SharedState.externalCatalog is not really lazy |
+| 2.3.0 | [SPARK-15689](https://issues.apache.org/jira/browse/SPARK-15689) | prose | Data Source API V2 (experimental) |
 | 3.0.0 | [SPARK-25196](https://issues.apache.org/jira/browse/SPARK-25196) | New Feature | Extends the analyze column command for cached tables |
 | 3.0.0 | [SPARK-25269](https://issues.apache.org/jira/browse/SPARK-25269) | Improvement | SQL interface support specify StorageLevel when cache table |
 | 3.0.0 | [SPARK-25390](https://issues.apache.org/jira/browse/SPARK-25390) | Improvement | Data source V2 API refactoring |

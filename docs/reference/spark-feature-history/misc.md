@@ -12,6 +12,10 @@ This page collects cross-cutting or uncategorized 0.x items that don't map to a 
 
 The misc bucket stays thin in the 1.x line: 1.0.0 added internal instrumentation so applications could monitor and instrument their own Spark jobs, and 1.3.0 improved error reporting for a handful of easy-to-hit "gotcha" operations that had previously failed with unhelpful messages. Most of the era's cross-cutting work otherwise shows up as internal cleanup, documentation, and test-infrastructure changes rather than user-facing capability — a pattern that only grows as the codebase and contributor base expand through the later 1.5 and 1.6 releases.
 
+### 2.x era — the grab-bag keeps growing with the codebase
+
+As in earlier lines, most of the 2.x misc bucket is internal cleanup, testing, and documentation rather than user-facing capability: style-checker rules, deprecated-method removal ahead of the 2.0 API break (SPARK-11806), JSON-formatted logical/physical plan output for tooling (SPARK-12321), and an improved thread-dump page (SPARK-9516). A few entries reflect Spark's growing maturity as a project rather than a product — TPCDS query support for benchmarking (SPARK-12540), a Java linting script (SPARK-6990), and infinite-scrolling log viewers (SPARK-8171). The pattern from the 1.x line holds: as the codebase, test suite, and contributor base keep expanding, the cross-cutting bucket grows roughly in proportion, with no single 2.x release standing out as thematically different from the rest.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->

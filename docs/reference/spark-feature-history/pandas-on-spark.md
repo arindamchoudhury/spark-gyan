@@ -4,7 +4,9 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 2.x era — grouped and windowed Pandas UDFs
+
+This area's 2.x footprint is small but concrete, and lands entirely in 2.4.0: user-defined aggregation functions built on Pandas UDFs (SPARK-22274), user-defined window functions using the same mechanism (SPARK-22239), and support for mixing plain Python UDFs with Scalar Pandas UDFs in the same query (SPARK-24624). Together they extend the vectorized, Arrow-backed UDF model — introduced for scalar functions via the broader PySpark performance work in 2.3.0 — into `GROUP BY` aggregation and windowed computation, the two query shapes where row-at-a-time Python UDFs had been slowest. The one earlier record against this area, 2.0.0's `UnsafeRow` support in `MapPartitions`/`MapGroups`/`CoGroup` (SPARK-12287), is unrelated internal plumbing rather than pandas-specific work.
 
 ## Timeline
 
@@ -12,6 +14,9 @@ _TODO: connective prose added during the era passes._
 | Release | JIRA | Type | Title |
 |---|---|---|---|
 | 2.0.0 | [SPARK-12287](https://issues.apache.org/jira/browse/SPARK-12287) | Improvement | Support UnsafeRow in MapPartitions/MapGroups/CoGroup |
+| 2.4.0 | [SPARK-22239](https://issues.apache.org/jira/browse/SPARK-22239) | prose | User-defined window functions with Pandas UDF |
+| 2.4.0 | [SPARK-22274](https://issues.apache.org/jira/browse/SPARK-22274) | prose | User-defined aggregation functions with Pandas UDF |
+| 2.4.0 | [SPARK-24624](https://issues.apache.org/jira/browse/SPARK-24624) | prose | Support mixture of Python UDF and Scalar Pandas UDF |
 | 3.0.0 | [SPARK-26364](https://issues.apache.org/jira/browse/SPARK-26364) | Improvement | Clean up import statements in pandas udf tests |
 | 3.0.0 | [SPARK-26412](https://issues.apache.org/jira/browse/SPARK-26412) | New Feature | Allow Pandas UDF to take an iterator of pd.DataFrames |
 | 3.0.0 | [SPARK-27163](https://issues.apache.org/jira/browse/SPARK-27163) | Improvement | Cleanup and consolidate Pandas UDF functionality |

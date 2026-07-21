@@ -14,6 +14,10 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 
 1.1.0 introduced a new sort-based shuffle implementation aimed at very large shuffles, alongside automatic disk spilling for skewed blocks during cache operations. 1.2.0 made sort-based shuffle the default and moved shuffle transport to a netty-based communication manager. 1.4.0 marked the start of Project Tungsten, with serialized shuffle outputs for better performance (SPARK-4550) and the initial round of Tungsten performance work (SPARK-7081). 1.5.0 pushed Tungsten further with native memory management: a compact binary in-memory row representation that cut memory usage, and explicit accounting of execution memory outside JVM garbage collection for more predictable, GC-free behavior under load.
 
+### 2.x era — off-heap bookkeeping, then compression and >2GB blocks
+
+2.0.0 formalized off-heap memory as a first-class concept: off-heap caching support (SPARK-13992) and off-heap storage bookkeeping in `MemoryManager` (SPARK-14135), alongside a wave of Tungsten-adjacent work — `BytesToBytesMap` performance, spilling in generated aggregates, and consolidating the various in-memory/disk store abstractions into `BlockManager`. 2.2.0 exposed that off-heap usage more visibly in monitoring (SPARK-17019). 2.3.0 added ZStandard as a shuffle compression codec (SPARK-19112) and a read-ahead input stream that amortizes disk I/O cost in the spill reader (SPARK-21113). 2.4.0 closed a long-standing limitation by supporting block replication and message sends larger than 2GB (SPARK-24296, SPARK-24307), and lowered `BlockManager` memory overhead by limiting its thread-pool sizes (SPARK-25181).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -138,6 +142,11 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 2.2.0 | [SPARK-20741](https://issues.apache.org/jira/browse/SPARK-20741) | Improvement | SparkSubmit does not clean up after uploading spark_libs to the distributed cache |
 | 2.2.0 | [SPARK-20868](https://issues.apache.org/jira/browse/SPARK-20868) | Improvement | UnsafeShuffleWriter should verify the position after FileChannel.transferTo |
 | 2.2.0 | [SPARK-21090](https://issues.apache.org/jira/browse/SPARK-21090) | Improvement | Optimize the unified memory manager code |
+| 2.3.0 | [SPARK-19112](https://issues.apache.org/jira/browse/SPARK-19112) | prose | ZStandard compression codec support |
+| 2.3.0 | [SPARK-21113](https://issues.apache.org/jira/browse/SPARK-21113) | prose | Read-ahead input stream amortizes disk I/O cost in spill reader |
+| 2.4.0 | [SPARK-24296](https://issues.apache.org/jira/browse/SPARK-24296) | prose | Support replicating blocks larger than 2GB |
+| 2.4.0 | [SPARK-24307](https://issues.apache.org/jira/browse/SPARK-24307) | prose | Support sending messages over 2GB from memory |
+| 2.4.0 | [SPARK-25181](https://issues.apache.org/jira/browse/SPARK-25181) | prose | Limited BlockManager thread pool sizes lower memory overhead |
 | 3.0.0 | [SPARK-24355](https://issues.apache.org/jira/browse/SPARK-24355) | Improvement | Improve Spark shuffle server responsiveness to non-ChunkFetch requests |
 | 3.0.0 | [SPARK-25118](https://issues.apache.org/jira/browse/SPARK-25118) | Improvement | Need a solution to persist Spark application console outputs when running in shell/yarn client mode |
 | 3.0.0 | [SPARK-25341](https://issues.apache.org/jira/browse/SPARK-25341) | Improvement | Support rolling back a shuffle map stage and re-generate the shuffle files |

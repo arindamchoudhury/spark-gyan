@@ -8,6 +8,10 @@
 
 Spark SQL debuted as an alpha component in 1.0.0, querying structured data from Hive or Parquet (or a schema-tagged RDD) through the Catalyst optimizer, which chose execution plans and pushed predicates into formats like Parquet. 1.1.0 added a JDBC/ODBC server for shared access to cached tables, dynamic bytecode generation for expression evaluation, and UDF registration from Python, Scala, and Java lambdas. The turning point was 1.3.0: the DataFrame API arrived with named columns and schema information across Python, Scala, and Java, and Spark SQL graduated from alpha with HiveQL and API compatibility guarantees. 1.4.0 added sort-merge joins for large joins (SPARK-2213); 1.5.0 turned on code generation by default and rewrote aggregation, join, and sort execution around Tungsten's memory model. 1.6.0 closed the era with initial adaptive query execution (SPARK-9858), auto-selecting reducer counts for joins and aggregations.
 
+### 2.x era — unification, whole-stage codegen, and a cost-based optimizer
+
+2.0.0 was Spark SQL's biggest release: `DataFrame` became a type alias for `Dataset[Row]`, unifying the two APIs; `SparkSession` replaced `SQLContext`/`HiveContext` as the single entry point; whole-stage code generation sped up common SQL/DataFrame operators 2-10x by fusing operators into generated Java bytecode; and a native SQL parser added ANSI-SQL and subquery support (correlated/uncorrelated scalar subqueries, `IN`/`NOT IN`/`EXISTS` predicates). 2.1.0 added a faster row-based hashmap for group-by aggregation (SPARK-16523). 2.2.0 introduced a cost-based optimizer — cardinality estimation for filters, joins, and aggregates plus cost-based join reordering (SPARK-17075, SPARK-17080). 2.3.0 extended the CBO with histogram-based statistics (SPARK-21975) and stabilized codegen against the JVM's 64KB bytecode method limit (SPARK-22510). 2.4.0 rounded out SQL syntax with `PIVOT` (SPARK-24035) and `EXCEPT ALL`/`INTERSECT ALL` (SPARK-21274).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -210,6 +214,25 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 1.6.0 | [SPARK-12094](https://issues.apache.org/jira/browse/SPARK-12094) | Improvement | Better format for query plan tree string |
 | 1.6.0 | [SPARK-12188](https://issues.apache.org/jira/browse/SPARK-12188) | Improvement | [SQL] Code refactoring and comment correction in Dataset APIs |
 | 1.6.0 | [SPARK-12242](https://issues.apache.org/jira/browse/SPARK-12242) | New Feature | DataFrame.transform function |
+| 2.0.0 | — | prose | DataFrame and Dataset unified as type alias |
+| 2.0.0 | — | prose | SparkSession replaces SQLContext/HiveContext as entry point |
+| 2.0.0 | — | prose | Streamlined SparkSession configuration API |
+| 2.0.0 | — | prose | New Aggregator API for typed Dataset aggregation |
+| 2.0.0 | — | prose | Native SQL parser supporting ANSI-SQL and Hive QL |
+| 2.0.0 | — | prose | Native DDL command implementations |
+| 2.0.0 | — | prose | Uncorrelated scalar subquery support |
+| 2.0.0 | — | prose | Correlated scalar subquery support |
+| 2.0.0 | — | prose | NOT IN predicate subquery support |
+| 2.0.0 | — | prose | IN predicate subquery support |
+| 2.0.0 | — | prose | (NOT) EXISTS predicate subquery support |
+| 2.0.0 | — | prose | View canonicalization support |
+| 2.0.0 | — | prose | Non-Hive builds have near full SQL functionality |
+| 2.0.0 | — | prose | Hive style bucketing support |
+| 2.0.0 | — | prose | Approximate summary statistics via sketches |
+| 2.0.0 | — | prose | Whole-stage code generation speeds up SQL/DataFrame operators 2-10x |
+| 2.0.0 | — | prose | Catalyst optimizer improvements for common workloads |
+| 2.0.0 | — | prose | Native window function implementations improve performance |
+| 2.0.0 | — | prose | Automatic file coalescing for native data sources |
 | 2.0.0 | [SPARK-4226](https://issues.apache.org/jira/browse/SPARK-4226) | Improvement | SparkSQL - Add support for subqueries in predicates |
 | 2.0.0 | [SPARK-6735](https://issues.apache.org/jira/browse/SPARK-6735) | Improvement | Provide options to make maximum executor failure count ( which kills the application ) relative to a window duration or disable it. |
 | 2.0.0 | [SPARK-6744](https://issues.apache.org/jira/browse/SPARK-6744) | Improvement | Add support for CROSS JOIN syntax |
@@ -437,6 +460,7 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 2.1.0 | [SPARK-16429](https://issues.apache.org/jira/browse/SPARK-16429) | Improvement | Include `StringType` columns in `describe()` |
 | 2.1.0 | [SPARK-16434](https://issues.apache.org/jira/browse/SPARK-16434) | Improvement | Avoid record-per type dispatch in JSON when reading |
 | 2.1.0 | [SPARK-16461](https://issues.apache.org/jira/browse/SPARK-16461) | Improvement | Support partition batch pruning with `<=>` (EqualNullSafe) predicate in InMemoryTableScanExec |
+| 2.1.0 | [SPARK-16523](https://issues.apache.org/jira/browse/SPARK-16523) | prose | Fast row-based hashmap aggregation cache speeds up group-by |
 | 2.1.0 | [SPARK-16543](https://issues.apache.org/jira/browse/SPARK-16543) | Improvement | Rename the columns of `SHOW PARTITION/COLUMNS` commands |
 | 2.1.0 | [SPARK-16568](https://issues.apache.org/jira/browse/SPARK-16568) | Improvement | update sql programing guide refreshTable API |
 | 2.1.0 | [SPARK-16640](https://issues.apache.org/jira/browse/SPARK-16640) | Improvement | Add codegen for Elt function |
@@ -508,13 +532,17 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 2.2.0 | [SPARK-14584](https://issues.apache.org/jira/browse/SPARK-14584) | Improvement | Improve recognition of non-nullability in Dataset transformations |
 | 2.2.0 | [SPARK-16213](https://issues.apache.org/jira/browse/SPARK-16213) | Improvement | Reduce runtime overhead of a program that creates an primitive array in DataFrame |
 | 2.2.0 | [SPARK-16475](https://issues.apache.org/jira/browse/SPARK-16475) | Improvement | Broadcast Hint for SQL Queries |
+| 2.2.0 | [SPARK-17075](https://issues.apache.org/jira/browse/SPARK-17075) | prose | Cardinality estimation for filter/join/aggregate/project/limit-sample (CBO) |
+| 2.2.0 | [SPARK-17080](https://issues.apache.org/jira/browse/SPARK-17080) | prose | Cost-based join re-ordering |
 | 2.2.0 | [SPARK-17626](https://issues.apache.org/jira/browse/SPARK-17626) | Umbrella | TPC-DS performance improvements using star-schema heuristics |
 | 2.2.0 | [SPARK-17838](https://issues.apache.org/jira/browse/SPARK-17838) | Improvement | Strict type checking for arguments with a better messages across APIs. |
 | 2.2.0 | [SPARK-17868](https://issues.apache.org/jira/browse/SPARK-17868) | Improvement | Do not use bitmasks during parsing and analysis of CUBE/ROLLUP/GROUPING SETS |
 | 2.2.0 | [SPARK-17912](https://issues.apache.org/jira/browse/SPARK-17912) | Improvement | Refactor code generation to get data for ColumnVector/ColumnarBatch |
 | 2.2.0 | [SPARK-17949](https://issues.apache.org/jira/browse/SPARK-17949) | Improvement | Introduce a JVM object based aggregate operator |
+| 2.2.0 | [SPARK-18209](https://issues.apache.org/jira/browse/SPARK-18209) | prose | More robust view canonicalization without full SQL expansion |
 | 2.2.0 | [SPARK-18471](https://issues.apache.org/jira/browse/SPARK-18471) | Improvement | In treeAggregate, generate (big) zeros instead of sending them. |
 | 2.2.0 | [SPARK-18632](https://issues.apache.org/jira/browse/SPARK-18632) | Improvement | AggregateFunction should not ImplicitCastInputTypes |
+| 2.2.0 | [SPARK-18703](https://issues.apache.org/jira/browse/SPARK-18703) | prose | Auto-drop staging directories after Hive-serde INSERT/CTAS |
 | 2.2.0 | [SPARK-18775](https://issues.apache.org/jira/browse/SPARK-18775) | New Feature | Limit the max number of records written per file |
 | 2.2.0 | [SPARK-18800](https://issues.apache.org/jira/browse/SPARK-18800) | Improvement | Correct the assert in UnsafeKVExternalSorter which ensures array size |
 | 2.2.0 | [SPARK-18909](https://issues.apache.org/jira/browse/SPARK-18909) | Improvement | The error message in `ExpressionEncoder.toRow` and `fromRow` is too verbose |
@@ -565,6 +593,26 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 2.2.0 | [SPARK-20854](https://issues.apache.org/jira/browse/SPARK-20854) | Improvement | extend hint syntax to support any expression, not just identifiers or strings |
 | 2.2.0 | [SPARK-20857](https://issues.apache.org/jira/browse/SPARK-20857) | Improvement | Generic resolved hint node |
 | 2.2.0 | [SPARK-21072](https://issues.apache.org/jira/browse/SPARK-21072) | Improvement | `TreeNode.mapChildren` should only apply to the children node. |
+| 2.2.0 | [SPARK-21079](https://issues.apache.org/jira/browse/SPARK-21079) | prose | ANALYZE TABLE command support for partitioned tables |
+| 2.3.0 | [SPARK-4131](https://issues.apache.org/jira/browse/SPARK-4131) | prose | INSERT OVERWRITE DIRECTORY support |
+| 2.3.0 | [SPARK-20236](https://issues.apache.org/jira/browse/SPARK-20236) | prose | Hive style dynamic partition overwrite semantics support |
+| 2.3.0 | [SPARK-20331](https://issues.apache.org/jira/browse/SPARK-20331) | prose | Better predicate pushdown support for Hive partition pruning |
+| 2.3.0 | [SPARK-21975](https://issues.apache.org/jira/browse/SPARK-21975) | prose | Histogram support in cost-based optimizer |
+| 2.3.0 | [SPARK-22489](https://issues.apache.org/jira/browse/SPARK-22489) | prose | Enhancements in rule-based optimizer and planner |
+| 2.3.0 | [SPARK-22510](https://issues.apache.org/jira/browse/SPARK-22510) | prose | Codegen framework further stabilized to avoid 64KB bytecode limit |
+| 2.4.0 | [SPARK-16406](https://issues.apache.org/jira/browse/SPARK-16406) | prose | Faster reference resolution for large numbers of columns |
+| 2.4.0 | [SPARK-19602](https://issues.apache.org/jira/browse/SPARK-19602) | prose | Column resolution of fully qualified column name |
+| 2.4.0 | [SPARK-21274](https://issues.apache.org/jira/browse/SPARK-21274) | prose | EXCEPT ALL and INTERSECT ALL implemented |
+| 2.4.0 | [SPARK-23486](https://issues.apache.org/jira/browse/SPARK-23486) | prose | Cache function name from external catalog for lookupFunctions |
+| 2.4.0 | [SPARK-23510](https://issues.apache.org/jira/browse/SPARK-23510) | prose | Support Hive 2.2 and Hive 2.3 metastore |
+| 2.4.0 | [SPARK-23711](https://issues.apache.org/jira/browse/SPARK-23711) | prose | Fallback generator for UnsafeProjection |
+| 2.4.0 | [SPARK-23803](https://issues.apache.org/jira/browse/SPARK-23803) | prose | Bucket pruning support |
+| 2.4.0 | [SPARK-23880](https://issues.apache.org/jira/browse/SPARK-23880) | prose | Avoid triggering a job just for caching data |
+| 2.4.0 | [SPARK-24035](https://issues.apache.org/jira/browse/SPARK-24035) | prose | SQL syntax for Pivot |
+| 2.4.0 | [SPARK-24596](https://issues.apache.org/jira/browse/SPARK-24596) | prose | Non-cascading cache invalidation |
+| 2.4.0 | [SPARK-24626](https://issues.apache.org/jira/browse/SPARK-24626) | prose | Parallelize location size calculation in ANALYZE TABLE |
+| 2.4.0 | [SPARK-24802](https://issues.apache.org/jira/browse/SPARK-24802) | prose | Optimization rule exclusion |
+| 2.4.0 | [SPARK-24940](https://issues.apache.org/jira/browse/SPARK-24940) | prose | Coalesce and Repartition Hint for SQL Queries |
 | 3.0.0 | [SPARK-8288](https://issues.apache.org/jira/browse/SPARK-8288) | Improvement | ScalaReflection should also try apply methods defined in companion objects when inferring schema from a Product type |
 | 3.0.0 | [SPARK-11150](https://issues.apache.org/jira/browse/SPARK-11150) | New Feature | Dynamic partition pruning |
 | 3.0.0 | [SPARK-14023](https://issues.apache.org/jira/browse/SPARK-14023) | Improvement | Make exceptions consistent regarding fields and columns |

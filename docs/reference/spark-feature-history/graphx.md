@@ -14,6 +14,10 @@ Before GraphX, graph processing lived in Bagel, Spark's Pregel-inspired module; 
 
 1.0.0 brought substantial performance boosts to graph loading, edge reversal, and neighborhood computation, needing less communication and producing simpler RDD lineages. 1.1.0 added custom storage levels for vertices and edges, tightened numerical precision throughout, and introduced a label propagation algorithm. GraphX graduated from alpha in 1.2.0 with a stable API — guaranteeing forward compatibility — alongside a new `aggregateMessages` API replacing the deprecated `mapReduceTriplet`, and graph checkpointing with lineage truncation for long iterative jobs. 1.3.0 added conversion into a canonical edge graph, 1.4.0 added personalized PageRank (SPARK-5854), and 1.5.0 shipped a more efficient Pregel API implementation.
 
+### 2.x era — Pregel checkpointing and steady-state tuning
+
+GraphX saw comparatively little 2.x investment. 2.0.0 and 2.1.0 were maintenance: parameter checks for GraphX algorithms (SPARK-13816), a parallel implementation of personalized PageRank (SPARK-11496), and a fix so strongly-connected-components no longer skipped caching its returned RDD (SPARK-16478). A long-standing fix finally landed twice in the changelog: Pregel checkpointing periodically to avoid `StackOverflowError` on deep iterative jobs (SPARK-5484, recorded against both 2.2.0 and 2.3.0). 2.2.0 also improved PageRank's initial value for faster convergence (SPARK-18845), and 2.3.0 closed the line with small performance improvements scattered across several GraphX operators (SPARK-21491).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -44,6 +48,10 @@ Before GraphX, graph processing lived in Bagel, Spark's Pregel-inspired module; 
 | 2.1.0 | [SPARK-16478](https://issues.apache.org/jira/browse/SPARK-16478) | Improvement | strongly connected components doesn't cache returned RDD |
 | 2.1.0 | [SPARK-17171](https://issues.apache.org/jira/browse/SPARK-17171) | Improvement | DAG will list all partitions in the graph |
 | 2.1.0 | [SPARK-18428](https://issues.apache.org/jira/browse/SPARK-18428) | Improvement | Update docs for GraphX |
+| 2.2.0 | [SPARK-5484](https://issues.apache.org/jira/browse/SPARK-5484) | prose | Pregel checkpoints periodically to avoid StackOverflowError |
+| 2.2.0 | [SPARK-18845](https://issues.apache.org/jira/browse/SPARK-18845) | prose | PageRank initial value improvement for faster convergence |
+| 2.3.0 | [SPARK-5484](https://issues.apache.org/jira/browse/SPARK-5484) | prose | Pregel checkpoints periodically to avoid StackOverflowErrors |
+| 2.3.0 | [SPARK-21491](https://issues.apache.org/jira/browse/SPARK-21491) | prose | Small performance improvement in several GraphX places |
 | 3.0.0 | [SPARK-29877](https://issues.apache.org/jira/browse/SPARK-29877) | Improvement | static PageRank allow checkPoint from previous computations |
 | 3.2.0 | [SPARK-35357](https://issues.apache.org/jira/browse/SPARK-35357) | Improvement | Allow to turn off the normalization applied by static PageRank utilities |
 <!-- AUTO:timeline END -->

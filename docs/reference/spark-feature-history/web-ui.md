@@ -14,6 +14,10 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 
 1.0.0 added a history server so users could inspect application data after a job finished, not just while it ran. 1.1.0 brought named accumulators visible in the UI, dynamic task-progress updates, input-metric reporting, and graceful handling of stage resubmissions. 1.2.0 added a job-level progress page and a stable progress-reporting API other tools could build on. 1.4.0 introduced a REST API for application information (SPARK-3644) and a dedicated UI for the SQL JDBC server (SPARK-5100). 1.5.0 added pagination for jobs with large task counts (SPARK-4598) and folded streaming storage into the main UI (SPARK-4072), and 1.6.0 closed the era with per-operator SQL execution metrics (SPARK-10412) and failure visibility throughout the streaming tab.
 
+### 2.x era — a scalable History Server backend
+
+2.0.0's web UI work was broad but incremental: HTTPS support (SPARK-2750), per-executor core counts (SPARK-3611), SQL UI support on the History Server (SPARK-11206), and visualization plus metrics for whole-stage-codegen operators (SPARK-12902, SPARK-12915) — tying the new SQL execution model into the existing UI. The notable 2.x change was structural rather than cosmetic: 2.3.0 shipped a new History Server backend, Spark History Server V2 (SPARK-18085), built around a more efficient event-storage mechanism designed to scale to large applications that the original file-replay-based backend struggled with — event volume having grown considerably since 2.0.0's codegen and optimizer instrumentation landed.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -133,6 +137,7 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 | 2.2.0 | [SPARK-20391](https://issues.apache.org/jira/browse/SPARK-20391) | Improvement | Properly rename the memory related fields in ExecutorSummary REST API |
 | 2.2.0 | [SPARK-20776](https://issues.apache.org/jira/browse/SPARK-20776) | Improvement | Fix JobProgressListener perf. problems caused by empty TaskMetrics initialization |
 | 2.2.0 | [SPARK-20942](https://issues.apache.org/jira/browse/SPARK-20942) | Improvement | The title style about field is error in the history server web ui. |
+| 2.3.0 | [SPARK-18085](https://issues.apache.org/jira/browse/SPARK-18085) | prose | Spark History Server V2 (scalable event storage) |
 | 3.0.0 | [SPARK-18364](https://issues.apache.org/jira/browse/SPARK-18364) | Improvement | Expose metrics for YarnShuffleService |
 | 3.0.0 | [SPARK-21809](https://issues.apache.org/jira/browse/SPARK-21809) | Improvement | Change Stage Page to use datatables to support sorting columns and searching |
 | 3.0.0 | [SPARK-24851](https://issues.apache.org/jira/browse/SPARK-24851) | Improvement | Map a Stage ID to it's Associated Job ID in UI |

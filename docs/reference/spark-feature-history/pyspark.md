@@ -14,6 +14,10 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 
 1.0.0 extended the Python API with several new functions, added support for running on YARN, and widened compatible Python/NumPy versions down to 2.6/1.4. 1.1.0 ported disk spilling during aggregations to PySpark and let it read and write arbitrary Hadoop InputFormats (SequenceFiles, HBase, Cassandra, Avro). 1.2.0 covered nearly all DStream transformations in Python and lifted the 2GB broadcast-variable ceiling; 1.3.0 brought the ML pipeline API, gradient-boosted trees, and GMM to Python. 1.4.0 added Python 3 support (SPARK-4897) — a major compatibility milestone — plus external spilling for `groupByKey` (SPARK-3074), and by 1.6.0 the release notes describe "many improvements to Python API to approach feature parity" with Scala.
 
+### 2.x era — PyPI packaging and a faster Python bridge
+
+2.1.0 let Python dictionaries populate `StructType` values when constructing a DataFrame (SPARK-16700). 2.2.0's biggest change for adoption was distributional, not technical: PySpark became installable from PyPI via `pip install pyspark`, dropping the need to download a full Spark distribution just to write Python code against it. 2.3.0 delivered the performance counterpart — significant gains from fast serialization and vectorized execution (SPARK-22216), the umbrella work that also underpinned Pandas UDFs and Arrow-based conversion elsewhere. 2.4.0 closed the line with eager evaluation for DataFrames in notebook environments (SPARK-24215), showing results immediately rather than only on an action, plus a dedicated `spark.executor.pyspark.memory` limit (SPARK-25004) for controlling Python worker memory separately from JVM executor memory.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -107,6 +111,7 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 2.1.0 | [SPARK-16399](https://issues.apache.org/jira/browse/SPARK-16399) | Improvement | Set PYSPARK_PYTHON to point to "python" instead of "python2.7" |
 | 2.1.0 | [SPARK-16536](https://issues.apache.org/jira/browse/SPARK-16536) | Improvement | Expose `sql` in PySpark shell |
 | 2.1.0 | [SPARK-16546](https://issues.apache.org/jira/browse/SPARK-16546) | Improvement | Dataframe.drop supported multi-columns in spark api and should make python api also support it. |
+| 2.1.0 | [SPARK-16700](https://issues.apache.org/jira/browse/SPARK-16700) | prose | PySpark: Python dicts usable as StructType values |
 | 2.1.0 | [SPARK-16772](https://issues.apache.org/jira/browse/SPARK-16772) | Improvement | Correct API doc references to PySpark classes + formatting fixes |
 | 2.1.0 | [SPARK-16861](https://issues.apache.org/jira/browse/SPARK-16861) | Improvement | Refactor PySpark accumulator API to be on top of AccumulatorV2 API |
 | 2.1.0 | [SPARK-17197](https://issues.apache.org/jira/browse/SPARK-17197) | Improvement | PySpark LiR/LoR supports tree aggregation level configurable |
@@ -114,6 +119,7 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 2.1.0 | [SPARK-17585](https://issues.apache.org/jira/browse/SPARK-17585) | Improvement | PySpark SparkContext.addFile supports adding files recursively |
 | 2.1.0 | [SPARK-17745](https://issues.apache.org/jira/browse/SPARK-17745) | Improvement | Update Python API for NB to support weighted instances |
 | 2.1.0 | [SPARK-18361](https://issues.apache.org/jira/browse/SPARK-18361) | New Feature | Expose RDD localCheckpoint in PySpark |
+| 2.2.0 | — | prose | PySpark now available on PyPI |
 | 2.2.0 | [SPARK-18080](https://issues.apache.org/jira/browse/SPARK-18080) | New Feature | Locality Sensitive Hashing (LSH) Python API |
 | 2.2.0 | [SPARK-18267](https://issues.apache.org/jira/browse/SPARK-18267) | New Feature | Distribute PySpark via Python Package Index (pypi) |
 | 2.2.0 | [SPARK-18541](https://issues.apache.org/jira/browse/SPARK-18541) | Improvement | Add pyspark.sql.Column.aliasWithMetadata to allow dynamic metadata management in pyspark SQL API |
@@ -126,6 +132,9 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 2.2.0 | [SPARK-19986](https://issues.apache.org/jira/browse/SPARK-19986) | Improvement | Make pyspark.streaming.tests.CheckpointTests more stable |
 | 2.2.0 | [SPARK-20627](https://issues.apache.org/jira/browse/SPARK-20627) | Improvement | Remove pip local version string (PEP440) |
 | 2.2.0 | [SPARK-22337](https://issues.apache.org/jira/browse/SPARK-22337) | Improvement | new pyspark release |
+| 2.3.0 | [SPARK-22216](https://issues.apache.org/jira/browse/SPARK-22216) | prose | PySpark performance via fast serialization and vectorized execution |
+| 2.4.0 | [SPARK-24215](https://issues.apache.org/jira/browse/SPARK-24215) | prose | Eager evaluation for DataFrame APIs |
+| 2.4.0 | [SPARK-25004](https://issues.apache.org/jira/browse/SPARK-25004) | prose | spark.executor.pyspark.memory limit added |
 | 3.0.0 | [SPARK-19926](https://issues.apache.org/jira/browse/SPARK-19926) | Improvement | Make pyspark exception more readable |
 | 3.0.0 | [SPARK-21094](https://issues.apache.org/jira/browse/SPARK-21094) | Improvement | Allow stdout/stderr pipes in pyspark.java_gateway.launch_gateway |
 | 3.0.0 | [SPARK-25255](https://issues.apache.org/jira/browse/SPARK-25255) | Improvement | Add getActiveSession to SparkSession in PySpark |

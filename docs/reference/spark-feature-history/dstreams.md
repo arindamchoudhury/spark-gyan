@@ -14,6 +14,10 @@ Spark Streaming debuted as an alpha extension in 0.7.0, offering `map`/`filter`/
 
 1.1.0 added Amazon Kinesis as a streaming source, a Flume polling mode for simpler HA deployment, and the first streaming ML algorithm, streaming linear regression. 1.2.0 added a write-ahead log (WAL) for full driver high availability. 1.3.0 was the big one: a new direct Kafka API reads offset ranges straight from Kafka's own partitions, enabling exactly-once delivery without a WAL, alongside a Python Kafka API and support for loading an initial state RDD into stateful operations. 1.4.0 added streaming UI visualization with batch drill-down (SPARK-7602), and 1.5.0 introduced backpressure (SPARK-7398) — automatic, dynamic rate control adapting to ingestion and processing load across both receiver-based and direct-Kafka streams.
 
+### 2.x era — Kafka 0.10 and Kinesis keep DStreams moving
+
+Even as Structured Streaming emerged as Spark's new streaming API in 2.0.0, the older DStream API kept receiving updates: 2.0.0 added experimental support for the Kafka 0.10 consumer API (SPARK-12177), dynamic topic subscription without restarting the streaming context (SPARK-10320), and dynamic allocation for Kinesis streams (SPARK-7661). 2.2.0 extended Kinesis further with a builder-style configuration interface (SPARK-19911), cross-account reads via STS (SPARK-19405), and fixes to checkpoint recovery performance and deaggregation. Most of the remaining 2.x catalog entries here are maintenance — checkpoint-directory error handling, wildcard topic filters, `updateStateByKey` batch-time access — consistent with a mature API receiving upkeep while Structured Streaming absorbed new streaming investment.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -83,6 +87,7 @@ Spark Streaming debuted as an alpha extension in 0.7.0, offering `map`/`filter`/
 | 1.6.0 | [SPARK-11663](https://issues.apache.org/jira/browse/SPARK-11663) | Improvement | Add Java API for trackStateByKey |
 | 1.6.0 | [SPARK-11731](https://issues.apache.org/jira/browse/SPARK-11731) | Improvement | Enable batching on Driver WriteAheadLog by default |
 | 1.6.0 | [SPARK-11814](https://issues.apache.org/jira/browse/SPARK-11814) | Improvement | Set better default DStream checkpoint interval |
+| 2.0.0 | — | prose | DStream API: experimental Kafka 0.10 support |
 | 2.0.0 | [SPARK-7661](https://issues.apache.org/jira/browse/SPARK-7661) | New Feature | Support for dynamic allocation of resources in Kinesis Spark Streaming |
 | 2.0.0 | [SPARK-8393](https://issues.apache.org/jira/browse/SPARK-8393) | Improvement | JavaStreamingContext#awaitTermination() throws non-declared InterruptedException |
 | 2.0.0 | [SPARK-10320](https://issues.apache.org/jira/browse/SPARK-10320) | New Feature | Kafka Support new topic subscriptions without requiring restart of the streaming context |
