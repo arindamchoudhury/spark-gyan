@@ -16,6 +16,9 @@
 
     Also missing: `maxRecordsPerFile` as the output-file-size lever, *why* inference is costly (it reads the data twice), ORC defaulting to `zstd` while Parquet uses `snappy`, `ignoreCorruptFiles`/`ignoreMissingFiles`, JSON writes dropping null fields by default, predicate pushdown being best-effort per filter rather than a property of the format, driver-side file listing as the cause of long pre-task stalls, `PartitionedFile` being a slice rather than a whole file, `DataFrameWriterV2`, and `bucketBy` being silently ineffective outside table writes. Full list in the [B4 source trace](../reference/spark-source-map/topics/b4.md).
 
+!!! note "Also flagged for B4 (added to the path 2026-07-21) — Python Data Sources"
+    A 4.2.0 feature this chapter should gain on revisit: **Python Data Sources** — a custom reader/writer implemented entirely in Python (`pyspark.sql.datasource.DataSource` + `spark.dataSource.register(...)`), plugging into the same `spark.read.format(...)` / `df.write.format(...)` surface, covering batch and streaming, read and write ([SPARK-55304] streaming reader; [SPARK-55161] connector profiling). It is the pure-Python cousin of DSv2. See the B4 callout in the learning path.
+
 Every Spark pipeline starts with a read and ends with a write. The format you choose and how you configure the reader/writer determines whether your pipeline reads 100% of the data or 5% of it — before any transformation runs.
 
 ---

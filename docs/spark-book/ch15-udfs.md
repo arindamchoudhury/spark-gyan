@@ -18,6 +18,9 @@
 
     The originally-noted gap: Arrow-optimized Python UDFs and Arrow-based PySpark IPC are **enabled by default** as of 4.2.0 ([SPARK-54555]). Two things below are now stale: the performance table describes Arrow-native UDFs as opt-in via `useArrow=True` (4.1+ framing), and the "typically 5–10× faster than Python UDFs" figure for pandas UDFs was measured against non-Arrow Python UDFs — the real gap on 4.2.0 is narrower. The cost *hierarchy* and the reasoning behind it still hold; the defaults and the multipliers need re-measuring on 4.2.0. Spark 4.2.0 also adds Arrow and pandas grouped-aggregation UDFs, not covered here.
 
+!!! note "Also flagged for I3 (added to the path 2026-07-21) — pandas 3 caveat, Arrow interop, profiling"
+    Three 4.2.0 items the path now marks for this chapter. **pandas 3 is not yet the supported runtime** — 4.2.0 did compatibility work ([SPARK-56310], [SPARK-56327]) but packaging at the `v4.2.0` tag still pins `pandas>=2.2.0,<3.0.0` ([SPARK-57974]); do not write "4.2.0 supports pandas 3" — it is *prepared for* it. The **Arrow C Data Interface / PyCapsule** protocol ([SPARK-54337]) enables zero-copy handoff of DataFrame Arrow batches to Polars/DuckDB. And Python-execution **profiling** was extended — time+memory profiling for Python Data Sources and iterator UDFs ([SPARK-55161], [SPARK-55171]).
+
 Built-in Spark functions cover the vast majority of column transformations. When they don't, UDFs are the escape hatch. Understanding the cost hierarchy — and when to pay it — is what separates accidental slowness from intentional trade-offs.
 
 ---
