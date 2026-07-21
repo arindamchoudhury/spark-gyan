@@ -10,6 +10,10 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 
 0.7.0 let the EC2 scripts target both standalone and Mesos clusters. 0.8.0 promoted YARN support to mainline and let Mesos deploy an assembly JAR with the job, skipping pre-install. 0.8.1 added Zookeeper-based HA for the standalone master and `local://` URIs; 0.9.0 let standalone mode submit driver programs to the cluster and cap default cores per app.
 
+### 1.x era — dynamic allocation and unified submission
+
+1.0.0 introduced `spark-submit`, a single tool for launching applications against any cluster manager — local, standalone, Mesos, or YARN — replacing manager-specific launch scripts. 1.2.0 added dynamic allocation, an elastic scaling mechanism letting a long-running ETL job give back idle executors and reclaim them later; it shipped first on YARN, with other cluster managers to follow. 1.4.0 extended Mesos with a cluster deploy mode (SPARK-6338) and Docker-based executor images (SPARK-2691), and added YARN support to the Spark EC2 launch scripts (SPARK-3674) — broadening deployment options beyond the standalone manager that had dominated the 0.x line.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -51,6 +55,11 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 0.9.0 | — | prose | YARN mode supports distributing extra files with the application |
 | 0.9.1 | — | prose | Distribution tarballs can bundle Tachyon for easier deployment |
 | 0.9.1 | — | prose | EC2 scripts support C3 instance types |
+| 1.0.0 | — | prose | spark-submit tool for unified application submission |
+| 1.2.0 | — | prose | Elastic scaling (dynamic allocation) for long-running ETL jobs on YARN |
+| 1.4.0 | [SPARK-2691](https://issues.apache.org/jira/browse/SPARK-2691) | prose | Docker support in Mesos |
+| 1.4.0 | [SPARK-3674](https://issues.apache.org/jira/browse/SPARK-3674) | prose | YARN support for Spark EC2 |
+| 1.4.0 | [SPARK-6338](https://issues.apache.org/jira/browse/SPARK-6338) | prose | Cluster mode in Mesos |
 | 1.5.0 | [SPARK-4352](https://issues.apache.org/jira/browse/SPARK-4352) | Improvement | Incorporate locality preferences in dynamic allocation requests |
 | 1.5.0 | [SPARK-4751](https://issues.apache.org/jira/browse/SPARK-4751) | New Feature | Support dynamic allocation for standalone mode |
 | 1.5.0 | [SPARK-6287](https://issues.apache.org/jira/browse/SPARK-6287) | Improvement | Add support for dynamic allocation in the Mesos coarse-grained scheduler |

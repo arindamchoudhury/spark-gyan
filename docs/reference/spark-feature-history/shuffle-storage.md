@@ -10,6 +10,10 @@ Shuffle and storage performance was a priority from the start: 0.3 shipped faste
 
 Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse for small shuffles, 0.7.0 made shuffle operators like `groupByKey`/`reduceByKey` infer parallelism from parent RDD size, 0.8.0 added `unpersist()` for manually dropping cached RDDs, 0.8.1 optimized shuffle hashtables and introduced (off-by-default) shuffle file consolidation, and 0.9.0 made large reduce operations spill to disk automatically when they didn't fit in memory.
 
+### 1.x era — sort-based shuffle and the start of Tungsten
+
+1.1.0 introduced a new sort-based shuffle implementation aimed at very large shuffles, alongside automatic disk spilling for skewed blocks during cache operations. 1.2.0 made sort-based shuffle the default and moved shuffle transport to a netty-based communication manager. 1.4.0 marked the start of Project Tungsten, with serialized shuffle outputs for better performance (SPARK-4550) and the initial round of Tungsten performance work (SPARK-7081). 1.5.0 pushed Tungsten further with native memory management: a compact binary in-memory row representation that cut memory usage, and explicit accounting of execution memory outside JVM garbage collection for more predictable, GC-free behavior under load.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -31,6 +35,15 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 0.8.1 | — | prose | Efficient JobConf encoding improves latency reading many HDFS/S3/HBase blocks |
 | 0.8.1 | — | prose | Shuffle file consolidation reduces file count in large shuffles |
 | 0.9.0 | — | prose | Large reduce operations automatically spill to disk |
+| 1.0.0 | — | prose | Off-heap storage support in Tachyon via special build target |
+| 1.0.0 | — | prose | DISK_ONLY persistence writes directly to disk |
+| 1.1.0 | — | prose | Disk spilling for skewed blocks during cache operations |
+| 1.1.0 | — | prose | New sort-based shuffle implementation for very large scale shuffles |
+| 1.2.0 | — | prose | Shuffle upgraded to netty-based communication manager |
+| 1.2.0 | — | prose | Shuffle mechanism upgraded to sort-based shuffle |
+| 1.4.0 | [SPARK-4550](https://issues.apache.org/jira/browse/SPARK-4550) | prose | Serialized shuffle outputs for improved performance |
+| 1.4.0 | [SPARK-7081](https://issues.apache.org/jira/browse/SPARK-7081) | prose | Initial performance improvements in project Tungsten |
+| 1.5.0 | — | prose | Native memory management & representation (Tungsten) |
 | 1.5.0 | [SPARK-5423](https://issues.apache.org/jira/browse/SPARK-5423) | Improvement | ExternalAppendOnlyMap won't delete temp spilled file if some exception happens during using it |
 | 1.5.0 | [SPARK-7075](https://issues.apache.org/jira/browse/SPARK-7075) | Epic | Project Tungsten (Spark 1.5 Phase 1) |
 | 1.5.0 | [SPARK-7855](https://issues.apache.org/jira/browse/SPARK-7855) | Improvement | Move hash-style shuffle code out of ExternalSorter and into own file |

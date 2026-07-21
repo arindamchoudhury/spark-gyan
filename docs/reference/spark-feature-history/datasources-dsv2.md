@@ -4,13 +4,17 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 1.x era — writable tables and partition discovery
+
+The data sources API gained write support in 1.3.0, letting external sources implement table creation and insertion rather than only reads. 1.4.0 added partitioning support (SPARK-5947), so a data source could expose Hive-style partition directories that Spark could prune and discover automatically. 1.6.0 rounded the API out with the ability to run a SQL query directly against files without first registering a table (SPARK-11197), made `LogicalRelation` public for library authors extending the API (SPARK-7275), and consolidated the different internal representations of table identifiers (SPARK-10104) — cleanup that anticipated the more formal DSv2 interface built in later releases.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 1.3.0 | — | prose | Spark SQL adds support for writing tables via data sources API |
+| 1.4.0 | [SPARK-5947](https://issues.apache.org/jira/browse/SPARK-5947) | prose | Partitioning support in Spark's data source API |
 | 1.5.0 | [SPARK-6941](https://issues.apache.org/jira/browse/SPARK-6941) | Improvement | Provide a better error message to explain that tables created from RDDs are immutable |
 | 1.5.0 | [SPARK-7637](https://issues.apache.org/jira/browse/SPARK-7637) | Improvement | StructType.merge slow with large nenormalised tables O(N2) |
 | 1.5.0 | [SPARK-9293](https://issues.apache.org/jira/browse/SPARK-9293) | Improvement | Analysis should detect when set operations are performed on tables with different numbers of columns |

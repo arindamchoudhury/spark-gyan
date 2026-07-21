@@ -10,6 +10,10 @@ Before GraphX, graph processing lived in Bagel, Spark's Pregel-inspired module; 
 
 0.9.0 also delivered an optimized Pregel API that took advantage of graph partitioning and indexing, a set of standard algorithms (PageRank, connected components, strongly connected components, SVD++, triangle counting), and interactive use directly from the Spark shell.
 
+### 1.x era — GraphX graduates to a stable API
+
+1.0.0 brought substantial performance boosts to graph loading, edge reversal, and neighborhood computation, needing less communication and producing simpler RDD lineages. 1.1.0 added custom storage levels for vertices and edges, tightened numerical precision throughout, and introduced a label propagation algorithm. GraphX graduated from alpha in 1.2.0 with a stable API — guaranteeing forward compatibility — alongside a new `aggregateMessages` API replacing the deprecated `mapReduceTriplet`, and graph checkpointing with lineage truncation for long iterative jobs. 1.3.0 added conversion into a canonical edge graph, 1.4.0 added personalized PageRank (SPARK-5854), and 1.5.0 shipped a more efficient Pregel API implementation.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -22,6 +26,16 @@ Before GraphX, graph processing lived in Bagel, Spark's Pregel-inspired module; 
 | 0.9.0 | — | prose | GraphX: optimized Pregel API using graph partitioning and indexing |
 | 0.9.0 | — | prose | GraphX standard algorithms: PageRank, connected/strongly-connected components, SVD++, triangle counting |
 | 0.9.0 | — | prose | GraphX interactive use from the Spark shell |
+| 1.0.0 | — | prose | GraphX performance boosts in loading, edge reversal, neighborhood computation |
+| 1.1.0 | — | prose | Custom storage levels for GraphX vertices and edges |
+| 1.1.0 | — | prose | Improved numerical precision across GraphX |
+| 1.1.0 | — | prose | New GraphX label propagation algorithm |
+| 1.2.0 | — | prose | GraphX graduates from alpha with stable API |
+| 1.2.0 | — | prose | New aggregateMessages API replaces mapReduceTriplet |
+| 1.2.0 | — | prose | GraphX graph checkpointing and lineage truncation |
+| 1.3.0 | — | prose | GraphX adds conversion into a canonical edge graph |
+| 1.4.0 | [SPARK-5854](https://issues.apache.org/jira/browse/SPARK-5854) | prose | Personalized PageRank for GraphX |
+| 1.5.0 | — | prose | More efficient Pregel API implementation for GraphX |
 | 1.5.0 | [SPARK-9436](https://issues.apache.org/jira/browse/SPARK-9436) | Improvement | Simplify Pregel by merging joins |
 | 1.6.0 | [SPARK-10682](https://issues.apache.org/jira/browse/SPARK-10682) | Improvement | Remove Bagel test suites |
 | 2.0.0 | [SPARK-13816](https://issues.apache.org/jira/browse/SPARK-13816) | Improvement | Add parameter checks for algorithms in Graphx |

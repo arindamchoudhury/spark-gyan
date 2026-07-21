@@ -10,6 +10,10 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 
 0.7.0 added a Maven build path alongside SBT, better IBM JVM support, and bumped the default Hadoop dependency to 1.0.4; 0.7.2 moved to Scala 2.9.3. 0.8.0 let user programs link against any Hadoop version via the `hadoop-client` dependency and isolated the examples build to cut dependency conflicts. 0.9.0 was the big jump to Scala 2.10 and reorganized scripts into `bin`/`sbin` directories for cleaner installs.
 
+### 1.x era — Scala cross-builds and dependency hygiene
+
+1.2.0 added Scala 2.11 support alongside the existing 2.10 build, and 1.3.0 shaded Spark's Jetty dependency to stop it colliding with user programs' own Jetty versions. Through 1.5.0-1.6.0 the build matured: Maven moved to 3.3.3 with a `--force` flag for `build/mvn` to always use the downloaded version, `dev/change-scala-version.sh` gained guidance on accepted versions, and the default point release settled on Scala 2.10.5 (SPARK-11491) ahead of 2.11 becoming default later. Dependencies were tightened too, with repeated Tachyon client bumps (0.7.0 through 0.8.2) and Snappy upgraded to 1.1.2 for faster compression.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -33,6 +37,8 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 | 0.8.0 | — | prose | Examples build isolated from core build to reduce dependency conflicts |
 | 0.9.0 | — | prose | Spark runs on Scala 2.10 |
 | 0.9.0 | — | prose | Scripts reorganized into bin and sbin directories |
+| 1.2.0 | — | prose | Support for Scala 2.11 |
+| 1.3.0 | — | prose | Jetty dependency now shaded to avoid conflicts with user programs |
 | 1.5.0 | [SPARK-6782](https://issues.apache.org/jira/browse/SPARK-6782) | Improvement | add sbt-revolver plugin to sbt build |
 | 1.5.0 | [SPARK-7389](https://issues.apache.org/jira/browse/SPARK-7389) | Improvement | Tachyon integration improvement |
 | 1.5.0 | [SPARK-7801](https://issues.apache.org/jira/browse/SPARK-7801) | Improvement | Upgrade master versions to Spark 1.5.0 |

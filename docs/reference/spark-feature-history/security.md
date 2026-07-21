@@ -8,6 +8,10 @@
 
 Security features were minimal in the 0.x line, appearing only as deployment-mode add-ons. 0.8.0 added support for running Spark against a secured YARN cluster, tying into YARN's own authentication rather than adding Spark-native security. 0.8.1 followed with the ability to run Spark applications as a different user in standalone and Mesos modes, letting operators isolate jobs by OS-level user identity.
 
+### 1.x era — Hadoop-native auth and network hardening
+
+1.0.0 integrated Spark with the Hadoop/YARN security model for secured clusters, authenticating job submission, transferring HDFS credentials securely, and authenticating inter-component communication — the first Spark-native security work, rather than purely OS-level isolation. 1.1.0 added support for tight firewall rules across all the network ports Spark uses, and 1.2.1 locked down file permissions on temporary file storage. 1.3.0 added SSL encryption for some communication endpoints, and 1.4.0 extended security to long-running YARN applications (SPARK-5342) — a gap that mattered increasingly as Spark moved from short batch jobs to long-lived streaming and shared clusters.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -15,6 +19,11 @@ Security features were minimal in the 0.x line, appearing only as deployment-mod
 |---|---|---|---|
 | 0.8.0 | — | prose | Support for running against a secured YARN cluster |
 | 0.8.1 | — | prose | Run Spark applications as a different user in standalone and Mesos modes |
+| 1.0.0 | — | prose | YARN/Hadoop security integration (job auth, HDFS creds, component auth) |
+| 1.1.0 | — | prose | Support for tight firewall rules across all network ports |
+| 1.2.1 | — | prose | File permissions locked down for temporary file storage |
+| 1.3.0 | — | prose | SSL encryption support for some communication endpoints |
+| 1.4.0 | [SPARK-5342](https://issues.apache.org/jira/browse/SPARK-5342) | prose | Security for long running YARN applications |
 | 1.5.0 | [SPARK-6284](https://issues.apache.org/jira/browse/SPARK-6284) | Improvement | Support framework authentication and role in Mesos framework |
 | 1.5.0 | [SPARK-8129](https://issues.apache.org/jira/browse/SPARK-8129) | New Feature | Securely pass auth secrets to executors in standalone cluster mode |
 | 1.5.0 | [SPARK-8740](https://issues.apache.org/jira/browse/SPARK-8740) | Improvement | Support GitHub OAuth tokens in dev/merge_spark_pr.py |

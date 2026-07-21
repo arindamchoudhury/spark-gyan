@@ -4,13 +4,18 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 1.x era — math, window, and expression functions
+
+1.4.0 substantially grew the expression library available to DataFrames and SQL: mathematical functions (SPARK-6829), window functions for ranking and analytics (SPARK-1442), and `rollup`/`cube` for multi-dimensional aggregation (SPARK-7320) all landed in the same release, turning Spark SQL from a basic query engine into one with real analytic-function support. 1.5.0 added `expr()`, letting a raw SQL expression string be used as a DataFrame column (SPARK-8668) — a small addition that bridged the DataFrame and SQL-string worlds and remains a common escape hatch when the typed column API lacks an operator you need.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 1.4.0 | [SPARK-1442](https://issues.apache.org/jira/browse/SPARK-1442) | prose | Window functions in Spark SQL and DataFrames |
+| 1.4.0 | [SPARK-6829](https://issues.apache.org/jira/browse/SPARK-6829) | prose | Mathematical functions in DataFrames |
+| 1.4.0 | [SPARK-7320](https://issues.apache.org/jira/browse/SPARK-7320) | prose | Rollup and cube functions |
 | 1.5.0 | [SPARK-7813](https://issues.apache.org/jira/browse/SPARK-7813) | Improvement | Push code generation into expression definition |
 | 1.5.0 | [SPARK-7886](https://issues.apache.org/jira/browse/SPARK-7886) | Improvement | Add built-in expressions to FunctionRegistry |
 | 1.5.0 | [SPARK-7887](https://issues.apache.org/jira/browse/SPARK-7887) | Improvement | Remove EvaluatedType from SQL Expression |
@@ -20,6 +25,7 @@ _TODO: connective prose added during the era passes._
 | 1.5.0 | [SPARK-8349](https://issues.apache.org/jira/browse/SPARK-8349) | Improvement | Use expression constructors (rather than apply) in FunctionRegistry |
 | 1.5.0 | [SPARK-8589](https://issues.apache.org/jira/browse/SPARK-8589) | Improvement | cleanup DateTimeUtils |
 | 1.5.0 | [SPARK-8599](https://issues.apache.org/jira/browse/SPARK-8599) | Improvement | Improve non-deterministic expression handling |
+| 1.5.0 | [SPARK-8668](https://issues.apache.org/jira/browse/SPARK-8668) | prose | expr function for turning a SQL expression into a DataFrame column |
 | 1.5.0 | [SPARK-8686](https://issues.apache.org/jira/browse/SPARK-8686) | Improvement | DataFrame should support `where` with expression represented by String |
 | 1.5.0 | [SPARK-8713](https://issues.apache.org/jira/browse/SPARK-8713) | Improvement | Support codegen for not thread-safe expressions |
 | 1.5.0 | [SPARK-8759](https://issues.apache.org/jira/browse/SPARK-8759) | Improvement | add default eval to binary and unary expression according to default behavior of nullable |

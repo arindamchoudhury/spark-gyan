@@ -4,13 +4,18 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 1.x era — SparkR's first packaging on the DataFrame API
+
+1.4.0 was the first release to package SparkR at all, an R binding built on the new DataFrame API rather than raw RDDs — R users got a `data.frame`-like interface backed by Spark's distributed execution from day one. 1.4.1 quickly followed with support for initializing SparkR with Spark packages (SPARK-8506) and user-defined schemas when reading from data sources (SPARK-8085). 1.5.0 focused on usability: clearer R-facing error messages (SPARK-8742) and aliases that made DataFrame functions read more idiomatically to R users (SPARK-9315). 1.6.0 extended SparkR into modeling, adding R-like summary statistics for generalized linear models (SPARK-9836) and feature interaction terms in the R formula interface (SPARK-9681).
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 1.4.0 | — | prose | SparkR packaged for the first time, an R binding based on the DataFrame API |
+| 1.4.1 | [SPARK-8085](https://issues.apache.org/jira/browse/SPARK-8085) | prose | Support for user defined schemas when reading from data sources |
+| 1.4.1 | [SPARK-8506](https://issues.apache.org/jira/browse/SPARK-8506) | prose | Support for Spark packages when initializing SparkR |
 | 1.5.0 | [SPARK-6805](https://issues.apache.org/jira/browse/SPARK-6805) | Umbrella | MLlib + SparkR integration for 1.5 |
 | 1.5.0 | [SPARK-6813](https://issues.apache.org/jira/browse/SPARK-6813) | New Feature | SparkR style guide |
 | 1.5.0 | [SPARK-6820](https://issues.apache.org/jira/browse/SPARK-6820) | New Feature | Convert NAs to null type in SparkR DataFrames |
@@ -22,14 +27,18 @@ _TODO: connective prose added during the era passes._
 | 1.5.0 | [SPARK-8364](https://issues.apache.org/jira/browse/SPARK-8364) | New Feature | Add crosstab to SparkR DataFrames |
 | 1.5.0 | [SPARK-8431](https://issues.apache.org/jira/browse/SPARK-8431) | New Feature | Add in operator to DataFrame Column in SparkR |
 | 1.5.0 | [SPARK-8446](https://issues.apache.org/jira/browse/SPARK-8446) | New Feature | Add helper functions for testing physical SparkPlan operators |
+| 1.5.0 | [SPARK-8742](https://issues.apache.org/jira/browse/SPARK-8742) | prose | Improved error messages for R |
 | 1.5.0 | [SPARK-8807](https://issues.apache.org/jira/browse/SPARK-8807) | New Feature | Add between operator in SparkR |
 | 1.5.0 | [SPARK-8847](https://issues.apache.org/jira/browse/SPARK-8847) | New Feature | String concatination with column in SparkR |
 | 1.5.0 | [SPARK-9201](https://issues.apache.org/jira/browse/SPARK-9201) | New Feature | Integrate MLlib with SparkR using RFormula |
 | 1.5.0 | [SPARK-9230](https://issues.apache.org/jira/browse/SPARK-9230) | New Feature | SparkR RFormula should support StringType features |
+| 1.5.0 | [SPARK-9315](https://issues.apache.org/jira/browse/SPARK-9315) | prose | Aliases to make DataFrame functions more R-like |
 | 1.5.0 | [SPARK-9391](https://issues.apache.org/jira/browse/SPARK-9391) | New Feature | Support minus, dot, and intercept operators in SparkR RFormula |
 | 1.5.0 | [SPARK-10106](https://issues.apache.org/jira/browse/SPARK-10106) | New Feature | Add `ifelse` Column function to SparkR |
 | 1.6.0 | [SPARK-6819](https://issues.apache.org/jira/browse/SPARK-6819) | New Feature | Support nested types in SparkR DataFrame |
 | 1.6.0 | [SPARK-9647](https://issues.apache.org/jira/browse/SPARK-9647) | Umbrella | MLlib + SparkR integration for 1.6 |
+| 1.6.0 | [SPARK-9681](https://issues.apache.org/jira/browse/SPARK-9681) | prose | Feature interactions in R formula |
+| 1.6.0 | [SPARK-9836](https://issues.apache.org/jira/browse/SPARK-9836) | prose | R-like statistics for GLMs |
 | 1.6.0 | [SPARK-11369](https://issues.apache.org/jira/browse/SPARK-11369) | Improvement | SparkR glm should support setting standardize |
 | 1.6.0 | [SPARK-11468](https://issues.apache.org/jira/browse/SPARK-11468) | New Feature | Add R API for stddev/variance |
 | 1.6.0 | [SPARK-11773](https://issues.apache.org/jira/browse/SPARK-11773) | New Feature | Implement collection functions in SparkR |

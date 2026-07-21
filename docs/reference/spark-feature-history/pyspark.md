@@ -10,6 +10,10 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 
 0.8.1 rounded out the Python surface with the ability to set Spark config properties directly from Python, sort operations, and an explicitly named `add` method on accumulators. By 0.9.0 PySpark jobs showed their call sites in the Spark web UI, IPython integration was updated for newer versions, and 0.9.1 filled in more missing RDD operations (`top`, `zip`, `foldByKey`, `repartition`, `coalesce`, `getStorageLevel`, `setName`, `toDebugString`).
 
+### 1.x era — YARN, Python 3, and closing the API gap
+
+1.0.0 extended the Python API with several new functions, added support for running on YARN, and widened compatible Python/NumPy versions down to 2.6/1.4. 1.1.0 ported disk spilling during aggregations to PySpark and let it read and write arbitrary Hadoop InputFormats (SequenceFiles, HBase, Cassandra, Avro). 1.2.0 covered nearly all DStream transformations in Python and lifted the 2GB broadcast-variable ceiling; 1.3.0 brought the ML pipeline API, gradient-boosted trees, and GMM to Python. 1.4.0 added Python 3 support (SPARK-4897) — a major compatibility milestone — plus external spilling for `groupByKey` (SPARK-3074), and by 1.6.0 the release notes describe "many improvements to Python API to approach feature parity" with Scala.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -27,6 +31,19 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 0.9.0 | — | prose | PySpark shows job call sites in the Spark application UI |
 | 0.9.0 | — | prose | IPython integration updated for newer versions |
 | 0.9.1 | — | prose | Missing RDD operations added to PySpark (top, zip, foldByKey, repartition, coalesce, getStorageLevel, setName, toDebugString) |
+| 1.0.0 | — | prose | Python API extended with several new functions |
+| 1.0.0 | — | prose | PySpark now supports running on YARN |
+| 1.0.0 | — | prose | PySpark supports more Python/NumPy versions |
+| 1.1.0 | — | prose | Disk spilling during aggregations ported to PySpark |
+| 1.1.0 | — | prose | PySpark reads/writes arbitrary Hadoop InputFormats |
+| 1.2.0 | — | prose | Spark Streaming Python API covering DStream transformations/output ops |
+| 1.2.0 | — | prose | PySpark sort operator supports external spilling |
+| 1.2.0 | — | prose | PySpark supports broadcast variables larger than 2GB |
+| 1.2.1 | [SPARK-5223](https://issues.apache.org/jira/browse/SPARK-5223) | prose | Support Vector types within a dictionary |
+| 1.3.0 | — | prose | PySpark gains ML pipeline API, gradient boosted trees, and GMM |
+| 1.4.0 | [SPARK-3074](https://issues.apache.org/jira/browse/SPARK-3074) | prose | External spilling for Python groupByKey operations |
+| 1.4.0 | [SPARK-4897](https://issues.apache.org/jira/browse/SPARK-4897) | prose | Python 3 support |
+| 1.4.1 | [SPARK-8766](https://issues.apache.org/jira/browse/SPARK-8766) | prose | Support non ASCII characters in columns |
 | 1.5.0 | [SPARK-4561](https://issues.apache.org/jira/browse/SPARK-4561) | Improvement | PySparkSQL's Row.asDict() should convert nested rows to dictionaries |
 | 1.5.0 | [SPARK-5155](https://issues.apache.org/jira/browse/SPARK-5155) | New Feature | Python API for MQTT streaming |
 | 1.5.0 | [SPARK-5161](https://issues.apache.org/jira/browse/SPARK-5161) | Improvement | Parallelize Python test execution |
@@ -39,6 +56,7 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 1.5.0 | [SPARK-8727](https://issues.apache.org/jira/browse/SPARK-8727) | Improvement | Add missing python api |
 | 1.5.0 | [SPARK-8996](https://issues.apache.org/jira/browse/SPARK-8996) | New Feature | Add Python API for Kolmogorov-Smirnov Test |
 | 1.5.0 | [SPARK-9766](https://issues.apache.org/jira/browse/SPARK-9766) | Improvement | check and add missing docs for PySpark ML |
+| 1.6.0 | — | prose | Many improvements to Python API to approach feature parity |
 | 1.6.0 | [SPARK-3842](https://issues.apache.org/jira/browse/SPARK-3842) | Improvement | Remove the hacks for Python callback server in py4j |
 | 1.6.0 | [SPARK-6328](https://issues.apache.org/jira/browse/SPARK-6328) | Improvement | Python API for StreamingListener |
 | 1.6.0 | [SPARK-7021](https://issues.apache.org/jira/browse/SPARK-7021) | Improvement | JUnit output for Python tests |

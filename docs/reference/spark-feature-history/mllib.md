@@ -10,6 +10,10 @@ MLlib was introduced in 0.8.0 as a standard library of machine learning and opti
 
 0.9.0 made MLlib available in Python (operating on NumPy data) and added a Naive Bayes classifier, plus support for predicting ratings for multiple items in parallel with ALS. The 0.9.1 patch release focused entirely on ALS refinements — optimized memory usage and YtY computation, support for negative implicit input, an ability to set a random seed, and faster feature construction with intercept.
 
+### 1.x era — ML Pipelines and the algorithm explosion
+
+MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed SVD/PCA, and L-BFGS; 1.1.0 added a statistics package (stratified sampling, correlations, chi-squared tests), Word2Vec/TF-IDF, and nonnegative matrix factorization. The pivotal change was 1.2.0, previewing the new `spark.ml` package — a learning-pipelines API chaining algorithms with varying parameters, built on `SchemaRDD` for Spark SQL interop — alongside random forests and gradient-boosted trees. 1.3.0 ported the pipeline API onto the new DataFrame abstraction and added LDA topic modeling, multinomial logistic regression, GMM clustering, and FP-growth. 1.4.0 stabilized the DecisionTree/ensemble APIs (SPARK-6113) and added elastic-net logistic regression (SPARK-7262) and PMML export (SPARK-1406); 1.6.0 closed the era with univariate/bivariate DataFrame statistics (SPARK-10385).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -26,6 +30,45 @@ MLlib was introduced in 0.8.0 as a standard library of machine learning and opti
 | 0.9.1 | [SPARK-1237](https://issues.apache.org/jira/browse/SPARK-1237) | prose | Optimized YtY computation for implicit ALS |
 | 0.9.1 | [SPARK-1238](https://issues.apache.org/jira/browse/SPARK-1238) | prose | Ability to set a random seed in ALS |
 | 0.9.1 | [SPARK-1260](https://issues.apache.org/jira/browse/SPARK-1260) | prose | Faster construction of features with intercept |
+| 1.0.0 | — | prose | MLlib adds sparse feature vector support in Scala/Java/Python |
+| 1.0.0 | — | prose | MLlib adds decision trees, distributed SVD/PCA, model evaluation, L-BFGS |
+| 1.1.0 | — | prose | New MLlib statistics package (stratified sampling, correlations, chi-squared, random data) |
+| 1.1.0 | — | prose | Feature extraction utilities: Word2Vec and TF-IDF |
+| 1.1.0 | — | prose | Feature transformation utilities: normalization and standard scaling |
+| 1.1.0 | — | prose | Nonnegative matrix factorization support |
+| 1.1.0 | — | prose | SVD via Lanczos support |
+| 1.1.0 | — | prose | Decision tree algorithm added in Python and Java |
+| 1.1.0 | — | prose | Tree aggregation primitive added to optimize existing algorithms |
+| 1.1.0 | — | prose | MLlib 1.1 performance improves 2-3X, up to 5X for large decision trees |
+| 1.2.0 | — | prose | New spark.ml package previews learning pipelines API |
+| 1.2.0 | — | prose | New ML package uses SchemaRDD for ML datasets (Spark SQL interop) |
+| 1.2.0 | — | prose | Decision trees extended with random forests and gradient-boosted trees |
+| 1.3.0 | — | prose | LDA (topic modeling) added to MLlib |
+| 1.3.0 | — | prose | Multinomial logistic regression for multiclass classification |
+| 1.3.0 | — | prose | Gaussian mixture model (GMM) for clustering |
+| 1.3.0 | — | prose | Power iteration clustering |
+| 1.3.0 | — | prose | FP-growth for frequent pattern mining |
+| 1.3.0 | — | prose | Block matrix abstraction for distributed linear algebra |
+| 1.3.0 | — | prose | Initial support for MLlib model import/export in exchangeable format |
+| 1.3.0 | — | prose | k-means and ALS implementation updates yield significant performance gains |
+| 1.3.0 | — | prose | ML pipeline API ported to support the DataFrame abstraction |
+| 1.4.0 | [SPARK-1406](https://issues.apache.org/jira/browse/SPARK-1406) | prose | PMML model evaluation support via MLlib |
+| 1.4.0 | [SPARK-3066](https://issues.apache.org/jira/browse/SPARK-3066) | prose | Support recommendAll in matrix factorization model |
+| 1.4.0 | [SPARK-4588](https://issues.apache.org/jira/browse/SPARK-4588) | prose | Add API for feature attributes |
+| 1.4.0 | [SPARK-4894](https://issues.apache.org/jira/browse/SPARK-4894) | prose | Bernoulli naive Bayes |
+| 1.4.0 | [SPARK-5563](https://issues.apache.org/jira/browse/SPARK-5563) | prose | LDA with online variational inference |
+| 1.4.0 | [SPARK-5884](https://issues.apache.org/jira/browse/SPARK-5884) | prose | A variety of feature transformers for ML pipelines |
+| 1.4.0 | [SPARK-5995](https://issues.apache.org/jira/browse/SPARK-5995) | prose | Make ML Prediction Developer APIs public |
+| 1.4.0 | [SPARK-6113](https://issues.apache.org/jira/browse/SPARK-6113) | prose | Stabilize DecisionTree and ensembles APIs |
+| 1.4.0 | [SPARK-7015](https://issues.apache.org/jira/browse/SPARK-7015) | prose | OneVsRest multiclass to binary reduction |
+| 1.4.0 | [SPARK-7262](https://issues.apache.org/jira/browse/SPARK-7262) | prose | Binary LogisticRegression with L1/L2 (elastic net) |
+| 1.4.0 | [SPARK-7381](https://issues.apache.org/jira/browse/SPARK-7381) | prose | Python API for ML pipelines |
+| 1.5.0 | — | prose | LDA improvements: online performance, asymmetric doc concentration, perplexity, etc. |
+| 1.5.0 | — | prose | Trees and ensembles improvements: class probabilities, feature importance, thresholds, checkpointing |
+| 1.5.0 | — | prose | GMM distributes matrix inversions |
+| 1.5.0 | — | prose | Model summary for linear and logistic regression |
+| 1.5.0 | — | prose | Python API additions: distributed matrices, streaming k-means/linear models, LDA, power iteration clustering |
+| 1.5.0 | — | prose | Tuning and evaluation: train-validation split and multiclass classification evaluator |
 | 1.5.0 | [SPARK-1856](https://issues.apache.org/jira/browse/SPARK-1856) | Umbrella | Standardize MLlib interfaces |
 | 1.5.0 | [SPARK-3258](https://issues.apache.org/jira/browse/SPARK-3258) | Umbrella | Python API for streaming MLlib algorithms |
 | 1.5.0 | [SPARK-4362](https://issues.apache.org/jira/browse/SPARK-4362) | Improvement | Make prediction probability available in NaiveBayesModel |
@@ -190,6 +233,7 @@ MLlib was introduced in 0.8.0 as a standard library of machine learning and opti
 | 1.6.0 | [SPARK-10324](https://issues.apache.org/jira/browse/SPARK-10324) | Umbrella | MLlib 1.6 Roadmap |
 | 1.6.0 | [SPARK-10349](https://issues.apache.org/jira/browse/SPARK-10349) | Improvement | OneVsRest use "when ... otherwise" not UDF to generate new label at binary reduction |
 | 1.6.0 | [SPARK-10355](https://issues.apache.org/jira/browse/SPARK-10355) | Improvement | Add Python API for SQLTransformer |
+| 1.6.0 | [SPARK-10385](https://issues.apache.org/jira/browse/SPARK-10385) | prose | Univariate and bivariate statistics in DataFrames |
 | 1.6.0 | [SPARK-10393](https://issues.apache.org/jira/browse/SPARK-10393) | Improvement | use ML pipeline in LDA example |
 | 1.6.0 | [SPARK-10394](https://issues.apache.org/jira/browse/SPARK-10394) | Improvement | Make GBTParams use shared "stepSize" |
 | 1.6.0 | [SPARK-10464](https://issues.apache.org/jira/browse/SPARK-10464) | Improvement | Add WeibullGenerator for RandomDataGenerator |

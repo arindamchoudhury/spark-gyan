@@ -8,6 +8,10 @@
 
 This page collects cross-cutting or uncategorized 0.x items that don't map to a single subsystem — improved log messages tying RDDs/jobs back to source code (0.6.0), better error reporting for resource shortfalls and failures (0.7.0), non-serializable exceptions and oversized task results (0.7.3), and the archivable `JobLogger` class (0.8.0).
 
+### 1.x era — instrumentation and error-message polish
+
+The misc bucket stays thin in the 1.x line: 1.0.0 added internal instrumentation so applications could monitor and instrument their own Spark jobs, and 1.3.0 improved error reporting for a handful of easy-to-hit "gotcha" operations that had previously failed with unhelpful messages. Most of the era's cross-cutting work otherwise shows up as internal cleanup, documentation, and test-infrastructure changes rather than user-facing capability — a pattern that only grows as the codebase and contributor base expand through the later 1.5 and 1.6 releases.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -18,6 +22,8 @@ This page collects cross-cutting or uncategorized 0.x items that don't map to a 
 | 0.7.0 | — | prose | Improved failure handling and error message reporting |
 | 0.7.3 | — | prose | Better error reporting for non-serializable exceptions and large task results |
 | 0.8.0 | — | prose | JobLogger class for archivable workload logs |
+| 1.0.0 | — | prose | Internal instrumentation added to monitor and instrument Spark jobs |
+| 1.3.0 | — | prose | Improved error reporting for certain gotcha operations |
 | 1.5.0 | [SPARK-1564](https://issues.apache.org/jira/browse/SPARK-1564) | Improvement | Add JavaScript into Javadoc to turn ::Experimental:: and such into badges |
 | 1.5.0 | [SPARK-2774](https://issues.apache.org/jira/browse/SPARK-2774) | Improvement | Set preferred locations for reduce tasks |
 | 1.5.0 | [SPARK-3382](https://issues.apache.org/jira/browse/SPARK-3382) | Improvement | GradientDescent convergence tolerance |

@@ -4,7 +4,9 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 1.x era — type precision and Tungsten encoding
+
+The 1.x line spent less time on ANSI semantics and more on nailing down type precision and low-level representation. 1.5.0 settled `TimestampType` on microsecond precision (SPARK-8866), added `CalendarIntervalType` for time intervals (SPARK-8943), and overhauled expression type coercion, casting, and type checking (SPARK-8947). The same release taught the Tungsten unsafe row format to hold `ArrayType`, `MapType`, `StructType`, and `BinaryType` values directly, plus decimals wider than 18 digits (SPARK-9644). 1.6.0 added decimal support for `ceil`/`floor` (SPARK-11076), an orderable `ArrayType` (SPARK-11738), and `BigDecimal`/`Date`/`Timestamp` support in the new Encoder API (SPARK-12195) — groundwork for the strict typing later formalized as ANSI mode.
 
 ## Timeline
 

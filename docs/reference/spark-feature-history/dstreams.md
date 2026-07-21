@@ -10,6 +10,10 @@ Spark Streaming debuted as an alpha extension in 0.7.0, offering `map`/`filter`/
 
 0.8.0 finished the OAuth migration for Twitter and added operators like `transformWith`, `leftInnerJoin`, and `rightOuterJoin` in 0.8.1. Spark Streaming graduated out of alpha in 0.9.0, gaining simplified high availability (driver auto-recovery through the standalone cluster's HA mode), a `StreamingListener` interface for monitoring, `awaitTermination()`/`stop()` lifecycle controls, windowed operators sped up 30-50%, and input source plugins (Twitter, Kafka, Flume) split into separate Maven modules.
 
+### 1.x era — direct Kafka exactly-once and backpressure
+
+1.1.0 added Amazon Kinesis as a streaming source, a Flume polling mode for simpler HA deployment, and the first streaming ML algorithm, streaming linear regression. 1.2.0 added a write-ahead log (WAL) for full driver high availability. 1.3.0 was the big one: a new direct Kafka API reads offset ranges straight from Kafka's own partitions, enabling exactly-once delivery without a WAL, alongside a Python Kafka API and support for loading an initial state RDD into stateful operations. 1.4.0 added streaming UI visualization with batch drill-down (SPARK-7602), and 1.5.0 introduced backpressure (SPARK-7398) — automatic, dynamic rate control adapting to ingestion and processing load across both receiver-based and direct-Kafka streams.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -28,11 +32,34 @@ Spark Streaming debuted as an alpha extension in 0.7.0, offering `map`/`filter`/
 | 0.9.0 | — | prose | New StreamingListener interface for monitoring streaming statistics |
 | 0.9.0 | — | prose | StreamingContext.awaitTermination() waits for shutdown and surfaces exceptions |
 | 0.9.0 | — | prose | StreamingContext.stop() can stop streaming without stopping the SparkContext |
+| 1.0.0 | — | prose | Streaming perf optimizations, improved Flume support, automated state cleanup |
+| 1.0.2 | [SPARK-1341](https://issues.apache.org/jira/browse/SPARK-1341) | prose | Ability to limit Streaming receiver data rate |
+| 1.1.0 | — | prose | New Streaming data source: Amazon Kinesis |
+| 1.1.0 | — | prose | New Flume polling mode simplifies deployment and provides HA |
+| 1.1.0 | — | prose | First streaming ML algorithm: streaming linear regression |
+| 1.1.0 | — | prose | Rate limiting added for streaming inputs |
+| 1.2.0 | — | prose | Write ahead log (WAL) for full Streaming driver HA |
+| 1.3.0 | — | prose | New direct Kafka API enables exactly-once delivery without WAL |
+| 1.3.0 | — | prose | Python Kafka API added to Spark Streaming |
+| 1.3.0 | — | prose | Online logistic regression added for streaming |
+| 1.3.0 | — | prose | Ability to read binary records in Streaming |
+| 1.3.0 | — | prose | Support for loading an initial state RDD for stateful streaming operations |
+| 1.4.0 | [SPARK-2808](https://issues.apache.org/jira/browse/SPARK-2808) | prose | Support for Kafka 0.8.2.1 and Kafka with Scala 2.11 |
+| 1.4.0 | [SPARK-5946](https://issues.apache.org/jira/browse/SPARK-5946) | prose | Python API for Kafka direct mode |
+| 1.4.0 | [SPARK-5960](https://issues.apache.org/jira/browse/SPARK-5960) | prose | Support for transferring AWS credentials to Kinesis |
+| 1.4.0 | [SPARK-7056](https://issues.apache.org/jira/browse/SPARK-7056) | prose | A pluggable interface for write ahead logs |
+| 1.4.0 | [SPARK-7111](https://issues.apache.org/jira/browse/SPARK-7111) | prose | Input rate tracking for Kafka |
+| 1.4.0 | [SPARK-7602](https://issues.apache.org/jira/browse/SPARK-7602) | prose | Visualization and monitoring in the streaming UI incl. batch drill down |
+| 1.4.0 | [SPARK-7621](https://issues.apache.org/jira/browse/SPARK-7621) | prose | Better error reporting for Kafka |
+| 1.5.0 | — | prose | Direct Kafka API graduated out of experimental |
 | 1.5.0 | [SPARK-5048](https://issues.apache.org/jira/browse/SPARK-5048) | Improvement | Add Flume to the Python Streaming API |
+| 1.5.0 | [SPARK-7398](https://issues.apache.org/jira/browse/SPARK-7398) | prose | Backpressure: automatic and dynamic rate controlling in Spark Streaming |
 | 1.5.0 | [SPARK-7988](https://issues.apache.org/jira/browse/SPARK-7988) | New Feature | Mechanism to control receiver scheduling |
 | 1.5.0 | [SPARK-8378](https://issues.apache.org/jira/browse/SPARK-8378) | Improvement | Add Spark Flume Python API |
+| 1.5.0 | [SPARK-8389](https://issues.apache.org/jira/browse/SPARK-8389) | prose | Kafka offsets of Direct Kafka streams available through Python API |
 | 1.5.0 | [SPARK-8564](https://issues.apache.org/jira/browse/SPARK-8564) | New Feature | Add the Python API for Kinesis |
 | 1.5.0 | [SPARK-8630](https://issues.apache.org/jira/browse/SPARK-8630) | Improvement | Prevent from checkpointing QueueInputDStream |
+| 1.5.0 | [SPARK-8701](https://issues.apache.org/jira/browse/SPARK-8701) | Improvement | Add input metadata to InputInfo and display it in the batch page |
 | 1.5.0 | [SPARK-8882](https://issues.apache.org/jira/browse/SPARK-8882) | New Feature | A New Receiver Scheduling Mechanism to solve unbalanced receivers |
 | 1.5.0 | [SPARK-9215](https://issues.apache.org/jira/browse/SPARK-9215) | Improvement | Implement WAL-free Kinesis receiver that give at-least once guarantee |
 | 1.5.0 | [SPARK-9572](https://issues.apache.org/jira/browse/SPARK-9572) | Improvement | Add StreamingContext.getActiveOrCreate() to python API |

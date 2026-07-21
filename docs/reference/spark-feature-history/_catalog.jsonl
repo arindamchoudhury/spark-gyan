@@ -4412,7 +4412,7 @@
 {"spark_id": "SPARK-8690", "release": "1.5.0", "area": "connectors", "type": "Improvement", "title": "Add a setting to disable SparkSQL parquet schema merge by using datasource API"}
 {"spark_id": "SPARK-8692", "release": "1.5.0", "area": "ansi-types", "type": "Improvement", "title": "re-order the case statements that handling catalyst data types"}
 {"spark_id": "SPARK-8695", "release": "1.5.0", "area": "sql-catalyst", "type": "Improvement", "title": "TreeAggregation shouldn't be triggered when it doesn't save wall-clock time"}
-{"spark_id": "SPARK-8701", "release": "1.5.0", "area": "structured-streaming", "type": "Improvement", "title": "Add input metadata to InputInfo and display it in the batch page"}
+{"spark_id": "SPARK-8701", "release": "1.5.0", "area": "dstreams", "type": "Improvement", "title": "Add input metadata to InputInfo and display it in the batch page"}
 {"spark_id": "SPARK-8708", "release": "1.5.0", "area": "sql-catalyst", "type": "Improvement", "title": "MatrixFactorizationModel.predictAll() populates single partition only"}
 {"spark_id": "SPARK-8713", "release": "1.5.0", "area": "builtin-functions", "type": "Improvement", "title": "Support codegen for not thread-safe expressions"}
 {"spark_id": "SPARK-8718", "release": "1.5.0", "area": "sql-catalyst", "type": "Improvement", "title": "Improve EdgePartition2D for non perfect square number of partitions"}

@@ -11,7 +11,6 @@ _TODO: connective prose added during the era passes._
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
-| 1.5.0 | [SPARK-8701](https://issues.apache.org/jira/browse/SPARK-8701) | Improvement | Add input metadata to InputInfo and display it in the batch page |
 | 2.0.0 | [SPARK-14214](https://issues.apache.org/jira/browse/SPARK-14214) | Improvement | Update State Store to give a more get/put hashmap-style interface |
 | 2.0.0 | [SPARK-16031](https://issues.apache.org/jira/browse/SPARK-16031) | New Feature | Add debug-only socket source in Structured Streaming |
 | 2.0.0 | [SPARK-16061](https://issues.apache.org/jira/browse/SPARK-16061) | Improvement | The property "spark.streaming.stateStore.maintenanceInterval" should be renamed to "spark.sql.streaming.stateStore.maintenanceInterval" |

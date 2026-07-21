@@ -10,6 +10,10 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 
 0.6.0 added a Java API layer, an `Accumulable` class generalizing accumulators, dynamic file/JAR shipping via `SparkContext.addFile/Jar`, and scheduler tuning for sub-500ms jobs. 0.7.0 brought more transformations (`keys`, `values`, `keyBy`, `subtract`, `coalesce`, `zip`), `RDD.toDebugString()`, and a refactored scheduler codebase for testing. By 0.8.0–0.9.0 Spark had a fair scheduler for multi-user sharing, rack-aware topology scheduling, `SparkConf`, and operators like `takeOrdered`, `zipPartitions`, `top`, `repartition`, `histogram`, and `countDistinctApprox`.
 
+### 1.x era — Java 8 lambdas and lineage-driven cleanup
+
+1.0.0 added support for Java 8's lambda syntax in the Java API, letting Java callers write concise anonymous functions instead of verbose `Function` implementations. The same release taught Spark to garbage-collect intermediate job state automatically once the RDDs referencing it fell out of scope, rather than requiring a manual `unpersist()` or accumulating stale state for the life of the `SparkContext`. 1.0.0 also added `SparkContext.wholeTextFiles`, letting small text files be read as individual (filename, content) records instead of being split line by line — useful for corpora made of many small documents.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -56,6 +60,9 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 | 0.9.0 | — | prose | spark-shell -i option to run a startup script |
 | 0.9.0 | — | prose | New histogram and countDistinctApprox operators |
 | 0.9.1 | — | prose | Support for HBase's TableOutputFormat and other Configurable OutputFormats |
+| 1.0.0 | — | prose | Java 8 lambda syntax support in Java bindings |
+| 1.0.0 | — | prose | Intermediate job state garbage collected when RDDs become unreferenced |
+| 1.0.0 | — | prose | SparkContext.wholeTextFiles for operating on small files as records |
 | 1.5.0 | [SPARK-1855](https://issues.apache.org/jira/browse/SPARK-1855) | New Feature | Provide memory-and-local-disk RDD checkpointing |
 | 1.5.0 | [SPARK-3071](https://issues.apache.org/jira/browse/SPARK-3071) | Improvement | Increase default driver memory |
 | 1.5.0 | [SPARK-5561](https://issues.apache.org/jira/browse/SPARK-5561) | Improvement | Generalize PeriodicGraphCheckpointer for RDDs |

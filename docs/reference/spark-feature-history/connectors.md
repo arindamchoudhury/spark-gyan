@@ -4,19 +4,42 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 1.x era — JSON, Parquet, JDBC, ORC, and Hive maturity
+
+The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added JSON dataset support (SPARK-2060) and improved Parquet reading/writing, including nested records and arrays (SPARK-1293); 1.1.0 layered in automatic JSON schema inference and a public types API for building `SchemaRDD`s from custom sources. 1.2.0 introduced the external data sources API, letting Parquet and JSON be rewritten against it and mounted as temporary tables with predicate pushdown. 1.3.0 added a JDBC data source for MySQL/Postgres and Parquet schema merging, and 1.4.0 brought ORCFile support (SPARK-2883). 1.5.0 was Parquet-heavy — upgrade to Parquet 1.7, predicate pushdown on by default, faster metadata discovery, Hive 1.2 metastore support — with 1.6.0 further speeding up Parquet scans on flat schemas (SPARK-11787).
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 1.0.0 | — | prose | Avro 1.7.6 upgrade adds support for Avro specific types |
+| 1.0.1 | [SPARK-1293](https://issues.apache.org/jira/browse/SPARK-1293) | prose | Improved Parquet read/write incl. nested records and arrays |
+| 1.0.1 | [SPARK-2060](https://issues.apache.org/jira/browse/SPARK-2060) | prose | Support for querying JSON datasets |
+| 1.1.0 | — | prose | JSON data loading module with automatic schema inference |
+| 1.1.0 | — | prose | Public types API for building SchemaRDDs from custom data sources |
+| 1.1.0 | — | prose | Parquet support optimizations added throughout the engine |
+| 1.2.0 | — | prose | New external data sources API for Spark SQL |
+| 1.2.0 | — | prose | Parquet and JSON bindings rewritten on external data sources API |
+| 1.2.0 | — | prose | Hive integration adds fixed-precision decimal type and Hive 0.13 |
+| 1.2.0 | — | prose | Support for reading binary files (images and other binary formats) |
+| 1.3.0 | — | prose | New JDBC data source for importing/exporting MySQL, Postgres, etc. |
+| 1.3.0 | — | prose | Schema evolution via merging compatible Parquet schemas |
+| 1.4.0 | [SPARK-2883](https://issues.apache.org/jira/browse/SPARK-2883) | prose | Support for ORCFile format |
+| 1.5.0 | — | prose | Upgraded Hive dependency to Hive 1.2 |
+| 1.5.0 | — | prose | Support connecting to Hive 0.13-1.2 metastore |
+| 1.5.0 | — | prose | Support partition pruning pushdown into the Hive metastore |
+| 1.5.0 | — | prose | Support persisting data in Hive compatible format in metastore |
+| 1.5.0 | — | prose | Parquet upgraded to 1.7 |
+| 1.5.0 | — | prose | Parquet metadata discovery and schema merging sped up |
+| 1.5.0 | — | prose | Parquet predicate pushdown on by default |
 | 1.5.0 | [SPARK-746](https://issues.apache.org/jira/browse/SPARK-746) | Improvement | Automatically Use Avro Serialization for Avro Objects |
 | 1.5.0 | [SPARK-4176](https://issues.apache.org/jira/browse/SPARK-4176) | New Feature | Support decimals with precision > 18 in Parquet |
 | 1.5.0 | [SPARK-5109](https://issues.apache.org/jira/browse/SPARK-5109) | New Feature | Loading multiple parquet files into a single SchemaRDD |
 | 1.5.0 | [SPARK-6154](https://issues.apache.org/jira/browse/SPARK-6154) | Improvement | Support Kafka, JDBC in Scala 2.11 |
 | 1.5.0 | [SPARK-6566](https://issues.apache.org/jira/browse/SPARK-6566) | Improvement | Update Spark to use the latest version of Parquet libraries |
 | 1.5.0 | [SPARK-6632](https://issues.apache.org/jira/browse/SPARK-6632) | Improvement | Optimize the parquetSchema to metastore schema reconciliation, so that the process is delegated to each map task itself |
+| 1.5.0 | [SPARK-6774](https://issues.apache.org/jira/browse/SPARK-6774) | prose | Support for reading non-standard legacy Parquet files |
 | 1.5.0 | [SPARK-6906](https://issues.apache.org/jira/browse/SPARK-6906) | Story | Improve Hive integration support |
 | 1.5.0 | [SPARK-6964](https://issues.apache.org/jira/browse/SPARK-6964) | New Feature | Support Cancellation in the Thrift Server |
 | 1.5.0 | [SPARK-7821](https://issues.apache.org/jira/browse/SPARK-7821) | Improvement | Hide private SQL JDBC classes from Javadoc |
@@ -31,6 +54,7 @@ _TODO: connective prose added during the era passes._
 | 1.5.0 | [SPARK-8690](https://issues.apache.org/jira/browse/SPARK-8690) | Improvement | Add a setting to disable SparkSQL parquet schema merge by using datasource API |
 | 1.5.0 | [SPARK-8785](https://issues.apache.org/jira/browse/SPARK-8785) | Improvement | Improve Parquet schema merging |
 | 1.5.0 | [SPARK-8838](https://issues.apache.org/jira/browse/SPARK-8838) | Improvement | Add config to enable/disable merging part-files when merging parquet schema |
+| 1.5.0 | [SPARK-8890](https://issues.apache.org/jira/browse/SPARK-8890) | prose | Faster and more robust dynamic partition insert |
 | 1.5.0 | [SPARK-9067](https://issues.apache.org/jira/browse/SPARK-9067) | Improvement | Memory overflow and open file limit exhaustion for NewParquetRDD+CoalescedRDD |
 | 1.5.0 | [SPARK-9100](https://issues.apache.org/jira/browse/SPARK-9100) | Improvement | DataFrame reader/writer shortcut methods for ORC |
 | 1.5.0 | [SPARK-9232](https://issues.apache.org/jira/browse/SPARK-9232) | Improvement | Duplicate code in JSONRelation |
@@ -64,6 +88,7 @@ _TODO: connective prose added during the era passes._
 | 1.6.0 | [SPARK-11413](https://issues.apache.org/jira/browse/SPARK-11413) | Improvement | Java 8 build has problem with joda-time and s3 request, should bump joda-time version |
 | 1.6.0 | [SPARK-11546](https://issues.apache.org/jira/browse/SPARK-11546) | Improvement | Thrift server makes too many logs about result schema |
 | 1.6.0 | [SPARK-11695](https://issues.apache.org/jira/browse/SPARK-11695) | Improvement | Set s3a credentials by default similarly to s3 and s3n |
+| 1.6.0 | [SPARK-11787](https://issues.apache.org/jira/browse/SPARK-11787) | prose | Parquet scan performance improved for flat schemas |
 | 1.6.0 | [SPARK-11881](https://issues.apache.org/jira/browse/SPARK-11881) | Improvement | [SQL] JDBC Postgres fetchsize parameter ignored |
 | 1.6.0 | [SPARK-12103](https://issues.apache.org/jira/browse/SPARK-12103) | Improvement | Clarify documentation of KafkaUtils createStream with multiple topics |
 | 1.6.0 | [SPARK-12166](https://issues.apache.org/jira/browse/SPARK-12166) | Improvement | Unset hadoop related environment in testing |

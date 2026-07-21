@@ -4,17 +4,45 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 1.x era — the DataFrame API and Spark SQL's graduation
+
+Spark SQL debuted as an alpha component in 1.0.0, querying structured data from Hive or Parquet (or a schema-tagged RDD) through the Catalyst optimizer, which chose execution plans and pushed predicates into formats like Parquet. 1.1.0 added a JDBC/ODBC server for shared access to cached tables, dynamic bytecode generation for expression evaluation, and UDF registration from Python, Scala, and Java lambdas. The turning point was 1.3.0: the DataFrame API arrived with named columns and schema information across Python, Scala, and Java, and Spark SQL graduated from alpha with HiveQL and API compatibility guarantees. 1.4.0 added sort-merge joins for large joins (SPARK-2213); 1.5.0 turned on code generation by default and rewrote aggregation, join, and sort execution around Tungsten's memory model. 1.6.0 closed the era with initial adaptive query execution (SPARK-9858), auto-selecting reducer counts for joins and aggregations.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 1.0.0 | — | prose | Spark SQL introduced as new alpha component |
+| 1.0.0 | — | prose | Spark SQL API interoperates with the RDD data model |
+| 1.0.0 | — | prose | Catalyst optimizer chooses execution plan and pushes predicates into Parquet |
+| 1.0.1 | [SPARK-1508](https://issues.apache.org/jira/browse/SPARK-1508) | prose | Support for SQL-specific configuration (initial use: partition count) |
+| 1.0.1 | [SPARK-1968](https://issues.apache.org/jira/browse/SPARK-1968) | prose | Improved SQL command support (CACHE TABLE, DESCRIBE, SHOW TABLES) |
+| 1.0.1 | [SPARK-2191](https://issues.apache.org/jira/browse/SPARK-2191) | prose | Idempotence for DDL operations |
+| 1.1.0 | — | prose | JDBC/ODBC server for Spark SQL with shared cached-table access |
+| 1.1.0 | — | prose | Dynamic bytecode generation for complex expression evaluation |
+| 1.1.0 | — | prose | Register Python/Scala/Java lambda functions as SQL UDFs |
+| 1.1.1 | [SPARK-3708](https://issues.apache.org/jira/browse/SPARK-3708) | prose | Support backticks in aliases |
+| 1.2.0 | — | prose | Dynamically partitioned inserts added to Spark SQL |
+| 1.2.0 | — | prose | Improved caching of SchemaRDD instances and statistics-based partition pruning |
+| 1.3.0 | — | prose | Multi-level aggregation trees speed up expensive reduce operations |
+| 1.3.0 | — | prose | New DataFrame API with named fields and schema information |
+| 1.3.0 | — | prose | DataFrame API supported in Python, Scala, and Java |
+| 1.3.0 | — | prose | Spark SQL graduates from alpha with HiveQL and API compatibility guarantees |
+| 1.4.0 | [SPARK-2213](https://issues.apache.org/jira/browse/SPARK-2213) | prose | Sort-merge joins to optimize very large joins |
+| 1.4.0 | [SPARK-6117](https://issues.apache.org/jira/browse/SPARK-6117) | prose | Summary and descriptive statistics |
+| 1.4.0 | [SPARK-6231](https://issues.apache.org/jira/browse/SPARK-6231) | prose | Improved API support for self joins |
+| 1.4.0 | [SPARK-8299](https://issues.apache.org/jira/browse/SPARK-8299) | prose | Improved error message reporting for DataFrame and SQL |
+| 1.5.0 | — | prose | Consistent resolution of column names |
+| 1.5.0 | — | prose | Code generation on by default for almost all DataFrame/SQL functions |
+| 1.5.0 | — | prose | Improved aggregation execution in DataFrame/SQL |
+| 1.5.0 | — | prose | Improved join execution in DataFrame/SQL |
+| 1.5.0 | — | prose | Improved sort execution in DataFrame/SQL |
 | 1.5.0 | [SPARK-2660](https://issues.apache.org/jira/browse/SPARK-2660) | Improvement | Enable pretty-printing SchemaRDD Rows |
 | 1.5.0 | [SPARK-2695](https://issues.apache.org/jira/browse/SPARK-2695) | Improvement | Figure out a good way to handle NullType columns. |
 | 1.5.0 | [SPARK-3379](https://issues.apache.org/jira/browse/SPARK-3379) | Improvement | Implement 'POWER' for sql |
 | 1.5.0 | [SPARK-3700](https://issues.apache.org/jira/browse/SPARK-3700) | Improvement | Improve the performance of scanning JSON datasets |
+| 1.5.0 | [SPARK-3947](https://issues.apache.org/jira/browse/SPARK-3947) | prose | New experimental UDAF interface |
 | 1.5.0 | [SPARK-4234](https://issues.apache.org/jira/browse/SPARK-4234) | Improvement | Always do paritial aggregation |
 | 1.5.0 | [SPARK-4485](https://issues.apache.org/jira/browse/SPARK-4485) | Improvement | Add broadcast outer join to optimize left outer join and right outer join |
 | 1.5.0 | [SPARK-6116](https://issues.apache.org/jira/browse/SPARK-6116) | Umbrella | DataFrame API improvement umbrella ticket (Spark 1.5) |
@@ -41,6 +69,7 @@ _TODO: connective prose added during the era passes._
 | 1.5.0 | [SPARK-8154](https://issues.apache.org/jira/browse/SPARK-8154) | Improvement | Remove Term/Code type aliases in code generation |
 | 1.5.0 | [SPARK-8278](https://issues.apache.org/jira/browse/SPARK-8278) | Story | Remove deprecated JsonRDD functionality in Spark SQL |
 | 1.5.0 | [SPARK-8286](https://issues.apache.org/jira/browse/SPARK-8286) | Improvement | Rewrite UTF8String in Java and move it into unsafe package. |
+| 1.5.0 | [SPARK-8300](https://issues.apache.org/jira/browse/SPARK-8300) | prose | DataFrame hint for broadcast joins |
 | 1.5.0 | [SPARK-8301](https://issues.apache.org/jira/browse/SPARK-8301) | Improvement | Improve UTF8String substring/startsWith/endsWith/contains performance |
 | 1.5.0 | [SPARK-8328](https://issues.apache.org/jira/browse/SPARK-8328) | Improvement | Add a CheckAnalysis rule to ensure that Union branches have the same schema |
 | 1.5.0 | [SPARK-8346](https://issues.apache.org/jira/browse/SPARK-8346) | Improvement | Use InternalRow instread of catalyst.InternalRow |
@@ -51,6 +80,7 @@ _TODO: connective prose added during the era passes._
 | 1.5.0 | [SPARK-8610](https://issues.apache.org/jira/browse/SPARK-8610) | Improvement | Separate Row and InternalRow (part 2) |
 | 1.5.0 | [SPARK-8620](https://issues.apache.org/jira/browse/SPARK-8620) | Improvement | cleanup CodeGenContext |
 | 1.5.0 | [SPARK-8635](https://issues.apache.org/jira/browse/SPARK-8635) | Improvement | improve performance of CatalystTypeConverters |
+| 1.5.0 | [SPARK-8638](https://issues.apache.org/jira/browse/SPARK-8638) | prose | Improved performance & memory usage in window functions |
 | 1.5.0 | [SPARK-8695](https://issues.apache.org/jira/browse/SPARK-8695) | Improvement | TreeAggregation shouldn't be triggered when it doesn't save wall-clock time |
 | 1.5.0 | [SPARK-8708](https://issues.apache.org/jira/browse/SPARK-8708) | Improvement | MatrixFactorizationModel.predictAll() populates single partition only |
 | 1.5.0 | [SPARK-8718](https://issues.apache.org/jira/browse/SPARK-8718) | Improvement | Improve EdgePartition2D for non perfect square number of partitions |
@@ -60,6 +90,7 @@ _TODO: connective prose added during the era passes._
 | 1.5.0 | [SPARK-8782](https://issues.apache.org/jira/browse/SPARK-8782) | New Feature | GenerateOrdering fails for NullType (i.e. ORDER BY NULL crashes) |
 | 1.5.0 | [SPARK-8787](https://issues.apache.org/jira/browse/SPARK-8787) | Improvement | Change the parameter order of @deprecated in package object sql |
 | 1.5.0 | [SPARK-8809](https://issues.apache.org/jira/browse/SPARK-8809) | Improvement | Remove ConvertNaNs analyzer rule |
+| 1.5.0 | [SPARK-8828](https://issues.apache.org/jira/browse/SPARK-8828) | prose | Sum function returns null when all input values are nulls |
 | 1.5.0 | [SPARK-8837](https://issues.apache.org/jira/browse/SPARK-8837) | Improvement | support using keyword in column name |
 | 1.5.0 | [SPARK-8856](https://issues.apache.org/jira/browse/SPARK-8856) | Umbrella | Better instrumentation and visualization for physical plan (Spark 1.5) |
 | 1.5.0 | [SPARK-8879](https://issues.apache.org/jira/browse/SPARK-8879) | Improvement | Remove EmptyRow class |
@@ -107,9 +138,11 @@ _TODO: connective prose added during the era passes._
 | 1.6.0 | [SPARK-7970](https://issues.apache.org/jira/browse/SPARK-7970) | Improvement | Optimize code for SQL queries fired on Union of RDDs (closure cleaner) |
 | 1.6.0 | [SPARK-8287](https://issues.apache.org/jira/browse/SPARK-8287) | Improvement | Filters not pushed with substitution through aggregation |
 | 1.6.0 | [SPARK-8992](https://issues.apache.org/jira/browse/SPARK-8992) | Improvement | Add Pivot functionality to Spark SQL |
+| 1.6.0 | [SPARK-9241](https://issues.apache.org/jira/browse/SPARK-9241) | prose | Improved query planner for queries having distinct aggregations |
 | 1.6.0 | [SPARK-9410](https://issues.apache.org/jira/browse/SPARK-9410) | Improvement | Better Multi-User Session Semantics for SQL Context |
 | 1.6.0 | [SPARK-9715](https://issues.apache.org/jira/browse/SPARK-9715) | Improvement | Store numFeatures in all ML PredictionModel types |
 | 1.6.0 | [SPARK-9730](https://issues.apache.org/jira/browse/SPARK-9730) | New Feature | Sort Merge Join for Full Outer Join |
+| 1.6.0 | [SPARK-9858](https://issues.apache.org/jira/browse/SPARK-9858) | prose | Adaptive query execution: initial support for auto-selecting reducer count |
 | 1.6.0 | [SPARK-9928](https://issues.apache.org/jira/browse/SPARK-9928) | Improvement | LogicalLocalTable in ExistingRDD.scala is not referenced by any code else |
 | 1.6.0 | [SPARK-10117](https://issues.apache.org/jira/browse/SPARK-10117) | New Feature | Implement SQL data source API for reading LIBSVM data |
 | 1.6.0 | [SPARK-10186](https://issues.apache.org/jira/browse/SPARK-10186) | New Feature | Add support for more postgres column types |
@@ -166,6 +199,7 @@ _TODO: connective prose added during the era passes._
 | 1.6.0 | [SPARK-11723](https://issues.apache.org/jira/browse/SPARK-11723) | Improvement | Use LibSVM data source rather than MLUtils.loadLibSVMFile to load DataFrame |
 | 1.6.0 | [SPARK-11743](https://issues.apache.org/jira/browse/SPARK-11743) | Improvement | Add UserDefinedType support to RowEncoder |
 | 1.6.0 | [SPARK-11754](https://issues.apache.org/jira/browse/SPARK-11754) | Improvement | consolidate `ExpressionEncoder.tuple` and `Encoders.tuple` |
+| 1.6.0 | [SPARK-11778](https://issues.apache.org/jira/browse/SPARK-11778) | prose | DataFrameReader.table supports specifying database name |
 | 1.6.0 | [SPARK-11848](https://issues.apache.org/jira/browse/SPARK-11848) | Improvement | [SQL] Support EXPLAIN in DataSet APIs |
 | 1.6.0 | [SPARK-11876](https://issues.apache.org/jira/browse/SPARK-11876) | Improvement | [SQL] Support PrintSchema in DataSet APIs |
 | 1.6.0 | [SPARK-11908](https://issues.apache.org/jira/browse/SPARK-11908) | Improvement | Add NullType support to RowEncoder |

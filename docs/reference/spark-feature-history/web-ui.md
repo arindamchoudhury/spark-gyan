@@ -10,6 +10,10 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 
 0.8.0 was the biggest leap: a dedicated web UI at port 4040, a job dashboard with percentile statistics for task runtime, shuffle, and GC, an extended per-executor storage/task dashboard, and a new metrics library exposing internal metrics through JMX and Ganglia. 0.8.1 added a "result fetching" state to the UI's job view.
 
+### 1.x era — REST API and richer progress reporting
+
+1.0.0 added a history server so users could inspect application data after a job finished, not just while it ran. 1.1.0 brought named accumulators visible in the UI, dynamic task-progress updates, input-metric reporting, and graceful handling of stage resubmissions. 1.2.0 added a job-level progress page and a stable progress-reporting API other tools could build on. 1.4.0 introduced a REST API for application information (SPARK-3644) and a dedicated UI for the SQL JDBC server (SPARK-5100). 1.5.0 added pagination for jobs with large task counts (SPARK-4598) and folded streaming storage into the main UI (SPARK-4072), and 1.6.0 closed the era with per-operator SQL execution metrics (SPARK-10412) and failure visibility throughout the streaming tab.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -25,6 +29,17 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 | 0.8.0 | — | prose | Extended storage dashboard with per-executor storage/task pages |
 | 0.8.0 | — | prose | New metrics library exposing internal metrics via JMX and Ganglia |
 | 0.8.1 | — | prose | New result-fetching state shown in UI |
+| 1.0.0 | — | prose | History server added for Spark's web UI |
+| 1.1.0 | — | prose | Named accumulators displayed in Spark's UI |
+| 1.1.0 | — | prose | Dynamic updating of task progress metrics |
+| 1.1.0 | — | prose | Reporting of input metrics for tasks reading input data |
+| 1.1.0 | — | prose | Stage resubmissions handled gracefully in Spark UI |
+| 1.2.0 | — | prose | Job-level progress page, stable progress reporting API, dynamic output metrics |
+| 1.3.0 | — | prose | Realtime GC metrics and record counts added to the UI |
+| 1.4.0 | [SPARK-3644](https://issues.apache.org/jira/browse/SPARK-3644) | prose | A REST API for application information |
+| 1.4.0 | [SPARK-5100](https://issues.apache.org/jira/browse/SPARK-5100) | prose | Dedicated UI for the SQL JDBC server |
+| 1.5.0 | [SPARK-4072](https://issues.apache.org/jira/browse/SPARK-4072) | prose | Streaming storage included in web UI |
+| 1.5.0 | [SPARK-4598](https://issues.apache.org/jira/browse/SPARK-4598) | prose | Pagination for jobs with large number of tasks in web UI |
 | 1.5.0 | [SPARK-5768](https://issues.apache.org/jira/browse/SPARK-5768) | Improvement | Spark UI Shows incorrect memory under Yarn |
 | 1.5.0 | [SPARK-6942](https://issues.apache.org/jira/browse/SPARK-6942) | Umbrella | Umbrella: UI Visualizations for Core and Dataframes |
 | 1.5.0 | [SPARK-7161](https://issues.apache.org/jira/browse/SPARK-7161) | Improvement | Provide REST api to download event logs from History Server |
@@ -33,9 +48,12 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 | 1.5.0 | [SPARK-8145](https://issues.apache.org/jira/browse/SPARK-8145) | Github Integration | Trigger a double click on the span to show full job description |
 | 1.5.0 | [SPARK-8344](https://issues.apache.org/jira/browse/SPARK-8344) | New Feature | Add internal metrics / logging for DAGScheduler to detect long pauses / blocking |
 | 1.5.0 | [SPARK-8735](https://issues.apache.org/jira/browse/SPARK-8735) | Improvement | Expose metrics for runtime memory usage |
+| 1.6.0 | — | prose | Streaming tab shows failures in timelines, batch list, and batch details page |
+| 1.6.0 | — | prose | Streaming tab shows output operations as progress bars |
 | 1.6.0 | [SPARK-2533](https://issues.apache.org/jira/browse/SPARK-2533) | Improvement | Show summary of locality level of completed tasks in the each stage page of web UI |
 | 1.6.0 | [SPARK-9790](https://issues.apache.org/jira/browse/SPARK-9790) | Improvement | [YARN] Expose in WebUI if NodeManager is the reason why executors were killed. |
 | 1.6.0 | [SPARK-10411](https://issues.apache.org/jira/browse/SPARK-10411) | Improvement | In SQL tab move visualization above explain output |
+| 1.6.0 | [SPARK-10412](https://issues.apache.org/jira/browse/SPARK-10412) | prose | Per-operator metrics for SQL execution |
 | 1.6.0 | [SPARK-10531](https://issues.apache.org/jira/browse/SPARK-10531) | Improvement | AppId is set as AppName in status rest api |
 | 1.6.0 | [SPARK-10652](https://issues.apache.org/jira/browse/SPARK-10652) | Improvement | Set meaningful job descriptions for streaming related jobs |
 | 1.6.0 | [SPARK-10742](https://issues.apache.org/jira/browse/SPARK-10742) | Improvement | Add the ability to embed HTML relative links in job descriptions |
