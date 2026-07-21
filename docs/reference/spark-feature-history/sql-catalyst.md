@@ -16,6 +16,12 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 
 3.2.0 is the pivotal release: Adaptive Query Execution turned on by default (SPARK-33679), the RocksDB state store (SPARK-34198), and Scala 2.13 support (SPARK-34218) all landed together. 3.3.0 shifted focus to diagnosability with a broad Error Message Improvements initiative (SPARK-38781) that began migrating exceptions onto structured error classes, plus row-level runtime filtering (SPARK-32268) and hidden file-metadata columns (SPARK-37273). 3.4.0 was the busiest release for new SQL surface: DEFAULT column values (SPARK-38334), `TIMESTAMP WITHOUT TIME ZONE` (SPARK-35662), lateral column aliases (SPARK-27561), bloom-filter joins enabled by default (SPARK-38841), parameterized SQL (SPARK-41271), and Protobuf support (SPARK-40654). 3.5.0 added the `IDENTIFIER` clause (SPARK-43205), named arguments for SQL functions, and continued the PySpark error-class migration (SPARK-42986) — carrying the 3.3.0 diagnosability push through to completion.
 
+### 4.x era — SQL Scripting, metric views, SET PATH
+
+4.0.0 added SQL user-defined functions (SPARK-46057), Session Variables (SPARK-42849), SQL Pipe syntax (SPARK-49555), and SQLSTATE/error-enrichment work across Scala, Python, and Connect clients (SPARK-45595, SPARK-45207, SPARK-45240) extending the 3.3.0 error-class initiative to every client. 4.1.0 made SQL Scripting generally available (SPARK-54499) atop the Stored Procedures API SPIP (SPARK-44167), added recursive CTE support (SPARK-24497), and extended Variant into CSV/XML scan and Parquet shredding (SPARK-51298, SPARK-51503, SPARK-53659).
+
+4.2.0 is the busiest release: SQL path-based name resolution — `SET PATH`, qualified names, and `CURRENT_PATH()` (SPARK-54806, SPARK-56501, SPARK-56489) — metric views for declarative semantic modeling (SPARK-54119, SPARK-54405), the `NEAREST BY` top-K ranking join SPIP (SPARK-56395), `QUALIFY` clause support (SPARK-31561), and schema-evolution SQL syntax (SPARK-54971, SPARK-56001), alongside optimizer work spanning subplan merging, join reordering, and whole-stage codegen for `Union` and window frames.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -1344,7 +1350,139 @@ Spark SQL debuted as an alpha component in 1.0.0, querying structured data from 
 | 3.5.0 | [SPARK-44264](https://issues.apache.org/jira/browse/SPARK-44264) | prose | DeepSpeed Distributor |
 | 3.5.0 | [SPARK-44503](https://issues.apache.org/jira/browse/SPARK-44503) | prose | Add SQL grammar for PARTITION BY and ORDER BY clause after TABLE arguments for TVF calls |
 | 3.5.1 | [SPARK-46170](https://issues.apache.org/jira/browse/SPARK-46170) | prose | Support inject adaptive query post planner strategy rules in SparkSessionExtensions |
+| 4.0.0 | [SPARK-35553](https://issues.apache.org/jira/browse/SPARK-35553) | prose | Improve correlated subqueries |
+| 4.0.0 | [SPARK-36680](https://issues.apache.org/jira/browse/SPARK-36680) | prose | Support dynamic table options via WITH OPTIONS syntax |
+| 4.0.0 | [SPARK-42849](https://issues.apache.org/jira/browse/SPARK-42849) | prose | Session Variables |
+| 4.0.0 | [SPARK-44838](https://issues.apache.org/jira/browse/SPARK-44838) | prose | raise_error improvement |
+| 4.0.0 | [SPARK-45022](https://issues.apache.org/jira/browse/SPARK-45022) | prose | Provide context for dataset API errors |
+| 4.0.0 | [SPARK-45207](https://issues.apache.org/jira/browse/SPARK-45207) | prose | Implement Error Enrichment for Scala Client |
+| 4.0.0 | [SPARK-45240](https://issues.apache.org/jira/browse/SPARK-45240) | prose | Implement Error Enrichment for Python Client |
+| 4.0.0 | [SPARK-45452](https://issues.apache.org/jira/browse/SPARK-45452) | prose | Improve InMemoryFileIndex to use FileSystem.listFiles API |
+| 4.0.0 | [SPARK-45491](https://issues.apache.org/jira/browse/SPARK-45491) | prose | Add missing SQLSTATES |
+| 4.0.0 | [SPARK-45516](https://issues.apache.org/jira/browse/SPARK-45516) | prose | Include QueryContext in SparkThrowable proto message |
+| 4.0.0 | [SPARK-45581](https://issues.apache.org/jira/browse/SPARK-45581) | prose | Make SQLSTATE mandatory |
+| 4.0.0 | [SPARK-45595](https://issues.apache.org/jira/browse/SPARK-45595) | prose | Expose SQLSTATE in error message |
+| 4.0.0 | [SPARK-45606](https://issues.apache.org/jira/browse/SPARK-45606) | prose | Release restrictions on multi-layer runtime filter |
+| 4.0.0 | [SPARK-45609](https://issues.apache.org/jira/browse/SPARK-45609) | prose | Include SqlState in SparkThrowable proto message |
+| 4.0.0 | [SPARK-45882](https://issues.apache.org/jira/browse/SPARK-45882) | prose | BroadcastHashJoinExec propagate partitioning should respect CoalescedHashPartitioning |
+| 4.0.0 | [SPARK-45909](https://issues.apache.org/jira/browse/SPARK-45909) | prose | Remove NumericType cast if it can safely up-cast in IsNotNull |
+| 4.0.0 | [SPARK-46057](https://issues.apache.org/jira/browse/SPARK-46057) | prose | Support SQL user-defined functions |
+| 4.0.0 | [SPARK-46069](https://issues.apache.org/jira/browse/SPARK-46069) | prose | Support unwrap timestamp type to date type |
+| 4.0.0 | [SPARK-46207](https://issues.apache.org/jira/browse/SPARK-46207) | prose | Support MergeInto in DataFrameWriterV2 |
+| 4.0.0 | [SPARK-46246](https://issues.apache.org/jira/browse/SPARK-46246) | prose | EXECUTE IMMEDIATE SQL support |
+| 4.0.0 | [SPARK-46502](https://issues.apache.org/jira/browse/SPARK-46502) | prose | Support timestamp types in UnwrapCastInBinaryComparison |
+| 4.0.0 | [SPARK-46536](https://issues.apache.org/jira/browse/SPARK-46536) | prose | Support GROUP BY calendar_interval_type |
+| 4.0.0 | [SPARK-46693](https://issues.apache.org/jira/browse/SPARK-46693) | prose | Inject LocalLimitExec when matching OffsetAndLimit or LimitAndOffset |
+| 4.0.0 | [SPARK-46707](https://issues.apache.org/jira/browse/SPARK-46707) | prose | Add throwable field to expressions to improve predicate pushdown |
+| 4.0.0 | [SPARK-46908](https://issues.apache.org/jira/browse/SPARK-46908) | prose | Support star clause in WHERE clause |
+| 4.0.0 | [SPARK-46922](https://issues.apache.org/jira/browse/SPARK-46922) | prose | Do not wrap runtime user-facing errors |
+| 4.0.0 | [SPARK-46946](https://issues.apache.org/jira/browse/SPARK-46946) | prose | Supporting broadcast of multiple filtering keys in DynamicPruning |
+| 4.0.0 | [SPARK-47430](https://issues.apache.org/jira/browse/SPARK-47430) | prose | Support GROUP BY for MapType |
+| 4.0.0 | [SPARK-47492](https://issues.apache.org/jira/browse/SPARK-47492) | prose | Widen whitespace rules in lexer to allow Unicode |
+| 4.0.0 | [SPARK-47511](https://issues.apache.org/jira/browse/SPARK-47511) | prose | Canonicalize WITH expressions by reassigning IDs |
+| 4.0.0 | [SPARK-47627](https://issues.apache.org/jira/browse/SPARK-47627) | prose | Add SQL MERGE syntax to enable schema evolution |
+| 4.0.0 | [SPARK-48031](https://issues.apache.org/jira/browse/SPARK-48031) | prose | Support view schema evolution |
+| 4.0.0 | [SPARK-48445](https://issues.apache.org/jira/browse/SPARK-48445) | prose | Donât inline UDFs with expansive children |
+| 4.0.0 | [SPARK-48459](https://issues.apache.org/jira/browse/SPARK-48459) | prose | Implement DataFrameQueryContext in Spark Connect |
+| 4.0.0 | [SPARK-48649](https://issues.apache.org/jira/browse/SPARK-48649) | prose | Add ignoreInvalidPartitionPaths configs for skipping invalid partition paths |
+| 4.0.0 | [SPARK-48873](https://issues.apache.org/jira/browse/SPARK-48873) | prose | Use UnsafeRow in JSON parser |
+| 4.0.0 | [SPARK-49093](https://issues.apache.org/jira/browse/SPARK-49093) | prose | GROUP BY with MapType nested inside complex type |
+| 4.0.0 | [SPARK-49098](https://issues.apache.org/jira/browse/SPARK-49098) | prose | Add write options for INSERT |
+| 4.0.0 | [SPARK-49451](https://issues.apache.org/jira/browse/SPARK-49451) | prose | Allow duplicate keys in parse_json |
+| 4.0.0 | [SPARK-49555](https://issues.apache.org/jira/browse/SPARK-49555) | prose | SQL Pipe syntax |
+| 4.0.0 | [SPARK-50075](https://issues.apache.org/jira/browse/SPARK-50075) | prose | DataFrame APIs for table-valued functions |
+| 4.0.0 | [SPARK-50129](https://issues.apache.org/jira/browse/SPARK-50129) | prose | Add DataFrame APIs for subqueries |
+| 4.0.0 | [SPARK-50541](https://issues.apache.org/jira/browse/SPARK-50541) | prose | Describe Table As JSON |
+| 4.0.0 | [SPARK-50883](https://issues.apache.org/jira/browse/SPARK-50883) | prose | Support altering multiple columns in the same command |
+| 4.0.0 | [SPARK-50915](https://issues.apache.org/jira/browse/SPARK-50915) | prose | Add getCondition and deprecate getErrorClass in PySparkException |
+| 4.0.1 | [SPARK-52146](https://issues.apache.org/jira/browse/SPARK-52146) | prose | Detect cyclic function usage in SQL UDFs |
+| 4.0.1 | [SPARK-52147](https://issues.apache.org/jira/browse/SPARK-52147) | prose | Block temporary object references in persistent SQL UDFs |
+| 4.0.1 | [SPARK-52450](https://issues.apache.org/jira/browse/SPARK-52450) | prose | Improve performance of schema deepcopy |
+| 4.0.1 | [SPARK-52489](https://issues.apache.org/jira/browse/SPARK-52489) | prose | Forbid duplicate SQLEXCEPTION and NOT FOUND handlers inside SQL Script |
+| 4.0.1 | [SPARK-52684](https://issues.apache.org/jira/browse/SPARK-52684) | prose | Make CACHE TABLE Commands atomic while encounting execution errors |
+| 4.0.1 | [SPARK-53074](https://issues.apache.org/jira/browse/SPARK-53074) | prose | Avoid partial clustering in SPJ to meet a child’s required distribution |
+| 4.1.0 | [SPARK-24497](https://issues.apache.org/jira/browse/SPARK-24497) | prose | Recursive CTE support |
+| 4.1.0 | [SPARK-44167](https://issues.apache.org/jira/browse/SPARK-44167) | prose | SPIP: Stored Procedures API for Catalogs |
+| 4.1.0 | [SPARK-47404](https://issues.apache.org/jira/browse/SPARK-47404) | prose | Add configurable size limits for ANTLR DFA cache |
+| 4.1.0 | [SPARK-50131](https://issues.apache.org/jira/browse/SPARK-50131) | prose | Add IN Subquery DataFrame API |
+| 4.1.0 | [SPARK-51298](https://issues.apache.org/jira/browse/SPARK-51298) | prose | Support variant in CSV scan |
+| 4.1.0 | [SPARK-51503](https://issues.apache.org/jira/browse/SPARK-51503) | prose | Support variant in XML scan |
+| 4.1.0 | [SPARK-51559](https://issues.apache.org/jira/browse/SPARK-51559) | prose | Make max broadcast table size configurable |
+| 4.1.0 | [SPARK-51831](https://issues.apache.org/jira/browse/SPARK-51831) | prose | Column pruning with existsJoin for Datasource V2 |
+| 4.1.0 | [SPARK-52219](https://issues.apache.org/jira/browse/SPARK-52219) | prose | Schema level collation support for tables |
+| 4.1.0 | [SPARK-52338](https://issues.apache.org/jira/browse/SPARK-52338) | prose | Support for inheriting default collation from schema to View |
+| 4.1.0 | [SPARK-52345](https://issues.apache.org/jira/browse/SPARK-52345) | prose | Fix NULL behavior in scripting conditions |
+| 4.1.0 | [SPARK-52433](https://issues.apache.org/jira/browse/SPARK-52433) | prose | Unify string coercion in createDataFrame |
+| 4.1.0 | [SPARK-52494](https://issues.apache.org/jira/browse/SPARK-52494) | prose | Support colon-sign operator syntax to access Variant fields |
+| 4.1.0 | [SPARK-52545](https://issues.apache.org/jira/browse/SPARK-52545) | prose | Standardize double-quote escaping to follow SQL specification |
+| 4.1.0 | [SPARK-52601](https://issues.apache.org/jira/browse/SPARK-52601) | prose | Support primitive types in TransformingEncoder |
+| 4.1.0 | [SPARK-52694](https://issues.apache.org/jira/browse/SPARK-52694) | prose | Add o.a.s.sql.Encoders#udtAPI |
+| 4.1.0 | [SPARK-52777](https://issues.apache.org/jira/browse/SPARK-52777) | prose | Add shuffle cleanup mode configuration for Spark SQL |
+| 4.1.0 | [SPARK-52782](https://issues.apache.org/jira/browse/SPARK-52782) | prose | Return NULL from +/- on datetime with NULL |
+| 4.1.0 | [SPARK-52828](https://issues.apache.org/jira/browse/SPARK-52828) | prose | Make hashing for collated strings collation agnostic |
+| 4.1.0 | [SPARK-52873](https://issues.apache.org/jira/browse/SPARK-52873) | prose | Further restrict when SHJ semi/anti join can ignore duplicate keys on the build side |
+| 4.1.0 | [SPARK-52956](https://issues.apache.org/jira/browse/SPARK-52956) | prose | Preserve alias metadata when collapsing projects |
+| 4.1.0 | [SPARK-52998](https://issues.apache.org/jira/browse/SPARK-52998) | prose | Multiple variables inside DECLARE |
+| 4.1.0 | [SPARK-53124](https://issues.apache.org/jira/browse/SPARK-53124) | prose | Prune unnecessary fields from JsonTuple |
+| 4.1.0 | [SPARK-53155](https://issues.apache.org/jira/browse/SPARK-53155) | prose | Global lower aggregation should not be replaced with a project |
+| 4.1.0 | [SPARK-53348](https://issues.apache.org/jira/browse/SPARK-53348) | prose | Always persist ANSI value when creating a view or assume it when querying |
+| 4.1.0 | [SPARK-53399](https://issues.apache.org/jira/browse/SPARK-53399) | prose | Merge Python UDFs |
+| 4.1.0 | [SPARK-53402](https://issues.apache.org/jira/browse/SPARK-53402) | prose | Support Direct Passthrough Partitioning Dataset API |
+| 4.1.0 | [SPARK-53444](https://issues.apache.org/jira/browse/SPARK-53444) | prose | Rework EXECUTE IMMEDIATE |
+| 4.1.0 | [SPARK-53573](https://issues.apache.org/jira/browse/SPARK-53573) | prose | Allow query parameter markers everywhere via pre-parser |
+| 4.1.0 | [SPARK-53621](https://issues.apache.org/jira/browse/SPARK-53621) | prose | Add support for CONTINUE HANDLER |
+| 4.1.0 | [SPARK-53659](https://issues.apache.org/jira/browse/SPARK-53659) | prose | Infer Variant shredding schema in parquet writer |
+| 4.1.0 | [SPARK-53762](https://issues.apache.org/jira/browse/SPARK-53762) | prose | Add date and time conversions simplifier rule to optimizer |
+| 4.1.0 | [SPARK-53857](https://issues.apache.org/jira/browse/SPARK-53857) | prose | Enable messageTemplate propagation to SparkThrowable |
+| 4.1.0 | [SPARK-54306](https://issues.apache.org/jira/browse/SPARK-54306) | prose | Annotate Variant type on Parquet Write |
+| 4.1.0 | [SPARK-54354](https://issues.apache.org/jira/browse/SPARK-54354) | prose | Fix Spark hanging when there’s not enough JVM heap memory for broadcast hashed relation |
+| 4.1.0 | [SPARK-54410](https://issues.apache.org/jira/browse/SPARK-54410) | prose | Add read support for Parquet Variant logical type |
+| 4.1.0 | [SPARK-54499](https://issues.apache.org/jira/browse/SPARK-54499) | prose | Enable SQL Scripting by default (SQL Scripting GA) |
 | 4.1.1 | [SPARK-54728](https://issues.apache.org/jira/browse/SPARK-54728) | Improvement | Remove a wrong note in dataframe.isEmpty |
 | 4.1.2 | [SPARK-54785](https://issues.apache.org/jira/browse/SPARK-54785) | Improvement | Add support for binary sketch aggregations in KLL |
 | 4.1.2 | [SPARK-55070](https://issues.apache.org/jira/browse/SPARK-55070) | Improvement | Allow hidden column in dataframe column resolution |
+| 4.2.0 | [SPARK-31561](https://issues.apache.org/jira/browse/SPARK-31561) | prose | Add QUALIFY clause |
+| 4.2.0 | [SPARK-40193](https://issues.apache.org/jira/browse/SPARK-40193) | prose | Merge subplans with different filter conditions |
+| 4.2.0 | [SPARK-44065](https://issues.apache.org/jira/browse/SPARK-44065) | prose | Optimize BroadcastHashJoin skew in OptimizeSkewedJoin |
+| 4.2.0 | [SPARK-44571](https://issues.apache.org/jira/browse/SPARK-44571) | prose | Extend subplan merging to non-grouping aggregate subplans, reducing redundant scans |
+| 4.2.0 | [SPARK-51518](https://issues.apache.org/jira/browse/SPARK-51518) | prose | Support \| as an alternative to \|> for the SQL pipe operator token |
+| 4.2.0 | [SPARK-53652](https://issues.apache.org/jira/browse/SPARK-53652) | prose | Codegen for MergeRowExec |
+| 4.2.0 | [SPARK-54119](https://issues.apache.org/jira/browse/SPARK-54119) | prose | Metric views â declarative semantic modeling with a CREATE VIEW ... WITH METRICS surface |
+| 4.2.0 | [SPARK-54292](https://issues.apache.org/jira/browse/SPARK-54292) | prose | Support aggregate functions and GROUP BY in \|> SELECT pipe operators |
+| 4.2.0 | [SPARK-54403](https://issues.apache.org/jira/browse/SPARK-54403) | prose | Add YAML serde infrastructure for metric views |
+| 4.2.0 | [SPARK-54405](https://issues.apache.org/jira/browse/SPARK-54405) | prose | CREATE command and SELECT query resolution for metric views |
+| 4.2.0 | [SPARK-54754](https://issues.apache.org/jira/browse/SPARK-54754) | prose | Reuse the ORC TypeDescription in OrcSerializer, roughly halving serialization time for maps, arrays, and structs |
+| 4.2.0 | [SPARK-54759](https://issues.apache.org/jira/browse/SPARK-54759) | prose | SQL scripting Cursor support |
+| 4.2.0 | [SPARK-54803](https://issues.apache.org/jira/browse/SPARK-54803) | prose | Support BY NAME with INSERT INTO … REPLACE WHERE |
+| 4.2.0 | [SPARK-54806](https://issues.apache.org/jira/browse/SPARK-54806) | prose | SQL path-based name resolution â SET PATH , qualified built-in/session names, and CURRENT_PATH() |
+| 4.2.0 | [SPARK-54807](https://issues.apache.org/jira/browse/SPARK-54807) | prose | Allow qualified names for built-in and session functions |
+| 4.2.0 | [SPARK-54808](https://issues.apache.org/jira/browse/SPARK-54808) | prose | Qualified session view |
+| 4.2.0 | [SPARK-54971](https://issues.apache.org/jira/browse/SPARK-54971) | prose | Add WITH SCHEMA EVOLUTION syntax for SQL INSERT |
+| 4.2.0 | [SPARK-54972](https://issues.apache.org/jira/browse/SPARK-54972) | prose | Improve NOT IN subqueries with non-nullable columns |
+| 4.2.0 | [SPARK-55019](https://issues.apache.org/jira/browse/SPARK-55019) | prose | Allow DROP TABLE to drop VIEW |
+| 4.2.0 | [SPARK-55356](https://issues.apache.org/jira/browse/SPARK-55356) | prose | Support alias for PIVOT clause |
+| 4.2.0 | [SPARK-55528](https://issues.apache.org/jira/browse/SPARK-55528) | prose | Add default collation support for SQL UDFs |
+| 4.2.0 | [SPARK-55551](https://issues.apache.org/jira/browse/SPARK-55551) | prose | Improve BroadcastHashJoinExec output partitioning |
+| 4.2.0 | [SPARK-55716](https://issues.apache.org/jira/browse/SPARK-55716) | prose | Support NOT NULL constraint enforcement for V1 file source table inserts |
+| 4.2.0 | [SPARK-55959](https://issues.apache.org/jira/browse/SPARK-55959) | prose | Optimize map key lookup for GetMapValue and ElementAt |
+| 4.2.0 | [SPARK-55978](https://issues.apache.org/jira/browse/SPARK-55978) | prose | Add TABLESAMPLE SYSTEM block sampling with DSv2 pushdown |
+| 4.2.0 | [SPARK-55995](https://issues.apache.org/jira/browse/SPARK-55995) | prose | Support TIMESTAMP WITH LOCAL TIME ZONE in SQL syntax |
+| 4.2.0 | [SPARK-56001](https://issues.apache.org/jira/browse/SPARK-56001) | prose | Add INSERT INTO … REPLACE ON/USING syntax |
+| 4.2.0 | [SPARK-56032](https://issues.apache.org/jira/browse/SPARK-56032) | prose | Support subexpression elimination in FilterExec whole-stage codegen |
+| 4.2.0 | [SPARK-56034](https://issues.apache.org/jira/browse/SPARK-56034) | prose | Push Join down through Union when the right side is broadcastable |
+| 4.2.0 | [SPARK-56152](https://issues.apache.org/jira/browse/SPARK-56152) | prose | Enable implicit cast from STRING to TIME type |
+| 4.2.0 | [SPARK-56221](https://issues.apache.org/jira/browse/SPARK-56221) | prose | Feature parity between spark.catalog.* and DDL commands |
+| 4.2.0 | [SPARK-56315](https://issues.apache.org/jira/browse/SPARK-56315) | prose | Pre-aggregate before Expand to reduce data amplification for multiple COUNT(DISTINCT) |
+| 4.2.0 | [SPARK-56395](https://issues.apache.org/jira/browse/SPARK-56395) | prose | SPIP: NEAREST BY top-K ranking join, a new join primitive for nearest-neighbor queries |
+| 4.2.0 | [SPARK-56467](https://issues.apache.org/jira/browse/SPARK-56467) | prose | Route scalar subquery partition filters into DSv2 runtime filtering |
+| 4.2.0 | [SPARK-56482](https://issues.apache.org/jira/browse/SPARK-56482) | prose | Enable whole-stage codegen fusion for UnionExec |
+| 4.2.0 | [SPARK-56489](https://issues.apache.org/jira/browse/SPARK-56489) | prose | Add CURRENT_PATH() builtin expression and keywords |
+| 4.2.0 | [SPARK-56501](https://issues.apache.org/jira/browse/SPARK-56501) | prose | SET PATH syntax |
+| 4.2.0 | [SPARK-56520](https://issues.apache.org/jira/browse/SPARK-56520) | prose | Persist SQL PATH in views and SQL functions, expose in DESCRIBE |
+| 4.2.0 | [SPARK-56546](https://issues.apache.org/jira/browse/SPARK-56546) | prose | Block-chunked segment-tree window frame for non-invertible sliding aggregates |
+| 4.2.0 | [SPARK-56550](https://issues.apache.org/jira/browse/SPARK-56550) | prose | Support source with fewer columns/fields in INSERT INTO … WITH SCHEMA EVOLUTION |
+| 4.2.0 | [SPARK-56605](https://issues.apache.org/jira/browse/SPARK-56605) | prose | Wire resolution engine to use SQL PATH for table, function, and variable lookup |
+| 4.2.0 | [SPARK-56614](https://issues.apache.org/jira/browse/SPARK-56614) | prose | Add config for strict DataFrame column resolution |
+| 4.2.0 | [SPARK-56663](https://issues.apache.org/jira/browse/SPARK-56663) | prose | Restore the fast path for date_trunc at MINUTE/HOUR/DAY granularity |
+| 4.2.0 | [SPARK-56883](https://issues.apache.org/jira/browse/SPARK-56883) | prose | Support DESCRIBE FUNCTION for SQL UDFs |
 <!-- AUTO:timeline END -->

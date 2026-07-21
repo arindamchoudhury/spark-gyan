@@ -16,6 +16,12 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 
 3.0.0 migrated the built-in Parquet, ORC, CSV, JSON, Kafka, Text, and Avro sources onto DSv2 (SPARK-27589) and added Hive 3.1 metastore support. 3.1.1 pushed more filter kinds down to Parquet/Avro/JSON (contains, starts/ends-with, not-equals) and added JDBC catalog and connection-provider APIs. 3.2.0 upgraded Parquet to 1.12.1, added column-index support to the vectorized reader, and extended the vectorized ORC reader to nested columns. 3.3.0 supported complex types in the Parquet vectorized reader (SPARK-34863) and added min/max/count aggregate pushdown for both Parquet and ORC. 3.4.0 brought a PyTorch Distributor (SPARK-41589) and UDT support in the vectorized Parquet reader, while 3.5.0 added JDBC catalog char/varchar support and Avro custom-decimal handling — steady maturation of the DSv2-based readers rather than a single headline feature.
 
+### 4.x era — XML source and TIME-type serde
+
+4.0.0's headline addition was a built-in XML data source (SPARK-44265), alongside CSV improvements (binary support, configurable output style, a file-extension option: SPARK-48807, SPARK-48602, SPARK-50616), ORC's default compression switched to zstd (SPARK-46648) with Brotli codec support added (SPARK-47456), and Avro gained logical-type registration, custom Union-field prefixes, and xz/zstandard compression-level control (SPARK-47739, SPARK-46930, SPARK-46759). 4.1.0 added Hive Metastore 4.1 support, ZStandard for the generic file-source reader (SPARK-52482), and DSv2 join pushdown for the Oracle, Postgres, MySQL, and SQLServer connectors (SPARK-52823, SPARK-52906, SPARK-52929).
+
+4.2.0's connector work centered on the new `TIME` type introduced elsewhere in SQL: JSON, XML, CSV, ORC, and Avro all gained `TIME` serde support (SPARK-54451, SPARK-54461, SPARK-54463, SPARK-54472, SPARK-54473), plus vectorized-Parquet-reader optimizations (SPARK-55722, SPARK-55517) and JDBC `TABLESAMPLE SYSTEM` pushdown (SPARK-57040) — connectors tracking new core SQL types as fast as they land rather than lagging behind them.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -570,4 +576,66 @@ The 1.x line built out Spark's data source ecosystem from scratch. 1.0.1 added J
 | 3.5.0 | [SPARK-43273](https://issues.apache.org/jira/browse/SPARK-43273) | prose | Support lz4raw compression codec for Parquet |
 | 3.5.0 | [SPARK-43333](https://issues.apache.org/jira/browse/SPARK-43333) | prose | Allow Avro to convert union type to SQL with field name stable with type |
 | 3.5.0 | [SPARK-43901](https://issues.apache.org/jira/browse/SPARK-43901) | prose | Avro to Support custom decimal type backed by Long |
+| 4.0.0 | [SPARK-44265](https://issues.apache.org/jira/browse/SPARK-44265) | prose | Built-in XML data source support |
+| 4.0.0 | [SPARK-44550](https://issues.apache.org/jira/browse/SPARK-44550) | prose | Enable correctness fixes for null IN (empty list) under ANSI |
+| 4.0.0 | [SPARK-44977](https://issues.apache.org/jira/browse/SPARK-44977) | prose | Upgrade Derby to 10.16.1.1 |
+| 4.0.0 | [SPARK-45139](https://issues.apache.org/jira/browse/SPARK-45139) | prose | Add DatabricksDialect to handle SQL type conversion |
+| 4.0.0 | [SPARK-45265](https://issues.apache.org/jira/browse/SPARK-45265) | prose | Support Hive 4.0 metastore |
+| 4.0.0 | [SPARK-45328](https://issues.apache.org/jira/browse/SPARK-45328) | prose | Remove Hive support prior to 2.0.0 |
+| 4.0.0 | [SPARK-45586](https://issues.apache.org/jira/browse/SPARK-45586) | prose | Reduce compiler latency for plans with large expression trees |
+| 4.0.0 | [SPARK-45816](https://issues.apache.org/jira/browse/SPARK-45816) | prose | Return NULL when overflowing during casting from timestamp to integers |
+| 4.0.0 | [SPARK-45905](https://issues.apache.org/jira/browse/SPARK-45905) | prose | Least common type between decimal types should retain integral digits first |
+| 4.0.0 | [SPARK-45915](https://issues.apache.org/jira/browse/SPARK-45915) | prose | Treat decimal(x, 0) the same as IntegralType in PromoteStrings |
+| 4.0.0 | [SPARK-46220](https://issues.apache.org/jira/browse/SPARK-46220) | prose | Restrict charsets in decode() |
+| 4.0.0 | [SPARK-46648](https://issues.apache.org/jira/browse/SPARK-46648) | prose | Use zstd as the default ORC compression |
+| 4.0.0 | [SPARK-46746](https://issues.apache.org/jira/browse/SPARK-46746) | prose | Attach codec extension to Avro datasource files |
+| 4.0.0 | [SPARK-46759](https://issues.apache.org/jira/browse/SPARK-46759) | prose | Support compression level for xz and zstandard in Avro |
+| 4.0.0 | [SPARK-46766](https://issues.apache.org/jira/browse/SPARK-46766) | prose | Add ZSTD Buffer Pool support for Avro datasource |
+| 4.0.0 | [SPARK-46862](https://issues.apache.org/jira/browse/SPARK-46862) | prose | Disable CSV column pruning in multi-line mode |
+| 4.0.0 | [SPARK-46930](https://issues.apache.org/jira/browse/SPARK-46930) | prose | Add support for custom prefix for Union type fields in Avro |
+| 4.0.0 | [SPARK-46933](https://issues.apache.org/jira/browse/SPARK-46933) | prose | Add query execution time metric to connectors using JDBCRDD |
+| 4.0.0 | [SPARK-47044](https://issues.apache.org/jira/browse/SPARK-47044) | prose | Add executed query for JDBC external datasources to explain output |
+| 4.0.0 | [SPARK-47101](https://issues.apache.org/jira/browse/SPARK-47101) | prose | Allow comma in top-level column names and relax HiveExternalCatalog schema check |
+| 4.0.0 | [SPARK-47361](https://issues.apache.org/jira/browse/SPARK-47361) | prose | Improve JDBC data sources |
+| 4.0.0 | [SPARK-47456](https://issues.apache.org/jira/browse/SPARK-47456) | prose | Support ORC Brotli codec |
+| 4.0.0 | [SPARK-47509](https://issues.apache.org/jira/browse/SPARK-47509) | prose | Block subquery expressions in lambda/higher-order functions for correctness |
+| 4.0.0 | [SPARK-47739](https://issues.apache.org/jira/browse/SPARK-47739) | prose | Register logical Avro type |
+| 4.0.0 | [SPARK-47911](https://issues.apache.org/jira/browse/SPARK-47911) | prose | Introduces a universal BinaryFormatter to make binary output consistent |
+| 4.0.0 | [SPARK-48498](https://issues.apache.org/jira/browse/SPARK-48498) | prose | Always do char padding in predicates |
+| 4.0.0 | [SPARK-48545](https://issues.apache.org/jira/browse/SPARK-48545) | prose | Create to_avro and from_avro SQL functions |
+| 4.0.0 | [SPARK-48602](https://issues.apache.org/jira/browse/SPARK-48602) | prose | Make csv generator support different output style via spark.sql.binaryOutputStyle |
+| 4.0.0 | [SPARK-48807](https://issues.apache.org/jira/browse/SPARK-48807) | prose | Binary support for CSV datasource |
+| 4.0.0 | [SPARK-49016](https://issues.apache.org/jira/browse/SPARK-49016) | prose | Restore behavior for queries from raw CSV files |
+| 4.0.0 | [SPARK-49082](https://issues.apache.org/jira/browse/SPARK-49082) | prose | Widening type promotions in AvroDeserializer |
+| 4.0.0 | [SPARK-49125](https://issues.apache.org/jira/browse/SPARK-49125) | prose | Allow duplicated column names in CSV writing |
+| 4.0.0 | [SPARK-49489](https://issues.apache.org/jira/browse/SPARK-49489) | prose | HMS client respects hive.thrift.client.maxmessage.size |
+| 4.0.0 | [SPARK-50350](https://issues.apache.org/jira/browse/SPARK-50350) | prose | Avro: add new function schema_of_avro (Scala side) |
+| 4.0.0 | [SPARK-50616](https://issues.apache.org/jira/browse/SPARK-50616) | prose | Add File Extension Option to CSV DataSource Writer |
+| 4.0.0 | [SPARK-50705](https://issues.apache.org/jira/browse/SPARK-50705) | prose | Make QueryPlan lockâfree |
+| 4.0.1 | [SPARK-49872](https://issues.apache.org/jira/browse/SPARK-49872) | prose | Allow unlimited json size again |
+| 4.1.0 | [SPARK-47618](https://issues.apache.org/jira/browse/SPARK-47618) | prose | Use Magic Committer for all S3 buckets by default |
+| 4.1.0 | [SPARK-52482](https://issues.apache.org/jira/browse/SPARK-52482) | prose | ZStandard support for file source reader |
+| 4.1.0 | [SPARK-52582](https://issues.apache.org/jira/browse/SPARK-52582) | prose | Improve the memory usage of XML parser |
+| 4.1.0 | [SPARK-52823](https://issues.apache.org/jira/browse/SPARK-52823) | prose | Support Join pushdown for Oracle connector |
+| 4.1.0 | [SPARK-52906](https://issues.apache.org/jira/browse/SPARK-52906) | prose | Support Join pushdown for Postgres connector |
+| 4.1.0 | [SPARK-52917](https://issues.apache.org/jira/browse/SPARK-52917) | prose | Read support to enable round-trip for binary in xml format |
+| 4.1.0 | [SPARK-52929](https://issues.apache.org/jira/browse/SPARK-52929) | prose | Support MySQL and SQLServer connector for DSv2 Join pushdown |
+| 4.1.0 | [SPARK-53095](https://issues.apache.org/jira/browse/SPARK-53095) | prose | Support of Hive Metastore 4.1 |
+| 4.1.0 | [SPARK-53450](https://issues.apache.org/jira/browse/SPARK-53450) | prose | Fix unexpected null fill after converting hive table scan to logical relation |
+| 4.1.0 | [SPARK-53535](https://issues.apache.org/jira/browse/SPARK-53535) | prose | Fix missing structs always being assumed as nulls |
+| 4.1.0 | [SPARK-53633](https://issues.apache.org/jira/browse/SPARK-53633) | prose | Reuse InputStream in vectorized Parquet reader |
+| 4.1.0 | [SPARK-54220](https://issues.apache.org/jira/browse/SPARK-54220) | prose | NullType/VOID/UNKNOWN Type Support in Parquet |
+| 4.2.0 | [SPARK-54442](https://issues.apache.org/jira/browse/SPARK-54442) | prose | Add numeric conversion functions for TIME type |
+| 4.2.0 | [SPARK-54451](https://issues.apache.org/jira/browse/SPARK-54451) | prose | JSON serde support for the TIME type, including from_json/to_json |
+| 4.2.0 | [SPARK-54461](https://issues.apache.org/jira/browse/SPARK-54461) | prose | XML serde support for the TIME type, including from_xml/to_xml |
+| 4.2.0 | [SPARK-54463](https://issues.apache.org/jira/browse/SPARK-54463) | prose | CSV serde support for the TIME type, including from_csv/to_csv |
+| 4.2.0 | [SPARK-54472](https://issues.apache.org/jira/browse/SPARK-54472) | prose | ORC read and write support for the TIME type |
+| 4.2.0 | [SPARK-54473](https://issues.apache.org/jira/browse/SPARK-54473) | prose | Avro read and write support for the TIME type |
+| 4.2.0 | [SPARK-55517](https://issues.apache.org/jira/browse/SPARK-55517) | prose | A series of optimizations to the vectorized Parquet reader (readBytes/readShorts/readBinary, unsigned longs, boolean and null runs) using... |
+| 4.2.0 | [SPARK-55722](https://issues.apache.org/jira/browse/SPARK-55722) | prose | Vectorized data loading |
+| 4.2.0 | [SPARK-56045](https://issues.apache.org/jira/browse/SPARK-56045) | prose | Add flag for ignoring Parquet UNKNOWN type annotation and revert to old behavior |
+| 4.2.0 | [SPARK-56251](https://issues.apache.org/jira/browse/SPARK-56251) | prose | Add default fetchSize for Postgres to avoid loading all data in memory |
+| 4.2.0 | [SPARK-56588](https://issues.apache.org/jira/browse/SPARK-56588) | prose | Fix PathOutputCommitProtocol dynamic partition overwrite so INSERT OVERWRITE replaces rather than appends partitions |
+| 4.2.0 | [SPARK-57040](https://issues.apache.org/jira/browse/SPARK-57040) | prose | JDBC connector supports pushing down TABLESAMPLE SYSTEM |
+| 4.2.0 | [SPARK-57364](https://issues.apache.org/jira/browse/SPARK-57364) | prose | Fix Oracle TRUNC pushdown to map Spark truncation formats to Oracle equivalents |
 <!-- AUTO:timeline END -->

@@ -22,6 +22,12 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 
 3.0.0 improved History Server concurrency (SPARK-29043) and added stage-level-scheduling UI support alongside observable metrics. 3.1.1 exposed executor memory metrics in the web UI (SPARK-23432). 3.2.0 added task/executor metrics distributions to the REST API (SPARK-34488) and a hash-aggregate fallback metric. 3.3.0 added RocksDB as a backend option for the History Server (SPARK-37680) and renamed the SQL tab to "SQL / DataFrame" to reflect pandas-API usage (SPARK-38657). 3.4.0 made RocksDB the default History Server disk backend (SPARK-42277) and improved UI scalability and driver stability for large applications (SPARK-41053). 3.5.0 added a dedicated Spark UI page for Spark Connect (SPARK-44394) — giving the newly introduced Connect architecture its own observability surface — plus per-query error-message display and a heap-histogram column in the Executors tab.
 
+### 4.x era — dark mode and SQL plan visualization
+
+4.0.0 added a structured logging framework as a SPIP (SPARK-47240), a new DAG-drawing approach for job/stage/plan graphics (SPARK-45274), FlameGraph support for executor thread dumps (SPARK-45209), and executor JVM profiling (SPARK-46094). 4.1.0 focused on execution-page navigation and log scalability: linking root and sub-execution IDs (SPARK-51651, SPARK-51686), downloadable plan formats (SPARK-51629), filterable environment-page tables (SPARK-51467), and on-demand log loading for rolling logs in the History Server (SPARK-52914).
+
+4.2.0 delivered a modernized Spark UI with dark mode and a searchable, zoomable, side-by-side SQL plan visualization (SPARK-55760) — pan/zoom and node search (SPARK-56792, SPARK-56799), a side-by-side initial-vs-final plan view for AQE queries (SPARK-55877), a Job Timeline on the SQL execution detail page (SPARK-55878) — plus History Server scalability work adding multiple log-directory support (SPARK-56287, SPARK-55793). This is the biggest visual overhaul the Web UI has had since its 0.8.0 rewrite.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -246,4 +252,69 @@ The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory u
 | 3.5.0 | [SPARK-44367](https://issues.apache.org/jira/browse/SPARK-44367) | prose | Show error message on UI for each failed query |
 | 3.5.0 | [SPARK-44394](https://issues.apache.org/jira/browse/SPARK-44394) | prose | Add a Spark UI page for Spark Connect |
 | 3.5.4 | [SPARK-49294](https://issues.apache.org/jira/browse/SPARK-49294) | prose | Add width attribute for shuffle-write-time checkbox |
+| 4.0.0 | [SPARK-41685](https://issues.apache.org/jira/browse/SPARK-41685) | prose | Support Protobuf serializer for the KVStore in History server |
+| 4.0.0 | [SPARK-44770](https://issues.apache.org/jira/browse/SPARK-44770) | prose | Add a displayOrder variable to WebUITab to specify the order in which tabs appear |
+| 4.0.0 | [SPARK-44801](https://issues.apache.org/jira/browse/SPARK-44801) | prose | Capture analyzing failed queries in Listener and UI |
+| 4.0.0 | [SPARK-44863](https://issues.apache.org/jira/browse/SPARK-44863) | prose | Add a button to download thread dump as a txt in Spark UI |
+| 4.0.0 | [SPARK-44893](https://issues.apache.org/jira/browse/SPARK-44893) | prose | ThreadInfo improvements for monitoring APIs |
+| 4.0.0 | [SPARK-44895](https://issues.apache.org/jira/browse/SPARK-44895) | prose | Add ‘daemon’, ‘priority’ for ThreadStackTrace |
+| 4.0.0 | [SPARK-45151](https://issues.apache.org/jira/browse/SPARK-45151) | prose | Task Level Thread Dump Support |
+| 4.0.0 | [SPARK-45209](https://issues.apache.org/jira/browse/SPARK-45209) | prose | FlameGraph Support For Executor Thread Dump Page |
+| 4.0.0 | [SPARK-45248](https://issues.apache.org/jira/browse/SPARK-45248) | prose | Set the timeout for spark UI server |
+| 4.0.0 | [SPARK-45274](https://issues.apache.org/jira/browse/SPARK-45274) | prose | Implementation of a new DAG drawing approach for job/stage/plan graphics |
+| 4.0.0 | [SPARK-45312](https://issues.apache.org/jira/browse/SPARK-45312) | prose | Support toggle display/hide plan svg on execution page |
+| 4.0.0 | [SPARK-45462](https://issues.apache.org/jira/browse/SPARK-45462) | prose | Show Duration in ApplicationPage |
+| 4.0.0 | [SPARK-45480](https://issues.apache.org/jira/browse/SPARK-45480) | prose | Selectable Spark Plan Node on UI |
+| 4.0.0 | [SPARK-45500](https://issues.apache.org/jira/browse/SPARK-45500) | prose | Show the number of abnormally completed drivers in MasterPage |
+| 4.0.0 | [SPARK-45641](https://issues.apache.org/jira/browse/SPARK-45641) | prose | Display the application start time on AllJobsPage |
+| 4.0.0 | [SPARK-45771](https://issues.apache.org/jira/browse/SPARK-45771) | prose | Enable spark.eventLog.rolling.enabled by default |
+| 4.0.0 | [SPARK-45774](https://issues.apache.org/jira/browse/SPARK-45774) | prose | Support spark.master.ui.historyServerUrl in ApplicationPage |
+| 4.0.0 | [SPARK-45955](https://issues.apache.org/jira/browse/SPARK-45955) | prose | Collapse Support for Flamegraph and thread dump details |
+| 4.0.0 | [SPARK-46003](https://issues.apache.org/jira/browse/SPARK-46003) | prose | Create a ui-test module with Jest to test UI JavaScript code |
+| 4.0.0 | [SPARK-46094](https://issues.apache.org/jira/browse/SPARK-46094) | prose | Support Executor JVM Profiling |
+| 4.0.0 | [SPARK-46399](https://issues.apache.org/jira/browse/SPARK-46399) | prose | Add exit status to the Application End event for the use of Spark Listener |
+| 4.0.0 | [SPARK-46886](https://issues.apache.org/jira/browse/SPARK-46886) | prose | Enable spark.ui.prometheus.enabled by default |
+| 4.0.0 | [SPARK-46893](https://issues.apache.org/jira/browse/SPARK-46893) | prose | Remove inline scripts from UI descriptions |
+| 4.0.0 | [SPARK-46903](https://issues.apache.org/jira/browse/SPARK-46903) | prose | Support Spark History Server Log UI |
+| 4.0.0 | [SPARK-47240](https://issues.apache.org/jira/browse/SPARK-47240) | prose | SPIP: Structured Logging Framework for Apache Spark |
+| 4.0.0 | [SPARK-47253](https://issues.apache.org/jira/browse/SPARK-47253) | prose | Allow LiveEventBus to stop without draining the event queue |
+| 4.0.0 | [SPARK-47894](https://issues.apache.org/jira/browse/SPARK-47894) | prose | Add Environment page to Master UI |
+| 4.0.0 | [SPARK-48628](https://issues.apache.org/jira/browse/SPARK-48628) | prose | Add task peak on/off heap memory metrics |
+| 4.0.0 | [SPARK-48716](https://issues.apache.org/jira/browse/SPARK-48716) | prose | Add jobGroupId to SparkListenerSQLExecutionStart |
+| 4.0.0 | [SPARK-49128](https://issues.apache.org/jira/browse/SPARK-49128) | prose | Support custom History Server UI title |
+| 4.0.0 | [SPARK-49206](https://issues.apache.org/jira/browse/SPARK-49206) | prose | Add Environment Variables table to Master EnvironmentPage |
+| 4.0.0 | [SPARK-49241](https://issues.apache.org/jira/browse/SPARK-49241) | prose | Add OpenTelemetryPush Sink with opentelemetry profile |
+| 4.0.0 | [SPARK-49445](https://issues.apache.org/jira/browse/SPARK-49445) | prose | Support show tooltip in the progress bar of UI |
+| 4.0.0 | [SPARK-51021](https://issues.apache.org/jira/browse/SPARK-51021) | prose | Add log throttler |
+| 4.0.1 | [SPARK-52737](https://issues.apache.org/jira/browse/SPARK-52737) | prose | Pushdown predicate and number of apps to FsHistoryProvider when listing applications |
+| 4.1.0 | [SPARK-51452](https://issues.apache.org/jira/browse/SPARK-51452) | prose | Improve Thread dump table search |
+| 4.1.0 | [SPARK-51467](https://issues.apache.org/jira/browse/SPARK-51467) | prose | Make tables of the environment page filterable |
+| 4.1.0 | [SPARK-51509](https://issues.apache.org/jira/browse/SPARK-51509) | prose | Make Spark Master Environment page support filters |
+| 4.1.0 | [SPARK-51629](https://issues.apache.org/jira/browse/SPARK-51629) | prose | Add a download link on the ExecutionPage for svg/dot/txt format plans |
+| 4.1.0 | [SPARK-51651](https://issues.apache.org/jira/browse/SPARK-51651) | prose | Link the root execution id for current execution if any |
+| 4.1.0 | [SPARK-51686](https://issues.apache.org/jira/browse/SPARK-51686) | prose | Link the execution IDs of sub-executions for current execution if any |
+| 4.1.0 | [SPARK-52456](https://issues.apache.org/jira/browse/SPARK-52456) | prose | Lower the minimum limit of spark.eventLog.rolling.maxFileSize |
+| 4.1.0 | [SPARK-52458](https://issues.apache.org/jira/browse/SPARK-52458) | prose | Support spark.eventLog.excludedPatterns |
+| 4.1.0 | [SPARK-52487](https://issues.apache.org/jira/browse/SPARK-52487) | prose | Add Stage Submitted Time and Duration to StagePage Detail |
+| 4.1.0 | [SPARK-52502](https://issues.apache.org/jira/browse/SPARK-52502) | prose | Thread count overview |
+| 4.1.0 | [SPARK-52914](https://issues.apache.org/jira/browse/SPARK-52914) | prose | Support On-Demand Log Loading for rolling logs in History Server |
+| 4.1.0 | [SPARK-53631](https://issues.apache.org/jira/browse/SPARK-53631) | prose | Optimize memory and perf on SHS bootstrap |
+| 4.2.0 | [SPARK-54877](https://issues.apache.org/jira/browse/SPARK-54877) | prose | Add spark.ui.showErrorStacks config to disable displaying stack traces on the UI error page |
+| 4.2.0 | [SPARK-55008](https://issues.apache.org/jira/browse/SPARK-55008) | prose | Display Query ID in the Spark UI |
+| 4.2.0 | [SPARK-55760](https://issues.apache.org/jira/browse/SPARK-55760) | prose | A modernized Spark Web UI with dark mode and searchable, zoomable, side-by-side SQL plan visualization |
+| 4.2.0 | [SPARK-55766](https://issues.apache.org/jira/browse/SPARK-55766) | prose | Support dark mode with a Bootstrap 5 theme toggle |
+| 4.2.0 | [SPARK-55785](https://issues.apache.org/jira/browse/SPARK-55785) | prose | Compact SQL plan visualization with a detail side panel |
+| 4.2.0 | [SPARK-55793](https://issues.apache.org/jira/browse/SPARK-55793) | prose | Add multiple log-directory support to the SHS |
+| 4.2.0 | [SPARK-55835](https://issues.apache.org/jira/browse/SPARK-55835) | prose | Highlight non-default Spark configuration values on the Environment page |
+| 4.2.0 | [SPARK-55839](https://issues.apache.org/jira/browse/SPARK-55839) | prose | Add an export-config button to the Environment page |
+| 4.2.0 | [SPARK-55875](https://issues.apache.org/jira/browse/SPARK-55875) | prose | Switch SQL tab query listing to client-side, sortable, paginated DataTables |
+| 4.2.0 | [SPARK-55877](https://issues.apache.org/jira/browse/SPARK-55877) | prose | Side-by-side Initial vs Final plan comparison for AQE queries |
+| 4.2.0 | [SPARK-55878](https://issues.apache.org/jira/browse/SPARK-55878) | prose | Add a Job Timeline to the SQL execution detail page |
+| 4.2.0 | [SPARK-56048](https://issues.apache.org/jira/browse/SPARK-56048) | prose | Add copy-plan-text and share-link buttons to the SQL execution page |
+| 4.2.0 | [SPARK-56234](https://issues.apache.org/jira/browse/SPARK-56234) | prose | Support disabling log-directory scanning by path pattern in the SHS |
+| 4.2.0 | [SPARK-56278](https://issues.apache.org/jira/browse/SPARK-56278) | prose | Populate accurate metadata immediately during on-demand loading in the SHS |
+| 4.2.0 | [SPARK-56287](https://issues.apache.org/jira/browse/SPARK-56287) | prose | Spark History Server scalability |
+| 4.2.0 | [SPARK-56528](https://issues.apache.org/jira/browse/SPARK-56528) | prose | Make Jetty SniHostCheck configurable via spark.ui.jetty.sniHostCheckEnabled |
+| 4.2.0 | [SPARK-56792](https://issues.apache.org/jira/browse/SPARK-56792) | prose | Support pan and zoom for SQL plan visualization |
+| 4.2.0 | [SPARK-56799](https://issues.apache.org/jira/browse/SPARK-56799) | prose | Search and highlight nodes in SQL plan visualization |
 <!-- AUTO:timeline END -->

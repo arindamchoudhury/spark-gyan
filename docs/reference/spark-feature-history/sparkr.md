@@ -16,6 +16,10 @@
 
 3.0.0 added eager execution for the R shell/IDE (SPARK-24572) and the `forall` higher-order function, alongside routine parity work (`overlay`, `from_csv`/`schema_of_csv`). 3.1.1 added a full SparkR interface for higher-order functions (SPARK-30682), `from_avro`/`to_avro` (SPARK-33304), and bumped the minimum Arrow version to 1.0.0 (SPARK-32452). 3.2.0 added `current_user` (SPARK-21957) and subexpression elimination for higher-order functions. 3.3.0 migrated SparkR's documentation to pkgdown (SPARK-37474) and added `max_by`/`min_by`, `ILIKE`, `sec`/`csc`/`cot` — closing gaps with the Scala/Python function surface. 3.4.0 added `unpivot`/`melt`, comparator-based `array_sort`, R 4.2.0 support, and Catalog-API compatibility with the three-layer namespace (SPARK-39579) — SparkR tracking the same catalog changes landing in Spark SQL rather than diverging on its own feature set.
 
+### 4.x era — R 3.x support dropped
+
+SparkR's only 4.x record is its most consequential in years: 4.2.0 dropped support for R 3.x (SPARK-57767), effectively raising the floor to R 4.x. This is consistent with SparkR's broader deprecation trajectory elsewhere in the Spark 4.0.0 changelog, but the sparkr area itself records no new 4.x feature work — the 3.4.0 catalog-parity additions remain the last capability investment, and the 4.x line here is entirely about narrowing supported versions rather than adding capability.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -195,4 +199,5 @@
 | 3.4.0 | [SPARK-40114](https://issues.apache.org/jira/browse/SPARK-40114) | prose | Arrow 9.0.0 support with SparkR |
 | 3.4.0 | [SPARK-40167](https://issues.apache.org/jira/browse/SPARK-40167) | prose | Add array_sort(column, comparator) |
 | 3.4.0 | [SPARK-41267](https://issues.apache.org/jira/browse/SPARK-41267) | prose | Add unpivot / melt |
+| 4.2.0 | [SPARK-57767](https://issues.apache.org/jira/browse/SPARK-57767) | prose | Drop support for R 3.x |
 <!-- AUTO:timeline END -->

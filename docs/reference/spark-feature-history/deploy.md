@@ -22,6 +22,12 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 
 3.0.0 added Kerberos support for Spark on Kubernetes (SPARK-23257) and GPU-aware scheduling across Standalone, YARN, and Kubernetes. 3.1.1 was the Kubernetes GA release (SPARK-33005, "Kubernetes GA Preparation"), paired with experimental node decommissioning (SPARK-20624) that could migrate both RDD blocks (SPARK-20732) and shuffle blocks (SPARK-20629) off a draining executor, plus a fallback-storage option (SPARK-33545) when no peer executor was available. 3.2.0 added a pending-pods limit and early driver-service cleanup on Kubernetes. 3.3.0 added executor rolling (SPARK-37810) and Volcano-based scheduling on Kubernetes (SPARK-36061). 3.4.0 made customized Kubernetes schedulers — YuniKorn and Volcano — GA (SPARK-42802) and enabled RDD/shuffle-block decommissioning by default (SPARK-40198), completing the arc from experimental decommissioning to an always-on safety net.
 
+### 4.x era — Kubernetes Operator and executor lifecycle
+
+4.0.0's headline was the Spark Kubernetes Operator (SPARK-45923), a dedicated operator for managing Spark applications on K8s, alongside a revisited Standalone cluster (SPARK-45869) and broader K8s support improvements (SPARK-49524). 4.1.0 added finer executor lifecycle control — decoupled driver/executor heartbeat intervals (SPARK-53157), `spark.kubernetes.executor.useDriverPodIP` (SPARK-53944), and an opt-in flag for `SparkSubmit` to call `System.exit` after the user's main method returns (SPARK-48547).
+
+4.2.0 extended K8s deployment substantially: Deployment API support (SPARK-54173), Volcano pod-group templates (SPARK-54553), `NetworkPolicy` for executor pods (SPARK-55653), heterogeneous executor management with a built-in `ExecutorResizePlugin`/`ExecutorPVCResizePlugin` for elastic resizing (SPARK-55555, SPARK-55432, SPARK-56693), recovery-mode executors and PVC reuse (SPARK-55639, SPARK-55496), and a promoted-to-stable Kubernetes resource-manager API (SPARK-56600) — plus control-plane overhead reduction by moving to the patch API and avoiding cluster-wide LIST calls (SPARK-55400, SPARK-56793). Kubernetes is now Spark's most actively developed deployment target.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -282,4 +288,29 @@ Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 
 | 3.5.1 | [SPARK-45250](https://issues.apache.org/jira/browse/SPARK-45250) | prose | Support stage level task resource profile for yarn cluster when dynamic allocation disabled |
 | 3.5.1 | [SPARK-45495](https://issues.apache.org/jira/browse/SPARK-45495) | prose | Support stage level task resource profile for k8s cluster when dynamic allocation disabled |
 | 3.5.1 | [SPARK-46945](https://issues.apache.org/jira/browse/SPARK-46945) | prose | Add spark.kubernetes.legacy.useReadWriteOnceAccessMode for old K8s clusters |
+| 4.0.0 | [SPARK-45869](https://issues.apache.org/jira/browse/SPARK-45869) | prose | Revisit and improve Spark Standalone Cluster |
+| 4.0.0 | [SPARK-45923](https://issues.apache.org/jira/browse/SPARK-45923) | prose | Spark Kubernetes Operator |
+| 4.0.0 | [SPARK-49524](https://issues.apache.org/jira/browse/SPARK-49524) | prose | Improve K8s support |
+| 4.0.1 | [SPARK-53167](https://issues.apache.org/jira/browse/SPARK-53167) | prose | Spark launcher isRemote also respects properties files |
+| 4.0.1 | [SPARK-53176](https://issues.apache.org/jira/browse/SPARK-53176) | prose | Spark launcher should respect --load-spark-defaults |
+| 4.1.0 | [SPARK-48547](https://issues.apache.org/jira/browse/SPARK-48547) | prose | Add opt-in flag to have SparkSubmit automatically call System.exit after user code main method exits |
+| 4.1.0 | [SPARK-53157](https://issues.apache.org/jira/browse/SPARK-53157) | prose | Decouple driver and executor heartbeat intervals |
+| 4.1.0 | [SPARK-53335](https://issues.apache.org/jira/browse/SPARK-53335) | prose | Support spark.kubernetes.driver.annotateExitException |
+| 4.1.0 | [SPARK-53944](https://issues.apache.org/jira/browse/SPARK-53944) | prose | Support spark.kubernetes.executor.useDriverPodIP |
+| 4.1.0 | [SPARK-54312](https://issues.apache.org/jira/browse/SPARK-54312) | prose | Avoid repeatedly scheduling tasks for SendHeartbeat/WorkDirClean in standalone worker |
+| 4.2.0 | [SPARK-54173](https://issues.apache.org/jira/browse/SPARK-54173) | prose | Add support for the Deployment API on K8s |
+| 4.2.0 | [SPARK-54553](https://issues.apache.org/jira/browse/SPARK-54553) | prose | Support spark.kubernetes.scheduler.volcano.podGroupTemplateJson |
+| 4.2.0 | [SPARK-55327](https://issues.apache.org/jira/browse/SPARK-55327) | prose | Reduce Spark docker image sizes |
+| 4.2.0 | [SPARK-55370](https://issues.apache.org/jira/browse/SPARK-55370) | prose | Use the patch API instead of edit across executor annotation, decommissioning, and diagnostics paths |
+| 4.2.0 | [SPARK-55400](https://issues.apache.org/jira/browse/SPARK-55400) | prose | Reduce K8s control plane overhead |
+| 4.2.0 | [SPARK-55432](https://issues.apache.org/jira/browse/SPARK-55432) | prose | Support built-in K8s ExecutorResizePlugin |
+| 4.2.0 | [SPARK-55496](https://issues.apache.org/jira/browse/SPARK-55496) | prose | Support re-use of scaled PVCs |
+| 4.2.0 | [SPARK-55555](https://issues.apache.org/jira/browse/SPARK-55555) | prose | Support heterogeneous K8s executor management |
+| 4.2.0 | [SPARK-55639](https://issues.apache.org/jira/browse/SPARK-55639) | prose | Support recovery-mode K8s executors |
+| 4.2.0 | [SPARK-55653](https://issues.apache.org/jira/browse/SPARK-55653) | prose | Support NetworkPolicy for Spark executor pods |
+| 4.2.0 | [SPARK-55831](https://issues.apache.org/jira/browse/SPARK-55831) | prose | Support spark.yarn.am.defaultJavaOptions |
+| 4.2.0 | [SPARK-56600](https://issues.apache.org/jira/browse/SPARK-56600) | prose | Promote the Kubernetes resource-manager API (SparkPod, KubernetesConf/Utils, driver spec and builder) to Stable, with Java-friendly facto... |
+| 4.2.0 | [SPARK-56603](https://issues.apache.org/jira/browse/SPARK-56603) | prose | K8s Resource Manager API |
+| 4.2.0 | [SPARK-56693](https://issues.apache.org/jira/browse/SPARK-56693) | prose | Support built-in K8s ExecutorPVCResizePlugin |
+| 4.2.0 | [SPARK-56793](https://issues.apache.org/jira/browse/SPARK-56793) | prose | Avoid cluster-wide LIST in executor pods polling |
 <!-- AUTO:timeline END -->

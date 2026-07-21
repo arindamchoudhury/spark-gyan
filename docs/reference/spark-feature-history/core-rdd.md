@@ -22,6 +22,12 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 
 3.0.0's core-scheduler work centered on one SPIP: accelerator-aware task scheduling (SPARK-24615), which taught the driver and executors to discover, request, and track GPU/FPGA resources end to end — a driver resource-request interface (SPARK-27488), fractional resource support (SPARK-29151), and per-executor `ResourceProfile` tracking (SPARK-29306). 3.1.1 generalized that machinery with the stage-level scheduling SPIP (SPARK-27495), letting different stages of the same job request different resource profiles instead of one fixed executor shape for the whole application. 3.2.0 built on both: barrier-mode tasks were guaranteed to launch together within a stage (SPARK-24818), and `SparkSessionExtensions` gained `ServiceLoader`-based discovery (SPARK-35380) alongside routine scheduler and executor-metrics polish.
 
+### 4.x era — quiet scheduler hot-path fixes
+
+core-rdd's 4.x footprint is thin — mostly scheduler and driver hot-path fixes rather than new API surface. 4.0.0 addressed a DAGScheduler deadlock (SPARK-46861), shortened the lifespan of `TaskInfo.accumulables()` to cut driver heap usage (SPARK-46383), switched to fraction-based resource calculation (SPARK-45527), and enabled `spark.shuffle.service.removeShuffle` and `spark.stage.ignoreDecommissionFetchFailure` by default (SPARK-47448, SPARK-48063).
+
+4.1.2 fixed an O(N) scan in `TaskSetManager.executorLost()` that could stall the `DriverEndpoint` thread under large task counts (SPARK-56235) — a scalability fix rather than new functionality. Unlike the RDD API's earlier eras, which added operators and scheduling models, the 4.x line treats core/RDD as stable infrastructure receiving targeted driver-performance and correctness patches.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -313,5 +319,16 @@ The RDD abstraction and its scheduler were already the core of Spark by 0.3, whi
 | 3.2.0 | [SPARK-35683](https://issues.apache.org/jira/browse/SPARK-35683) | Improvement | Fix Index.difference to avoid collect 'other' to driver side |
 | 3.2.0 | [SPARK-35714](https://issues.apache.org/jira/browse/SPARK-35714) | Improvement | Bug fix for deadlock during the executor shutdown |
 | 3.2.0 | [SPARK-36919](https://issues.apache.org/jira/browse/SPARK-36919) | Improvement | Make BadRecordException serializable |
+| 4.0.0 | [SPARK-44741](https://issues.apache.org/jira/browse/SPARK-44741) | prose | Support regex-based MetricFilter in StatsdSink |
+| 4.0.0 | [SPARK-45439](https://issues.apache.org/jira/browse/SPARK-45439) | prose | Reduce memory usage of LiveStageMetrics.accumIdsToMetricType |
+| 4.0.0 | [SPARK-45527](https://issues.apache.org/jira/browse/SPARK-45527) | prose | Use fraction-based resource calculation |
+| 4.0.0 | [SPARK-46383](https://issues.apache.org/jira/browse/SPARK-46383) | prose | Reduce Driver Heap Usage by shortening TaskInfo.accumulables() lifespan |
+| 4.0.0 | [SPARK-46456](https://issues.apache.org/jira/browse/SPARK-46456) | prose | Add spark.ui.jettyStopTimeout to set Jetty server stop timeout |
+| 4.0.0 | [SPARK-46861](https://issues.apache.org/jira/browse/SPARK-46861) | prose | Avoid Deadlock in DAGScheduler |
+| 4.0.0 | [SPARK-47448](https://issues.apache.org/jira/browse/SPARK-47448) | prose | Enable spark.shuffle.service.removeShuffle by default |
+| 4.0.0 | [SPARK-47674](https://issues.apache.org/jira/browse/SPARK-47674) | prose | Enable spark.metrics.appStatusSource.enabled by default |
+| 4.0.0 | [SPARK-48063](https://issues.apache.org/jira/browse/SPARK-48063) | prose | Enable spark.stage.ignoreDecommissionFetchFailure by default |
+| 4.0.0 | [SPARK-48268](https://issues.apache.org/jira/browse/SPARK-48268) | prose | Add spark.checkpoint.dir config |
+| 4.0.1 | [SPARK-52287](https://issues.apache.org/jira/browse/SPARK-52287) | prose | Improve SparkContext not to populate o.a.s.internal.io.cloud.* -related setting if not exist |
 | 4.1.2 | [SPARK-56235](https://issues.apache.org/jira/browse/SPARK-56235) | Improvement | TaskSetManager.executorLost() O(N) scan over taskInfos causes DriverEndpoint thread stall with large task counts |
 <!-- AUTO:timeline END -->

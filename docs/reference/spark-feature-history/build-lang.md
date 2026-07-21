@@ -22,6 +22,12 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 
 3.0.0 dropped Scala 2.11 support (SPARK-26132) and standardized on Scala 2.12.8, alongside routine dependency bumps (Py4J, Janino, jsr305). 3.2.0 added Scala 2.13 cross-building (SPARK-34218) and deprecated Python 3.6 (SPARK-35936). 3.3.0 was the milestone release for the build itself: Spark could be built and run on Java 17 (SPARK-33772), and it gained native support for Apple Silicon (SPARK-35781), alongside a log4j2 migration and upgrade (SPARK-38544) driven by the Log4Shell CVEs. 3.4.0 added Python 3.11 support (SPARK-41454) and updated cloudpickle, breeze, and Kafka client dependencies. 3.5.0 continued the pattern with dozens of dependency upgrades — Parquet, Kafka, RocksDB, Netty, Arrow — a build increasingly focused on keeping a wide dependency surface current rather than changing the build model itself.
 
+### 4.x era — Scala 2.13, JDK 25, Python 3.14
+
+4.0.0 was a clean break from the 3.x build: Scala 2.12 was dropped and 2.13 became the default (SPARK-45314), JDK 8/11 were dropped in favor of 17 as default with Java 21 support (SPARK-45315, SPARK-43831), Mesos support was removed entirely (SPARK-44442), Python 3.8 support was dropped (SPARK-47993), and SparkR was deprecated (SPARK-49347) — alongside routine minimum-version bumps for NumPy, PyArrow, and Pandas 2.2.3.
+
+4.1.0 raised the minimum Python version to 3.10 across Spark Classic and the Pandas API (SPARK-52561, SPARK-52703) while adding Python 3.14 support (SPARK-51169, SPARK-54287) and bumping Scala to 2.13.17 and the minimum PyArrow to 15.0.0. 4.2.0 moved the JVM target forward again, building and running on Java 25 including the Kubernetes base image and SparkR (SPARK-51167) — a steady cadence of dropping old floors and raising new ceilings each release rather than one big jump.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -397,11 +403,41 @@ Build and language support moved fast in the 0.x line as Spark chased the Scala 
 | 3.5.8 | [SPARK-54649](https://issues.apache.org/jira/browse/SPARK-54649) | prose | Upgrade Jersey to 2.47 |
 | 3.5.8 | [SPARK-54900](https://issues.apache.org/jira/browse/SPARK-54900) | prose | Upgrade ORC to 1.9.8 |
 | 3.5.9 | [SPARK-55115](https://issues.apache.org/jira/browse/SPARK-55115) | Improvement | Use master branch's Dockerfile for release builds |
+| 4.0.0 | [SPARK-43831](https://issues.apache.org/jira/browse/SPARK-43831) | prose | Build and Run Spark on Java 21 |
+| 4.0.0 | [SPARK-44442](https://issues.apache.org/jira/browse/SPARK-44442) | prose | Drop mesos support |
+| 4.0.0 | [SPARK-44956](https://issues.apache.org/jira/browse/SPARK-44956) | prose | Upgrade Jekyll to 4.3.2 & Webrick to 1.8.1 |
+| 4.0.0 | [SPARK-45179](https://issues.apache.org/jira/browse/SPARK-45179) | prose | Upgrade the minimum version of NumPy to 1.21 |
+| 4.0.0 | [SPARK-45269](https://issues.apache.org/jira/browse/SPARK-45269) | prose | Use Java 21-jre in K8s Dockerfile |
+| 4.0.0 | [SPARK-45284](https://issues.apache.org/jira/browse/SPARK-45284) | prose | Update SparkR minimum SystemRequirements to Java 17 |
+| 4.0.0 | [SPARK-45314](https://issues.apache.org/jira/browse/SPARK-45314) | prose | Drop Scala 2.12 and make Scala 2.13 the default |
+| 4.0.0 | [SPARK-45315](https://issues.apache.org/jira/browse/SPARK-45315) | prose | Drop JDK 8/11 and make JDK 17 the default |
+| 4.0.0 | [SPARK-47923](https://issues.apache.org/jira/browse/SPARK-47923) | prose | Upgrade minimum version of arrow R package to 10.0.0 |
+| 4.0.0 | [SPARK-47993](https://issues.apache.org/jira/browse/SPARK-47993) | prose | Drop Python 3.8 support |
+| 4.0.0 | [SPARK-49347](https://issues.apache.org/jira/browse/SPARK-49347) | prose | Deprecate SparkR |
+| 4.0.0 | [SPARK-49801](https://issues.apache.org/jira/browse/SPARK-49801) | prose | Upgrade Pandas to 2.2.3 |
+| 4.0.0 | [SPARK-49964](https://issues.apache.org/jira/browse/SPARK-49964) | prose | Remove ws-rs-api package |
+| 4.0.0 | [SPARK-50383](https://issues.apache.org/jira/browse/SPARK-50383) | prose | Support Virtual Threads in REST Submission API |
+| 4.0.0 | [SPARK-50657](https://issues.apache.org/jira/browse/SPARK-50657) | prose | Upgrade the minimum version of pyarrow to 11.0.0 |
+| 4.0.0 | [SPARK-50811](https://issues.apache.org/jira/browse/SPARK-50811) | prose | Support enabling JVM profiler on driver |
+| 4.0.0 | [SPARK-50952](https://issues.apache.org/jira/browse/SPARK-50952) | prose | Include jjwt-related libraries with jjwt-provided profile |
+| 4.0.1 | [SPARK-52316](https://issues.apache.org/jira/browse/SPARK-52316) | prose | Upgrade Kafka to 3.9.1 |
+| 4.0.1 | [SPARK-52612](https://issues.apache.org/jira/browse/SPARK-52612) | prose | Add an env NO_PROVIDED_SPARK_JARS to control collection behavior of sbt/package for spark-avro.jar and spark-protobuf.jar |
+| 4.0.1 | [SPARK-52691](https://issues.apache.org/jira/browse/SPARK-52691) | prose | Upgrade ORC to 2.1.3 |
+| 4.0.1 | [SPARK-53326](https://issues.apache.org/jira/browse/SPARK-53326) | prose | Upgrade ORC Format to 1.1.1 |
 | 4.0.4 | [SPARK-57254](https://issues.apache.org/jira/browse/SPARK-57254) | Improvement | Do not trigger CI when unrelated file is changed |
 | 4.0.4 | [SPARK-57976](https://issues.apache.org/jira/browse/SPARK-57976) | Improvement | Fix python3.9 pip for branch-4.0 |
+| 4.1.0 | [SPARK-51169](https://issues.apache.org/jira/browse/SPARK-51169) | prose | Add Python 3.14 support in Spark Classic |
+| 4.1.0 | [SPARK-52561](https://issues.apache.org/jira/browse/SPARK-52561) | prose | Upgrade minimum Python version to 3.10 |
+| 4.1.0 | [SPARK-52703](https://issues.apache.org/jira/browse/SPARK-52703) | prose | Upgrade minimum Python version for Pandas API to 3.10 |
+| 4.1.0 | [SPARK-52844](https://issues.apache.org/jira/browse/SPARK-52844) | prose | Update numpy to 1.22 |
+| 4.1.0 | [SPARK-52928](https://issues.apache.org/jira/browse/SPARK-52928) | prose | Upgrade minimum PyArrow version to 15.0.0 |
+| 4.1.0 | [SPARK-53585](https://issues.apache.org/jira/browse/SPARK-53585) | prose | Upgrade Scala to 2.13.17 |
+| 4.1.0 | [SPARK-54269](https://issues.apache.org/jira/browse/SPARK-54269) | prose | Upgrade cloudpickle to 3.1.2 for Python 3.14 |
+| 4.1.0 | [SPARK-54287](https://issues.apache.org/jira/browse/SPARK-54287) | prose | Add Python 3.14 support in pyspark-client and pyspark-connect |
 | 4.1.1 | [SPARK-54847](https://issues.apache.org/jira/browse/SPARK-54847) | Improvement | unify the proto output folder between sbt and maven |
 | 4.1.1 | [SPARK-54851](https://issues.apache.org/jira/browse/SPARK-54851) | Improvement | support generating bloop files via sbt |
 | 4.1.2 | [SPARK-55115](https://issues.apache.org/jira/browse/SPARK-55115) | Improvement | Use master branch's Dockerfile for release builds |
 | 4.1.2 | [SPARK-56989](https://issues.apache.org/jira/browse/SPARK-56989) | Improvement | Publish Apache Spark 4.1.2 to docker registry |
 | 4.1.3 | [SPARK-57254](https://issues.apache.org/jira/browse/SPARK-57254) | Improvement | Do not trigger CI when unrelated file is changed |
+| 4.2.0 | [SPARK-51167](https://issues.apache.org/jira/browse/SPARK-51167) | prose | Build and run Spark on Java 25, including the K8s image moving to the 25-jre base and Java 25 support in SparkR |
 <!-- AUTO:timeline END -->

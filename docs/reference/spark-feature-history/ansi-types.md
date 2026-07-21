@@ -16,6 +16,12 @@ The 2.x line kept extending type coercion into composite types rather than touch
 
 3.0.0 built out the ANSI groundwork: a store-assignment policy for table inserts (SPARK-28495, made default in SPARK-28885), ANSI SQL filter clauses, `OVERLAY`, and reserved-keyword parsing (SPARK-26215). 3.1.1 added char/varchar data types (SPARK-33480) and runtime errors instead of silent nulls under ANSI mode (SPARK-33275). 3.2.0 was the milestone release: ANSI SQL mode reached general availability (SPARK-35030), alongside ANSI SQL `INTERVAL` types (SPARK-27790) and `LATERAL` subqueries (SPARK-34382). 3.3.0 added a wave of ANSI aggregate functions — `REGR_R2`, `REGR_SXY`, and others — plus `TRY_AVG` and stricter reserved-keyword handling (SPARK-37724). 3.4.0 extended ANSI casting to intervals and decimals and rounded out the `REGR_*` family, while later 3.5.x point releases stayed largely maintenance on the same framework.
 
+### 4.x era — VARIANT, collation, and ANSI by default
+
+4.0.0 made ANSI SQL mode the default (SPARK-44444) — the behavior built up gradually since 1.5.0 finally became out-of-the-box — and added two new type-system pillars: the `VARIANT` type for semi-structured data (SPARK-45827) and string collation support (SPARK-46830). 4.0.1 followed with collation-agnostic hashing (SPARK-52828) and made the ANSI setting persist with a view rather than be re-evaluated at query time (SPARK-53348).
+
+4.1.0 took `VARIANT` to general availability, enabled by default (SPARK-54454). 4.2.0 extended collation support to char/varchar and CTAS/RTAS (SPARK-54870) and added a `SHOW COLLATIONS` command (SPARK-49543). Three releases turned ANSI mode, `VARIANT`, and collations from opt-in experiments into the default, GA type system underpinning Spark 4.x.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -172,4 +178,12 @@ The 2.x line kept extending type coercion into composite types rather than touch
 | 3.4.0 | [SPARK-40585](https://issues.apache.org/jira/browse/SPARK-40585) | prose | Support double quoted identifiers |
 | 3.4.1 | [SPARK-43425](https://issues.apache.org/jira/browse/SPARK-43425) | prose | Add TimestampNTZType to ColumnarBatchRow |
 | 3.5.5 | [SPARK-50624](https://issues.apache.org/jira/browse/SPARK-50624) | prose | Add TimestampNTZType to ColumnarRow/MutableColumnarRow |
+| 4.0.0 | [SPARK-44444](https://issues.apache.org/jira/browse/SPARK-44444) | prose | Use ANSI SQL mode by default |
+| 4.0.0 | [SPARK-45827](https://issues.apache.org/jira/browse/SPARK-45827) | prose | Add VARIANT data type |
+| 4.0.0 | [SPARK-46830](https://issues.apache.org/jira/browse/SPARK-46830) | prose | String Collation support |
+| 4.0.1 | [SPARK-52828](https://issues.apache.org/jira/browse/SPARK-52828) | prose | Make hashing for collated strings collation agnostic |
+| 4.0.1 | [SPARK-53348](https://issues.apache.org/jira/browse/SPARK-53348) | prose | Always persist ANSI value when creating a view or assume it when querying if not stored |
+| 4.1.0 | [SPARK-54454](https://issues.apache.org/jira/browse/SPARK-54454) | prose | Enable VARIANT type by default (VARIANT type GA) |
+| 4.2.0 | [SPARK-49543](https://issues.apache.org/jira/browse/SPARK-49543) | prose | Add SHOW COLLATIONS command |
+| 4.2.0 | [SPARK-54870](https://issues.apache.org/jira/browse/SPARK-54870) | prose | Collation support for char/varchar and CTAS/RTAS |
 <!-- AUTO:timeline END -->

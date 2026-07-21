@@ -22,6 +22,12 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 
 3.1.1 launched Project Zen (SPARK-32082), an umbrella to make PySpark feel native to Python developers: type hints via stub files (SPARK-32681), NumPy-style API docs (SPARK-32085), and installability straight from PyPI without a separate Spark download (SPARK-32017). 3.2.0 continued the Python-usability push with pinned-thread mode enabled by default (SPARK-35303) and snake_case naming across the function APIs (SPARK-34306). 3.3.0 was quiet for pure-PySpark entries, adding just `cot`. 3.5.0 picked the pace back up: Python user-defined table functions (SPARK-43798, SPARK-43797), positional and named parameters for `sql()` (SPARK-44140, SPARK-41666), `assertDataFrameEqual`/`assertSchemaEqual` testing utilities (SPARK-44061, SPARK-44216), and a push to make Python the default language for Spark's own documentation examples (SPARK-42493).
 
+### 4.x era — Python Data Source API and worker hardening
+
+4.0.0 was PySpark's biggest release since Project Zen: the Python Data Source API shipped as a SPIP (SPARK-44076), alongside a native PySpark Plotting API (SPARK-49530), Python User-Defined Table Functions (SPARK-43797), a pure-Python package for Spark Connect that drops the JDK requirement (SPARK-47540, SPARK-46910), Pandas 2 support (SPARK-46858), and `VariantVal` support for reading the new VARIANT type (SPARK-47366).
+
+4.1.0 focused heavily on Python worker robustness: idle-timeout worker termination (SPARK-51127), Unix Domain Sockets between Python and the JVM (SPARK-51688), idle-worker queue limits (SPARK-52971), and logging support across Pandas/Arrow UDFs and UDTFs (SPARK-53976, SPARK-53977), plus filter pushdown for Python Data Sources (SPARK-51271). 4.2.0 added PyCapsule (Arrow C Data Interface) support (SPARK-54337), SQLSTATE on `PySparkException` (SPARK-54532), and Py4J-call optimization across `toPandas`/`createDataFrame` (SPARK-54300) — PySpark maturing from a new data-source API into a hardened, observable execution path.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -228,4 +234,100 @@ PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and 
 | 3.5.0 | [SPARK-44216](https://issues.apache.org/jira/browse/SPARK-44216) | prose | Make assertSchemaEqual API public |
 | 3.5.0 | [SPARK-44217](https://issues.apache.org/jira/browse/SPARK-44217) | prose | Allow custom precision for fp approx equality |
 | 3.5.0 | [SPARK-44380](https://issues.apache.org/jira/browse/SPARK-44380) | prose | Support for Python UDTF to analyze in Python |
+| 4.0.0 | [SPARK-40178](https://issues.apache.org/jira/browse/SPARK-40178) | prose | Support coalesce hints with ease for PySpark and R |
+| 4.0.0 | [SPARK-40559](https://issues.apache.org/jira/browse/SPARK-40559) | prose | Add applyInArrow to groupBy and cogroup |
+| 4.0.0 | [SPARK-41666](https://issues.apache.org/jira/browse/SPARK-41666) | prose | Support parameterized SQL by sql() |
+| 4.0.0 | [SPARK-43797](https://issues.apache.org/jira/browse/SPARK-43797) | prose | Python User-defined Table Functions |
+| 4.0.0 | [SPARK-44076](https://issues.apache.org/jira/browse/SPARK-44076) | prose | SPIP: Python Data Source API |
+| 4.0.0 | [SPARK-44665](https://issues.apache.org/jira/browse/SPARK-44665) | prose | Add support for pandas DataFrame assertDataFrameEqual |
+| 4.0.0 | [SPARK-44705](https://issues.apache.org/jira/browse/SPARK-44705) | prose | Make PythonRunner single-threaded |
+| 4.0.0 | [SPARK-44918](https://issues.apache.org/jira/browse/SPARK-44918) | prose | Support named arguments in scalar Python/Pandas UDFs |
+| 4.0.0 | [SPARK-44952](https://issues.apache.org/jira/browse/SPARK-44952) | prose | Support named arguments in aggregate Pandas UDFs |
+| 4.0.0 | [SPARK-45017](https://issues.apache.org/jira/browse/SPARK-45017) | prose | Add CalendarIntervalType to PySpark |
+| 4.0.0 | [SPARK-45420](https://issues.apache.org/jira/browse/SPARK-45420) | prose | Add DataType.fromDDL into PySpark |
+| 4.0.0 | [SPARK-45525](https://issues.apache.org/jira/browse/SPARK-45525) | prose | Support for Python data source write using DSv2 |
+| 4.0.0 | [SPARK-45554](https://issues.apache.org/jira/browse/SPARK-45554) | prose | Introduce flexible parameter to a ssertSchemaEqual |
+| 4.0.0 | [SPARK-45555](https://issues.apache.org/jira/browse/SPARK-45555) | prose | Includes a debuggable object for failed assertion |
+| 4.0.0 | [SPARK-45575](https://issues.apache.org/jira/browse/SPARK-45575) | prose | Support time travel options for df.read API |
+| 4.0.0 | [SPARK-45597](https://issues.apache.org/jira/browse/SPARK-45597) | prose | Support creating table using a Python data source in SQL (DSv2 exec) |
+| 4.0.0 | [SPARK-45600](https://issues.apache.org/jira/browse/SPARK-45600) | prose | Make Python data source registration session level |
+| 4.0.0 | [SPARK-45673](https://issues.apache.org/jira/browse/SPARK-45673) | prose | Enhancing clarity and usability of PySpark error messages |
+| 4.0.0 | [SPARK-45755](https://issues.apache.org/jira/browse/SPARK-45755) | prose | Improve Dataset.isEmpty() by applying global limit 1 |
+| 4.0.0 | [SPARK-45768](https://issues.apache.org/jira/browse/SPARK-45768) | prose | Make faulthandler a runtime configuration for Python execution in SQL |
+| 4.0.0 | [SPARK-45891](https://issues.apache.org/jira/browse/SPARK-45891) | prose | Add interval types in Variant Spec |
+| 4.0.0 | [SPARK-45929](https://issues.apache.org/jira/browse/SPARK-45929) | prose | Support groupingSets operation in DataFrame API |
+| 4.0.0 | [SPARK-45981](https://issues.apache.org/jira/browse/SPARK-45981) | prose | Improve Python language test coverage |
+| 4.0.0 | [SPARK-46048](https://issues.apache.org/jira/browse/SPARK-46048) | prose | Support DataFrame.groupingSets in PySpark |
+| 4.0.0 | [SPARK-46103](https://issues.apache.org/jira/browse/SPARK-46103) | prose | Enhancing PySpark documentation |
+| 4.0.0 | [SPARK-46424](https://issues.apache.org/jira/browse/SPARK-46424) | prose | Support Python metrics in Python Data Source |
+| 4.0.0 | [SPARK-46522](https://issues.apache.org/jira/browse/SPARK-46522) | prose | Block Python data source registration with name conflicts |
+| 4.0.0 | [SPARK-46685](https://issues.apache.org/jira/browse/SPARK-46685) | prose | PySpark UDF Unified Profiling |
+| 4.0.0 | [SPARK-46858](https://issues.apache.org/jira/browse/SPARK-46858) | prose | Upgrade Pandas to 2 |
+| 4.0.0 | [SPARK-46910](https://issues.apache.org/jira/browse/SPARK-46910) | prose | Eliminate JDK Requirement in PySpark Installation |
+| 4.0.0 | [SPARK-47274](https://issues.apache.org/jira/browse/SPARK-47274) | prose | Provide more useful context for DataFrame API errors |
+| 4.0.0 | [SPARK-47346](https://issues.apache.org/jira/browse/SPARK-47346) | prose | Make daemon mode configurable for Python planner workers |
+| 4.0.0 | [SPARK-47366](https://issues.apache.org/jira/browse/SPARK-47366) | prose | Add VariantVal for PySpark |
+| 4.0.0 | [SPARK-47540](https://issues.apache.org/jira/browse/SPARK-47540) | prose | SPIP: Pure Python Package (Spark Connect) |
+| 4.0.0 | [SPARK-47565](https://issues.apache.org/jira/browse/SPARK-47565) | prose | Improve PySpark worker pool crash resilience |
+| 4.0.0 | [SPARK-47683](https://issues.apache.org/jira/browse/SPARK-47683) | prose | Decouple PySpark core API to pyspark.core package |
+| 4.0.0 | [SPARK-47933](https://issues.apache.org/jira/browse/SPARK-47933) | prose | Parent Column class for Spark Connect and Spark Classic |
+| 4.0.0 | [SPARK-48220](https://issues.apache.org/jira/browse/SPARK-48220) | prose | Allow passing PyArrow Table to createDataFrame() |
+| 4.0.0 | [SPARK-48247](https://issues.apache.org/jira/browse/SPARK-48247) | prose | Use all dict pairs in MapType schema inference |
+| 4.0.0 | [SPARK-48340](https://issues.apache.org/jira/browse/SPARK-48340) | prose | Support TimestampNTZ schema inference with prefer_timestamp_ntz |
+| 4.0.0 | [SPARK-48482](https://issues.apache.org/jira/browse/SPARK-48482) | prose | dropDuplicates , dropDuplicatesWithinWatermark accept var-args |
+| 4.0.0 | [SPARK-48508](https://issues.apache.org/jira/browse/SPARK-48508) | prose | Client Side RPC optimization for Spark Connect |
+| 4.0.0 | [SPARK-48710](https://issues.apache.org/jira/browse/SPARK-48710) | prose | Use NumPy 2.0-compatible types |
+| 4.0.0 | [SPARK-48714](https://issues.apache.org/jira/browse/SPARK-48714) | prose | Implement DataFrame.mergeInto in PySpark |
+| 4.0.0 | [SPARK-48761](https://issues.apache.org/jira/browse/SPARK-48761) | prose | Introduce clusterBy DataFrameWriter API for Scala |
+| 4.0.0 | [SPARK-48762](https://issues.apache.org/jira/browse/SPARK-48762) | prose | Introduce clusterBy DataFrameWriter API for Python |
+| 4.0.0 | [SPARK-48798](https://issues.apache.org/jira/browse/SPARK-48798) | prose | Introduce spark.profile.render for SparkSession-based profiling |
+| 4.0.0 | [SPARK-48996](https://issues.apache.org/jira/browse/SPARK-48996) | prose | Allow bare Python literals in Column.and / or |
+| 4.0.0 | [SPARK-49009](https://issues.apache.org/jira/browse/SPARK-49009) | prose | Make Column APIs accept Python Enums |
+| 4.0.0 | [SPARK-49306](https://issues.apache.org/jira/browse/SPARK-49306) | prose | Create SQL function aliases for zeroifnull and nullifzero |
+| 4.0.0 | [SPARK-49530](https://issues.apache.org/jira/browse/SPARK-49530) | prose | Introducing PySpark Plotting API |
+| 4.0.0 | [SPARK-49899](https://issues.apache.org/jira/browse/SPARK-49899) | prose | Support deleteIfExists for TransformWithStateInPandas |
+| 4.0.0 | [SPARK-50132](https://issues.apache.org/jira/browse/SPARK-50132) | prose | Add DataFrame API for Lateral Joins |
+| 4.0.0 | [SPARK-50220](https://issues.apache.org/jira/browse/SPARK-50220) | prose | Support listagg in PySpark |
+| 4.0.0 | [SPARK-50238](https://issues.apache.org/jira/browse/SPARK-50238) | prose | Add Variant Support in PySpark UDFs/UDTFs/UDAFs |
+| 4.0.0 | [SPARK-50310](https://issues.apache.org/jira/browse/SPARK-50310) | prose | Add a flag to disable DataFrameQueryContext |
+| 4.0.0 | [SPARK-50311](https://issues.apache.org/jira/browse/SPARK-50311) | prose | ( add remove get clear )Tag(s) APIs |
+| 4.0.0 | [SPARK-50357](https://issues.apache.org/jira/browse/SPARK-50357) | prose | Support Interrupt(Tag\|All) APIs for PySpark |
+| 4.0.0 | [SPARK-50392](https://issues.apache.org/jira/browse/SPARK-50392) | prose | DataFrame conversion to table argument in Spark Classic |
+| 4.0.0 | [SPARK-50446](https://issues.apache.org/jira/browse/SPARK-50446) | prose | Concurrent level in Arrow-optimized Python UDF |
+| 4.0.0 | [SPARK-50471](https://issues.apache.org/jira/browse/SPARK-50471) | prose | Support Arrow-based Python Data Source Writer |
+| 4.0.0 | [SPARK-50499](https://issues.apache.org/jira/browse/SPARK-50499) | prose | Expose metrics from BasePythonRunner |
+| 4.0.0 | [SPARK-50718](https://issues.apache.org/jira/browse/SPARK-50718) | prose | Support addArtifact(s) for PySpark |
+| 4.0.0 | [SPARK-50719](https://issues.apache.org/jira/browse/SPARK-50719) | prose | Support interruptOperation for PySpark |
+| 4.0.0 | [SPARK-50752](https://issues.apache.org/jira/browse/SPARK-50752) | prose | Introduce configs for tuning Python UDF without Arrow |
+| 4.0.0 | [SPARK-50778](https://issues.apache.org/jira/browse/SPARK-50778) | prose | Add metadataColumn to PySpark DataFrame |
+| 4.0.0 | [SPARK-50790](https://issues.apache.org/jira/browse/SPARK-50790) | prose | Implement parse_json in PySpark |
+| 4.0.0 | [SPARK-51079](https://issues.apache.org/jira/browse/SPARK-51079) | prose | Support large variable types in pandas UDF, createDataFrame and toPandas with Arrow |
+| 4.0.1 | [SPARK-51430](https://issues.apache.org/jira/browse/SPARK-51430) | prose | Stop PySpark context logger from propagating to stdout |
+| 4.1.0 | [SPARK-51127](https://issues.apache.org/jira/browse/SPARK-51127) | prose | Kill the Python worker on idle timeout |
+| 4.1.0 | [SPARK-51271](https://issues.apache.org/jira/browse/SPARK-51271) | prose | Add filter pushdown API to Python Data Sources |
+| 4.1.0 | [SPARK-51688](https://issues.apache.org/jira/browse/SPARK-51688) | prose | Use Unix Domain Socket between Python and JVM communication |
+| 4.1.0 | [SPARK-51919](https://issues.apache.org/jira/browse/SPARK-51919) | prose | Allow overwriting statically registered Python Data Source |
+| 4.1.0 | [SPARK-52426](https://issues.apache.org/jira/browse/SPARK-52426) | prose | Support redirecting stdout/stderr to logging system |
+| 4.1.0 | [SPARK-52579](https://issues.apache.org/jira/browse/SPARK-52579) | prose | Add periodic traceback dump for Python workers |
+| 4.1.0 | [SPARK-52971](https://issues.apache.org/jira/browse/SPARK-52971) | prose | Limit idle Python worker queue size |
+| 4.1.0 | [SPARK-53030](https://issues.apache.org/jira/browse/SPARK-53030) | prose | Support Arrow writer for streaming Python data sources |
+| 4.1.0 | [SPARK-53544](https://issues.apache.org/jira/browse/SPARK-53544) | prose | Support complex types in PySpark observations |
+| 4.1.0 | [SPARK-53696](https://issues.apache.org/jira/browse/SPARK-53696) | prose | Default to bytes for BinaryType in PySpark |
+| 4.1.0 | [SPARK-53975](https://issues.apache.org/jira/browse/SPARK-53975) | prose | Add Python worker logging support |
+| 4.1.0 | [SPARK-53976](https://issues.apache.org/jira/browse/SPARK-53976) | prose | Support logging in Pandas/Arrow UDFs |
+| 4.1.0 | [SPARK-53977](https://issues.apache.org/jira/browse/SPARK-53977) | prose | Support logging in UDTFs |
+| 4.1.0 | [SPARK-53978](https://issues.apache.org/jira/browse/SPARK-53978) | prose | Support logging in driver-side workers |
+| 4.1.0 | [SPARK-54153](https://issues.apache.org/jira/browse/SPARK-54153) | prose | Support python profiler for iterator based UDFs |
+| 4.1.0 | [SPARK-54340](https://issues.apache.org/jira/browse/SPARK-54340) | prose | Add a script to enable viztracer on daemon/workers for python udf |
+| 4.1.0 | [SPARK-54344](https://issues.apache.org/jira/browse/SPARK-54344) | prose | Kill the worker if flush fails in daemon.py |
+| 4.2.0 | [SPARK-54300](https://issues.apache.org/jira/browse/SPARK-54300) | prose | Optimize Py4J calls in df.toPandas, createDataFrame, DataFrame, toArrow, and schema inference |
+| 4.2.0 | [SPARK-54337](https://issues.apache.org/jira/browse/SPARK-54337) | prose | Add support for PyCapsule (Arrow C data interface) to PySpark |
+| 4.2.0 | [SPARK-54392](https://issues.apache.org/jira/browse/SPARK-54392) | prose | Optimize JVM-Python communication for transformWithState initial state |
+| 4.2.0 | [SPARK-54532](https://issues.apache.org/jira/browse/SPARK-54532) | prose | Add SQLSTATE support for PySparkException |
+| 4.2.0 | [SPARK-54720](https://issues.apache.org/jira/browse/SPARK-54720) | prose | Add SparkSession.emptyDataFrame with a schema |
+| 4.2.0 | [SPARK-55046](https://issues.apache.org/jira/browse/SPARK-55046) | prose | PySpark: add a UDF processing time metric |
+| 4.2.0 | [SPARK-55055](https://issues.apache.org/jira/browse/SPARK-55055) | prose | Support SparkSession.Builder.create for PySpark Classic |
+| 4.2.0 | [SPARK-55610](https://issues.apache.org/jira/browse/SPARK-55610) | prose | Add getExecutorInfos to StatusTracker in Python |
+| 4.2.0 | [SPARK-56350](https://issues.apache.org/jira/browse/SPARK-56350) | prose | Skip ColumnarToRow for Arrow-backed input to Python UDFs |
+| 4.2.0 | [SPARK-56518](https://issues.apache.org/jira/browse/SPARK-56518) | prose | Add current_path to PySpark functions |
 <!-- AUTO:timeline END -->

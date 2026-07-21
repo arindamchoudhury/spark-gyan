@@ -12,6 +12,12 @@ Structured Streaming did not exist before 2.0.0: it shipped as an experimental h
 
 3.0.0 added a dedicated Structured Streaming UI (SPARK-29543) and an API for observing arbitrary metrics on streaming queries (SPARK-29345). 3.2.0 introduced session windows (SPARK-10816) and the RocksDB state store (SPARK-34198, shared with sql-catalyst), giving stateful operators a state backend that didn't need to fit in JVM heap. 3.3.0 added `Trigger.AvailableNow` (SPARK-36533) for running a streaming query like a series of bounded batches, and optimized the RocksDB write path (SPARK-37224). 3.4.0 added async progress tracking (SPARK-39591) and arbitrary stateful processing for Python (SPARK-40434), extending a Scala/Java-only capability to PySpark. 3.5.0 rounded out the state-store story with changelog checkpointing for RocksDB (SPARK-43421), watermark propagation among operators (SPARK-42376), and `dropDuplicatesWithinWatermark` (SPARK-42931).
 
+### 4.x era — TransformWithState v2 and Real-time Mode
+
+4.0.0's headline was Arbitrary State API v2 (SPARK-46815) — a new `transformWithState` operator built around multiple state variables and column families, with a State Data Source reader SPIP (SPARK-45511), batch support (SPARK-46865), Avro encoding with schema evolution (SPARK-50017), and a PySpark implementation with ValueState/ListState/timer support (SPARK-48755, SPARK-49463, SPARK-49513). 4.1.0 introduced a SPIP for Real-time Mode, stateless streaming with sub-batch latency (SPARK-53736), a rewritten row-based `transformWithState` Python API (SPARK-51814), stream-stream join support with virtual column families (SPARK-51779), and RocksDB reliability work — lock-management overhaul, snapshot-lag detection, checksum verification (SPARK-51745, SPARK-51358, SPARK-51972).
+
+4.2.0 extended Real-time Mode into PySpark (SPARK-54660), added named, reorderable streaming sources and sinks via `DataStreamReader.name()`/`IDENTIFIED BY` (SPARK-54909, SPARK-56719), stream-stream join state format V4 (SPARK-55628), and automatic snapshot repair with row-level checksums for the state store (SPARK-54121, SPARK-54106) — turning `transformWithState` from a new operator into stateful streaming's primary API.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -157,4 +163,98 @@ Structured Streaming did not exist before 2.0.0: it shipped as an experimental h
 | 3.5.0 | [SPARK-43120](https://issues.apache.org/jira/browse/SPARK-43120) | prose | Add support for tracking pinned blocks memory usage for RocksDB state store |
 | 3.5.0 | [SPARK-43183](https://issues.apache.org/jira/browse/SPARK-43183) | prose | Introduce a new callback onQueryIdle() to StreamingQueryListener |
 | 3.5.0 | [SPARK-43482](https://issues.apache.org/jira/browse/SPARK-43482) | prose | Expand QueryTerminatedEvent to contain error class if it exists in exception |
+| 4.0.0 | [SPARK-44865](https://issues.apache.org/jira/browse/SPARK-44865) | prose | Make StreamingRelationV2 support metadata column |
+| 4.0.0 | [SPARK-45080](https://issues.apache.org/jira/browse/SPARK-45080) | prose | Explicitly call out support for columnar in DSv2 streaming data sources |
+| 4.0.0 | [SPARK-45178](https://issues.apache.org/jira/browse/SPARK-45178) | prose | Fallback to execute a single batch for Trigger.AvailableNow with unsupported sources |
+| 4.0.0 | [SPARK-45415](https://issues.apache.org/jira/browse/SPARK-45415) | prose | Allow selective disabling of “fallocate” in RocksDB statestore |
+| 4.0.0 | [SPARK-45503](https://issues.apache.org/jira/browse/SPARK-45503) | prose | Add Conf to Set RocksDB Compression |
+| 4.0.0 | [SPARK-45511](https://issues.apache.org/jira/browse/SPARK-45511) | prose | SPIP: State Data Source - Reader |
+| 4.0.0 | [SPARK-45558](https://issues.apache.org/jira/browse/SPARK-45558) | prose | Introduce a metadata file for streaming stateful operator |
+| 4.0.0 | [SPARK-45794](https://issues.apache.org/jira/browse/SPARK-45794) | prose | Introduce state metadata source to query the streaming state metadata information |
+| 4.0.0 | [SPARK-45815](https://issues.apache.org/jira/browse/SPARK-45815) | prose | Provide an interface for other Streaming sources to add _metadata columns |
+| 4.0.0 | [SPARK-45845](https://issues.apache.org/jira/browse/SPARK-45845) | prose | Add number of evicted state rows to streaming UI |
+| 4.0.0 | [SPARK-46641](https://issues.apache.org/jira/browse/SPARK-46641) | prose | Add maxBytesPerTrigger threshold |
+| 4.0.0 | [SPARK-46815](https://issues.apache.org/jira/browse/SPARK-46815) | prose | Structured Streaming - Arbitrary State API v2 |
+| 4.0.0 | [SPARK-46816](https://issues.apache.org/jira/browse/SPARK-46816) | prose | Add base support for new arbitrary state management operator (multiple state variables/column families) |
+| 4.0.0 | [SPARK-46865](https://issues.apache.org/jira/browse/SPARK-46865) | prose | Add Batch Support for TransformWithState Operator |
+| 4.0.0 | [SPARK-46906](https://issues.apache.org/jira/browse/SPARK-46906) | prose | Add a check for stateful operator change for streaming |
+| 4.0.0 | [SPARK-46961](https://issues.apache.org/jira/browse/SPARK-46961) | prose | Use ProcessorContext to store and retrieve handle |
+| 4.0.0 | [SPARK-46962](https://issues.apache.org/jira/browse/SPARK-46962) | prose | Implement python worker to run python streaming data source |
+| 4.0.0 | [SPARK-47107](https://issues.apache.org/jira/browse/SPARK-47107) | prose | Partition reader for Python streaming data sources |
+| 4.0.0 | [SPARK-47273](https://issues.apache.org/jira/browse/SPARK-47273) | prose | Python data stream writer interface |
+| 4.0.0 | [SPARK-47553](https://issues.apache.org/jira/browse/SPARK-47553) | prose | Add Java support for transformWithState operator APIs |
+| 4.0.0 | [SPARK-47653](https://issues.apache.org/jira/browse/SPARK-47653) | prose | Add support for negative numeric types and range scan key encoder |
+| 4.0.0 | [SPARK-47733](https://issues.apache.org/jira/browse/SPARK-47733) | prose | Add custom metrics for transformWithState operator part of query progress |
+| 4.0.0 | [SPARK-47960](https://issues.apache.org/jira/browse/SPARK-47960) | prose | Allow chaining other stateful operators after transformWithState |
+| 4.0.0 | [SPARK-48447](https://issues.apache.org/jira/browse/SPARK-48447) | prose | Check StateStoreProvider class before constructor |
+| 4.0.0 | [SPARK-48569](https://issues.apache.org/jira/browse/SPARK-48569) | prose | Handle edge cases in query.name for streaming queries |
+| 4.0.0 | [SPARK-48589](https://issues.apache.org/jira/browse/SPARK-48589) | prose | Add snapshotStartBatchId / snapshotPartitionId for state data source (see SQL) |
+| 4.0.0 | [SPARK-48597](https://issues.apache.org/jira/browse/SPARK-48597) | prose | Introduce marker for isStreaming in text representation of logical plan |
+| 4.0.0 | [SPARK-48726](https://issues.apache.org/jira/browse/SPARK-48726) | prose | Create StateSchemaV3 file for TransformWithStateExec |
+| 4.0.0 | [SPARK-48742](https://issues.apache.org/jira/browse/SPARK-48742) | prose | Virtual Column Family for RocksDB (arbitrary stateful API v2) |
+| 4.0.0 | [SPARK-48755](https://issues.apache.org/jira/browse/SPARK-48755) | prose | transformWithState pyspark base implementation and ValueState support |
+| 4.0.0 | [SPARK-48772](https://issues.apache.org/jira/browse/SPARK-48772) | prose | State Data Source Change Feed Reader Mode |
+| 4.0.0 | [SPARK-48836](https://issues.apache.org/jira/browse/SPARK-48836) | prose | Integrate SQL schema with state schema/metadata for TWS operator |
+| 4.0.0 | [SPARK-48849](https://issues.apache.org/jira/browse/SPARK-48849) | prose | Create OperatorStateMetadataV2 for TransformWithStateExec operator |
+| 4.0.0 | [SPARK-48931](https://issues.apache.org/jira/browse/SPARK-48931) | prose | Reduce Cloud Store List API cost for state-store maintenance |
+| 4.0.0 | [SPARK-49021](https://issues.apache.org/jira/browse/SPARK-49021) | prose | Add support for reading transformWithState value state variables with state data source reader |
+| 4.0.0 | [SPARK-49048](https://issues.apache.org/jira/browse/SPARK-49048) | prose | Add support for reading operator metadata at given batch id |
+| 4.0.0 | [SPARK-49191](https://issues.apache.org/jira/browse/SPARK-49191) | prose | Read transformWithState map state with state data source |
+| 4.0.0 | [SPARK-49259](https://issues.apache.org/jira/browse/SPARK-49259) | prose | Size-based partition creation during Kafka read |
+| 4.0.0 | [SPARK-49411](https://issues.apache.org/jira/browse/SPARK-49411) | prose | Communicate State Store Checkpoint ID |
+| 4.0.0 | [SPARK-49463](https://issues.apache.org/jira/browse/SPARK-49463) | prose | ListState support in TransformWithStateInPandas |
+| 4.0.0 | [SPARK-49467](https://issues.apache.org/jira/browse/SPARK-49467) | prose | Add state data source reader for list state |
+| 4.0.0 | [SPARK-49513](https://issues.apache.org/jira/browse/SPARK-49513) | prose | Add timer support in transformWithStateInPandas |
+| 4.0.0 | [SPARK-49630](https://issues.apache.org/jira/browse/SPARK-49630) | prose | Add flatten option for collection types in state data source reader |
+| 4.0.0 | [SPARK-49656](https://issues.apache.org/jira/browse/SPARK-49656) | prose | Support state variables with value state collection types |
+| 4.0.0 | [SPARK-49676](https://issues.apache.org/jira/browse/SPARK-49676) | prose | Chaining of operators in transformWithStateInPandas |
+| 4.0.0 | [SPARK-49699](https://issues.apache.org/jira/browse/SPARK-49699) | prose | Disable PruneFilters for streaming workloads |
+| 4.0.0 | [SPARK-49744](https://issues.apache.org/jira/browse/SPARK-49744) | prose | TTL support for ListState in TransformWithStateInPandas |
+| 4.0.0 | [SPARK-49745](https://issues.apache.org/jira/browse/SPARK-49745) | prose | Read registered timers in transformWithState |
+| 4.0.0 | [SPARK-49802](https://issues.apache.org/jira/browse/SPARK-49802) | prose | Add support for read change feed for map/list types |
+| 4.0.0 | [SPARK-49846](https://issues.apache.org/jira/browse/SPARK-49846) | prose | Add numUpdatedStateRows / numRemovedStateRows metrics |
+| 4.0.0 | [SPARK-49883](https://issues.apache.org/jira/browse/SPARK-49883) | prose | State Store Checkpoint Structure V2 Integration with RocksDB and RocksDBFileManager |
+| 4.0.0 | [SPARK-50017](https://issues.apache.org/jira/browse/SPARK-50017) | prose | Support Avro encoding for TransformWithState operator |
+| 4.0.0 | [SPARK-50035](https://issues.apache.org/jira/browse/SPARK-50035) | prose | Explicit handleExpiredTimer function in the stateful processor |
+| 4.0.0 | [SPARK-50128](https://issues.apache.org/jira/browse/SPARK-50128) | prose | Add handle APIs using implicit encoders |
+| 4.0.0 | [SPARK-50152](https://issues.apache.org/jira/browse/SPARK-50152) | prose | Support handleInitialState with state data source reader |
+| 4.0.0 | [SPARK-50194](https://issues.apache.org/jira/browse/SPARK-50194) | prose | Integration of New Timer API and Initial State API |
+| 4.0.0 | [SPARK-50378](https://issues.apache.org/jira/browse/SPARK-50378) | prose | Add custom metric for time spent populating initial state |
+| 4.0.0 | [SPARK-50428](https://issues.apache.org/jira/browse/SPARK-50428) | prose | Support TransformWithStateInPandas in batch queries |
+| 4.0.0 | [SPARK-50573](https://issues.apache.org/jira/browse/SPARK-50573) | prose | Adding State Schema ID to State Rows for schema evolution |
+| 4.0.0 | [SPARK-50714](https://issues.apache.org/jira/browse/SPARK-50714) | prose | Enable schema evolution for TransformWithState with Avro encoding |
+| 4.0.1 | [SPARK-52989](https://issues.apache.org/jira/browse/SPARK-52989) | prose | Add explicit close API to RocksDB State store iterator and fix current usage |
+| 4.1.0 | [SPARK-51097](https://issues.apache.org/jira/browse/SPARK-51097) | prose | Re-introduce RocksDB state store’s last uploaded snapshot version instance metrics |
+| 4.1.0 | [SPARK-51358](https://issues.apache.org/jira/browse/SPARK-51358) | prose | Snapshot lag detection with RocksDB state store provider |
+| 4.1.0 | [SPARK-51745](https://issues.apache.org/jira/browse/SPARK-51745) | prose | Revamped lock management with RocksDB state store provider |
+| 4.1.0 | [SPARK-51779](https://issues.apache.org/jira/browse/SPARK-51779) | prose | Stream-stream join support with virtual column families including support with state data source reader |
+| 4.1.0 | [SPARK-51814](https://issues.apache.org/jira/browse/SPARK-51814) | prose | Introduce new row based transformWithState Python API |
+| 4.1.0 | [SPARK-51823](https://issues.apache.org/jira/browse/SPARK-51823) | prose | Add config to not persist state store on executors |
+| 4.1.0 | [SPARK-51940](https://issues.apache.org/jira/browse/SPARK-51940) | prose | Add interface for managing streaming checkpoint metadata |
+| 4.1.0 | [SPARK-51972](https://issues.apache.org/jira/browse/SPARK-51972) | prose | File level checksum verification with RocksDB state store provider |
+| 4.1.0 | [SPARK-51981](https://issues.apache.org/jira/browse/SPARK-51981) | prose | Add JobTags to queryStartedEvent |
+| 4.1.0 | [SPARK-52008](https://issues.apache.org/jira/browse/SPARK-52008) | prose | Throwing an error if State Stores do not commit at the end of a batch when ForeachBatch is used |
+| 4.1.0 | [SPARK-52968](https://issues.apache.org/jira/browse/SPARK-52968) | prose | Emit additional state store metrics |
+| 4.1.0 | [SPARK-52989](https://issues.apache.org/jira/browse/SPARK-52989) | prose | Add explicit close() API to State Store iterators |
+| 4.1.0 | [SPARK-53001](https://issues.apache.org/jira/browse/SPARK-53001) | prose | Integrate RocksDB Memory Usage with the Unified Memory Manager |
+| 4.1.0 | [SPARK-53103](https://issues.apache.org/jira/browse/SPARK-53103) | prose | Throw an error if state directory is not empty when query starts |
+| 4.1.0 | [SPARK-53333](https://issues.apache.org/jira/browse/SPARK-53333) | prose | State data source support with state checkpoint format v2 |
+| 4.1.0 | [SPARK-53736](https://issues.apache.org/jira/browse/SPARK-53736) | prose | SPIP: Real-time Mode in Structured Streaming (Scala stateless support) |
+| 4.1.0 | [SPARK-53794](https://issues.apache.org/jira/browse/SPARK-53794) | prose | Add option to limit deletions per maintenance operation associated with rocksdb state provider |
+| 4.1.0 | [SPARK-53941](https://issues.apache.org/jira/browse/SPARK-53941) | prose | Support AQE in stateless streaming workloads |
+| 4.1.0 | [SPARK-53942](https://issues.apache.org/jira/browse/SPARK-53942) | prose | Support changing shuffle partitions in stateless streaming workloads |
+| 4.1.0 | [SPARK-54063](https://issues.apache.org/jira/browse/SPARK-54063) | prose | Trigger snapshot for next batch when upload lag |
+| 4.1.0 | [SPARK-54106](https://issues.apache.org/jira/browse/SPARK-54106) | prose | Recheckin State store row checksum implementation |
+| 4.1.0 | [SPARK-54121](https://issues.apache.org/jira/browse/SPARK-54121) | prose | Automatic Snapshot Repair for State store |
+| 4.2.0 | [SPARK-54063](https://issues.apache.org/jira/browse/SPARK-54063) | prose | Trigger a state-store snapshot on commit for the next batch when snapshot upload lags, for both RocksDB and HDFS providers |
+| 4.2.0 | [SPARK-54106](https://issues.apache.org/jira/browse/SPARK-54106) | prose | Add state store row checksum for corruption detection |
+| 4.2.0 | [SPARK-54121](https://issues.apache.org/jira/browse/SPARK-54121) | prose | Automatic snapshot repair for the state store |
+| 4.2.0 | [SPARK-54660](https://issues.apache.org/jira/browse/SPARK-54660) | prose | Add Real-time Mode (RTM) trigger support to PySpark |
+| 4.2.0 | [SPARK-54909](https://issues.apache.org/jira/browse/SPARK-54909) | prose | Enabling addition, removal and reordering of streaming sources: DataStreamReader.name() and IDENTIFIED BY syntax to give streaming source... |
+| 4.2.0 | [SPARK-55058](https://issues.apache.org/jira/browse/SPARK-55058) | prose | Throw an error on inconsistent streaming checkpoint metadata |
+| 4.2.0 | [SPARK-55304](https://issues.apache.org/jira/browse/SPARK-55304) | prose | Support Admission Control and Trigger.AvailableNow in Python data source streaming reader |
+| 4.2.0 | [SPARK-55628](https://issues.apache.org/jira/browse/SPARK-55628) | prose | Integrate stream-stream join state format V4 |
+| 4.2.0 | [SPARK-55999](https://issues.apache.org/jira/browse/SPARK-55999) | prose | Enable forceSnapshotUploadOnLag by default |
+| 4.2.0 | [SPARK-56384](https://issues.apache.org/jira/browse/SPARK-56384) | prose | Support stream-stream non-outer join in Update mode |
+| 4.2.0 | [SPARK-56719](https://issues.apache.org/jira/browse/SPARK-56719) | prose | Add .name() to enable streaming sink naming, with a V3 commit log that persists the sink name |
 <!-- AUTO:timeline END -->

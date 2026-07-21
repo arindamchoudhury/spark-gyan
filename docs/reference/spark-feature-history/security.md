@@ -20,6 +20,12 @@ Security work in the 2.x line focused on secure-cluster plumbing rather than new
 
 3.0.0's security entries are almost all Kubernetes-focused: Kerberos support in client-mode K8s deployments (SPARK-25815), a configurable auth-secret source for the K8s backend (SPARK-26239), and delegation-token renewal without a keytab (SPARK-26595), alongside consolidation of YARN/Mesos token-renewal code. 3.2.0 contributes four small entries — submitting to Kubernetes with only a token (SPARK-33720), `SecurityManager` cleanup, and a Jetty upgrade fixing CVE-2020-27223. From 3.3.x onward the area goes quiet in the main line, with only scattered maintenance-release entries (3.4.4, 3.5.2, 3.5.9) patching individual CVEs rather than adding new security capability — the security model itself, hardened through the 2.x line, stayed largely stable through 3.x.
 
+### 4.x era — RPC hardening and UI redaction
+
+4.0.0 added AES-GCM as an optional RPC-encryption cipher mode (SPARK-47172) and integrated SSL support directly into `TransportContext` (SPARK-45544), continuing the AES-based hardening the 2.x line began. 4.0.3/4.1.3 backported two scan-agent-era fixes across the 4.x branches: a SECURITY.md/AGENTS.md security section (SPARK-56998) and a path-traversal guard in `install_spark`'s tar extraction (SPARK-57962).
+
+4.2.0 is a genuinely active release for security, unusual after 3.3.x's near-decade of quiet maintenance: constant-time comparison for authentication secrets to prevent timing attacks (SPARK-57066), consistent AuthV2 authorization across `StreamRequest` and metadata operations (SPARK-57889, SPARK-57882), owner-only permissions on temporary files (SPARK-57920), redaction of environment variables, job descriptions, and JDBC-URL credentials across the Worker UI, SQL execution pages, and connection strings (SPARK-57098, SPARK-57262, SPARK-57580), and an opt-in Content-Security-Policy header for the Spark UI (SPARK-57589).
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -75,8 +81,20 @@ Security work in the 2.x line focused on secure-cluster plumbing rather than new
 | 3.5.2 | [SPARK-47172](https://issues.apache.org/jira/browse/SPARK-47172) | prose | Upgrade Transport block cipher mode to GCM |
 | 3.5.9 | [SPARK-56998](https://issues.apache.org/jira/browse/SPARK-56998) | Improvement | Add SECURITY.md + AGENTS.md Security section for scan-agent discoverability |
 | 3.5.9 | [SPARK-57962](https://issues.apache.org/jira/browse/SPARK-57962) | Improvement | Guard against path traversal in install_spark tar extraction |
+| 4.0.0 | [SPARK-45544](https://issues.apache.org/jira/browse/SPARK-45544) | prose | Integrate SSL support into TransportContext |
+| 4.0.0 | [SPARK-46132](https://issues.apache.org/jira/browse/SPARK-46132) | prose | Support key password for JKS keys for RPC SSL |
+| 4.0.0 | [SPARK-47172](https://issues.apache.org/jira/browse/SPARK-47172) | prose | Add AES-GCM as an optional AES cipher mode for RPC encryption |
+| 4.0.1 | [SPARK-52613](https://issues.apache.org/jira/browse/SPARK-52613) | prose | Restore printing full stacktrace when HBase/Hive DelegationTokenProvider hit exception |
 | 4.0.3 | [SPARK-56998](https://issues.apache.org/jira/browse/SPARK-56998) | Improvement | Add SECURITY.md + AGENTS.md Security section for scan-agent discoverability |
 | 4.0.4 | [SPARK-57962](https://issues.apache.org/jira/browse/SPARK-57962) | Improvement | Guard against path traversal in install_spark tar extraction |
 | 4.1.3 | [SPARK-56998](https://issues.apache.org/jira/browse/SPARK-56998) | Improvement | Add SECURITY.md + AGENTS.md Security section for scan-agent discoverability |
 | 4.1.3 | [SPARK-57962](https://issues.apache.org/jira/browse/SPARK-57962) | Improvement | Guard against path traversal in install_spark tar extraction |
+| 4.2.0 | [SPARK-57066](https://issues.apache.org/jira/browse/SPARK-57066) | prose | Use constant-time comparison for authentication secrets to prevent timing attacks |
+| 4.2.0 | [SPARK-57098](https://issues.apache.org/jira/browse/SPARK-57098) | prose | Redact environment and Java options in the standalone Worker UI JSON endpoint |
+| 4.2.0 | [SPARK-57262](https://issues.apache.org/jira/browse/SPARK-57262) | prose | Redact job descriptions per spark.sql.redaction.string.regex on the jobs and SQL execution pages |
+| 4.2.0 | [SPARK-57580](https://issues.apache.org/jira/browse/SPARK-57580) | prose | Redact credentials embedded in JDBC URLs |
+| 4.2.0 | [SPARK-57589](https://issues.apache.org/jira/browse/SPARK-57589) | prose | Support spark.ui.contentSecurityPolicy.enabled to add a Content-Security-Policy header to the Spark UI |
+| 4.2.0 | [SPARK-57882](https://issues.apache.org/jira/browse/SPARK-57882) | prose | Enforce AuthV2 metadata authorization on GetPrimaryKeys and GetCrossReference operations |
+| 4.2.0 | [SPARK-57889](https://issues.apache.org/jira/browse/SPARK-57889) | prose | Authorize StreamRequest consistently with ChunkFetchRequest in the transport layer |
+| 4.2.0 | [SPARK-57920](https://issues.apache.org/jira/browse/SPARK-57920) | prose | Create temporary files with owner-only permissions |
 <!-- AUTO:timeline END -->

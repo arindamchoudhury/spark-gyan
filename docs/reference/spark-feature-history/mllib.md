@@ -22,6 +22,12 @@ MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed
 
 3.0.0 rounded out the DataFrame-based ML API with Gaussian Naive Bayes (SPARK-16872), sample weights for decision trees and random forests, and closer Scala/Python parity (SPARK-28958). 3.1.1's headline work was blockifying input vectors for the linear models — LinearSVC, LogisticRegression, LinearRegression, and AFT (SPARK-30642, SPARK-30659, SPARK-30660, SPARK-31656) — batching instances into blocks for faster BLAS-level computation, alongside a vectorized BLAS implementation carried into 3.2.0 (SPARK-33882). 3.2.0 also added `UnivariateFeatureSelector` to unify the older selector classes. 3.3.0 and 3.4.0 were comparatively quiet, mostly incremental optimizer and ALS-shuffle work. 3.5.0 introduced the first ML-on-Spark-Connect surface (SPARK-43516): estimator/transformer/model/evaluator interfaces, pipeline and cross-validator support, and PyTorch Distributor compatibility with Connect (SPARK-42993).
 
+### 4.x era — ML Connect polish, quiet maintenance
+
+MLlib's 4.x footprint is small, reflecting a codebase in steady maintenance rather than active growth. 4.0.0 made several transformers support nested input columns (SPARK-48463), avoided redundant NNZ recomputation in `Binarizer` (SPARK-45757), added built-in Vector validation (SPARK-45547), and added Target Encoding to `ml.feature` (SPARK-37178) — the last new estimator of the era.
+
+4.1.0 improved ML on Spark Connect (SPARK-51236), continuing the Connect-parity work started in 3.5.0, and 4.1.1 made the pipelines internal package private (SPARK-54689). No 4.x release introduces a new algorithm family; the pattern from 3.1.1 onward — blockified linear models, then Connect support — has settled into incremental polish on an already-complete DataFrame-based API.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -744,5 +750,10 @@ MLlib's algorithm surface expanded fast: 1.0.0 added decision trees, distributed
 | 3.5.0 | [SPARK-43982](https://issues.apache.org/jira/browse/SPARK-43982) | prose | Implement pipeline estimator for ML on spark connect |
 | 3.5.0 | [SPARK-43983](https://issues.apache.org/jira/browse/SPARK-43983) | prose | Implement cross validator estimator |
 | 3.5.0 | [SPARK-44250](https://issues.apache.org/jira/browse/SPARK-44250) | prose | Implement classification evaluator |
+| 4.0.0 | [SPARK-37178](https://issues.apache.org/jira/browse/SPARK-37178) | prose | Add Target Encoding to ml.feature |
+| 4.0.0 | [SPARK-45547](https://issues.apache.org/jira/browse/SPARK-45547) | prose | Validate Vectors with built-in function |
+| 4.0.0 | [SPARK-45757](https://issues.apache.org/jira/browse/SPARK-45757) | prose | Avoid re-computation of NNZ in Binarizer |
+| 4.0.0 | [SPARK-48463](https://issues.apache.org/jira/browse/SPARK-48463) | prose | Make various ML transformers support nested input columns |
+| 4.1.0 | [SPARK-51236](https://issues.apache.org/jira/browse/SPARK-51236) | prose | ML Connect improvements |
 | 4.1.1 | [SPARK-54689](https://issues.apache.org/jira/browse/SPARK-54689) | Improvement | Make org.apache.spark.sql.pipelines internal package and make EstimatorUtils private |
 <!-- AUTO:timeline END -->

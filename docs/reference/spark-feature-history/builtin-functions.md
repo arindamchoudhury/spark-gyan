@@ -16,6 +16,12 @@
 
 3.0.0 added a large batch of SQL-standard functions in one release: inverse hyperbolic trig (`sinh`/`cosh`/`tanh` and their inverses), `bit_and`/`bit_or`, `max_by`/`min_by`, and an index-aware `filter` higher-order function (SPARK-28962). 3.1.1 added `json_array_length`, `json_object_keys`, `current_catalog`, and timestamp constructors (`timestamp_seconds`/`millis`/`micros`). 3.2.0 introduced `try_cast` (SPARK-34881), the first of the `try_*` family that returns null instead of raising under ANSI mode, alongside `regexp`-as-function and datetime arithmetic helpers. 3.3.0 and 3.4.0 kept extending the SQL-standard surface — `SEC`/`CSC`, `TO_NUMBER`/`TRY_TO_NUMBER` (SPARK-38796), URL encode/decode, and the `MASK` data-masking function (SPARK-40687). 3.5.0 added named-argument support for built-in functions (SPARK-44059), letting SQL calls pass arguments by name rather than position.
 
+### 4.x era — sketch functions and vector similarity
+
+4.0.0 added formatting and grouping functions: `to_char`/`to_varchar` for binary and datetime values (SPARK-44983, SPARK-44868), `MODE() WITHIN GROUP` (SPARK-45796), a deterministic `mode()` (SPARK-45034), and made `array_insert()` consistently 1-based for negative indexes (SPARK-44840). 4.1.0 introduced Spark's first approximate-sketch functions — `approx_top_k` with accumulate/estimate/combine support (SPARK-52588, SPARK-52515, SPARK-52798), KLL quantile sketches (SPARK-53991), and Theta sketches (SPARK-52407) — alongside `try_to_date` and a seedable `uuid()`.
+
+4.2.0 extended sketches to Apache Tuple Sketches with set operations (SPARK-54179, SPARK-55558) and added new vector similarity/distance, norm, and aggregation expressions (SPARK-54713, SPARK-55030, SPARK-55031), plus `IGNORE NULLS`/`RESPECT NULLS` for `array_agg`/`collect_list`/`collect_set` (SPARK-55256, SPARK-55533) — rounding the built-in library out for approximate analytics and vector-search workloads.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -185,5 +191,40 @@
 | 3.4.0 | [SPARK-39741](https://issues.apache.org/jira/browse/SPARK-39741) | prose | Support url encode/decode as built-in function and tidy up url-related functions |
 | 3.4.0 | [SPARK-40687](https://issues.apache.org/jira/browse/SPARK-40687) | prose | Support data masking built-in function MASK |
 | 3.5.0 | [SPARK-44059](https://issues.apache.org/jira/browse/SPARK-44059) | prose | Add analyzer support of named arguments for built-in functions |
+| 4.0.0 | [SPARK-43427](https://issues.apache.org/jira/browse/SPARK-43427) | prose | spark protobuf: allow upcasting unsigned integer types |
+| 4.0.0 | [SPARK-44001](https://issues.apache.org/jira/browse/SPARK-44001) | prose | Add option to allow unwrapping protobuf well-known wrapper types |
+| 4.0.0 | [SPARK-44778](https://issues.apache.org/jira/browse/SPARK-44778) | prose | Add the alias TIMEDIFF for TIMESTAMPDIFF |
+| 4.0.0 | [SPARK-44840](https://issues.apache.org/jira/browse/SPARK-44840) | prose | Make array_insert() 1-based for negative indexes |
+| 4.0.0 | [SPARK-44868](https://issues.apache.org/jira/browse/SPARK-44868) | prose | Convert datetime to string by to_char / to_varchar |
+| 4.0.0 | [SPARK-44983](https://issues.apache.org/jira/browse/SPARK-44983) | prose | Convert binary to string by to_char for the formats: hex, base64, utf-8 |
+| 4.0.0 | [SPARK-45034](https://issues.apache.org/jira/browse/SPARK-45034) | prose | Support deterministic mode function |
+| 4.0.0 | [SPARK-45796](https://issues.apache.org/jira/browse/SPARK-45796) | prose | Support MODE() WITHIN GROUP (ORDER BY col) |
+| 4.0.0 | [SPARK-47497](https://issues.apache.org/jira/browse/SPARK-47497) | prose | Make to_csv support arrays/maps/binary as pretty strings |
+| 4.0.0 | [SPARK-48658](https://issues.apache.org/jira/browse/SPARK-48658) | prose | Encode/Decode functions report coding errors instead of mojibake |
+| 4.0.0 | [SPARK-52016](https://issues.apache.org/jira/browse/SPARK-52016) | prose | New built-in functions in Spark 4.0 |
+| 4.1.0 | [SPARK-51877](https://issues.apache.org/jira/browse/SPARK-51877) | prose | Add functions ‘chr’, ‘random’ and ‘uuid’ |
+| 4.1.0 | [SPARK-52233](https://issues.apache.org/jira/browse/SPARK-52233) | prose | Fix map_zip_with for Floating Point Types |
+| 4.1.0 | [SPARK-52407](https://issues.apache.org/jira/browse/SPARK-52407) | prose | Add support for Theta Sketch |
+| 4.1.0 | [SPARK-52515](https://issues.apache.org/jira/browse/SPARK-52515) | prose | Add approx_top_k function |
+| 4.1.0 | [SPARK-52588](https://issues.apache.org/jira/browse/SPARK-52588) | prose | Approx_top_k: accumulate and estimate |
+| 4.1.0 | [SPARK-52798](https://issues.apache.org/jira/browse/SPARK-52798) | prose | Add function approx_top_k_combine |
+| 4.1.0 | [SPARK-52866](https://issues.apache.org/jira/browse/SPARK-52866) | prose | Add support for try_to_date |
+| 4.1.0 | [SPARK-53654](https://issues.apache.org/jira/browse/SPARK-53654) | prose | Support seed in function uuid |
+| 4.1.0 | [SPARK-53779](https://issues.apache.org/jira/browse/SPARK-53779) | prose | Implement transform in column API |
+| 4.1.0 | [SPARK-53877](https://issues.apache.org/jira/browse/SPARK-53877) | prose | Introduce BITMAP_AND_AGG function |
+| 4.1.0 | [SPARK-53947](https://issues.apache.org/jira/browse/SPARK-53947) | prose | Count null in approx_top_k |
+| 4.1.0 | [SPARK-53991](https://issues.apache.org/jira/browse/SPARK-53991) | prose | new KLL quantiles sketch functions |
 | 4.1.1 | [SPARK-54843](https://issues.apache.org/jira/browse/SPARK-54843) | Improvement | Try_to_number expression not working for empty string input |
+| 4.2.0 | [SPARK-54179](https://issues.apache.org/jira/browse/SPARK-54179) | prose | Add native support for Apache Tuple Sketches |
+| 4.2.0 | [SPARK-54713](https://issues.apache.org/jira/browse/SPARK-54713) | prose | Add vector similarity/distance function expressions |
+| 4.2.0 | [SPARK-54731](https://issues.apache.org/jira/browse/SPARK-54731) | prose | Support BinaryType in the reverse expression via byte-level reversal |
+| 4.2.0 | [SPARK-55030](https://issues.apache.org/jira/browse/SPARK-55030) | prose | Add vector norm/normalize function expressions |
+| 4.2.0 | [SPARK-55031](https://issues.apache.org/jira/browse/SPARK-55031) | prose | Add vector avg/sum aggregation function expressions |
+| 4.2.0 | [SPARK-55256](https://issues.apache.org/jira/browse/SPARK-55256) | prose | Support IGNORE NULLS / RESPECT NULLS for array_agg and collect_list |
+| 4.2.0 | [SPARK-55279](https://issues.apache.org/jira/browse/SPARK-55279) | prose | Add sketch_funcs and Datasketch grouping for SQL functions |
+| 4.2.0 | [SPARK-55322](https://issues.apache.org/jira/browse/SPARK-55322) | prose | MaxBy and MinBy overload with K elements |
+| 4.2.0 | [SPARK-55533](https://issues.apache.org/jira/browse/SPARK-55533) | prose | Support IGNORE NULLS / RESPECT NULLS for collect_set |
+| 4.2.0 | [SPARK-55558](https://issues.apache.org/jira/browse/SPARK-55558) | prose | Add support for Tuple/Theta set operations |
+| 4.2.0 | [SPARK-55702](https://issues.apache.org/jira/browse/SPARK-55702) | prose | Support filter predicate in window aggregate functions |
+| 4.2.0 | [SPARK-56594](https://issues.apache.org/jira/browse/SPARK-56594) | prose | Add time_bucket scalar function |
 <!-- AUTO:timeline END -->

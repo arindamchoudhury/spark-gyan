@@ -20,6 +20,12 @@ As in earlier lines, most of the 2.x misc bucket is internal cleanup, testing, a
 
 The grab-bag stays busy in 3.0.0 — a new binary-file data source (SPARK-25348), JDK 11 build and run support (SPARK-24417), the accelerator-aware scheduling SPIP's user-facing documentation and Python API (SPARK-27492, SPARK-28234), and `spark.sql.dialect` (SPARK-28997) — a mix of new capability and the internal cleanup that dominated earlier eras. 3.1.1's fourteen entries are almost entirely `Improvement`-tagged code-hygiene passes: replacing `map`/`filter` chains with `exists`/`forall`, moving `spark.sql.hive` to a private package, tightening API docs. 3.2.0's 115 entries follow the same pattern at larger scale — dozens of micro-refactors (redundant collection conversions, `for`/`foreach` over `map`) alongside a few real fixes like tightened ML parameter bounds and Kubernetes pod-feature-step extensibility. As in the 1.x and 2.x lines, the bucket's size tracks the growing codebase rather than any single 3.x theme.
 
+### 4.x era — Declarative Pipelines and AI functions
+
+The grab-bag's biggest 4.x item is really a new component: Declarative Pipelines (SPARK-51727), a SPIP for defining and running data pipelines declaratively, landed in 4.1.0 and continued gathering documentation through 4.1.2 (SPARK-55223, SPARK-55258) alongside the SparkSQL AI function (SPARK-56133). 4.1.1 marked several new 4.1 configs internal (SPARK-54801) — routine pre-GA cleanup.
+
+4.2.0 kept the pattern of small cross-cutting improvements: virtual threads enabled by default for the master REST endpoint (SPARK-56298), SparkSQL last-attempt metrics (SPARK-56509), and byte-string configs extended to accept KiB/MiB/GiB/TiB/PiB units (SPARK-55051). As in earlier eras, most of this area's entries are small enough to not warrant their own page, but Declarative Pipelines stands out as a genuinely new capability rather than incidental polish.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -942,10 +948,14 @@ The grab-bag stays busy in 3.0.0 — a new binary-file data source (SPARK-25348)
 | 3.2.0 | [SPARK-36617](https://issues.apache.org/jira/browse/SPARK-36617) | Improvement | Inconsistencies in approxQuantile annotations |
 | 3.2.0 | [SPARK-36685](https://issues.apache.org/jira/browse/SPARK-36685) | Improvement | Fix wrong assert messages |
 | 3.2.0 | [SPARK-36788](https://issues.apache.org/jira/browse/SPARK-36788) | Improvement | Change log level of AQE for non-supported plans from warning to debug |
+| 4.1.0 | [SPARK-51727](https://issues.apache.org/jira/browse/SPARK-51727) | prose | SPIP: Declarative Pipelines , a new component to define and run data pipelines |
 | 4.1.1 | [SPARK-54800](https://issues.apache.org/jira/browse/SPARK-54800) | Improvement | Changed default implementation for isObjectNotFoundException |
 | 4.1.1 | [SPARK-54801](https://issues.apache.org/jira/browse/SPARK-54801) | Improvement | Mark a few new 4.1 configs as internal |
 | 4.1.2 | [SPARK-55096](https://issues.apache.org/jira/browse/SPARK-55096) | New Feature | Update pandas minimum version in `connect/setup.py` |
 | 4.1.2 | [SPARK-55223](https://issues.apache.org/jira/browse/SPARK-55223) | Improvement | Document sinks in declarative pipelines programming guide |
 | 4.1.2 | [SPARK-55258](https://issues.apache.org/jira/browse/SPARK-55258) | Improvement | Document CLI parameters in declarative pipelines programming guide |
 | 4.1.2 | [SPARK-56133](https://issues.apache.org/jira/browse/SPARK-56133) | New Feature | SparkSQL AI Function |
+| 4.2.0 | [SPARK-55051](https://issues.apache.org/jira/browse/SPARK-55051) | prose | Byte-string configs now accept KiB, MiB, GiB, TiB, and PiB units |
+| 4.2.0 | [SPARK-56298](https://issues.apache.org/jira/browse/SPARK-56298) | prose | Enable spark.master.rest.virtualThread.enabled by default |
+| 4.2.0 | [SPARK-56509](https://issues.apache.org/jira/browse/SPARK-56509) | prose | SparkSQL last-attempt metrics |
 <!-- AUTO:timeline END -->

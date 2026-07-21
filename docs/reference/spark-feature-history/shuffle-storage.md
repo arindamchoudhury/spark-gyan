@@ -22,6 +22,12 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 
 3.0.0 added a local shuffle reader that skips the network round-trip when a post-shuffle partition is already co-located (SPARK-28560), plus dynamic allocation without an external shuffle service (SPARK-27963). 3.1.1 made the shuffled hash join a first-class citizen: code generation, full-outer-join support, build-side partitioning preservation, and bucket coalescing (SPARK-32421, SPARK-32399, SPARK-32330, SPARK-32286), alongside host-local shuffle-data reading (SPARK-32077). 3.2.0's headline was push-based shuffle (SPARK-30602), pre-merging shuffle blocks on the reduce side to cut small-block I/O, plus per-block checksums (SPARK-35275). 3.3.0 extended push-based shuffle with adaptive merge finalization, and 3.4.0 added RocksDB support for the external shuffle service's state store (SPARK-38888) alongside further shuffled-hash-join codegen for outer joins, carried into 3.5.0.
 
+### 4.x era — checksum retries and native transports
+
+4.0.0 added CRC32C shuffle checksums (SPARK-49459), parallel LZF and ZSTD compression (SPARK-48518, SPARK-46256), and switched the shuffle service's default state-store backend to RocksDB (SPARK-45351). 4.1.0 focused on correctness and transport performance: checksum-based full shuffle-stage retry to avoid silently consuming incorrect results (SPARK-51756), fast-fail on shuffle fetch failure (SPARK-52395), memory-based shuffle-spill thresholds (SPARK-49386), and native Netty transports — KQueue on BSD/macOS plus a new AUTO IO mode that prefers native transports by default (SPARK-53999, SPARK-54023, SPARK-54032).
+
+4.2.0 extended the retry work to the query level, rolling back and fully retrying succeeding shuffle-map stages on a checksum mismatch rather than consuming inconsistent data (SPARK-54556, SPARK-55064), added a bounded k-way merge in `UnsafeExternalSorter` to reduce OOM risk (SPARK-56410), and enabled zero-copy `sendfile` for `FileRegion` in the native transports (SPARK-56279) — shuffle correctness under retry has become as much a focus as raw throughput.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -261,5 +267,29 @@ Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse 
 | 3.5.0 | [SPARK-42779](https://issues.apache.org/jira/browse/SPARK-42779) | prose | Allow V2 writes to indicate advisory shuffle partition size |
 | 3.5.0 | [SPARK-43179](https://issues.apache.org/jira/browse/SPARK-43179) | prose | Allowing apps to control whether their metadata gets saved in the db by the External Shuffle Service |
 | 3.5.0 | [SPARK-44060](https://issues.apache.org/jira/browse/SPARK-44060) | prose | Codegen Support for build side outer shuffled hash join |
+| 4.0.0 | [SPARK-43987](https://issues.apache.org/jira/browse/SPARK-43987) | prose | Separate finalizeShuffleMerge Processing to Dedicated Thread Pools |
+| 4.0.0 | [SPARK-45351](https://issues.apache.org/jira/browse/SPARK-45351) | prose | Change spark.shuffle.service.db.backend default value to ROCKSDB |
+| 4.0.0 | [SPARK-46256](https://issues.apache.org/jira/browse/SPARK-46256) | prose | Parallel Compression Support for ZSTD |
+| 4.0.0 | [SPARK-47764](https://issues.apache.org/jira/browse/SPARK-47764) | prose | Cleanup shuffle dependencies based on ShuffleCleanupMode |
+| 4.0.0 | [SPARK-48518](https://issues.apache.org/jira/browse/SPARK-48518) | prose | Make LZF compression run in parallel |
+| 4.0.0 | [SPARK-49459](https://issues.apache.org/jira/browse/SPARK-49459) | prose | Support CRC32C for Shuffle Checksum |
+| 4.1.0 | [SPARK-47547](https://issues.apache.org/jira/browse/SPARK-47547) | prose | Add BloomFilter V2 and use it as default |
+| 4.1.0 | [SPARK-49386](https://issues.apache.org/jira/browse/SPARK-49386) | prose | Add memory based thresholds for shuffle spill |
+| 4.1.0 | [SPARK-51756](https://issues.apache.org/jira/browse/SPARK-51756) | prose | Checksum-based shuffle stage full retry to avoid incorrect results |
+| 4.1.0 | [SPARK-52174](https://issues.apache.org/jira/browse/SPARK-52174) | prose | Enable spark.checkpoint.compress by default |
+| 4.1.0 | [SPARK-52395](https://issues.apache.org/jira/browse/SPARK-52395) | prose | Fast fail when shuffle fetch failure happens |
+| 4.1.0 | [SPARK-52924](https://issues.apache.org/jira/browse/SPARK-52924) | prose | Support ZSTD_strategy for compression |
+| 4.1.0 | [SPARK-53999](https://issues.apache.org/jira/browse/SPARK-53999) | prose | Native KQueue Transport support on BSD/MacOS |
+| 4.1.0 | [SPARK-54009](https://issues.apache.org/jira/browse/SPARK-54009) | prose | Support spark.io.mode.default |
+| 4.1.0 | [SPARK-54023](https://issues.apache.org/jira/browse/SPARK-54023) | prose | Support AUTO IO Mode |
+| 4.1.0 | [SPARK-54032](https://issues.apache.org/jira/browse/SPARK-54032) | prose | Prefer to use native Netty transports by default |
 | 4.1.1 | [SPARK-54850](https://issues.apache.org/jira/browse/SPARK-54850) | Improvement | Improve extractShuffleIds to find AdaptiveSparkPlanExec anywhere in plan tree |
+| 4.2.0 | [SPARK-53469](https://issues.apache.org/jira/browse/SPARK-53469) | prose | Ability to cleanup shuffle in Thrift server |
+| 4.2.0 | [SPARK-54116](https://issues.apache.org/jira/browse/SPARK-54116) | prose | Add off-heap mode support for LongHashedRelation in shuffled hash join |
+| 4.2.0 | [SPARK-54556](https://issues.apache.org/jira/browse/SPARK-54556) | prose | Roll back and fully retry succeeding shuffle map stages when a shuffle checksum mismatch is detected, instead of consuming inconsistent data |
+| 4.2.0 | [SPARK-55035](https://issues.apache.org/jira/browse/SPARK-55035) | prose | Perform shuffle cleanup in child executions |
+| 4.2.0 | [SPARK-55064](https://issues.apache.org/jira/browse/SPARK-55064) | prose | Support query-level indeterminate shuffle retry |
+| 4.2.0 | [SPARK-56279](https://issues.apache.org/jira/browse/SPARK-56279) | prose | Enable zero-copy sendfile for FileRegion in native Netty transports |
+| 4.2.0 | [SPARK-56302](https://issues.apache.org/jira/browse/SPARK-56302) | prose | Free task result memory eagerly during serialization on the executor |
+| 4.2.0 | [SPARK-56410](https://issues.apache.org/jira/browse/SPARK-56410) | prose | Add bounded k-way merge in UnsafeExternalSorter to reduce OOM risk |
 <!-- AUTO:timeline END -->

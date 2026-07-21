@@ -16,6 +16,12 @@ Before Data Source API V2 existed, 2.0.0-2.2.0 spent three releases rebuilding t
 
 3.0.0 defined the catalog plugin API (SPARK-31121) and the DataSourceV2 table relation (SPARK-27322), giving external catalogs and V2 tables a real place in the analyzer alongside DESCRIBE/USE/multi-catalog SQL support. 3.1.1 added partial predicate pushdown through more operators. 3.2.0 introduced the aggregate-pushdown APIs (SPARK-34952), a DataSourceV2 function catalog (SPARK-35260), and write-side distribution/ordering requests (SPARK-33779). 3.3.0 rounded pushdown out substantially (SPARK-38788): limit, sample, TopN, complete aggregate pushdown, and a general expression-translation framework for DS V2. 3.4.0 added Storage Partitioned Joins (SPARK-37375), row-level operations (SPARK-35801), and column statistics in DS v2 (SPARK-41378) — letting a source-aware join skip a shuffle entirely when both sides already share the same partitioning.
 
+### 4.x era — CDC, transactions, and schema evolution
+
+4.0.0 kept extending DSv2 catalog coverage — CTAS and CREATE TABLE using DSv2 sources (SPARK-46272, SPARK-46043), stored-procedure loading (SPARK-48781), `PERCENTILE_CONT`/`PERCENTILE_DISC` pushdown (SPARK-46442), and custom write metrics (SPARK-50049) — while 4.1.0 added table constraints (SPARK-51207), DSv2 join pushdown (SPARK-52187), `MERGE INTO` schema evolution (SPARK-54274), and per-DML operation metrics (SPARK-54309).
+
+4.2.0 is the defining release: Change Data Capture landed as a SQL `CHANGES` clause plus DataFrame/PySpark/Connect APIs for row-level changes in batch and streaming, alongside Auto CDC — declarative SCD Type 1 — in Spark Declarative Pipelines (SPARK-55668, SPARK-55948, SPARK-55949, SPARK-56249). The same release added DSv2 transaction management for atomic multi-operation commits (SPARK-55855), schema evolution for INSERT/AppendData/Overwrite paths (SPARK-55689, SPARK-55690), and per-operation metrics for INSERT/UPDATE/DELETE/MERGE (SPARK-56524, SPARK-56551, SPARK-56680) — turning DSv2 from a table/read/write interface into a transactional, change-aware catalog layer.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -289,5 +295,60 @@ Before Data Source API V2 existed, 2.0.0-2.2.0 spent three releases rebuilding t
 | 3.5.0 | [SPARK-42115](https://issues.apache.org/jira/browse/SPARK-42115) | prose | Push down limit through Python UDFs |
 | 3.5.0 | [SPARK-43390](https://issues.apache.org/jira/browse/SPARK-43390) | prose | DSv2 allows CTAS/RTAS to reserve schema nullability |
 | 3.5.3 | [SPARK-49359](https://issues.apache.org/jira/browse/SPARK-49359) | prose | Allow StagedTableCatalog implementations to fall back to non-atomic write |
+| 4.0.0 | [SPARK-45784](https://issues.apache.org/jira/browse/SPARK-45784) | prose | Introduce clustering mechanism to Spark |
+| 4.0.0 | [SPARK-45965](https://issues.apache.org/jira/browse/SPARK-45965) | prose | Move DSv2 partitioning expressions into functions.partitioning |
+| 4.0.0 | [SPARK-46043](https://issues.apache.org/jira/browse/SPARK-46043) | prose | Support create table using DSv2 sources |
+| 4.0.0 | [SPARK-46272](https://issues.apache.org/jira/browse/SPARK-46272) | prose | Support CTAS using DSv2 sources |
+| 4.0.0 | [SPARK-46442](https://issues.apache.org/jira/browse/SPARK-46442) | prose | DS V2 supports push down PERCENTILE_CONT and PERCENTILE_DISC |
+| 4.0.0 | [SPARK-48668](https://issues.apache.org/jira/browse/SPARK-48668) | prose | Support ALTER NAMESPACE ... UNSET PROPERTIES in v2 |
+| 4.0.0 | [SPARK-48781](https://issues.apache.org/jira/browse/SPARK-48781) | prose | Add Catalog APIs for loading stored procedures |
+| 4.0.0 | [SPARK-49078](https://issues.apache.org/jira/browse/SPARK-49078) | prose | Support show columns syntax in v2 table |
+| 4.0.0 | [SPARK-49246](https://issues.apache.org/jira/browse/SPARK-49246) | prose | TableCatalog#loadTable should indicate if it’s for writing |
+| 4.0.0 | [SPARK-50049](https://issues.apache.org/jira/browse/SPARK-50049) | prose | Support custom driver metrics in writing to v2 table |
+| 4.0.0 | [SPARK-50315](https://issues.apache.org/jira/browse/SPARK-50315) | prose | Support custom metrics for V1Fallback writes |
+| 4.0.0 | [SPARK-50700](https://issues.apache.org/jira/browse/SPARK-50700) | prose | spark.sql.catalog.spark_catalog supports builtin magic value |
+| 4.0.0 | [SPARK-50820](https://issues.apache.org/jira/browse/SPARK-50820) | prose | DSv2: Conditional nullification of metadata columns in DML |
+| 4.0.0 | [SPARK-51938](https://issues.apache.org/jira/browse/SPARK-51938) | prose | Improve Storage Partition Join |
+| 4.1.0 | [SPARK-51207](https://issues.apache.org/jira/browse/SPARK-51207) | prose | Table Constraints |
+| 4.1.0 | [SPARK-52109](https://issues.apache.org/jira/browse/SPARK-52109) | prose | Add listTableSummaries API to Data Source V2 Table Catalog API |
+| 4.1.0 | [SPARK-52187](https://issues.apache.org/jira/browse/SPARK-52187) | prose | Introduce Join pushdown for DSv2 |
+| 4.1.0 | [SPARK-52551](https://issues.apache.org/jira/browse/SPARK-52551) | prose | Add a new v2 Predicate BOOLEAN_EXPRESSION |
+| 4.1.0 | [SPARK-53074](https://issues.apache.org/jira/browse/SPARK-53074) | prose | Avoid partial clustering in SPJ to meet a child’s required distribution |
+| 4.1.0 | [SPARK-53924](https://issues.apache.org/jira/browse/SPARK-53924) | prose | Reload DSv2 tables in views created using plans on each access |
+| 4.1.0 | [SPARK-54022](https://issues.apache.org/jira/browse/SPARK-54022) | prose | Make DSv2 table resolution aware of cached tables |
+| 4.1.0 | [SPARK-54157](https://issues.apache.org/jira/browse/SPARK-54157) | prose | Fix refresh of DSv2 tables in Dataset |
+| 4.1.0 | [SPARK-54274](https://issues.apache.org/jira/browse/SPARK-54274) | prose | Support MERGE INTO Schema Evolution |
+| 4.1.0 | [SPARK-54309](https://issues.apache.org/jira/browse/SPARK-54309) | prose | Metrics for DML Operations |
 | 4.1.3 | [SPARK-57642](https://issues.apache.org/jira/browse/SPARK-57642) | Improvement | Require predicateSql to be present for the DSv2 CHECK constraint |
+| 4.2.0 | [SPARK-33902](https://issues.apache.org/jira/browse/SPARK-33902) | prose | Support CREATE TABLE LIKE for V2 |
+| 4.2.0 | [SPARK-39660](https://issues.apache.org/jira/browse/SPARK-39660) | prose | Support v2 DESCRIBE TABLE .. PARTITION |
+| 4.2.0 | [SPARK-43752](https://issues.apache.org/jira/browse/SPARK-43752) | prose | Support column DEFAULT values in V2 write commands |
+| 4.2.0 | [SPARK-52729](https://issues.apache.org/jira/browse/SPARK-52729) | prose | Add MetadataOnlyTable and CREATE/ALTER VIEW support for DS v2 catalogs |
+| 4.2.0 | [SPARK-54682](https://issues.apache.org/jira/browse/SPARK-54682) | prose | Support showing parameter details in DESCRIBE PROCEDURE for V2 procedures |
+| 4.2.0 | [SPARK-54760](https://issues.apache.org/jira/browse/SPARK-54760) | prose | DelegatingCatalogExtension as session catalog supports both V1 and V2 functions |
+| 4.2.0 | [SPARK-54834](https://issues.apache.org/jira/browse/SPARK-54834) | prose | Add SimpleProcedure and SimpleFunction interfaces to provide a BoundProcedure directly without custom bind logic |
+| 4.2.0 | [SPARK-55596](https://issues.apache.org/jira/browse/SPARK-55596) | prose | DSv2 partition-stats filtering |
+| 4.2.0 | [SPARK-55668](https://issues.apache.org/jira/browse/SPARK-55668) | prose | Change Data Capture â a SQL CHANGES clause plus DataFrame/PySpark/Connect APIs to read row-level changes in batch and streaming, and Au... |
+| 4.2.0 | [SPARK-55689](https://issues.apache.org/jira/browse/SPARK-55689) | prose | Schema evolution in DSv2 INSERTs |
+| 4.2.0 | [SPARK-55690](https://issues.apache.org/jira/browse/SPARK-55690) | prose | Schema evolution in DSv2 AppendData, OverwriteByExpression, and OverwritePartitionsDynamic |
+| 4.2.0 | [SPARK-55855](https://issues.apache.org/jira/browse/SPARK-55855) | prose | Data Source V2 transaction management, letting connectors commit multiple operations atomically |
+| 4.2.0 | [SPARK-55948](https://issues.apache.org/jira/browse/SPARK-55948) | prose | Add DSv2 CDC connector API, analyzer resolution, and SQL CHANGES clause |
+| 4.2.0 | [SPARK-55949](https://issues.apache.org/jira/browse/SPARK-55949) | prose | Add DataFrame API and Spark Connect support for CDC queries |
+| 4.2.0 | [SPARK-55950](https://issues.apache.org/jira/browse/SPARK-55950) | prose | Add PySpark support for CDC changes() API |
+| 4.2.0 | [SPARK-55952](https://issues.apache.org/jira/browse/SPARK-55952) | prose | Add ResolveChangelogTable analyzer rule for batch CDC post-processing |
+| 4.2.0 | [SPARK-56190](https://issues.apache.org/jira/browse/SPARK-56190) | prose | Support nested partition columns for DSv2 PartitionPredicate |
+| 4.2.0 | [SPARK-56249](https://issues.apache.org/jira/browse/SPARK-56249) | prose | Auto CDC in Declarative Pipelines |
+| 4.2.0 | [SPARK-56346](https://issues.apache.org/jira/browse/SPARK-56346) | prose | Use PartitionPredicate in DSv2 metadata-only DELETE |
+| 4.2.0 | [SPARK-56521](https://issues.apache.org/jira/browse/SPARK-56521) | prose | Support PartitionPredicate in runtime filters |
+| 4.2.0 | [SPARK-56524](https://issues.apache.org/jira/browse/SPARK-56524) | prose | Add operation metrics (numUpdatedRows, numCopiedRows) for UPDATE queries in DSv2 |
+| 4.2.0 | [SPARK-56551](https://issues.apache.org/jira/browse/SPARK-56551) | prose | Add operation metrics (numDeletedRows, numCopiedRows) for DELETE queries in DSv2 |
+| 4.2.0 | [SPARK-56650](https://issues.apache.org/jira/browse/SPARK-56650) | prose | Add Auto CDC Spark Connect APIs |
+| 4.2.0 | [SPARK-56651](https://issues.apache.org/jira/browse/SPARK-56651) | prose | Add Python APIs for Auto CDC SCD Type 1 |
+| 4.2.0 | [SPARK-56655](https://issues.apache.org/jira/browse/SPARK-56655) | prose | Implement the remaining v2 view DDL and inspection commands |
+| 4.2.0 | [SPARK-56678](https://issues.apache.org/jira/browse/SPARK-56678) | prose | Use structured Catalog/Namespace/Table rows in DESCRIBE TABLE EXTENDED for v2 tables and views |
+| 4.2.0 | [SPARK-56680](https://issues.apache.org/jira/browse/SPARK-56680) | prose | DSv2 INSERT and insert-only MERGE metrics |
+| 4.2.0 | [SPARK-56686](https://issues.apache.org/jira/browse/SPARK-56686) | prose | Support streaming row-level CDC post-processing |
+| 4.2.0 | [SPARK-56687](https://issues.apache.org/jira/browse/SPARK-56687) | prose | Support netChanges for DSv2 CDC streaming reads |
+| 4.2.0 | [SPARK-56957](https://issues.apache.org/jira/browse/SPARK-56957) | prose | Introduce and integrate the SCD Type 1 streaming write (Scd1MergeStreamingWrite) |
+| 4.2.0 | [SPARK-57080](https://issues.apache.org/jira/browse/SPARK-57080) | prose | Register Auto CDC flows from PipelinesHandler |
 <!-- AUTO:timeline END -->

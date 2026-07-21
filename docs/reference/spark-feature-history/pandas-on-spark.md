@@ -12,6 +12,12 @@ This area's 2.x footprint is small but concrete, and lands entirely in 2.4.0: us
 
 pandas API on Spark did not exist as such before 3.2.0: the area's earlier 3.0.0/3.1.1 entries are Pandas-UDF plumbing, not the pandas-compatible API itself. 3.2.0 merged the external Koalas project directly into PySpark as `pyspark.pandas` (SPARK-34849) — giving users a pandas-shaped DataFrame/Series API backed by Spark, complete with mypy type-checking (SPARK-34941) and an internal `InternalField` abstraction for managing dtypes. 3.3.0 added a profiler for Python/pandas UDFs (SPARK-37443), `TimedeltaIndex` support, and dozens of coverage gaps closed (`DataFrame.describe`, `Index.map`, catalog introspection methods). 3.4.0 kept expanding coverage aggressively — `resample`, `interpolate`, `ewm`, a dozen new `GroupBy` methods — while also improving PySpark's own error messages (SPARK-41597). 3.5.0 rounded out `createDataFrame` interop with pandas: struct types, duplicate field names, and generic tuple type hints for Pandas UDFs.
 
+### 4.x era — axis=1 coverage and ANSI adoption
+
+4.0.0 filled remaining pandas-compatibility gaps — `to_hdf`/`to_feather`/`to_stata` (SPARK-46931, SPARK-46936, SPARK-46955), `json_normalize` (SPARK-49344), turning `compute.ops_on_diff_frames` on by default (SPARK-48295) — and removed deprecated APIs left over from 3.4.0 (SPARK-45718, SPARK-45550, SPARK-45164). 4.1.0 enabled ANSI mode by default for Pandas API on Spark (SPARK-53295), aligning it with the ANSI-by-default shift in core SQL, and added divide-by-zero handling for numeric `rmod` under ANSI (SPARK-52570).
+
+4.2.0 closed out a long-standing gap by adding `axis=1` support across `DataFrame.all`/`any`/`idxmin`/`idxmax`/`rank`/`nunique` (SPARK-46165, SPARK-46166, SPARK-46167, SPARK-46168, SPARK-55662, SPARK-46162) and reduced `DataFrame.describe()`'s job count from O(N) to O(1) (SPARK-37711) — a release focused on closing pandas-parity and performance gaps rather than adding new surface area.
+
 ## Timeline
 
 <!-- AUTO:timeline START -->
@@ -107,4 +113,42 @@ pandas API on Spark did not exist as such before 3.2.0: the area's earlier 3.0.0
 | 3.5.0 | [SPARK-43574](https://issues.apache.org/jira/browse/SPARK-43574) | prose | Support to set Python executable for UDF and pandas function APIs in workers during runtime |
 | 3.5.0 | [SPARK-43817](https://issues.apache.org/jira/browse/SPARK-43817) | prose | Support UserDefinedType in createDataFrame from pandas DataFrame and toPandas |
 | 3.5.0 | [SPARK-43886](https://issues.apache.org/jira/browse/SPARK-43886) | prose | Accept generics tuple as typing hints of Pandas UDF |
+| 4.0.0 | [SPARK-42619](https://issues.apache.org/jira/browse/SPARK-42619) | prose | Add show_counts parameter for DataFrame.info |
+| 4.0.0 | [SPARK-42620](https://issues.apache.org/jira/browse/SPARK-42620) | prose | Add inclusive parameter for (DataFrame\|Series).between_time |
+| 4.0.0 | [SPARK-42621](https://issues.apache.org/jira/browse/SPARK-42621) | prose | Add inclusive parameter for pd.date_range |
+| 4.0.0 | [SPARK-43295](https://issues.apache.org/jira/browse/SPARK-43295) | prose | Support string type columns for DataFrameGroupBy.sum |
+| 4.0.0 | [SPARK-43433](https://issues.apache.org/jira/browse/SPARK-43433) | prose | Match GroupBy.nth behavior to the latest Pandas |
+| 4.0.0 | [SPARK-43453](https://issues.apache.org/jira/browse/SPARK-43453) | prose | Ignore the names of MultiIndex when axis=1 for concat |
+| 4.0.0 | [SPARK-43709](https://issues.apache.org/jira/browse/SPARK-43709) | prose | Remove closed parameter from ps.date_range & enable test |
+| 4.0.0 | [SPARK-45164](https://issues.apache.org/jira/browse/SPARK-45164) | prose | Remove deprecated Index APIs |
+| 4.0.0 | [SPARK-45165](https://issues.apache.org/jira/browse/SPARK-45165) | prose | Remove inplace parameter from CategoricalIndex APIs |
+| 4.0.0 | [SPARK-45177](https://issues.apache.org/jira/browse/SPARK-45177) | prose | Remove col_space parameter from to_latex |
+| 4.0.0 | [SPARK-45180](https://issues.apache.org/jira/browse/SPARK-45180) | prose | Remove boolean inputs for inclusive parameter from Series.between |
+| 4.0.0 | [SPARK-45267](https://issues.apache.org/jira/browse/SPARK-45267) | prose | Change the default value for numeric_only |
+| 4.0.0 | [SPARK-45550](https://issues.apache.org/jira/browse/SPARK-45550) | prose | Remove deprecated APIs from Pandas API on Spark |
+| 4.0.0 | [SPARK-45552](https://issues.apache.org/jira/browse/SPARK-45552) | prose | Introduce flexible parameters to assertDataFrameEqual |
+| 4.0.0 | [SPARK-45553](https://issues.apache.org/jira/browse/SPARK-45553) | prose | Deprecate assertPandasOnSparkEqual |
+| 4.0.0 | [SPARK-45634](https://issues.apache.org/jira/browse/SPARK-45634) | prose | Remove DataFrame.get_dtype_counts from Pandas API on Spark |
+| 4.0.0 | [SPARK-45718](https://issues.apache.org/jira/browse/SPARK-45718) | prose | Remove remaining deprecated Pandas features from Spark 3.4.0 |
+| 4.0.0 | [SPARK-46926](https://issues.apache.org/jira/browse/SPARK-46926) | prose | Add convert_dtypes , infer_objects , set_axis in fallback list |
+| 4.0.0 | [SPARK-46931](https://issues.apache.org/jira/browse/SPARK-46931) | prose | Implement {Frame, Series}.to_hdf |
+| 4.0.0 | [SPARK-46936](https://issues.apache.org/jira/browse/SPARK-46936) | prose | Implement Frame.to_feather |
+| 4.0.0 | [SPARK-46955](https://issues.apache.org/jira/browse/SPARK-46955) | prose | Implement Frame.to_stata |
+| 4.0.0 | [SPARK-46976](https://issues.apache.org/jira/browse/SPARK-46976) | prose | Implement DataFrameGroupBy.corr |
+| 4.0.0 | [SPARK-48295](https://issues.apache.org/jira/browse/SPARK-48295) | prose | Turn on compute.ops_on_diff_frames by default |
+| 4.0.0 | [SPARK-48336](https://issues.apache.org/jira/browse/SPARK-48336) | prose | Implement ps.sql in Spark Connect |
+| 4.0.0 | [SPARK-49344](https://issues.apache.org/jira/browse/SPARK-49344) | prose | Support json_normalize for Pandas API on Spark |
+| 4.1.0 | [SPARK-52570](https://issues.apache.org/jira/browse/SPARK-52570) | prose | Enable divide-by-zero for numeric rmod with ANSI enabled |
+| 4.1.0 | [SPARK-52592](https://issues.apache.org/jira/browse/SPARK-52592) | prose | Support creating a ps.Series from another ps.Series |
+| 4.1.0 | [SPARK-53295](https://issues.apache.org/jira/browse/SPARK-53295) | prose | Enable ANSI mode by default for Pandas API on Spark |
+| 4.1.0 | [SPARK-53645](https://issues.apache.org/jira/browse/SPARK-53645) | prose | Add skipna parameter to ps.DataFrame.any() |
+| 4.2.0 | [SPARK-37711](https://issues.apache.org/jira/browse/SPARK-37711) | prose | Reduce pandas describe() job count from O(N) to O(1) |
+| 4.2.0 | [SPARK-46162](https://issues.apache.org/jira/browse/SPARK-46162) | prose | Implement nunique with axis=1 |
+| 4.2.0 | [SPARK-46163](https://issues.apache.org/jira/browse/SPARK-46163) | prose | Add filter_func and errors parameters to DataFrame.update |
+| 4.2.0 | [SPARK-46165](https://issues.apache.org/jira/browse/SPARK-46165) | prose | Support axis=1 in DataFrame.all |
+| 4.2.0 | [SPARK-46166](https://issues.apache.org/jira/browse/SPARK-46166) | prose | Support axis=1 in DataFrame.any |
+| 4.2.0 | [SPARK-46167](https://issues.apache.org/jira/browse/SPARK-46167) | prose | Add axis argument to DataFrame.rank |
+| 4.2.0 | [SPARK-46168](https://issues.apache.org/jira/browse/SPARK-46168) | prose | Add axis argument to idxmax |
+| 4.2.0 | [SPARK-50111](https://issues.apache.org/jira/browse/SPARK-50111) | prose | Add subplots and layout support for pie charts in the Plotly backend of pandas-on-Spark DataFrames |
+| 4.2.0 | [SPARK-55662](https://issues.apache.org/jira/browse/SPARK-55662) | prose | Support axis=1 in DataFrame.idxmin |
 <!-- AUTO:timeline END -->
