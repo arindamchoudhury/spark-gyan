@@ -1,6 +1,6 @@
 # Learning Path: Apache Spark / PySpark
 
-> **Last updated:** 2026-07-18 (taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I11/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
+> **Last updated:** 2026-07-21 (Phase 5: folded five 4.2.0 features from the "Introducing Apache Spark 4.2" blog that the path had missed — Python Data Sources → B4, Real-Time Mode streaming → A7, pandas 3 + Arrow C Data / PyCapsule interop → I3, and `SYSTEM.BUILTIN` / `SYSTEM.SESSION` qualification + `time_bucket` + tuple sketches → B8). Earlier, 2026-07-18: taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I11/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026)
 >
@@ -222,6 +222,9 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 !!! info "Writes are not atomic on object storage"
     Spark writes into a `_temporary` directory and *moves* files on job commit. On HDFS that rename is atomic and cheap; on S3 and other object stores it is a copy — slow, and not atomic, so a failed job can leave partial output. This is the gap that Delta and Iceberg exist to close, and it is worth understanding here rather than treating those formats as magic later (see I8, I11).
 
+!!! note "New in Spark 4.2.0 — Python Data Sources (write your own reader/writer in pure Python)"
+    Spark 4.x lets you implement a custom data source entirely in Python — no Scala, no JVM code — by subclassing `pyspark.sql.datasource.DataSource` and registering it with `spark.dataSource.register(...)`. It then plugs into the same `spark.read.format("mysource")` / `df.write.format("mysource")` surface as the built-ins, and 4.2.0 extends the API to cover **batch and streaming, read and write**. Use it for an API-backed source, a bespoke file layout, or a test fixture — cases where before 4.x you either dropped to an RDD or wrote a JVM `DataSourceV2`. None of the books cover it (all predate 4.x); go to **Spark-docs → [Python Data Source API](https://spark.apache.org/docs/latest/api/python/tutorial/sql/python_data_source.html)** and verify on your own 4.2.0 stack. This is the pure-Python cousin of the DSv2 work in E8 — learn the built-in readers in this topic first.
+
 ---
 
 ### 🔄 B5 — Schema: StructType, DDL Strings, and Type Safety
@@ -355,8 +358,10 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
     Two consequences: name your temp views distinctly to avoid shadowing production tables, and do not expect a database prefix to disambiguate *toward* a temp view — it disambiguates away from it. Global temp views are different again: they live in the `global_temp` database on the shared state, which is why they outlive the session that created them (see B2).
 
-!!! note "New in Spark 4.2.0 — QUALIFY, search paths, metric views"
-    Three additions the books predate: `QUALIFY` ([SPARK-31561]) filters on window-function results without a wrapping subquery — worth learning alongside I2; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]) changes how unqualified names resolve; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]) add a declarative semantic-modelling surface. Learn the classic catalog model first — it's what the exam tests.
+!!! note "New in Spark 4.2.0 — QUALIFY, search paths, metric views, and SQL surface additions"
+    Additions the books predate: `QUALIFY` ([SPARK-31561]) filters on window-function results without a wrapping subquery — worth learning alongside I2; path-based name resolution (`SET PATH`, `CURRENT_PATH()`, [SPARK-54806]) changes how unqualified names resolve; and metric views (`CREATE VIEW … WITH METRICS`, [SPARK-54119]) add a declarative semantic-modelling surface. Learn the classic catalog model first — it's what the exam tests.
+
+    Four smaller 4.2.0 SQL additions worth knowing exist (reach for the 4.2.0 release notes for detail): explicit **`SYSTEM.BUILTIN`** qualification to force a built-in function past a same-named UDF, and **`SYSTEM.SESSION`** to name a temp view unambiguously — both make the name-resolution order above overridable rather than implicit; **`time_bucket`** for fixed-interval time-series bucketing (a cleaner alternative to the `window()` idiom, relevant to I2); and **tuple sketches** for approximate multi-column cardinality. All post-date every book here.
 
 ---
 
@@ -518,6 +523,9 @@ You are ready to leave this level when you can build a complete end-to-end batch
     The hierarchy still holds directionally — built-ins beat UDFs, vectorised beats scalar — but the *gaps* have narrowed and the reason to prefer a pandas UDF is now more about expressing vectorised logic than about escaping pickle. Measure on your own 4.2.0 stack.
 
     One trap while benchmarking: if PyArrow or pandas is missing, Spark **silently falls back** to the non-Arrow path with only a `RuntimeWarning`. Identical code can run at very different speeds in two environments.
+
+!!! note "New in Spark 4.2.0 — pandas 3, and zero-copy interchange with Polars/DuckDB"
+    Two Arrow-adjacent 4.2.0 changes touch this topic. First, **pandas 3 is supported** — the major-version bump changed several defaults (copy-on-write, stricter dtypes) that alter how a pandas UDF behaves, so pin the pandas version your cluster actually runs and re-test any UDF that relies on in-place mutation or implicit dtype coercion. Second, PySpark now speaks the **Arrow C Data Interface / PyCapsule protocol**, which lets a DataFrame's Arrow batches move to and from tools like **Polars and DuckDB with no serialization copy** — the fastest way to hand a Spark result to another in-process engine. Relevant once your pipeline mixes engines; both are docs-and-source territory (no book), verify on your own 4.2.0 stack.
 
 !!! info "A UDF's output is always nullable, and mixing UDF types costs an extra round trip"
     `PythonUDF.nullable` is `true` unconditionally, whatever return type you declare — so downstream null checks can never be optimized away. That is a permanent optimizer cost on top of serialization, and it is why a UDF in a hot path hurts more than its own runtime suggests.
@@ -1173,6 +1181,9 @@ You are ready to leave this level when you can:
 3. **DEB Module 1** — Auto Loader as a streaming file source into Delta (production pattern)
 
 **Milestone:** You can write a streaming job that reads new Parquet files from a directory, applies a transformation, and appends results to a Delta table — and restart it from a checkpoint without data loss.
+
+!!! note "New in Spark 4.2.0 — Real-Time Mode (millisecond latency, a different execution model)"
+    Everything above is the **micro-batch** model, which floors end-to-end latency at hundreds of milliseconds because each trigger plans and launches a fresh batch. Spark 4.2.0 adds **Real-Time Mode**, a long-running continuous execution that targets **millisecond** latency — a genuinely different engine path, not a trigger option on the micro-batch model. The 4.2.0 release ships it for **stateless PySpark queries only**; stateful support, concurrent-stage scheduling, and Python-UDF support are on the roadmap, not in this release. Learn the micro-batch model in this topic first — it is what every book and the exam teach, and what stateful work (A8) still runs on — then read the 4.2.0 streaming docs to know when the low-latency path is worth the operational cost. No book covers it.
 
 ---
 
@@ -1901,6 +1912,7 @@ All three are proctored, multiple-choice, $200, English-delivered (the DE exams 
 - [Dagster Essentials syllabus](https://courses.dagster.io/courses/dagster-essentials)
 - [Apache Spark documentation](https://spark.apache.org/docs/latest/), [downloads page](https://spark.apache.org/downloads.html) *(re-fetched 2026-07-18)*
 - [Spark 4.2.0 release notes](https://spark.apache.org/releases/spark-release-4-2-0.html) *(fetched 2026-07-18)*
+- [Introducing Apache Spark 4.2 (Databricks blog)](https://www.databricks.com/blog/introducing-apache-spark-42) *(fetched 2026-07-21 — source for the Phase 5 fold-in above)*
 - [ProjectPro PySpark roadmap](https://www.projectpro.io/learning-paths/pyspark-roadmap), [DataCamp PySpark guide](https://www.datacamp.com/blog/learn-pyspark)
 - Taxonomy re-derivation (2026-07-18): [Iceberg multi-engine support matrix](https://iceberg.apache.org/multi-engine-support/) *(fetched — Spark 4.1 is newest supported)*, [Iceberg releases](https://iceberg.apache.org/releases/), [Dataquest — data engineering skills 2026](https://www.dataquest.io/blog/data-engineering-skills/), [InterviewStack — data engineer skills 2026](https://interviewstack.io/blog/data-engineer-skills-companies-want-2026), [Parquet VARIANT announcement](https://parquet.apache.org/blog/2026/02/27/variant-type-in-apache-parquet-for-semi-structured-data/)
 - Learning-method evidence: [Dunlosky, *Strengthening the Student Toolbox*](https://www.aft.org/ae/fall2013/dunlosky) — self-explanation and retrieval practice both ≈ g 0.55, rereading rated low utility; drives the "attempt the milestone first" instruction in the header
