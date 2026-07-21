@@ -15,13 +15,13 @@ SOURCE: http://y
 
 
 def test_keep_types_classified_keep():
-    for t in ["New Feature", "Improvement", "Story", "Epic", "Umbrella"]:
+    for t in ["New Feature", "Improvement", "Story", "Epic", "Umbrella", "Planned Work", "Github Integration"]:
         assert classify_type(t) == "keep"
 
 
 def test_drop_types_classified_drop():
     for t in ["Bug", "Sub-task", "Task", "Test", "Dependency upgrade",
-              "Documentation", "Question", "Wish", "Technical task"]:
+              "Documentation", "Question", "Wish", "Technical task", "Brainstorming"]:
         assert classify_type(t) == "drop"
 
 

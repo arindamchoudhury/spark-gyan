@@ -5,10 +5,10 @@ import re
 from dataclasses import dataclass
 from typing import Iterator
 
-KEEP_TYPES = {"New Feature", "Improvement", "Story", "Epic", "Umbrella"}
+KEEP_TYPES = {"New Feature", "Improvement", "Story", "Epic", "Umbrella", "Planned Work", "Github Integration"}
 DROP_TYPES = {
     "Bug", "Sub-task", "Task", "Test", "Dependency upgrade",
-    "Documentation", "Question", "Wish", "Technical task",
+    "Documentation", "Question", "Wish", "Technical task", "Brainstorming",
 }
 
 
