@@ -4,13 +4,53 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+Deployment in the 0.x line centered on Mesos and EC2: 0.5.0 ran on Apache Mesos 0.9 with better memory accounting and job history, plus EC2 launch scripts that auto-discovered the latest AMI. 0.6.0 was the turning point, adding a standalone deploy mode so clusters no longer needed an external cluster manager, plus experimental YARN support on a separate branch. 0.6.1–0.6.2 rounded out the standalone cluster with `spark.deploy.spreadOut`, customizable IP binding, and EC2 improvements (multi-AZ launches, security group cleanup, separate `SPARK_DAEMON_MEMORY`).
+
+0.7.0 let the EC2 scripts target both standalone and Mesos clusters. 0.8.0 promoted YARN support to mainline and let Mesos deploy an assembly JAR with the job, skipping pre-install. 0.8.1 added Zookeeper-based HA for the standalone master and `local://` URIs; 0.9.0 let standalone mode submit driver programs to the cluster and cap default cores per app.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.5.0 | — | prose | Runs on Apache Mesos 0.9 |
+| 0.5.0 | — | prose | Mesos 0.9 usability gains: memory accounting, job trace/log history, simpler install |
+| 0.5.0 | — | prose | EC2 launch scripts bundled with release and auto-discover latest AMI |
+| 0.5.1 | — | prose | EC2 launch script auto-configures memory limit from instance RAM |
+| 0.6.0 | — | prose | Standalone deploy mode added |
+| 0.6.0 | — | prose | Experimental YARN support |
+| 0.6.1 | — | prose | spark.deploy.spreadOut option to spread jobs across the standalone cluster |
+| 0.6.1 | — | prose | Customizable local IP address binding |
+| 0.6.1 | — | prose | EC2 script improvements including better spot instance handling |
+| 0.6.2 | — | prose | EC2 support for launching a cluster across multiple availability zones |
+| 0.6.2 | — | prose | EC2 support for deleting security groups on cluster termination |
+| 0.6.2 | — | prose | Separate SPARK_DAEMON_MEMORY variable for standalone daemon memory config |
+| 0.6.2 | — | prose | Better detection of a machine's external IP address |
+| 0.7.0 | — | prose | S3 credentials read from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY env vars |
+| 0.7.0 | — | prose | EC2 scripts support standalone and Mesos clusters, launch Ganglia |
+| 0.7.0 | — | prose | EC2 clusters can span multiple availability zones |
+| 0.7.0 | — | prose | Standalone deploy spreads jobs across machines for better data locality |
+| 0.7.0 | — | prose | Separate configuration for standalone daemons vs user applications |
+| 0.7.2 | — | prose | Support for launching multiple worker instances per host in standalone mode |
+| 0.7.3 | — | prose | ADD_JARS environment variable adds JARs to spark-shell and workers |
+| 0.7.3 | — | prose | Windows: standalone clusters properly kill executors; JAR paths with backslashes work |
+| 0.8.0 | — | prose | YARN support improved and promoted from experimental to mainline |
+| 0.8.0 | — | prose | EC2 scripts support any availability zone and HVM instance types |
+| 0.8.0 | — | prose | EC2 support for running newer HDFS versions alongside Spark |
+| 0.8.0 | — | prose | EC2 ability to launch clusters with maintenance releases of Spark |
+| 0.8.0 | — | prose | Binary distribution depending only on a Java runtime |
+| 0.8.0 | — | prose | Mesos: deploy assembly JAR as part of job (no pre-install needed); default Mesos 0.13 |
+| 0.8.1 | — | prose | YARN 2.2+ support added |
+| 0.8.1 | — | prose | Standalone cluster manager gains Zookeeper-based high availability (H/A) mode |
+| 0.8.1 | — | prose | local:// URIs for referencing files already present on slaves |
+| 0.9.0 | — | prose | Auto-discovery of default log4j.properties file |
+| 0.9.0 | — | prose | Standalone mode supports submitting driver programs to run on the cluster |
+| 0.9.0 | — | prose | Standalone mode can limit default cores per application |
+| 0.9.0 | — | prose | YARN mode supports distributing extra files with the application |
+| 0.9.1 | — | prose | Distribution tarballs can bundle Tachyon for easier deployment |
+| 0.9.1 | — | prose | EC2 scripts support C3 instance types |
 | 1.5.0 | [SPARK-4352](https://issues.apache.org/jira/browse/SPARK-4352) | Improvement | Incorporate locality preferences in dynamic allocation requests |
 | 1.5.0 | [SPARK-4751](https://issues.apache.org/jira/browse/SPARK-4751) | New Feature | Support dynamic allocation for standalone mode |
 | 1.5.0 | [SPARK-6287](https://issues.apache.org/jira/browse/SPARK-6287) | Improvement | Add support for dynamic allocation in the Mesos coarse-grained scheduler |

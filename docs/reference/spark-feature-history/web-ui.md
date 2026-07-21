@@ -4,13 +4,27 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+The web UI began life in 0.7.0 as a simple dashboard for monitoring RDD memory usage, with its port configurable via `spark.ui.port`; the standalone cluster's own web UI gained JSON endpoints for querying cluster state that same release, and 0.6.1 improved it to show more job information. 0.7.2 added the `SparkListener` metrics interface for collecting per-stage computation info like task lengths and bytes shuffled.
+
+0.8.0 was the biggest leap: a dedicated web UI at port 4040, a job dashboard with percentile statistics for task runtime, shuffle, and GC, an extended per-executor storage/task dashboard, and a new metrics library exposing internal metrics through JMX and Ganglia. 0.8.1 added a "result fetching" state to the UI's job view.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.6.1 | — | prose | Improved standalone cluster web UI shows more job information |
+| 0.7.0 | — | prose | Web-based memory usage dashboard for RDDs |
+| 0.7.0 | — | prose | Configurable UI port via spark.ui.port |
+| 0.7.0 | — | prose | Standalone web UI adds JSON endpoints for cluster state |
+| 0.7.2 | — | prose | SparkListener metrics interface for per-stage computation info |
+| 0.8.0 | — | prose | Web UI for monitoring at port 4040 |
+| 0.8.0 | — | prose | Job dashboard with percentile stats for task runtime, shuffle, GC |
+| 0.8.0 | — | prose | Extended storage dashboard with per-executor storage/task pages |
+| 0.8.0 | — | prose | New metrics library exposing internal metrics via JMX and Ganglia |
+| 0.8.1 | — | prose | New result-fetching state shown in UI |
 | 1.5.0 | [SPARK-5768](https://issues.apache.org/jira/browse/SPARK-5768) | Improvement | Spark UI Shows incorrect memory under Yarn |
 | 1.5.0 | [SPARK-6942](https://issues.apache.org/jira/browse/SPARK-6942) | Umbrella | Umbrella: UI Visualizations for Core and Dataframes |
 | 1.5.0 | [SPARK-7161](https://issues.apache.org/jira/browse/SPARK-7161) | Improvement | Provide REST api to download event logs from History Server |

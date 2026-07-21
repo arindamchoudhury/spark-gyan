@@ -4,13 +4,29 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+PySpark arrived in 0.7.0, bringing RDDs, accumulators, broadcast variables, and HDFS I/O to Python for both standalone programs and interactive shells. 0.7.3 sped up spawning of the Python worker VMs, especially for large JVM heap sizes. 0.8.0 extended the API with storage levels, sampling, and missing RDD operators, and added support for running PySpark under IPython (including the IPython Notebook) as well as on Windows.
+
+0.8.1 rounded out the Python surface with the ability to set Spark config properties directly from Python, sort operations, and an explicitly named `add` method on accumulators. By 0.9.0 PySpark jobs showed their call sites in the Spark web UI, IPython integration was updated for newer versions, and 0.9.1 filled in more missing RDD operations (`top`, `zip`, `foldByKey`, `repartition`, `coalesce`, `getStorageLevel`, `setName`, `toDebugString`).
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.7.0 | — | prose | Python API (PySpark) added |
+| 0.7.0 | — | prose | PySpark supports RDDs, accumulators, broadcast variables, and HDFS I/O |
+| 0.7.3 | — | prose | Faster Python VM spawning for large JVM heap sizes |
+| 0.8.0 | — | prose | Python API extended with storage levels, sampling, and missing RDD operators |
+| 0.8.0 | — | prose | PySpark support for IPython (incl. Notebook) and Windows |
+| 0.8.0 | — | prose | Various optimizations to PySpark and the job scheduler |
+| 0.8.1 | — | prose | Set Spark config properties directly from Python |
+| 0.8.1 | — | prose | Python support for sort operations |
+| 0.8.1 | — | prose | Python accumulators gain an explicitly named add method |
+| 0.9.0 | — | prose | PySpark shows job call sites in the Spark application UI |
+| 0.9.0 | — | prose | IPython integration updated for newer versions |
+| 0.9.1 | — | prose | Missing RDD operations added to PySpark (top, zip, foldByKey, repartition, coalesce, getStorageLevel, setName, toDebugString) |
 | 1.5.0 | [SPARK-4561](https://issues.apache.org/jira/browse/SPARK-4561) | Improvement | PySparkSQL's Row.asDict() should convert nested rows to dictionaries |
 | 1.5.0 | [SPARK-5155](https://issues.apache.org/jira/browse/SPARK-5155) | New Feature | Python API for MQTT streaming |
 | 1.5.0 | [SPARK-5161](https://issues.apache.org/jira/browse/SPARK-5161) | Improvement | Parallelize Python test execution |

@@ -4,13 +4,20 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+This page collects cross-cutting or uncategorized 0.x items that don't map to a single subsystem — improved log messages tying RDDs/jobs back to source code (0.6.0), better error reporting for resource shortfalls and failures (0.7.0), non-serializable exceptions and oversized task results (0.7.3), and the archivable `JobLogger` class (0.8.0).
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.6.0 | — | prose | Log now records which program operation produced each RDD/job for easier debugging |
+| 0.7.0 | — | prose | Better error reporting when jobs cannot launch due to insufficient resources |
+| 0.7.0 | — | prose | Improved failure handling and error message reporting |
+| 0.7.3 | — | prose | Better error reporting for non-serializable exceptions and large task results |
+| 0.8.0 | — | prose | JobLogger class for archivable workload logs |
 | 1.5.0 | [SPARK-1564](https://issues.apache.org/jira/browse/SPARK-1564) | Improvement | Add JavaScript into Javadoc to turn ::Experimental:: and such into badges |
 | 1.5.0 | [SPARK-2774](https://issues.apache.org/jira/browse/SPARK-2774) | Improvement | Set preferred locations for reduce tasks |
 | 1.5.0 | [SPARK-3382](https://issues.apache.org/jira/browse/SPARK-3382) | Improvement | GradientDescent convergence tolerance |

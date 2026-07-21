@@ -4,13 +4,35 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+Build and language support moved fast in the 0.x line as Spark chased the Scala ecosystem: 0.3 added Scala 2.9 support alongside 2.8 and switched to Maven for dependency fetching and artifact publishing. 0.5.1 and 0.6.0 both got Spark onto Maven Central, and 0.5.2 added compile support for Hadoop 2 distributions. 0.6.1 extended that with Hadoop 2 support and locating Scala on Debian.
+
+0.7.0 added a Maven build path alongside SBT, better IBM JVM support, and bumped the default Hadoop dependency to 1.0.4; 0.7.2 moved to Scala 2.9.3. 0.8.0 let user programs link against any Hadoop version via the `hadoop-client` dependency and isolated the examples build to cut dependency conflicts. 0.9.0 was the big jump to Scala 2.10 and reorganized scripts into `bin`/`sbin` directories for cleaner installs.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.3 | — | prose | Scala 2.9 support added |
+| 0.3 | — | prose | Maven-based dependency fetching and artifact publishing |
+| 0.3 | — | prose | Scala 2.9 interpreter features supported |
+| 0.5.1 | — | prose | Spark published to Maven Central |
+| 0.5.1 | — | prose | Builds against Scala 2.9.2 by default |
+| 0.5.2 | — | prose | Compile support for Hadoop 2 distributions |
+| 0.6.0 | — | prose | Spark published to Maven Central |
+| 0.6.1 | — | prose | Support for Hadoop 2 distributions |
+| 0.6.1 | — | prose | Support for locating Scala on Debian distributions |
+| 0.7.0 | — | prose | Maven build support added |
+| 0.7.0 | — | prose | Better support for IBM JVM |
+| 0.7.0 | — | prose | Default Hadoop version dependency updated to 1.0.4 |
+| 0.7.2 | — | prose | Scala version updated to 2.9.3 |
+| 0.7.3 | — | prose | Spark Streaming build no longer depends on Twitter4J repo |
+| 0.8.0 | — | prose | Link to Spark for any Hadoop version via hadoop-client dependency |
+| 0.8.0 | — | prose | Examples build isolated from core build to reduce dependency conflicts |
+| 0.9.0 | — | prose | Spark runs on Scala 2.10 |
+| 0.9.0 | — | prose | Scripts reorganized into bin and sbin directories |
 | 1.5.0 | [SPARK-6782](https://issues.apache.org/jira/browse/SPARK-6782) | Improvement | add sbt-revolver plugin to sbt build |
 | 1.5.0 | [SPARK-7389](https://issues.apache.org/jira/browse/SPARK-7389) | Improvement | Tachyon integration improvement |
 | 1.5.0 | [SPARK-7801](https://issues.apache.org/jira/browse/SPARK-7801) | Improvement | Upgrade master versions to Spark 1.5.0 |

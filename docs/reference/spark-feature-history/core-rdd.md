@@ -4,13 +4,58 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+The RDD abstraction and its scheduler were already the core of Spark by 0.3, which added Hadoop-backed I/O (HDFS, S3, Hypertable), `hadoopRDD` for non-filesystem sources, outer joins, and finer control over parallelism and split counts. Through 0.5.x the scheduler grew more communication-efficient for large lineage graphs, closure serialization became configurable, and worker exceptions started surfacing in the master log; new operators like `sortByKey` and `takeSample` arrived alongside partition-aware joins that could skip a shuffle entirely.
+
+0.6.0 added a Java API layer, an `Accumulable` class generalizing accumulators, dynamic file/JAR shipping via `SparkContext.addFile/Jar`, and scheduler tuning for sub-500ms jobs. 0.7.0 brought more transformations (`keys`, `values`, `keyBy`, `subtract`, `coalesce`, `zip`), `RDD.toDebugString()`, and a refactored scheduler codebase for testing. By 0.8.0–0.9.0 Spark had a fair scheduler for multi-user sharing, rack-aware topology scheduling, `SparkConf`, and operators like `takeOrdered`, `zipPartitions`, `top`, `repartition`, `histogram`, and `countDistinctApprox`.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.3 | — | prose | Save distributed datasets to HDFS/S3/Hypertable and other Hadoop-supported storage |
+| 0.3 | — | prose | Native types for common Writable types in SequenceFiles |
+| 0.3 | — | prose | SparkContext.hadoopRDD for non-filesystem Hadoop input formats |
+| 0.3 | — | prose | Outer join operators added |
+| 0.3 | — | prose | Better default parallelism levels for various operations |
+| 0.3 | — | prose | Ability to control number of splits in a file |
+| 0.5.0 | — | prose | Scheduling made more communication-efficient for large lineage graphs |
+| 0.5.0 | — | prose | Configurable closure serializer |
+| 0.5.0 | — | prose | Worker exceptions reported back to master log |
+| 0.5.0 | — | prose | Automatic marking/filtering of duplicate errors |
+| 0.5.0 | — | prose | New operators: sortByKey, takeSample, faster fold/aggregate |
+| 0.5.0 | — | prose | Join of identically hash-partitioned RDDs avoids network shuffle |
+| 0.5.0 | — | prose | New Hadoop API (org.apache.mapreduce) read/write support |
+| 0.5.1 | — | prose | New Accumulable class generalizes Accumulators for non-matching element/accumulated types |
+| 0.5.1 | — | prose | Improved random sampling algorithm to avoid bias |
+| 0.5.1 | — | prose | Improved load balancing across nodes in sort operations |
+| 0.5.1 | — | prose | Reduced memory consumption of saveAsObjectFile for large objects |
+| 0.6.0 | — | prose | Java API layer added |
+| 0.6.0 | — | prose | Scheduler and control plane optimized for ultra-low-latency jobs |
+| 0.6.0 | — | prose | New Accumulable class for accumulating collections/mismatched types |
+| 0.6.0 | — | prose | Dynamic file/JAR shipping via SparkContext.addFile/Jar |
+| 0.6.0 | — | prose | More operators (e.g. joins) support custom partitioners |
+| 0.7.0 | — | prose | New RDD transformations: keys, values, keyBy, subtract, coalesce, zip |
+| 0.7.0 | — | prose | SparkContext.hadoopConfiguration for global Hadoop I/O settings |
+| 0.7.0 | — | prose | RDD.toDebugString() prints RDD lineage graph for troubleshooting |
+| 0.7.0 | — | prose | Scheduler codebase refactored to enable richer unit testing |
+| 0.7.0 | — | prose | SparkFiles.getRootDirectory/SparkFiles.get for locating shipped files |
+| 0.7.2 | — | prose | New API methods: subtractByKey, foldByKey, mapWith, filterWith, foreachPartition |
+| 0.8.0 | — | prose | Job scheduler refactored with fair scheduler for multi-user sharing |
+| 0.8.0 | — | prose | Topology-aware scheduling extended: rack locality and multiple executors per machine |
+| 0.8.0 | — | prose | New RDD operations: takeOrdered, zipPartitions, top |
+| 0.8.0 | — | prose | RDD.coalesce now takes locality into account |
+| 0.8.0 | — | prose | RDD.pipe supports passing environment variables to child processes |
+| 0.8.0 | — | prose | Hadoop save functions support optional compression codec |
+| 0.8.1 | — | prose | Torrent broadcast: faster broadcast implementation for large objects |
+| 0.8.1 | — | prose | Support for fetching large result sets without tuning Akka buffer sizes |
+| 0.8.1 | — | prose | New repartition operator |
+| 0.9.0 | — | prose | New SparkConf class for configuring SparkContext settings |
+| 0.9.0 | — | prose | spark-shell -i option to run a startup script |
+| 0.9.0 | — | prose | New histogram and countDistinctApprox operators |
+| 0.9.1 | — | prose | Support for HBase's TableOutputFormat and other Configurable OutputFormats |
 | 1.5.0 | [SPARK-1855](https://issues.apache.org/jira/browse/SPARK-1855) | New Feature | Provide memory-and-local-disk RDD checkpointing |
 | 1.5.0 | [SPARK-3071](https://issues.apache.org/jira/browse/SPARK-3071) | Improvement | Increase default driver memory |
 | 1.5.0 | [SPARK-5561](https://issues.apache.org/jira/browse/SPARK-5561) | Improvement | Generalize PeriodicGraphCheckpointer for RDDs |

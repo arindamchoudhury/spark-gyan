@@ -4,13 +4,33 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+Shuffle and storage performance was a priority from the start: 0.3 shipped faster broadcast and shuffle algorithms, and 0.5.0 improved both the cache replacement policy and shuffle efficiency, plus fixed object-size estimation across 32- and 64-bit JVMs. 0.6.0 introduced a new storage manager with per-dataset storage levels, exposed through the `persist()` method, alongside an async Java NIO communication manager that sped up shuffles of large data.
+
+Later 0.x releases kept tuning this path: 0.6.1/0.6.2 improved connection reuse for small shuffles, 0.7.0 made shuffle operators like `groupByKey`/`reduceByKey` infer parallelism from parent RDD size, 0.8.0 added `unpersist()` for manually dropping cached RDDs, 0.8.1 optimized shuffle hashtables and introduced (off-by-default) shuffle file consolidation, and 0.9.0 made large reduce operations spill to disk automatically when they didn't fit in memory.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.3 | — | prose | Faster broadcast and shuffle algorithms |
+| 0.5.0 | — | prose | Improved cache replacement policy |
+| 0.5.0 | — | prose | Shuffles made more efficient |
+| 0.5.1 | — | prose | Improved object size estimation for memory management (32/64-bit pointers) |
+| 0.6.0 | — | prose | New async Java NIO communication manager speeds up shuffle |
+| 0.6.0 | — | prose | New storage manager with per-dataset storage level settings |
+| 0.6.0 | — | prose | Per-RDD storage level control via persist() |
+| 0.6.1 | — | prose | Improved connection reuse speeds up small shuffles |
+| 0.6.2 | — | prose | Connection reuse bug fix improves shuffle performance |
+| 0.7.0 | — | prose | Shuffle ops infer parallelism from parent RDD size |
+| 0.7.0 | — | prose | Several shuffle performance improvements |
+| 0.8.0 | — | prose | unpersist() to manually drop RDDs from memory |
+| 0.8.1 | — | prose | Optimized hashtables for shuffle data reduce memory/CPU use |
+| 0.8.1 | — | prose | Efficient JobConf encoding improves latency reading many HDFS/S3/HBase blocks |
+| 0.8.1 | — | prose | Shuffle file consolidation reduces file count in large shuffles |
+| 0.9.0 | — | prose | Large reduce operations automatically spill to disk |
 | 1.5.0 | [SPARK-5423](https://issues.apache.org/jira/browse/SPARK-5423) | Improvement | ExternalAppendOnlyMap won't delete temp spilled file if some exception happens during using it |
 | 1.5.0 | [SPARK-7075](https://issues.apache.org/jira/browse/SPARK-7075) | Epic | Project Tungsten (Spark 1.5 Phase 1) |
 | 1.5.0 | [SPARK-7855](https://issues.apache.org/jira/browse/SPARK-7855) | Improvement | Move hash-style shuffle code out of ExternalSorter and into own file |

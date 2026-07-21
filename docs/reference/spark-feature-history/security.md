@@ -4,13 +4,17 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+Security features were minimal in the 0.x line, appearing only as deployment-mode add-ons. 0.8.0 added support for running Spark against a secured YARN cluster, tying into YARN's own authentication rather than adding Spark-native security. 0.8.1 followed with the ability to run Spark applications as a different user in standalone and Mesos modes, letting operators isolate jobs by OS-level user identity.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.8.0 | — | prose | Support for running against a secured YARN cluster |
+| 0.8.1 | — | prose | Run Spark applications as a different user in standalone and Mesos modes |
 | 1.5.0 | [SPARK-6284](https://issues.apache.org/jira/browse/SPARK-6284) | Improvement | Support framework authentication and role in Mesos framework |
 | 1.5.0 | [SPARK-8129](https://issues.apache.org/jira/browse/SPARK-8129) | New Feature | Securely pass auth secrets to executors in standalone cluster mode |
 | 1.5.0 | [SPARK-8740](https://issues.apache.org/jira/browse/SPARK-8740) | Improvement | Support GitHub OAuth tokens in dev/merge_spark_pr.py |

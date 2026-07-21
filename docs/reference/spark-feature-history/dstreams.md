@@ -4,13 +4,30 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+Spark Streaming debuted as an alpha extension in 0.7.0, offering `map`/`filter`/`reduce` plus sliding-window functions over streams, with fault recovery that gave exactly-once semantics without relying on external transactions. 0.7.3 updated the Kafka and Twitter input APIs, moving Twitter to OAuth after the old username/password method was disabled and letting Kafka receive non-string messages.
+
+0.8.0 finished the OAuth migration for Twitter and added operators like `transformWith`, `leftInnerJoin`, and `rightOuterJoin` in 0.8.1. Spark Streaming graduated out of alpha in 0.9.0, gaining simplified high availability (driver auto-recovery through the standalone cluster's HA mode), a `StreamingListener` interface for monitoring, `awaitTermination()`/`stop()` lifecycle controls, windowed operators sped up 30-50%, and input source plugins (Twitter, Kafka, Flume) split into separate Maven modules.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.7.0 | — | prose | Spark Streaming alpha introduced |
+| 0.7.0 | — | prose | Streaming API: map/filter/reduce plus sliding window functions |
+| 0.7.0 | — | prose | Streaming fault recovery with exactly-once semantics, no external transactions |
+| 0.7.3 | — | prose | Streaming Kafka/Twitter APIs updated (OAuth, non-string Kafka messages) |
+| 0.8.0 | — | prose | Streaming Twitter API updated to use OAuth authentication |
+| 0.8.1 | — | prose | New Streaming operators: transformWith, leftInnerJoin, rightOuterJoin |
+| 0.9.0 | — | prose | Spark Streaming graduates out of alpha with simplified HA and optimizations |
+| 0.9.0 | — | prose | Streaming driver auto-recovery via standalone cluster HA mode |
+| 0.9.0 | — | prose | Windowed operators sped up by 30-50% |
+| 0.9.0 | — | prose | Streaming input source plugins split into separate Maven modules |
+| 0.9.0 | — | prose | New StreamingListener interface for monitoring streaming statistics |
+| 0.9.0 | — | prose | StreamingContext.awaitTermination() waits for shutdown and surfaces exceptions |
+| 0.9.0 | — | prose | StreamingContext.stop() can stop streaming without stopping the SparkContext |
 | 1.5.0 | [SPARK-5048](https://issues.apache.org/jira/browse/SPARK-5048) | Improvement | Add Flume to the Python Streaming API |
 | 1.5.0 | [SPARK-7988](https://issues.apache.org/jira/browse/SPARK-7988) | New Feature | Mechanism to control receiver scheduling |
 | 1.5.0 | [SPARK-8378](https://issues.apache.org/jira/browse/SPARK-8378) | Improvement | Add Spark Flume Python API |

@@ -4,13 +4,28 @@
 
 ## How it evolved
 
-_TODO: connective prose added during the era passes._
+### 0.x era — origins
+
+MLlib was introduced in 0.8.0 as a standard library of machine learning and optimization algorithms, launching with seven: SVMs, logistic regression, several regularized linear regression variants, KMeans clustering, and alternating least squares (ALS) collaborative filtering. 0.8.1 added an ALS variant for implicit feedback matrix factorization.
+
+0.9.0 made MLlib available in Python (operating on NumPy data) and added a Naive Bayes classifier, plus support for predicting ratings for multiple items in parallel with ALS. The 0.9.1 patch release focused entirely on ALS refinements — optimized memory usage and YtY computation, support for negative implicit input, an ability to set a random seed, and faster feature construction with intercept.
 
 ## Timeline
 
 <!-- AUTO:timeline START -->
 | Release | JIRA | Type | Title |
 |---|---|---|---|
+| 0.8.0 | — | prose | MLlib machine learning library introduced |
+| 0.8.0 | — | prose | MLlib ships seven algorithms (SVM, logistic regression, linear regression variants, KMeans, ALS) |
+| 0.8.1 | — | prose | New ALS variant for implicit feedback matrix factorization |
+| 0.9.0 | — | prose | MLlib available in Python (NumPy-based) |
+| 0.9.0 | — | prose | New Naive Bayes classification algorithm |
+| 0.9.0 | — | prose | ALS models predict ratings for multiple items in parallel |
+| 0.9.1 | — | prose | Optimized ALS memory usage |
+| 0.9.1 | — | prose | Support for negative implicit input in ALS |
+| 0.9.1 | [SPARK-1237](https://issues.apache.org/jira/browse/SPARK-1237) | prose | Optimized YtY computation for implicit ALS |
+| 0.9.1 | [SPARK-1238](https://issues.apache.org/jira/browse/SPARK-1238) | prose | Ability to set a random seed in ALS |
+| 0.9.1 | [SPARK-1260](https://issues.apache.org/jira/browse/SPARK-1260) | prose | Faster construction of features with intercept |
 | 1.5.0 | [SPARK-1856](https://issues.apache.org/jira/browse/SPARK-1856) | Umbrella | Standardize MLlib interfaces |
 | 1.5.0 | [SPARK-3258](https://issues.apache.org/jira/browse/SPARK-3258) | Umbrella | Python API for streaming MLlib algorithms |
 | 1.5.0 | [SPARK-4362](https://issues.apache.org/jira/browse/SPARK-4362) | Improvement | Make prediction probability available in NaiveBayesModel |
