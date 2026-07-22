@@ -45,6 +45,7 @@ nav = [
             { "core — Monitoring" = "reference/spark-source-map/sweeps/core-monitoring.md" },
             { "core — Config & security" = "reference/spark-source-map/sweeps/core-config-security.md" },
             { "core — RPC & resources" = "reference/spark-source-map/sweeps/core-rpc-resources.md" },
+            { "core — API bridge" = "reference/spark-source-map/sweeps/core-api-bridge.md" },
         ]},
     ]},
     { "Spark Book" = [
