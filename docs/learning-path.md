@@ -1419,6 +1419,26 @@ You are ready to leave this level when you can:
 
 
 
+
+### ⬜ A16 — Stage-Level Scheduling and Accelerator-Aware Resources (GPU/FPGA)
+
+> *Discovered from the [core — rpc & resources source sweep](reference/spark-source-map/sweeps/core-rpc-resources.md) (2026-07-22): the whole `resource/` package — `ResourceProfile`, `ResourceProfileManager`, `ResourceUtils`, `ResourceAllocator` — backs no existing topic. Placed at Advanced (not Expert) because it is a production scheduling capability built on the DAGScheduler and dynamic allocation the A-track already teaches, not a low-level runtime internal.*
+
+**What it is:** Attaching a custom `ResourceProfile` to an RDD (`rdd.withResources(...)`, built with `ResourceProfileBuilder`) so a *stage* requests different CPUs, memory, or accelerators (GPU/FPGA) than the application default — the canonical case being a CPU-only ETL stage followed by a GPU ML/inference stage in one job, without holding idle GPUs for the whole run. Underneath: how executor and task requests combine into a profile, how Spark **discovers** accelerator addresses (an explicit resources file, or a discovery script/plugin), how it counts how many tasks fit an executor (the *limiting resource* arithmetic), and how fractional task amounts let several tasks share one GPU.
+
+**Why you need it:** GPU inference/ML stages and mixed CPU/GPU pipelines are a real production pattern, and the mechanics have sharp edges no other topic covers — profile-merge conflicts (throw vs max-merge), fractional-GPU sharing (`0.5` ⇒ two tasks per address), discovery-script failures, and the cluster-manager gate (only YARN/K8s/Standalone, and only with dynamic allocation for full profiles).
+
+**Learn it with:**
+
+1. **No book covers this** — stage-level scheduling (Spark 3.1) and accelerator-aware scheduling (Spark 3.0) postdate SDG and LS2e; treat the docs and the source as the primary sources.
+2. **Spark-docs → Configuration → "Custom Resource Scheduling and Configuration Overview" + "Stage Level Scheduling Overview"** ([spark.apache.org/docs/latest/configuration.html](https://spark.apache.org/docs/latest/configuration.html)) — the `spark.{driver,executor,task}.resource.{name}.{amount,discoveryScript,vendor}` configs and the `RDD.withResources` / `ResourceProfileBuilder` API contract
+3. **Spark-docs → Job Scheduling** ([spark.apache.org/docs/latest/job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — where stage-level scheduling sits relative to dynamic allocation, which it depends on
+4. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the four classes that implement it end to end: `ResourceProfileBuilder`/`ResourceProfile` (author + validate), `ResourceProfileManager` (cluster-manager gating, dedup, merge conflicts), `ResourceUtils` (resourcesFile vs discovery-script/plugin), `ResourceAllocator` (fixed-point address assignment) — plus the `calculateTasksAndLimitingResource` fit arithmetic and every edge/failure path
+
+**Milestone:** You can build a `ResourceProfile` that requests 1 GPU per executor and a fractional (`0.5`) GPU per task, attach it to a stage with `rdd.withResources`, and predict from `spark.executor.cores` / `spark.task.cpus` / the per-resource amounts how many tasks that executor will run and which resource is *limiting*; explain why the feature needs dynamic allocation and which cluster managers support it; and describe what `spark.scheduler.resource.profileMergeConflicts` changes when two profiles collide on one stage.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -1446,6 +1466,7 @@ You are ready to leave this level when you can:
 7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the task lifecycle on the executor, `TaskContext` completion listeners, the result-size decision, and the kill path that turns an uninterruptible task into a lost slot
 8. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the memory system end to end — pool sizing, the execution/storage asymmetry, the acquire/spill loop, Tungsten pages, and the leak detection that is suppressed exactly when leaks are likeliest
 9. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the block manager's read and write paths, the lock protocol underneath them, and how a block that is reported but unreadable retracts itself from the driver's registry
+10. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the messaging substrate every driver↔executor exchange rides: `RpcEnv`/`Dispatcher`/`Inbox` and the shared-vs-dedicated `MessageLoop` threading, local-shortcut vs `Outbox` remote routing, and the `RpcTimeout` fallback chain that explains why a stalled heartbeat surfaces as a `spark.network.timeout` error
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
@@ -1471,6 +1492,7 @@ You are ready to leave this level when you can:
 7. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — block replication and its topology requirement, executor loss and proactive re-replication, the disk layout, and decommission migration with fallback storage
 8. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — the submission path end to end, standalone placement arithmetic, and the graceful worker drain that a rolling restart depends on
 9. **Source sweep — [core — config & security in the source map](reference/spark-source-map/sweeps/core-config-security.md)** — the whole cluster-security surface: how `SecurityManager` mints the auth secret differently per cluster manager (generated on YARN/local, mounted file on k8s, *required in conf* otherwise), the `AuthEngine` X25519 handshake and its SASL fallback, IO (shuffle-spill) encryption, and the Kerberos delegation-token renewal loop — plus the config engine itself (fallback keys, `${…}` substitution, deprecated-key handling) that every knob in this topic is built on
+10. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the resource model behind executor/task sizing: how `spark.executor.cores` + `spark.task.cpus` + custom `spark.*.resource.{name}.amount` combine into the *limiting-resource* arithmetic that decides how many tasks an executor runs, and how accelerator addresses get discovered (resources file vs discovery script). Stage-level scheduling proper is its own topic — see [A16](#a16-stage-level-scheduling-and-accelerator-aware-resources-gpufpga)
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
