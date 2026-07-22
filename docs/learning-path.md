@@ -1504,10 +1504,11 @@ You are ready to leave this level when you can:
 
 1. **SDG Ch 18** — monitoring and debugging; the Spark metrics system
 2. **ADEB Module 3** — pipeline event logging; monitoring in the Databricks context
-3. **Spark-docs → Monitoring** ([spark.apache.org/docs/latest/monitoring.html](https://spark.apache.org/docs/latest/monitoring.html))
-4. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the heartbeat protocol and its expiry, the executor metrics poller, and the listener events every monitoring tool consumes
-5. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — which shuffle path a job actually took, and why none of it is visible at default log levels
-6. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — what standalone actually exposes: four master gauges, five worker gauges, and the states that have no metric at all
+3. **Spark-docs → Monitoring** ([spark.apache.org/docs/latest/monitoring.html](https://spark.apache.org/docs/latest/monitoring.html)) — the UI, the REST API (`/api/v1`), the metrics system and its sinks, and the History Server, end to end. Pair with **Spark-docs → Web UI** ([spark.apache.org/docs/latest/web-ui.html](https://spark.apache.org/docs/latest/web-ui.html)) for the page-by-page tour
+4. **Source sweep — [core — monitoring in the source map](reference/spark-source-map/sweeps/core-monitoring.md)** — the whole observability spine: the `AppStatusListener → ElementTrackingStore → AppStatusStore(KVStore)` indirection that both the live UI *and* the History Server read (they never touch live objects), the async event-queue drop path where monitoring data is silently lost, the metrics registration-by-reflection and its sinks, the **two** Prometheus surfaces, and the History Server's replay/compaction/cleaning lifecycle — with the retention and compaction caps that make history lossy by design
+5. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the heartbeat protocol and its expiry, the executor metrics poller, and the listener events every monitoring tool consumes
+6. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — which shuffle path a job actually took, and why none of it is visible at default log levels
+7. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — what standalone actually exposes: four master gauges, five worker gauges, and the states that have no metric at all
 
 !!! warning "Spark's most expensive decisions are logged at `debug` or not at all"
 
@@ -1528,6 +1529,28 @@ You are ready to leave this level when you can:
     takes, and is worth doing once per workload shape rather than never.
 
 **Milestone:** You can configure a custom Spark listener that emits stage completion metrics to a log sink, set up an alert that fires when a job's duration exceeds 2× its 7-day moving average, and determine from logs or metrics which shuffle write path a given job actually used.
+
+!!! warning "Spark ships no alerting engine — the milestone's alert is *yours* to build"
+
+    Nothing in Spark core fires an alert. Core exposes only the raw surfaces — `SparkListener`
+    callbacks, the metrics `Source`/`Sink` system, and the event log — and the "alert when a job
+    exceeds 2× its moving average" milestone is an application *you* write on top of them (a
+    listener that computes the rolling average and pushes to your own paging system, or a metrics
+    sink feeding an external rule engine). The [monitoring source sweep](reference/spark-source-map/sweeps/core-monitoring.md) maps exactly which surfaces are available to hang that logic on; do not
+    go looking for a built-in `spark.alerting.*` config, there isn't one.
+
+!!! warning "Monitoring data is dropped silently when an event queue overflows"
+
+    Every listener (the UI's `AppStatusListener`, the event log, your custom listener) is fed by a
+    bounded `AsyncEventQueue`. When a queue fills — a slow listener, or an event storm from many
+    small tasks — `AsyncEventQueue.post` does **not** block: it drops the event, bumps a
+    `numDroppedEvents` metric, logs one error then a rate-limited warning at most once per 60s.
+    Dropped task events leave the UI and the History Server view of that stage permanently
+    incomplete, and the only signal is that metric and a warning most operators never look for.
+    The lever is `spark.scheduler.listenerbus.eventqueue.capacity` (default 10000), tunable
+    per-queue as `spark.scheduler.listenerbus.eventqueue.<name>.capacity`. The
+    [monitoring source sweep](reference/spark-source-map/sweeps/core-monitoring.md) traces the
+    drop path (`AsyncEventQueue.post`).
 
 !!! note "New in Spark 4.2.0 — History Server scalability"
     The History Server got scalability work in 4.2.0 ([SPARK-56287]), which matters directly for this topic's premise (debugging a completed job without the live UI). Kubernetes deployments also gained a Resource Manager API ([SPARK-56603]) and reduced control-plane overhead ([SPARK-55400]) — relevant to E2.
