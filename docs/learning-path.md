@@ -1456,7 +1456,7 @@ You are ready to leave this level when you can:
 
 ### ⬜ E2 — Production Deployment: Cluster Management and Scaling
 
-**What it is:** Cluster managers (YARN, Kubernetes, Databricks, standalone); driver and executor sizing; dynamic allocation; auto-scaling; `spark-submit` configuration; deploy modes (client vs cluster).
+**What it is:** Cluster managers (YARN, Kubernetes, Databricks, standalone); driver and executor sizing; dynamic allocation; auto-scaling; `spark-submit` configuration; deploy modes (client vs cluster). Plus the **cluster-security surface** that comes with any real deployment: the shared authentication secret, wire-level RPC/shuffle encryption, TLS, local-disk (shuffle-spill) encryption, and Kerberos/delegation-token lifecycle for secured Hadoop.
 
 **Why you need it:** A job that works on a laptop breaks on a cluster in ways that require understanding how the cluster manager allocates resources.
 
@@ -1470,8 +1470,20 @@ You are ready to leave this level when you can:
 6. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the external shuffle service — how it makes map output survive executor loss, and its hardcoded five-second registration retry
 7. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — block replication and its topology requirement, executor loss and proactive re-replication, the disk layout, and decommission migration with fallback storage
 8. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — the submission path end to end, standalone placement arithmetic, and the graceful worker drain that a rolling restart depends on
+9. **Source sweep — [core — config & security in the source map](reference/spark-source-map/sweeps/core-config-security.md)** — the whole cluster-security surface: how `SecurityManager` mints the auth secret differently per cluster manager (generated on YARN/local, mounted file on k8s, *required in conf* otherwise), the `AuthEngine` X25519 handshake and its SASL fallback, IO (shuffle-spill) encryption, and the Kerberos delegation-token renewal loop — plus the config engine itself (fallback keys, `${…}` substitution, deprecated-key handling) that every knob in this topic is built on
 
+!!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
+    `SecurityManager.initializeAuth` mints the shared secret *differently per master*: on `yarn` and
+    `local[*]` it generates one; on Kubernetes it reads a mounted secret file; on **any other
+    master** (including standalone) it `require`-fails unless `spark.authenticate.secret` (or a
+    secret file) is already set — enabling `spark.authenticate` without providing the secret crashes
+    startup, it does not silently disable auth. Separately, the Web UI ships **open**:
+    `spark.acls.enable` defaults to false, so every view/modify permission check returns true until
+    you turn ACLs on. And enabling both network-crypto and RPC-SSL silently disables network-crypto
+    (SSL wins, warning logged) — the two are mutually exclusive. The
+    [config & security source sweep](reference/spark-source-map/sweeps/core-config-security.md) traces
+    each of these paths.
 
 !!! warning "Graceful worker drain is off by default"
 
@@ -1509,6 +1521,7 @@ You are ready to leave this level when you can:
 5. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the heartbeat protocol and its expiry, the executor metrics poller, and the listener events every monitoring tool consumes
 6. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — which shuffle path a job actually took, and why none of it is visible at default log levels
 7. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — what standalone actually exposes: four master gauges, five worker gauges, and the states that have no metric at all
+8. **Source sweep — [core — config & security in the source map](reference/spark-source-map/sweeps/core-config-security.md)** — the two observability-security surfaces this topic must not get wrong: **secret redaction** (which surfaces `spark.redaction.regex` scrubs — Environment page, event log, YARN logs — vs `spark.redaction.string.regex` for SQL explain only), and **UI/History ACLs** (open by default, wildcard semantics, the separate History-server switch)
 
 !!! warning "Spark's most expensive decisions are logged at `debug` or not at all"
 

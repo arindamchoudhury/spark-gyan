@@ -43,6 +43,7 @@ nav = [
             { "core — Storage & serialization" = "reference/spark-source-map/sweeps/core-storage-serializer.md" },
             { "core — Submit & standalone" = "reference/spark-source-map/sweeps/core-submit-standalone.md" },
             { "core — Monitoring" = "reference/spark-source-map/sweeps/core-monitoring.md" },
+            { "core — Config & security" = "reference/spark-source-map/sweeps/core-config-security.md" },
         ]},
     ]},
     { "Spark Book" = [
