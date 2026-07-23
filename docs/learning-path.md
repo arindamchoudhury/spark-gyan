@@ -97,6 +97,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 11. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the whole execution model as code — action to job to stages to tasks, the single-threaded event loop that drives it, and where the driver stops deciding and the executor starts running
 12. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — what a shuffle physically is: two files per map task, an index of offsets, and the executor-wide monitor that commits them
 13. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — what `spark-submit` actually does before any of your code runs — master-URL resolution, the wrapper main class each cluster mode substitutes, and the classloader `runMain` builds
+14. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — skim for the execution-model picture only: *before* any DAG, stage or task exists, your DataFrame/SQL is compiled — parsed, then **analyzed** (names bound, types resolved) — and this is why nothing runs until an action fires. The compilation detail belongs to A1; read it here just to place the analyze phase ahead of the runtime this topic covers
 
 **Milestone:** You can explain (without notes) what happens between `spark.read.parquet(...)` and `.show()` — where the plan lives, when it executes, and which process runs the Python code. Stronger version, once you have read the source trace: name the single function that decides where one stage ends and the next begins; explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop; and explain why a stage you already watched succeed can run again.
 
@@ -1083,8 +1084,17 @@ You are ready to leave this level when you can:
 2. **SDG Ch 4** — Structured API internals; how plans are built
 3. **Rioux Ch 11** — the SQL tab of the Spark UI shows the physical plan; reading it after Ch 11's walkthrough makes both stick
 4. **Spark-docs → SQL Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `EXPLAIN EXTENDED`, join hints, AQE config; pair with the [EXPLAIN syntax reference](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html) for what each mode prints
+5. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — the **first** Catalyst phase (parse → **analyze** → optimize → plan): the fixed-point `RuleExecutor` loop and its ~60 resolution rules, how a column name becomes an `AttributeReference` (`ResolveReferences`, the hardest rule), catalog/function lookup, ANSI vs legacy type coercion, `CheckAnalysis` — the pass that produces every `AnalysisException` you see — and the new **single-pass Resolver** (the 4.0/4.1 rewrite of the analyzer, still off by default in 4.2.0)
 
-**Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan.
+**Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan. From the analyze phase: name which rule turns an `UnresolvedAttribute` into a bound column, explain why a self-join needs `DeduplicateRelations` before references can resolve, and say what distinguishes an `AnalysisException` (thrown by `CheckAnalysis` before execution) from a runtime error.
+
+!!! info "Four phases, and analysis is where your errors come from"
+
+    Catalyst runs **parse → analyze → optimize → plan**. The [analysis sweep](reference/spark-source-map/sweeps/sql-catalyst-analysis.md) maps the *analyze* phase — the one that binds names to catalog tables and columns, resolves functions, and inserts implicit casts. It matters disproportionately for debugging: nearly every `AnalysisException` ("cannot resolve column", "TABLE_OR_VIEW_NOT_FOUND", "AMBIGUOUS_REFERENCE", type mismatches) is thrown by `CheckAnalysis` at the end of this phase, *before* any optimization or execution. When a query fails to compile, this is the phase to reason about — not the physical plan.
+
+!!! warning "ANSI mode is on by default in Spark 4.x — analysis inserts stricter casts"
+
+    `spark.sql.ansi.enabled` defaults to **true** across Spark 4.x, which makes the analyzer select `AnsiTypeCoercion` instead of the legacy `TypeCoercion`. Implicit lossy casts (e.g. `string`→`int`) that silently worked on the book's Spark 3.2 baseline are now refused at analysis or fail at runtime. This is the single most impactful behaviour change for queries migrating from Spark 3.x; the sweep traces where the rule set is selected (`Analyzer.typeCoercionRules`).
 
 ---
 

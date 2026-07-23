@@ -259,6 +259,20 @@ flowchart LR
     S8 --> S8c25["work-directory-cleanup"]
     S8 --> S8c26["application-completion"]
     S8 --> S8c27["standalone-observability"]
+    S9["sql/catalyst"]
+    S9 --> S9c0["The Analyzer and the fixed-point RuleExecutor loop"]
+    S9 --> S9c1["ResolveRelations / ResolveCatalogs â€” name to relation"]
+    S9 --> S9c2["Catalog resolution and lookup (CatalogManager / LookupCatalog / SessionCatalog)"]
+    S9 --> S9c3["ResolveReferences â€” column resolution"]
+    S9 --> S9c4["Lateral column alias resolution"]
+    S9 --> S9c5["Ordinals, group-by aliases and grouping analytics"]
+    S9 --> S9c6["Function resolution (FunctionRegistry / FunctionResolution)"]
+    S9 --> S9c7["Aggregate, window and subquery resolution"]
+    S9 --> S9c8["Type coercion (TypeCoercion vs AnsiTypeCoercion) and store-assignment"]
+    S9 --> S9c9["The single-pass Resolver (HybridAnalyzer / ResolverGuard)"]
+    S9 --> S9c10["CheckAnalysis â€” the error path"]
+    S9 --> S9c11["View / CTE / subquery-body resolution"]
+    S9 --> S9c12["char/varchar handling during analysis"]
 ```
 
 ## Discovery gaps and refinement proposals
@@ -298,7 +312,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
-| sql/catalyst — analysis | 750 | ⬜ pending | — | — |
+| sql/catalyst — analysis | 750 | ✅ complete | 4.2.0 | 2026-07-22 |
 | sql/catalyst — optimizer | — | ⬜ pending | — | — |
 | sql/catalyst — planner | — | ⬜ pending | — | — |
 | sql/catalyst — expressions | — | ⬜ pending | — | — |
