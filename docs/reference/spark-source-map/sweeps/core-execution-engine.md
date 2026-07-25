@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-19
+swept_at: 2026-07-25
 group: execution-engine
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer,
   submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
@@ -85,6 +85,22 @@ concepts:
     topics: [E1, B1]
   - name: executor-loss-handling
     topics: [B1, E1, A4]
+  - name: output-commit-coordination
+    topics: []
+    propose:
+      code: E17
+      level: Expert
+      title: "Output Commit Coordination and Speculative Write Safety"
+      what: "A driver-side authority grants exactly one task attempt per partition the right to commit its output, on a first-committer-wins policy; every other attempt is denied and throws CommitDeniedException, which the scheduler treats as a non-counting failure rather than a task error."
+      why: "This is the only thing standing between speculation or a stage retry and duplicated output files, and it protects exactly one thing — the Hadoop commit protocol. Writes a user performs directly from a task are outside it, and an undocumented escape hatch, spark.hadoop.outputCommitCoordination.enabled, disables the whole mechanism."
+  - name: unschedulable-tasksets-and-the-abort-timer
+    topics: [E12, E2]
+  - name: cluster-manager-selection-and-local-mode
+    topics: [B1, E2]
+  - name: taskinfo-accumulable-retention
+    topics: [E3, E1]
+  - name: streaming-id-aware-scheduler-logging
+    topics: [E3, A8]
 ---
 
 The scheduling core: how an action becomes a job, a job becomes stages, a stage becomes tasks, and what happens when any of it fails. Swept in two halves — the driver-side job/stage layer (`DAGScheduler`) and the task-scheduling/executor layer (`TaskSchedulerImpl`, `TaskSetManager`, `Executor`).
@@ -133,7 +149,7 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
     A skipped stage is one whose outputs `MapOutputTracker` still holds. After the owning jobs finish, the `shuffleIdToMapStage` entry is dropped but the tracker entry survives — so a later job creates a *fresh* stage object with a new id and still skips its tasks.
 
-**Configs:** `spark.scheduler.mode`, `spark.scheduler.allocation.file`; `spark.resources.resourceProfileMergeConflicts` gates stage-level profile merging and throws when profiles conflict
+**Configs:** `spark.scheduler.mode`, `spark.scheduler.allocation.file`; [`spark.scheduler.resource.profileMergeConflicts`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L238) gates stage-level profile merging — with it off, two conflicting `ResourceProfile`s on one stage throw, and the message [names the key](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L662)
 
 **Maps to topics:** B1, E1, I7
 
@@ -653,9 +669,148 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
 ---
 
+## Output commit coordination
+
+**What it is:** the answer to "what stops speculation from writing the same file twice". A driver-side `OutputCommitCoordinator` hands out an exclusive commit lock per `(stage, partition)` on a **first-committer-wins** policy. Every task that is about to commit through the Hadoop commit protocol asks first; a denial raises `CommitDeniedException`, which the task layer converts to `TaskCommitDenied` — a failure that deliberately does **not** count toward `spark.task.maxFailures`.
+
+**Code path:** `SparkHadoopMapRedUtil.commitTask` → `committer.needsTaskCommit` → `outputCommitCoordinator.canCommit` (executor → driver RPC) → `handleAskPermissionToCommit` → `performCommit()` | `abortTask` + `CommitDeniedException`. Driver side: `DAGScheduler.submitMissingTasks` → `stageStart`; `handleTaskCompletion` → `taskCompleted`; `markStageAsFinished` → `stageEnd`.
+
+**Anchor files:**
+
+- [OutputCommitCoordinator.scala:47](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/OutputCommitCoordinator.scala#L47) — the class doc: instantiated on driver *and* executors, executors holding only a reference to the driver's endpoint (SPARK-4879)
+- [OutputCommitCoordinator.scala:95](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/OutputCommitCoordinator.scala#L95) — `canCommit`, a **blocking** ask on every committing task; with the coordinator already stopped it logs an error and returns `false`
+- [OutputCommitCoordinator.scala:176](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/OutputCommitCoordinator.scala#L176) — `handleAskPermissionToCommit`: the lock is a `TaskIdentifier(stageAttempt, taskAttempt)` per partition, so the same task running in two *stage* attempts is distinguishable
+- [OutputCommitCoordinator.scala:200](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/OutputCommitCoordinator.scala#L200) — no state for the stage → commit **denied**; a request that arrives after `stageEnd` can never win
+- [OutputCommitCoordinator.scala:137](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/OutputCommitCoordinator.scala#L137) — `taskCompleted`: a failed attempt is recorded in `failures` and permanently barred from committing; if it *held* the lock, the lock is cleared so a later attempt can take it
+- [SparkHadoopMapRedUtil.scala:78](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/mapred/SparkHadoopMapRedUtil.scala#L78) — the single caller in core, guarded by `needsTaskCommit`
+- [SparkHadoopMapRedUtil.scala:72](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/mapred/SparkHadoopMapRedUtil.scala#L72) — `spark.hadoop.outputCommitCoordination.enabled`, described in the source as an undocumented escape hatch; `false` commits without asking anyone
+- [CommitDeniedException.scala:25](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/CommitDeniedException.scala#L25) — carries the ids needed to build `TaskCommitDenied`
+
+!!! warning "It protects the commit protocol, not your writes"
+
+    The coordinator sits in exactly one place: `SparkHadoopMapRedUtil.commitTask`. A task that opens a JDBC connection, posts to an API, or writes to a path itself never asks for permission, so speculation duplicates that work with nothing to stop it. This is the mechanism the [speculation](#speculation) note's "output-file commits are protected; anything you do yourself is not" refers to.
+
+!!! info "Concurrency is not the same as speculation"
+
+    The source comment at the escape hatch notes that two attempts of the same task can run concurrently **even with speculation off** (SPARK-8029) — a stage retry after a fetch failure is enough. Turning speculation off does not make the coordinator redundant.
+
+**Configs:** `spark.hadoop.outputCommitCoordination.enabled` (read via `SparkConf.getBoolean`, so it is not a declared `ConfigEntry` and does not appear in the config catalog)
+
+**Maps to topics:** none — proposed as E17
+
+---
+
+## Unschedulable TaskSets and the abort timer
+
+**What it is:** the endgame of executor exclusion. When a TaskSet has a task that can run *nowhere*, `TaskSchedulerImpl` does not abort immediately — it tries to manufacture a place to run: kill an idle excluded executor, or ask `ExecutorAllocationManager` for more, and start a timer. Only when the timer expires with nothing scheduled does the stage abort.
+
+**Code path:** `resourceOffers` → `!launchedAnyTask` → `getCompletelyExcludedTaskIfAny` → (idle excluded executor? `killExcludedIdleExecutor` : dynamic allocation? `unschedulableTaskSetAdded` : abort now) → `updateUnschedulableTaskSetTimeoutAndStartAbortTimer` → `createUnschedulableTaskSetAbortTimer` → `abortSinceCompletelyExcludedOnFailure`
+
+**Anchor files:**
+
+- [TaskSchedulerImpl.scala:173](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L173) — `unschedulableTaskSetToExpiryTime`, and the dedicated `task-abort-timer` thread above it
+- [TaskSchedulerImpl.scala:635](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L635) — an idle excluded executor is **killed** to force a replacement
+- [TaskSchedulerImpl.scala:641](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L641) — with dynamic allocation on, the driver asks for more executors instead
+- [TaskSchedulerImpl.scala:655](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L655) — **without** dynamic allocation and with no idle executor to kill, the stage is aborted immediately, no timer
+- [TaskSchedulerImpl.scala:666](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L666) — any launched task **clears the expiry map for every unschedulable TaskSet**, not just the one that progressed
+- [TaskSchedulerImpl.scala:762](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L762) — the timeout, in seconds × 1000
+- [TaskSchedulerImpl.scala:773](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L773) — the timer re-checks expiry on firing and cancels itself if the entry has gone
+
+!!! warning "The abort timer can be starved indefinitely"
+
+    The clear at L666 is global and unconditional. A steady stream of *other* TaskSets that do schedule keeps resetting the map, so the timer for the stuck TaskSet re-arms forever and the job neither progresses nor fails. The source flags this in a comment as theoretically possible; on a busy shared cluster it is the normal case.
+
+!!! info "Dynamic allocation makes the abort *more* likely, not less"
+
+    The source note is explicit: `ExecutorAllocationManager` sizes on pending tasks and does not kill on idle timeouts, so a killed idle excluded executor may not be replaced before the timer expires. Two or more idle excluded executors plus dynamic allocation is called out as the case that aborts.
+
+**Configs:** `spark.scheduler.excludeOnFailure.unschedulableTaskSetTimeout` (120 s), `spark.dynamicAllocation.enabled`, `spark.excludeOnFailure.killExcludedExecutors`
+
+**Maps to topics:** E12, E2
+
+---
+
+## Cluster-manager selection and local mode
+
+**What it is:** which `TaskScheduler`/`SchedulerBackend` pair you get is decided by pattern-matching the master URL, and everything that is not `local*` or `spark://` is resolved through a `ServiceLoader` SPI — `ExternalClusterManager`, which is how YARN and Kubernetes plug in without core knowing about them.
+
+**Code path:** `SparkContext` → `createTaskScheduler(master)` → regex match → `TaskSchedulerImpl` + (`LocalSchedulerBackend` | `StandaloneSchedulerBackend`) — or `getClusterManager` → `ServiceLoader.load(classOf[ExternalClusterManager])` → `canCreate` → `createTaskScheduler` / `createSchedulerBackend` / `initialize`
+
+**Anchor files:**
+
+- [ExternalClusterManager.scala:25](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExternalClusterManager.scala#L25) — the four-method SPI every non-built-in cluster manager implements
+- [SparkContext.scala:3401](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkContext.scala#L3401) — `getClusterManager`; **two** managers claiming one URL is a hard `SparkException`, and zero is "Could not parse Master URL"
+- [SparkContext.scala:3301](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkContext.scala#L3301) — `MAX_LOCAL_TASK_FAILURES = 1`
+- [SparkContext.scala:3336](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkContext.scala#L3336) — `local[N, M]`, the only way to get retries in local mode; `M` is passed as `maxFailures` directly
+- [SparkContext.scala:3354](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkContext.scala#L3354) — `local-cluster[…]` starts a real standalone cluster in-process, and forces `spark.shuffle.readHostLocalDisk` off so remote fetching is what gets exercised
+- [LocalSchedulerBackend.scala:52](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/local/LocalSchedulerBackend.scala#L52) — `LocalEndpoint` holds an `Executor` directly: no serialization boundary, no RPC, no network
+- [LocalSchedulerBackend.scala:174](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/local/LocalSchedulerBackend.scala#L174) — `defaultParallelism` falls back to `totalCores`, which is why `local[1]` silently makes every shuffle single-partition
+
+!!! warning "`spark.task.maxFailures` is ignored in local mode"
+
+    `local` and `local[N]` hard-code `MAX_LOCAL_TASK_FAILURES = 1`: the first task failure fails the job, whatever you set. Only `local[N, M]` gives retries. A flaky test that passes in CI on a cluster and fails locally — or the reverse — usually traces to this.
+
+!!! info "Agrees with the B1 trace"
+
+    [topics/b1.md](../topics/b1.md) traces the same dispatch from the topic side and cites the same anchors; this sweep adds the `ExternalClusterManager` duplicate-registration failure and the `local-cluster` shuffle-config override.
+
+**Configs:** `spark.master` (the URL itself), `spark.default.parallelism`, `spark.task.cpus`
+
+**Maps to topics:** B1, E2
+
+---
+
+## TaskInfo accumulable retention
+
+**What it is:** every `TaskInfo` carries the task's accumulables, and the driver holds `TaskInfo`s for every attempt of every task in a TaskSet. On wide stages this is a real driver heap cost long after the task is done, so 4.x can strip the accumulables at completion — after handing an un-stripped copy to the DAGScheduler so listeners still see the values.
+
+**Code path:** `handleSuccessfulTask` / `handleFailedTask` → `dropTaskInfoAccumulablesOnTaskCompletion`? → `cloneWithEmptyAccumulables` → `taskInfos(taskId) = clonedTaskInfo` → `dagScheduler.taskEnded(…, taskInfoWithAccumulables)`
+
+**Anchor files:**
+
+- [TaskSetManager.scala:276](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L276) — the flag, read once per TaskSet
+- [TaskSetManager.scala:921](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L921) — the clone-and-swap: the **stripped** copy is retained, the **full** one is passed to `taskEnded`, so listeners are unaffected (SPARK-46383)
+- [TaskSetManager.scala:817](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L817) — the already-finished path clears accumulables in place instead
+- [TaskSetManager.scala:956](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L956) — same treatment on the failure side
+
+!!! info "Anything reading `TaskInfo` *after* the fact sees empty accumulables"
+
+    The event that reaches the listener bus is unaffected, so the UI and event logs are complete. But a `SparkListener` that stashes a `TaskInfo` reference and inspects it later, or code reaching into `TaskSetManager.taskInfos`, gets an emptied list once this is on.
+
+**Configs:** `spark.scheduler.dropTaskInfoAccumulablesOnTaskCompletion.enabled` (internal)
+
+**Maps to topics:** E3, E1
+
+---
+
+## Streaming-aware scheduler logging
+
+**What it is:** scheduler log lines carry no query context, because the streaming query's identifiers are set as *thread-local* properties on the streaming execution thread while the scheduler runs on its own threads. 4.x adds a logging trait that reads the query and batch id from the `TaskSet`'s `Properties` instead — the one carrier that crosses that thread boundary — and prefixes them onto scheduler log messages.
+
+**Code path:** `submitTasks` → `isStreamingTaskSet` (does the TaskSet carry a query-id property?) → `streamingTaskSetManager` → an **anonymous `TaskSetManager` subclass** mixing in the trait → overridden `logInfo`/`logWarning`/`logError` → `constructStreamingLogEntry`
+
+**Anchor files:**
+
+- [StructuredStreamingIdAwareSchedulerLogging.scala:24](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/StructuredStreamingIdAwareSchedulerLogging.scala#L24) — the doc stating exactly why `getLocalProperty` cannot work here
+- [StructuredStreamingIdAwareSchedulerLogging.scala:39](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/StructuredStreamingIdAwareSchedulerLogging.scala#L39) — the trait overrides the existing `logInfo`/`logWarning`/`logError` rather than adding new methods, so mixing it in retrofits every call site in the class
+- [TaskSchedulerImpl.scala:300](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L300) — `streamingTaskSetManager`: a streaming TaskSet gets a *different*, anonymous `TaskSetManager` subclass, with `logName` forced back to `TaskSetManager` so log filters still match
+- [TaskSchedulerImpl.scala:313](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L313) — `isStreamingTaskSet` is a property probe, not a config check: no query-id property, no streaming-aware manager
+- [SchedulableBuilder.scala:223](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/SchedulableBuilder.scala#L223) — the pool builder calls the helper directly, so pool-assignment logs get the same prefix
+
+!!! info "Off by default, and truncating"
+
+    `spark.scheduler.streaming.idAwareLogging.enabled` is `false` by default; `…queryIdLength` truncates the query id in the prefix. With many concurrent queries on one session, this is the difference between attributable scheduler logs and unusable ones.
+
+**Configs:** `spark.scheduler.streaming.idAwareLogging.enabled`, `spark.scheduler.streaming.idAwareLogging.queryIdLength`
+
+**Maps to topics:** E3, A8
+
+---
+
 ## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
 | 2026-07-19 | 4.2.0 | Initial sweep, in two halves. 27 concepts. Four discovery gaps proposed as topics: A13 (stage retry), A14 (determinism and rollback), E12 (executor exclusion), E13 (barrier execution). Push-based shuffle traced only at its driver-side boundaries, since it belongs to the `shuffle-memory` group. |
 | 2026-07-19 | 4.2.0 | Correction: this page originally read the absence of `spark.shuffle.push.*` from this group's slice as a `groups.yaml` carving gap. It is not — `shuffle-memory`'s scope names push-based shuffle and its slice holds all thirteen keys, and the [shuffle & memory sweep](core-shuffle-memory.md) covers the subsystem in full. |
+| 2026-07-25 | 4.2.0 | Re-sweep at the same Spark version, driven by the config-slice breadth check rather than a release. Five concepts added from keys and files the first pass never tied to anything: output commit coordination (proposed as **E17** — the first pass mentioned the coordinator in one clause of the speculation note and never traced it), unschedulable TaskSets and the abort timer, cluster-manager selection and local mode, `TaskInfo` accumulable retention, and streaming-aware scheduler logging. Correction: the stage-creation note cited `spark.resources.resourceProfileMergeConflicts`, which is not a Spark config key — the real one is `spark.scheduler.resource.profileMergeConflicts` (`DAGScheduler.scala:238`). |

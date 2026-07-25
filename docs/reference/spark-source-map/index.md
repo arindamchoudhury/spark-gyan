@@ -72,6 +72,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool | — | — | ⬜ |
 | E15 | Block Locking and Cache Visibility | — | — | ⬜ |
 | E16 | Standalone High Availability and Recovery | — | — | ⬜ |
+| E17 | Output Commit Coordination and Speculative Write Safety | — | — | ⬜ |
 
 ## Source concept map
 
@@ -130,6 +131,11 @@ flowchart LR
     S2 --> S2c24["barrier-execution"]
     S2 --> S2c25["task-context-lifecycle"]
     S2 --> S2c26["executor-loss-handling"]
+    S2 --> S2c27["output-commit-coordination"]
+    S2 --> S2c28["unschedulable-tasksets-and-the-abort-timer"]
+    S2 --> S2c29["cluster-manager-selection-and-local-mode"]
+    S2 --> S2c30["taskinfo-accumulable-retention"]
+    S2 --> S2c31["streaming-id-aware-scheduler-logging"]
     S3["core"]
     S3 --> S3c0["Listener bus and async event queues (producer side)"]
     S3 --> S3c1["Event-log write path (EventLoggingListener + file writers)"]
@@ -328,6 +334,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | fetch-failure-and-stage-retry | core | new | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
 | indeterminate-stages-and-rollback | core | new | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
 | leader-election-and-ha | core | new | E16 | Standalone High Availability and Recovery |
+| output-commit-coordination | core | new | E17 | Output Commit Coordination and Speculative Write Safety |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
 | push-based-shuffle | core | new | A15 | Push-Based Shuffle |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
@@ -352,7 +359,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/catalyst — types-parser | — | ⬜ pending | — | — |
 | sql/catalyst — framework | — | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-19 |
-| core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-19 |
+| core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-19 |
