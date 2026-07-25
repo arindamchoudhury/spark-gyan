@@ -105,6 +105,9 @@ flowchart LR
     S1 --> S1c11["Kerberos login & Hadoop delegation tokens"]
     S1 --> S1c12["Secret redaction in logs / UI / SQL plans"]
     S1 --> S1c13["Socket-based auth (PySpark / R gateway)"]
+    S1 --> S1c14["Group mapping behind the ACLs"]
+    S1 --> S1c15["The delegation-token provider SPI"]
+    S1 --> S1c16["Config module organisation and the provider chain"]
     S2["core"]
     S2 --> S2c0["job-submission"]
     S2 --> S2c1["stage-creation-and-reuse"]
@@ -393,7 +396,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — config-security | — | ✅ complete | 4.2.0 | 2026-07-22 |
+| core — config-security | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — rpc-resources | — | ✅ complete | 4.2.0 | 2026-07-22 |
 | core — api-bridge | — | ✅ complete | 4.2.0 | 2026-07-22 |
 | resource-managers/kubernetes — driver-executor | 89 | ⬜ pending | — | — |

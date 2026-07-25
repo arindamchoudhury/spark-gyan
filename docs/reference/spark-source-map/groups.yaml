@@ -78,6 +78,25 @@ _meta:
     status/, metrics/ and the History Server) and config-security (the config system and
     SecurityManager). core's largest group is now 116 files, down from 221.
 
+    Scope narrowing + two orphans (2026-07-25, from the core config-security
+    re-sweep): config-security's scope token was a bare `internal/`, which by
+    path-segment matching also claimed internal/io/ (6 files: FileCommitProtocol,
+    the Hadoop MapRed/MapReduce committers, SparkHadoopWriter) and
+    internal/plugin/ (3 files: PluginContainer, PluginContextImpl,
+    PluginEndpoint). Neither is config or security, and no sweep had ever covered
+    them — they were claimed-but-unswept, which neither checker can detect:
+    --sweeps passes because the group cites *something* from internal/, and
+    --coverage only iterates TOP-LEVEL packages (check_drift.py: root.iterdir()),
+    so a nested package inside a claimed one is structurally invisible to it.
+    internal/ holds config/, io/ and plugin/; only config/ was ever swept. The
+    token is now internal/config/, which documents the intent but does NOT make
+    the two orphans visible to --coverage — that blind spot is unfixed, and any
+    future carving pass should walk nested packages by hand. Recommended
+    homes when it is made: internal/io/ -> core execution-engine, which already
+    sweeps OutputCommitCoordinator and would then hold both halves of the commit
+    story (topic E17); internal/plugin/ -> core monitoring, whose sweep already
+    covers the metrics sources plugins register and the two deploy-side plugins.
+
     Scope extension (2026-07-25, from the core shuffle-memory re-sweep): MapStatus and
     HighlyCompressedMapStatus named explicitly in shuffle-memory's scope. MapStatus.scala
     lives in scheduler/, which execution-engine claims at package level, but the concept —
@@ -149,7 +168,11 @@ core:
     title: "Config system & security"
     topics: [E2, E3]
     modules: [common/utils]   # ConfigBuilder/ConfigEntry live in common/utils
-    scope: "internal/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader), security/ (SecurityManager, CryptoStreamUtils), deploy/security/ (HadoopDelegationTokenManager)"
+    # Narrowed from a bare `internal/` on 2026-07-25: that token also claimed
+    # internal/io/ (the Hadoop commit protocol) and internal/plugin/ (the
+    # spark.plugins framework), neither of which is config or security. See
+    # _meta.note; both are now unclaimed and awaiting a carving decision.
+    scope: "internal/config/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader, SparkConfigProvider, and the per-area config objects), security/ (SecurityManager, CryptoStreamUtils, GroupMappingServiceProvider), deploy/security/ (HadoopDelegationTokenManager and the shipped token providers)"
     description: "How every spark.* config is declared, typed, defaulted and read — the machinery behind the config catalog — plus authentication, ACLs and encryption"
   - number: 8
     name: rpc-resources

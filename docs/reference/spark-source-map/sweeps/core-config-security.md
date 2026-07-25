@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-22
+swept_at: 2026-07-25
 group: config-security
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
 status: complete
@@ -34,6 +34,12 @@ concepts:
   - name: Secret redaction in logs / UI / SQL plans
     topics: [E3]
   - name: Socket-based auth (PySpark / R gateway)
+    topics: [E2]
+  - name: Group mapping behind the ACLs
+    topics: [E3, E2]
+  - name: The delegation-token provider SPI
+    topics: [E2, E5]
+  - name: Config module organisation and the provider chain
     topics: [E2]
 ---
 
@@ -377,6 +383,83 @@ flowchart TD
 
 ---
 
+## Group mapping behind the ACLs
+
+**What it is:** how `spark.ui.view.acls.groups` and `spark.modify.acls.groups` are actually evaluated. `SecurityManager` short-circuits on the user lists and the wildcard, and only then asks which groups the user belongs to — through a one-method SPI, `GroupMappingServiceProvider`, whose default implementation shells out to the `id` command.
+
+**Code path:** `checkUIViewPermissions` → `checkAcls(user, aclUsers, aclGroups)` → wildcard/user short-circuits → `Utils.getCurrentUserGroups(conf, user)` → reflectively construct `spark.user.groups.mapping` → `getGroups(user)` → `ShellBasedGroupsMappingProvider` → `id -Gn <user>`
+
+**Anchor files:**
+
+- [SecurityManager.scala:406](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SecurityManager.scala#L406) — the short-circuit chain: no group lookup happens at all unless the user lists miss
+- [SecurityManager.scala:413](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SecurityManager.scala#L413) — the group lookup, per check
+- [Utils.scala:2496](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/util/Utils.scala#L2496) — `getCurrentUserGroups`: the provider class is loaded **and instantiated by reflection on every call**; there is no cache and no memoized instance
+- [Utils.scala:2506](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/util/Utils.scala#L2506) — any exception is logged at ERROR and the method returns `EMPTY_USER_GROUPS`
+- [ShellBasedGroupsMappingProvider.scala:44](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/security/ShellBasedGroupsMappingProvider.scala#L44) — `id -Gn <username>`, an external process per lookup
+- [UI.scala:232](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/UI.scala#L232) — `spark.user.groups.mapping`, defaulting to the shell provider
+- [GroupMappingServiceProvider.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/security/GroupMappingServiceProvider.scala#L29) — the whole SPI: one method, `getGroups(userName): Set[String]`
+
+!!! warning "Group ACL failures deny silently, and look like a misconfigured ACL"
+
+    If the provider throws — the user does not exist locally on the driver host, `id` is missing, an LDAP-backed custom provider times out — `getCurrentUserGroups` logs an ERROR and returns the **empty set**. Every group-based rule then fails to match and the user is denied, with the ACL config looking perfectly correct. This is the failure mode to suspect when group ACLs work for some users and not others: the driver host must be able to resolve the group membership of every user, which on a containerised driver frequently is not true.
+
+!!! info "Every check is a fork, so put the common case in the user list"
+
+    There is no caching at any layer: each permission check that reaches the group branch constructs a new provider and, by default, forks `id`. The short-circuit order is the mitigation — `spark.ui.view.acls` (users) and the `*` wildcard are tested first and never reach the shell.
+
+**Configs:** `spark.user.groups.mapping`, `spark.ui.view.acls.groups`, `spark.modify.acls.groups`, `spark.admin.acls.groups`, `spark.acls.enable`
+
+**Maps to topics:** E3, E2
+
+---
+
+## The delegation-token provider SPI
+
+**What it is:** how Spark obtains Hadoop delegation tokens for services it does not know about. `HadoopDelegationTokenProvider` is a three-method SPI loaded by `ServiceLoader`, so a jar on the classpath can add a token type. Two providers ship in core — HDFS-style filesystems and HBase — and each is individually switchable by a formatted config key.
+
+**Anchor files:**
+
+- [HadoopDelegationTokenProvider.scala:31](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/security/HadoopDelegationTokenProvider.scala#L31) — the SPI: `serviceName`, `delegationTokensRequired`, `obtainDelegationTokens`
+- [HadoopDelegationTokenManager.scala:267](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/security/HadoopDelegationTokenManager.scala#L267) — `loadProviders`, via `ServiceLoader`
+- [HadoopDelegationTokenManager.scala:296](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/security/HadoopDelegationTokenManager.scala#L296) — `spark.security.credentials.%s.enabled`, formatted with the provider's own `serviceName` — which is why the key is not a fixed string you can grep for in the config catalog
+- [HadoopFSDelegationTokenProvider.scala:186](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/security/HadoopFSDelegationTokenProvider.scala#L186) — `hadoopFSsToAccess`: which filesystems get a token
+- [HadoopFSDelegationTokenProvider.scala:132](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/security/HadoopFSDelegationTokenProvider.scala#L132) — `getTokenRenewalInterval`, derived by *asking* the namenode rather than from a config
+
+!!! warning "A second filesystem needs naming, or the job fails partway through"
+
+    `hadoopFSsToAccess` collects the default FS and the staging dir. Any *other* cluster you read from or write to — a second HDFS, a Kerberised remote namenode — gets no token unless it is listed in `spark.kerberos.access.hadoopFileSystems`. The failure is not at submit: the driver runs, and the first task that touches the unlisted filesystem fails with a GSS/token error, which reads as a Kerberos problem rather than a missing config.
+
+!!! info "The per-provider enable key is generated, not declared"
+
+    `spark.security.credentials.<serviceName>.enabled` is built by `String.format` at runtime, so it never appears as a `ConfigEntry` and is absent from the generated config catalog. `<serviceName>` is `hadoopfs`, `hbase`, or whatever a third-party provider returns.
+
+**Configs:** `spark.kerberos.access.hadoopFileSystems`, `spark.security.credentials.<service>.enabled` (dynamic), `spark.kerberos.renewal.credentials`
+
+**Maps to topics:** E2, E5
+
+---
+
+## Config module organisation and the provider chain
+
+**What it is:** where the ~1500 `spark.*` entries actually live, and the last hop between a key and its value. Declarations are split across `internal/config/` by area — `Deploy`, `History`, `Kryo`, `Network`, `Python`, `R`, `Status`, `Streaming`, `Tests`, `UI`, `Worker` — with the unclassified remainder in `package.scala`. At read time a `ConfigEntry` resolves through a `ConfigProvider`, and Spark's is a nine-line class that does two things worth knowing.
+
+**Anchor files:**
+
+- [SparkConfigProvider.scala:26](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/SparkConfigProvider.scala#L26) — the whole provider
+- [SparkConfigProvider.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/SparkConfigProvider.scala#L29) — `if (key.startsWith("spark."))`: a non-`spark.` key is not merely ignored, it is **invisible to the entire typed-config layer**
+- [SparkConfigProvider.scala:30](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/SparkConfigProvider.scala#L30) — `.orElse(SparkConf.getDeprecatedConfig(key, conf))`: the deprecated-alias fallback happens *here*, on read, not at load
+- [internal/config/](https://github.com/apache/spark/tree/v4.2.0/core/src/main/scala/org/apache/spark/internal/config) — the per-area objects; `package.scala` is the catch-all and by far the largest
+
+!!! info "This is why the config parser has to walk every module"
+
+    There is no registry of configs — a `ConfigEntry` is a `val` in whichever object its author chose. That is exactly why the [config catalog](../configs/index.md) is produced by a source parser rather than by asking Spark, and why a config declared in one module can belong to another subsystem's concepts entirely (`spark.streaming.*` is declared in core, for DStream code that lives in `streaming/`).
+
+**Configs:** the whole catalog; no config governs this layer
+
+**Maps to topics:** E2
+
+---
+
 ## Breadth check — all 43 slice configs mapped
 
 | # | Config | Concept |
@@ -430,3 +513,12 @@ All 43 configs are mapped. Config-machinery concepts (ConfigBuilder / ConfigEntr
 ### SSL prefix-read keys (not in the catalog by design)
 
 Read dynamically by `SSLOptions.parse` under `spark.ssl` and each `spark.ssl.<module>` (e.g. `rpc`) namespace, therefore absent from the config slice: `enabled`, `port`, `keyStore`, `keyStorePassword`, `privateKey`, `privateKeyPassword`, `keyPassword`, `keyStoreType`, `needClientAuth`, `certChain`, `trustStore`, `trustStorePassword`, `trustStoreType`, `trustStoreReloadingEnabled`, `trustStoreReloadIntervalMs`, `openSslEnabled`, `protocol`, `enabledAlgorithms`. Also read directly: `spark.ssl.rpc.enabled` (SecurityManager). Network-crypto prefix-read keys (from `TransportConf`, also outside the catalog): `spark.network.crypto.cipher`, `spark.network.crypto.authEngineVersion`, `spark.network.crypto.config.*`, `spark.io.encryption.commons.config.*`.
+
+---
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-07-22 | 4.2.0 | Initial sweep, in two halves (the config system; security). 14 concepts, all 43 slice configs attributed in the breadth table above. Six concepts are contributor-facing config machinery with no learning-path home and deliberately carry no `propose:` block. |
+| 2026-07-25 | 4.2.0 | Re-sweep. The config slice was already exhaustive, so this run was driven by package breadth. Three concepts added: **group mapping behind the ACLs** (the `GroupMappingServiceProvider` SPI, whose default forks `id -Gn` per check with no caching, and which returns the *empty* group set on any error — so group ACLs deny silently), the **delegation-token provider SPI** (`ServiceLoader`-loaded, with a per-provider enable key built by `String.format` and therefore absent from the config catalog, plus the `hadoopFSsToAccess` rule that makes a second filesystem fail at first task rather than at submit), and **config module organisation** (`SparkConfigProvider`, where the deprecated-alias fallback actually happens and where a non-`spark.` key becomes invisible to the typed layer). Scope correction: this group's token was a bare `internal/`, which by path-segment matching also claimed `internal/io/` and `internal/plugin/` — neither config nor security, and covered by no sweep at all. Narrowed to `internal/config/`, and the two orphaned packages recorded in `groups.yaml` `_meta.note` with recommended homes. Worth knowing for future carving passes: **neither checker can find a gap of this shape.** `--sweeps` passes because the group cites *something* from `internal/`, and `--coverage` iterates only top-level packages, so a nested package inside a claimed one is structurally invisible to it. `internal/` holds `config/`, `io/` and `plugin/`; only `config/` had ever been swept, and nothing said so. |
