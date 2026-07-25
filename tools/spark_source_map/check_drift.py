@@ -279,6 +279,94 @@ def report_overlaps(subsystems: dict) -> None:
 
 SRC_FILE_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_$]*\.(?:scala|java))\b")
 
+# A family of this size or larger, cited nowhere in a fully-swept subsystem, is a
+# mechanism nobody wrote about. Below it, silence is as likely to mean the configs
+# are incidental as that they were missed, so it is reported without failing.
+MIN_FAMILY = 3
+# Judged once, never re-raised. Entries are `<subsystem>:<key prefix>`, scoped the
+# same way `_meta.plumbing` is: a config declared in one module but belonging to
+# another subsystem's concepts must stay checkable *there*. Extend via groups.yaml
+# `_meta.config_plumbing`.
+CONFIG_PLUMBING = ("core:spark.testing.",)
+
+
+def config_family(key: str) -> str:
+    """The two-segment prefix configs are grouped under: spark.shuffle.sort.x -> spark.shuffle."""
+    parts = key.split(".")
+    return ".".join(parts[:2]) if len(parts) > 2 else key
+
+
+def load_catalog_configs(catalog_file: Path) -> list[dict]:
+    if not catalog_file.exists():
+        return []
+    data = yaml.safe_load(catalog_file.read_text(encoding="utf-8")) or {}
+    return data.get("configs") or []
+
+
+def report_config_coverage(configs: list[dict], subsystem: str, groups: list[dict],
+                           pages: dict[str, str], plumbing: tuple[str, ...]) -> list[str]:
+    """Which config families of a fully-swept subsystem no sweep page mentions.
+
+    The package check above asks whether a sweep opened the directories its scope
+    claims. This asks the same question from the other side: a subsystem's configs
+    are the user-visible surface of its concepts, so a config family that appears
+    on no page of a *fully swept* subsystem is a mechanism that was never written
+    up -- however many packages were cited.
+
+    Individual configs are poor evidence: one may be incidental to a concept that
+    is covered, or declared here and consumed elsewhere. A whole family is not.
+    Only fully-swept subsystems are judged, because a family belonging to a group
+    nobody has swept yet is a pending sweep, not a gap.
+    """
+    keys = [c["key"] for c in configs if c.get("subsystem") == subsystem]
+    if not keys or not pages:
+        return []
+
+    swept = {name for name in pages}
+    if len(swept) < len(groups):
+        print(f"    config coverage: skipped — {len(swept)} of {len(groups)} groups swept")
+        return []
+
+    blob = "\n".join(pages.values())
+    excluded = tuple(p.split(":", 1)[1] for p in plumbing
+                     if p.startswith(subsystem + ":"))
+    families: dict[str, list[str]] = {}
+    for k in keys:
+        if excluded and k.startswith(excluded):
+            continue
+        families.setdefault(config_family(k), []).append(k)
+
+    cited_keys = {k for k in keys if k in blob}
+    scored = {fam: (sum(1 for k in ks if k in blob), len(ks))
+              for fam, ks in families.items()}
+    untouched = [f for f, (c, _) in scored.items() if c == 0]
+
+    pct = 100 * len(cited_keys) // len(keys)
+    print(f"    config coverage: {len(cited_keys)}/{len(keys)} keys cited ({pct}%), "
+          f"{len(families) - len(untouched)}/{len(families)} families touched")
+    for name in sorted(pages):
+        n = sum(1 for k in keys if k in pages[name])
+        print(f"        {name:<34} cites {n:>4}")
+
+    # Worst-covered families first. Only a wholly untouched family fails -- a
+    # partly-cited one may legitimately have configs incidental to a concept the
+    # page does cover -- but the thin ones are where a reswept group pays off, so
+    # they are printed even though they pass.
+    failures = []
+    gaps = sorted(((t - c, c, t, f) for f, (c, t) in scored.items() if c < t), reverse=True)
+    for uncited, c, total, fam in gaps[:15]:
+        mark = ""
+        if c == 0 and total >= MIN_FAMILY:
+            mark = "   <- no page mentions this family"
+            failures.append(f"{subsystem}: {fam}.* ({total} configs) is cited by no sweep page, "
+                            f"though every group in {subsystem} claims to be swept")
+        elif c == 0:
+            mark = "   (below the failure threshold)"
+        print(f"        {fam + '.*':<34} {c:>4}/{total:<4} cited, {uncited} uncited{mark}")
+    if len(gaps) > 15:
+        print(f"        ... and {len(gaps) - 15} more partly-cited families")
+    return failures
+
 
 def scope_dirs(source: Path, mods: list[str], scope: str) -> dict[str, list[Path]]:
     """Resolve each package path a scope claims to the directories it names.
@@ -315,16 +403,25 @@ def scope_dirs(source: Path, mods: list[str], scope: str) -> dict[str, list[Path
     return out
 
 
-def report_sweeps(source: Path, base: Path, subsystems: dict) -> int:
-    """Check each sweep page against the files its group's scope actually holds.
+def report_sweeps(source: Path, base: Path, subsystems: dict,
+                  configs: list[dict] | None = None,
+                  config_plumbing: tuple[str, ...] = CONFIG_PLUMBING) -> int:
+    """Check each sweep page against the files and configs its group's scope covers.
 
-    A sweep page sets its own `status:`; nothing else verifies it. This is the
-    mechanical half of that claim: every package a group's scope names should
-    have at least one file cited somewhere on the page, because a package the
-    sweeper never opened cannot have produced a concept. The cited/total ratio
-    is informational -- a sweep names the files that carry a concept, not every
-    file -- but a claimed package with *zero* citations on a page that says
-    `status: complete` is a scope the sweep silently skipped, and fails.
+    A sweep page sets its own `status:`; nothing else verifies it. Two mechanical
+    halves of that claim are checkable, from opposite sides:
+
+    * **Packages.** Every package a group's scope names should have at least one
+      file cited on the page, because a package the sweeper never opened cannot
+      have produced a concept. The cited/total ratio is informational -- a sweep
+      names the files that carry a concept, not every file -- but a claimed
+      package with *zero* citations on a `status: complete` page is a scope the
+      sweep silently skipped.
+    * **Configs.** Once every group of a subsystem is swept, its configs are the
+      user-visible surface of everything in it, so a whole config family that
+      appears on no page is a mechanism nobody wrote up. This check exists
+      because the config-tie-back rule postdates the earliest sweeps: `core` was
+      9/9 complete with 40% of its configs cited nowhere, and nothing noticed.
 
     Also lists the topic traces that share a topic code with the sweep, so a
     trace recorded against an older Spark than the sweep is visible rather than
@@ -335,6 +432,7 @@ def report_sweeps(source: Path, base: Path, subsystems: dict) -> int:
     if not sweeps.is_dir():
         print("no sweeps/ directory")
         return 0
+    configs = configs or []
 
     by_topic: dict[str, list[tuple[str, str]]] = {}
     if topics.is_dir():
@@ -346,6 +444,7 @@ def report_sweeps(source: Path, base: Path, subsystems: dict) -> int:
                     (p.name, str(fm.get("spark_version", "?"))))
 
     failures: list[str] = []
+    pages_by_sub: dict[str, dict[str, str]] = {}
     for page in sorted(sweeps.glob("*.md")):
         fm = load_front_matter(page)
         sub = str(fm.get("subsystem", "")).strip()
@@ -360,6 +459,7 @@ def report_sweeps(source: Path, base: Path, subsystems: dict) -> int:
         text = page.read_text(encoding="utf-8")
         cited = {m.group(1) for m in SRC_FILE_RE.finditer(text)}
         mods = [sub] + [m for m in (group.get("modules") or []) if m != sub]
+        pages_by_sub.setdefault(sub, {})[page.name] = text
 
         print(f"{page.name}  ({sub} / {gname}, status: {status})")
         for claim, dirs in scope_dirs(source, mods, group.get("scope") or "").items():
@@ -392,14 +492,22 @@ def report_sweeps(source: Path, base: Path, subsystems: dict) -> int:
                 print(f"      {code:<5} topics/{tname}{mark}")
         print()
 
+    if configs:
+        for sub in sorted(pages_by_sub):
+            print(f"{sub}  (config surface across every swept group)")
+            failures += report_config_coverage(
+                configs, sub, subsystems.get(sub) or [], pages_by_sub[sub], config_plumbing)
+            print()
+
     if failures:
-        print("Sweep pages whose status: complete is not supported by their citations:")
+        print("Sweep claims not supported by what the pages actually cite:")
         for f in failures:
             print(f"  {f}")
-        print("\nEither sweep the missing packages, or set status: partial and name "
+        print("\nEither sweep the missing surface, or set status: partial and name "
               "what was left out.")
         return 1
-    print("Every claimed package is cited by the sweep that claims it.")
+    print("Every claimed package, and every config family of a fully-swept subsystem, "
+          "is cited by a sweep.")
     return 0
 
 
@@ -449,7 +557,9 @@ def main(argv: list[str] | None = None) -> int:
         return report_coverage(source, subsystems, set(meta.get("plumbing") or []))
 
     if args.sweeps:
-        return report_sweeps(source, base, subsystems)
+        plumbing = tuple(meta.get("config_plumbing") or CONFIG_PLUMBING)
+        return report_sweeps(source, base, subsystems,
+                             load_catalog_configs(catalog_file), plumbing)
 
     # --- 1. version stamp ----------------------------------------------------
     cat_version = None

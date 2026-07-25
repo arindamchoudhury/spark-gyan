@@ -42,6 +42,8 @@ concepts:
     topics: [E3]
   - name: Executor / driver metrics polling (peak-memory feed)
     topics: [E3, E1]
+  - name: Structured logging, MDC and the caller context
+    topics: [E3]
   - name: Proxy-user custom classpath control (slice keyword artifact)
     topics: []
 ---
@@ -464,6 +466,40 @@ flowchart TD
 
 ---
 
+## Structured logging, MDC and the caller context
+
+**What it is:** the third observability channel, alongside the event log and the metrics system, and the only one you read directly. `spark.log.structuredLogging.enabled` (4.0, default **false**) switches Spark's own logs from plain text to JSON lines carrying a **Mapped Diagnostic Context** — `task_name`, `stage_id`, `executor_id` and friends as separate fields rather than interpolated into a message string, which is what makes logs joinable against the event log in an aggregator. The mechanism lives in `common/utils`: `trait Logging` mixes in the `log"..."` interpolator, `withLogContext` populates the MDC around a block, and `Logging.enableStructuredLogging` / `disableStructuredLogging` flip the appender through `SparkLoggerFactory` (Java, in `common/utils-java`).
+
+Switching it on has to happen before the first log line, and there are two entry points because config is not always available that early: `Utils.resetStructuredLogging()` reads the **system property** for code paths that run before a `SparkConf` exists (daemon init), and an overload takes a `SparkConf` for everything after. Getting this wrong means the first few lines are plain text and the rest are JSON.
+
+Three smaller knobs round it out. `spark.log.level` overrides all user log settings at startup, as if `SparkContext.setLogLevel` had been called — useful precisely because it wins over a `log4j2.properties` on the classpath. `spark.log.legacyTaskNameMdc.enabled` restores the Spark 3.1–3.5 MDC key `mdc.taskName` in place of 4.0's `task_name`, for log pipelines that parse on the old name. `spark.log.callerContext` sets the string Spark passes to Hadoop's caller-context API, which propagates into HDFS and YARN audit logs — the mechanism that lets a cluster operator attribute an HDFS read back to a specific Spark task.
+
+**Code path:** driver/executor start → `Utils.resetStructuredLogging()` (system property) or `resetStructuredLogging(conf)` → `Logging.enableStructuredLogging` → `SparkLoggerFactory` swaps the appender → per-log-site `log"…"` with MDC values injected by `withLogContext`; separately `SparkContext` applies `spark.log.level`, `Executor` picks the task-name MDC key, and `Task.run` sets a `CallerContext` that reaches Hadoop
+
+**Anchor files:**
+
+- [Logging.scala:120 (trait Logging)](https://github.com/apache/spark/blob/v4.2.0/common/utils/src/main/scala/org/apache/spark/internal/Logging.scala#L120), [:163 (withLogContext)](https://github.com/apache/spark/blob/v4.2.0/common/utils/src/main/scala/org/apache/spark/internal/Logging.scala#L163), [:409 (object Logging)](https://github.com/apache/spark/blob/v4.2.0/common/utils/src/main/scala/org/apache/spark/internal/Logging.scala#L409), [:484 (enableStructuredLogging)](https://github.com/apache/spark/blob/v4.2.0/common/utils/src/main/scala/org/apache/spark/internal/Logging.scala#L484), [:498 (isStructuredLoggingEnabled)](https://github.com/apache/spark/blob/v4.2.0/common/utils/src/main/scala/org/apache/spark/internal/Logging.scala#L498)
+- [SparkLoggerFactory.java](https://github.com/apache/spark/blob/v4.2.0/common/utils-java/src/main/java/org/apache/spark/internal/SparkLoggerFactory.java) — the Java factory the toggle actually drives
+- [Utils.scala:2722 (resetStructuredLogging, system property)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/util/Utils.scala#L2722), [:2735 (the SparkConf overload)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/util/Utils.scala#L2735)
+- [package.scala:156 (STRUCTURED_LOGGING_ENABLED)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/package.scala#L156), [:167 (LEGACY_TASK_NAME_MDC_ENABLED)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/package.scala#L167), [:1260 (APP_CALLER_CONTEXT)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1260), [:1265 (SPARK_LOG_LEVEL)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1265)
+- [SparkContext.scala:411](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkContext.scala#L411) — `spark.log.level` applied at startup, overriding user settings
+- [Executor.scala:277](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L277) — `taskNameMDCKey`, the 3.x-vs-4.x MDC key choice
+- [Utils.scala:3255 (callerContextEnabled)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/util/Utils.scala#L3255), [:3283 (class CallerContext)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/util/Utils.scala#L3283), [:3324 (setCurrentContext)](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/util/Utils.scala#L3324), [Task.scala:135](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Task.scala#L135) — the per-task caller context
+
+**Configs:** `spark.log.structuredLogging.enabled`, `spark.log.level`, `spark.log.legacyTaskNameMdc.enabled`, `spark.log.callerContext`.
+
+**Maps to topics:** E3.
+
+!!! warning "Structured logging is off by default, and does not apply to the shells"
+
+    `spark.log.structuredLogging.enabled` defaults to **false** in 4.2.0, so a cluster that has not
+    set it is emitting plain text with no MDC — nothing to join against the event log. Its own doc
+    string also excludes interactive environments (`spark-shell`, `spark-sql`, the PySpark shell)
+    regardless of the setting, so testing the format interactively will not show you what a
+    submitted job produces.
+
+---
+
 ## Proxy-user custom classpath control (slice keyword artifact)
 
 **What it is:** `spark.submit.proxyUser.allowCustomClasspathInClusterMode` (internal, default false) governs whether a proxy-user (impersonated) submission may set a custom classpath in cluster mode. It is a **spark-submit security** control, not a monitoring concept â€” it landed in this slice only because the keyword filter matched "proxy" (shared with `spark.ui.reverseProxy*`). Flagged as a genuine gap: no existing learning-path topic covers submit-side impersonation/hardening.
@@ -477,6 +513,15 @@ flowchart TD
 **Configs:** `spark.submit.proxyUser.allowCustomClasspathInClusterMode`
 
 **Maps to topics:** [] — **not a monitoring concept.** This config matched the sweep slice only on the "proxy" keyword (shared with `spark.ui.reverseProxy*`); it is a spark-submit impersonation / security control, not observability. No `propose:` block is emitted — its natural home is submit-side security (touched by E2 / E5), not a new topic minted from a monitoring sweep. Recorded here so every slice config is attributed. (Aside: the subagent’s suggested code E12 is already taken — Executor Exclusion — so the suggestion was doubly unsound.)
+
+---
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-07-25 | 4.2.0 | Added **structured logging, MDC and the caller context** — the `spark.log.*` family, which the new `check_drift.py --sweeps` config check found cited by no `core` sweep at all. It was a scope gap as much as a sweep gap: the mechanism lives in `common/utils` (`Logging`, `SparkLoggerFactory`) and no core group's scope reached it. `monitoring`'s scope and `modules:` now name it, since structured logging is the third observability channel alongside the event log and the metrics system. |
+| 2026-07-22 | 4.2.0 | Initial sweep. 19 concepts across the listener bus, the event log, the status store, the UI, the metrics system and the History Server. |
 
 ---
 

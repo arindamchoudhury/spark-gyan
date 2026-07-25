@@ -38,6 +38,17 @@ _meta:
     # Hive compatibility shims under org.apache.hadoop, not Spark's own code
     - sql/hive:exec
     - sql/hive:udf
+  # Config prefixes deliberately left uncited by a subsystem's sweeps, so --sweeps
+  # stops re-raising them. Scoped `<subsystem>:<key prefix>` for the same reason
+  # plumbing is: a config declared in one module but belonging to another
+  # subsystem's concepts must stay checkable *there*.
+  config_plumbing:
+    # internal test hooks, no user-facing concept
+    - core:spark.testing.
+    # DStream dynamic allocation: declared in core's internal/config/Streaming.scala,
+    # but the mechanism is streaming/'s ExecutorAllocationManager. Belongs to the
+    # streaming — dstream group, which is not swept yet.
+    - core:spark.streaming.
   note: >
     Scopes re-walked against v4.2.0 on 2026-07-19, in two passes.
 
@@ -116,7 +127,8 @@ core:
     name: monitoring
     title: "Monitoring, UI & history"
     topics: [E3]
-    scope: "ui/ (SparkUI, WebUI pages), status/ (AppStatusStore, AppStatusListener — the store every UI page reads), metrics/ (MetricsSystem, sinks and sources), deploy/history/ (HistoryServer, FsHistoryProvider, event-log replay)"
+    modules: [common/utils, common/utils-java]   # Logging / SparkLoggerFactory live there
+    scope: "ui/ (SparkUI, WebUI pages), status/ (AppStatusStore, AppStatusListener — the store every UI page reads), metrics/ (MetricsSystem, sinks and sources), deploy/history/ (HistoryServer, FsHistoryProvider, event-log replay), Logging, SparkLoggerFactory, CallerContext (structured logging, MDC and the Hadoop caller context — the third observability channel)"
     description: "The event-listener pipeline behind every number in the UI, the metrics system, and the History Server that replays finished applications from event logs"
   - number: 7
     name: config-security

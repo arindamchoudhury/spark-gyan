@@ -206,6 +206,23 @@ It resolves each group's scope to real directories, counts the source files unde
 
 The same report lists every topic trace sharing a topic code with each sweep, flagging any recorded against a different Spark version — two pages describing the same rules from different releases is a contradiction waiting to be read.
 
+**Config coverage, once a subsystem is fully swept.** Packages are one side of the question; configs are the other, and they are the user-visible surface of everything a subsystem does. So when every group of a subsystem has a page, `--sweeps` also checks that subsystem's configs against the union of its pages — a **whole config family** that appears on none of them is a mechanism nobody wrote up:
+
+```
+core  (config surface across every swept group)
+    config coverage: 332/546 keys cited (60%), 62/73 families touched
+        core-monitoring.md                 cites  123
+        core-submit-standalone.md          cites   18
+        spark.shuffle.*                      21/56   cited, 35 uncited
+        spark.excludeOnFailure.*              1/13   cited, 12 uncited
+```
+
+Only a family with **zero** citations fails, and only at three configs or more — a partly-cited family may legitimately hold configs incidental to a concept the page does cover, and one or two configs are weak evidence either way. The ranked list is printed regardless, because a family at `1/13` is where a resweep pays off. Per-page counts locate which page is thin.
+
+This check exists because the config-tie-back rule postdates the earliest sweeps. `core` was 9/9 complete, every page `status: complete`, with 40% of its configs cited nowhere and nothing to notice — the five pages swept on 2026-07-19 predate the rule and are visibly thinner than the later ones. Its first run also found two ownership questions: `spark.log.*` (structured logging, MDC, the Hadoop caller context) was real core surface no group's scope reached, now covered by `monitoring`; and `spark.streaming.dynamicAllocation.*` is declared in core but belongs to the `streaming` subsystem, now recorded in `_meta.config_plumbing`.
+
+Judged-once exclusions go in `groups.yaml` under `_meta.config_plumbing` as `<subsystem>:<key prefix>`, scoped the same way `_meta.plumbing` is — a config excluded for one subsystem stays checkable in the one that owns it.
+
 The rest of per-group completeness is still enforced at sweep time, by the sweeper rather than a script: every config in the group's slice must tie to a concept, and one that doesn't means an area that was never visited. The skill requires that check before a sweep page is written.
 
 Spark 4.x moved classes between modules repeatedly — `StorageLevel` to `common/utils`, the `DataType` hierarchy to `sql/api`. A group can declare `modules: [sql/api]` to name the other modules its classes legitimately live in; that keeps the check strict instead of forcing scopes to stay vague enough to always pass.
