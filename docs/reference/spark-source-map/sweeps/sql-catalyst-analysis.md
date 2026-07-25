@@ -1,10 +1,10 @@
 ---
 subsystem: sql/catalyst
 spark_version: "4.2.0"
-swept_at: 2026-07-22
+swept_at: 2026-07-25
 group: analysis
 all_groups: [analysis, optimizer, planner, expressions, types-parser, framework]
-status: complete
+status: partial
 concepts:
   - name: The Analyzer and the fixed-point RuleExecutor loop
     topics: [A1, B1]
@@ -32,6 +32,14 @@ concepts:
     topics: [A1]
   - name: char/varchar handling during analysis
     topics: [A1]
+  - name: UnsupportedOperationChecker — what a streaming query may not do
+    topics: [A7, A8]
+  - name: Row-level command rewrite — MERGE, UPDATE, DELETE
+    topics: [A3, E4, I8]
+  - name: Time-travel resolution
+    topics: [I8, I11, E4]
+  - name: Table constraints and schema evolution
+    topics: [B4, B5]
 ---
 
 ## The Analyzer and the fixed-point RuleExecutor loop
@@ -238,6 +246,89 @@ Internal-invariant violations become `SparkException.internalError` instead of u
 
 ---
 
+## UnsupportedOperationChecker — what a streaming query may not do
+
+**What it is:** the rule that produces almost every "you cannot do that in a streaming query" message. It runs after analysis and walks the plan twice: `checkForBatch` rejects a batch query that touches a streaming source, and `checkForStreaming` enumerates the operations that are illegal, illegal *in this output mode*, or illegal *in combination*. If you have ever wondered why a message says a specific combination is unsupported rather than a specific operator, this file is why.
+
+**Anchor files:**
+
+- [UnsupportedOperationChecker.scala:40](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/UnsupportedOperationChecker.scala#L40) — `checkForBatch`, and the message everyone meets first: "Queries with streaming sources must be executed with writeStream.start()"
+- [UnsupportedOperationChecker.scala:179](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/UnsupportedOperationChecker.scala#L179) — `checkForStreaming`, whose first act is to reject a *non*-streaming plan passed to `writeStream`
+- [UnsupportedOperationChecker.scala:201](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/UnsupportedOperationChecker.scala#L201) — two or more `mapGroupsWithState`, then mixing `mapGroupsWithState` with `flatMapGroupsWithState`, then two `flatMapGroupsWithState` in certain modes: three separate arity rules, each with its own message
+- [UnsupportedOperationChecker.scala:120](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/UnsupportedOperationChecker.scala#L120) — `checkStreamingQueryGlobalWatermarkLimit`: the *correctness* check for chained stateful operators
+- [UnsupportedOperationChecker.scala:128](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/UnsupportedOperationChecker.scala#L128) — the message itself, which tells you the config that disables it
+
+!!! warning "One of these checks is advisory and can be switched off — which is the point"
+
+    `checkStreamingQueryGlobalWatermarkLimit` detects a *possible* correctness problem: a stateful operator downstream of another can emit rows older than the global watermark, and those rows are then silently dropped by the downstream operator. It is gated on `spark.sql.streaming.statefulOperatorCorrectnessCheck.enabled`, and the error text names that config so you can turn it off. Turning it off does not fix anything — it lets a query with a known late-row-dropping hazard run. Chained stateful operators (aggregation after a stream-stream join, for example) are exactly the shape that trips it.
+
+**Configs:** `spark.sql.streaming.statefulOperatorCorrectnessCheck.enabled`, `spark.sql.streaming.unsupportedOperationCheck`
+
+**Maps to topics:** A7, A8
+
+---
+
+## Row-level command rewrite — MERGE, UPDATE, DELETE
+
+**What it is:** how `MERGE INTO`, `UPDATE` and `DELETE FROM` become executable plans against a DSv2 table. There is no single "merge operator" — the analyzer rewrites each command into an ordinary write, choosing between **two strategies** based on what the table's connector supports.
+
+**Code path:** `RewriteMergeIntoTable` / `RewriteUpdateTable` / `RewriteDeleteFromTable` → `buildOperationTable` → is the operation a `SupportsDelta`? → `buildWriteDeltaPlan` (emit row-level deltas) : `buildReplaceDataPlan` (read, modify, rewrite whole groups — typically whole files)
+
+**Anchor files:**
+
+- [RewriteRowLevelCommand.scala:39](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/RewriteRowLevelCommand.scala#L39) — the shared trait; `RowLevelOperationTable` wraps the real table with the operation being performed
+- [RewriteMergeIntoTable.scala:130](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/RewriteMergeIntoTable.scala#L130) — the branch: `case _: SupportsDelta` → delta plan, otherwise replace-data
+- [RewriteMergeIntoTable.scala:146](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/RewriteMergeIntoTable.scala#L146) — `buildReplaceDataPlan`, the group-based path
+- [RewriteMergeIntoTable.scala:258](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/RewriteMergeIntoTable.scala#L258) — `buildWriteDeltaPlan`, the delta-based path
+- [RewriteDeleteFromTable.scala:50](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/RewriteDeleteFromTable.scala#L50) — the same two-way choice for `DELETE`
+
+!!! info "The performance of your MERGE is a property of the connector, not the SQL"
+
+    Group-based rewrite reads the affected groups, applies the change, and writes them back — on a file-based table that means rewriting whole files even to change one row. Delta-based rewrite emits only the changed rows and lets the connector apply them. Identical SQL therefore has very different cost depending on whether the table's `RowLevelOperation` implements `SupportsDelta`. This is the mechanism behind "MERGE is slow on this table format and fast on that one", and it is decided here, during analysis, not by the optimizer.
+
+**Maps to topics:** A3, E4, I8
+
+---
+
+## Time-travel resolution
+
+**What it is:** `TIMESTAMP AS OF` / `VERSION AS OF` on a table reference. The parser produces an unresolved `RelationTimeTravel` node; analysis evaluates the timestamp expression to a fixed microsecond value and turns the pair into a `TimeTravelSpec` the catalog uses to load the right snapshot.
+
+**Anchor files:**
+
+- [RelationTimeTravel.scala:29](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/RelationTimeTravel.scala#L29) — the unresolved node, carrying *either* a timestamp expression or a version string
+- [TimeTravelSpec.scala:28](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/TimeTravelSpec.scala#L28) — the resolved form: `AsOfTimestamp(Long)` or `AsOfVersion(String)`
+- [TimeTravelSpec.scala:44](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/TimeTravelSpec.scala#L44) — `resolveTimestampExpression`, shared with CDC timestamp resolution
+- [TimeTravelSpec.scala:46](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/TimeTravelSpec.scala#L46) — the expression must be ANSI-castable to `TimestampType`, else `INVALID_TIME_TRAVEL_TIMESTAMP_EXPR`
+- [TimeTravelSpec.scala:51](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/TimeTravelSpec.scala#L51) — the trick: the expression is wrapped in a fake `Project` over `OneRowRelation` so `ComputeCurrentTime` can fold it
+
+!!! info "The timestamp is evaluated once, at analysis, and must reference nothing"
+
+    `assert(ts.resolved && ts.references.isEmpty)` — a time-travel timestamp cannot depend on a column, only on literals and functions like `current_timestamp()`, which the fake-`Project` trick folds to a constant *at analysis time*. So `TIMESTAMP AS OF current_timestamp() - INTERVAL 1 DAY` is pinned when the query is analysed, not re-evaluated per batch, which matters for a query reused across micro-batches.
+
+**Maps to topics:** I8, I11, E4
+
+---
+
+## Table constraints and schema evolution
+
+**What it is:** two newer analysis-time behaviours on the write path. `ResolveTableConstraints` injects a `CheckInvariant` expression into the write plan for every `Check` constraint a DSv2 table declares, so violations fail the write rather than being stored. `ResolveSchemaEvolution` reconciles an incoming schema against the table's when the write is allowed to evolve it.
+
+**Anchor files:**
+
+- [ResolveTableConstraints.scala:30](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveTableConstraints.scala#L30) — the rule, taking a `CatalogManager`
+- [ResolveTableConstraints.scala:43](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveTableConstraints.scala#L43) — the guard: constraints are read from `r.table.constraints`, so a connector that declares none costs nothing
+- [ResolveTableConstraints.scala:45](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveTableConstraints.scala#L45) — `Check` constraints become `CheckInvariant` expressions in the plan
+- [ResolveSchemaEvolution.scala](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveSchemaEvolution.scala) — the schema-reconciliation counterpart
+
+!!! info "Constraint enforcement is a plan node, so it costs per row and shows in EXPLAIN"
+
+    A `CHECK` constraint is not enforced by the storage layer — it is an expression Spark inserts above the write. That makes it visible in `EXPLAIN` and means its cost scales with rows written, and it also means the guarantee only holds for writes that go through Spark's analyzer.
+
+**Maps to topics:** B4, B5
+
+---
+
 ## Breadth check — all 68 slice configs
 
 | # | Config key | Concept / disposition |
@@ -331,3 +422,27 @@ Internal-invariant violations become `SparkException.internalError` instead of u
 
     These are candidates for a future depth pass if a topic comes to need them (streaming → A7/A8,
     typed Dataset encoders → an E-level internals topic).
+
+---
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-07-22 | 4.2.0 | Initial sweep. 13 concepts covering the resolution core — the fixed-point loop, relation/column/function resolution, type coercion, the single-pass Resolver, `CheckAnalysis` — with all 68 slice configs attributed in the breadth table above. Marked `status: complete`. |
+| 2026-07-25 | 4.2.0 | Re-sweep, and a **status correction: `complete` → `partial`.** The config slice was exhaustive, but package breadth was not close: `analysis/` is **217 files and 31 were cited (14%)**, the lowest ratio of any group in the map. The first pass covered the resolution *core* thoroughly and the rest of the package not at all — which `--sweeps` cannot detect, because it only asks whether a claimed package is cited at all. Four concepts added from the untouched areas, chosen by practitioner impact: **`UnsupportedOperationChecker`** (the source of nearly every streaming restriction message, including one *advisory* correctness check that names the config to disable it), **row-level command rewrite** (`MERGE`/`UPDATE`/`DELETE` choose between delta-based and group-based strategies during *analysis* based on connector capability — the mechanism behind "MERGE is fast on this format and slow on that one"), **time-travel resolution**, and **table constraints and schema evolution**. Also repaired 135 mojibake sequences from a UTF-8/cp1252 double-encoding in the 07-22 pass. |
+
+!!! warning "This group is not finished"
+
+    `status: partial` is accurate, not pessimistic. Named areas still uncovered, each a coherent cluster of files in `analysis/`:
+
+    - **`resolver/`** — the single-pass Resolver's own package, ~100 files. The [single-pass Resolver](#the-single-pass-resolver-hybridanalyzer--resolverguard) concept describes the entry point and the guard; the implementation is unswept.
+    - **Collation application** — `ApplyDefaultCollation`, `CollationRulesRunner`, `RewriteCollationJoin` (B5).
+    - **SQL scripting analysis** — `ResolveSetVariable`, `VariableResolution`, `ResolveCursors`, `ResolveFetchCursor` (I12).
+    - **SQL-defined functions** — `SQLFunctionExpression`, `SQLFunctionNode`.
+    - **Parameterized queries** — `parameters.scala`, `ParameterizedQueryArgumentsValidator` (B8).
+    - **Streaming plan shaping** — `NameStreamingSources`, `ResolveTimeWindows`, `StreamingJoinHelper` (A7/A8).
+    - **CDC / changelog** — `ResolveChangelogTable`, `CdcNetChangesStatefulProcessor` (E8).
+    - **Reshaping transforms** — `PivotTransformer`, `UnpivotTransformer`, `ResolveInlineTables`, `ResolveIdentifierClause`.
+
+    A future run should take one or two of these clusters rather than another thin pass over the whole package.

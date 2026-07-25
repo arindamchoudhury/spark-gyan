@@ -321,6 +321,10 @@ flowchart LR
     S9 --> S9c10["CheckAnalysis — the error path"]
     S9 --> S9c11["View / CTE / subquery-body resolution"]
     S9 --> S9c12["char/varchar handling during analysis"]
+    S9 --> S9c13["UnsupportedOperationChecker — what a streaming query may not do"]
+    S9 --> S9c14["Row-level command rewrite — MERGE, UPDATE, DELETE"]
+    S9 --> S9c15["Time-travel resolution"]
+    S9 --> S9c16["Table constraints and schema evolution"]
     S10["sql/catalyst"]
     S10 --> S10c0["The Optimizer — batches, extension points and rule exclusion"]
     S10 --> S10c1["The operator-optimization rule set and the Infer Filters sandwich"]
@@ -392,7 +396,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
-| sql/catalyst — analysis | 750 | ✅ complete | 4.2.0 | 2026-07-22 |
+| sql/catalyst — analysis | 750 | ✅ partial | 4.2.0 | 2026-07-25 |
 | sql/catalyst — optimizer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — planner | — | ⬜ pending | — | — |
 | sql/catalyst — expressions | — | ⬜ pending | — | — |
