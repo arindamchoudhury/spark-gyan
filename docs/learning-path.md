@@ -1,6 +1,6 @@
 # Learning Path: Apache Spark / PySpark
 
-> **Last updated:** 2026-07-21 (Phase 5b, complete audit against the **official 4.2.0 release notes** (verbatim, `cache/web/spark-420-relnotes.txt`) — the earlier sweep audited only the *blog*, a highlight subset, so this pass caught six feature-level gaps the release notes exposed and folded each into its topic: string **collation** (char/varchar, CTAS/RTAS, `SHOW COLLATIONS`, [SPARK-54870]/[SPARK-49543]/[SPARK-55528]) → B5; SQL **pipe-operator** aggregation + `|` token ([SPARK-54292]/[SPARK-51518]) → B8; `INSERT INTO … REPLACE` conditional overwrite ([SPARK-56001]/[SPARK-54803]) → B4; **named streaming sources/sinks** ([SPARK-54909]/[SPARK-56719]) → A7; **stream-stream join** update-mode + state format V4 ([SPARK-56384]/[SPARK-55628]) and **state-store reliability** ([SPARK-54121]/[SPARK-54106]/[SPARK-54063]/[SPARK-55058]) → A8. All six were pre-existing holes (collation and pipe syntax are 4.0 features the path never captured), not new 4.2.0 items. The long tail — library bumps, ~40 minor optimizer items, security hardening, K8s/JDBC plumbing, pandas `axis=1` — was deliberately left out: no distinct learnable surface. Earlier same day, Phase 5, full sweep of the "Introducing Apache Spark 4.2" blog — folded every feature the path had missed into its topic: Python Data Sources → B4; Real-Time Mode streaming → A7; pandas 3 + Arrow C Data / PyCapsule interop → I3; vector distance/similarity/normalization/aggregation functions → B7; DSv2 row-level / MERGE-perf / INSERT-schema-evolution / transaction-API work → A3; and `SYSTEM.BUILTIN` / `SYSTEM.SESSION` qualification + `time_bucket` + tuple sketches + `IGNORE`/`RESPECT NULLS` + top-K `max_by`/`min_by` → B8. A follow-up **verbatim** re-fetch of the blog — the earlier WebFetch paraphrase had silently dropped two items — added storage-partitioned-join improvements → A3 and Python-execution profiling/diagnostics → E3. Then backfilled **verified** SPARK-IDs into every new callout from local source (`repos/spark` @ `v4.2.0`), which surfaced two corrections: **pandas 3 is not the supported runtime** — runtime `install_requires` is unbounded `pandas>=2.2.0` but pandas ≥ 3.0.0 warns, and [SPARK-57974] states 4.2.0 does not support it (full support in 4.3.0, [SPARK-55139]); the blog overstated it; and **`IGNORE`/`RESPECT NULLS`** is new for *aggregate* functions (`collect_list`/`collect_set`/`array_agg`), not the analytic functions that already had it. Every other blog feature was already placed in a prior pass). Earlier, 2026-07-18: taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I11/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8)
+> **Last updated:** 2026-07-25 (source sweep of `sql/catalyst — optimizer`, the third Catalyst phase. Three new topics from concepts no topic covered — **A17** table/column statistics and the CBO, **A18** runtime filtering (DPP and bloom filters), **A19** correlated subqueries and decorrelation — and eleven existing topics reconciled against what the sweep found: A1, A3, B6–B9, I1, I2, I5, I7, E1 each gained the sweep as a resource, plus the official docs page the sweep proved they needed (SQL hints grammar for A3, CTE syntax for B8, the generated runtime-SQL-config table for A1). A1 also gained a callout on the optimiser being a readable, per-rule-debuggable list, and a milestone built on `planChangeLog` and `excludedRules`. Counts in the study-sequence section below updated: 42 main-line topics, 20 source-derived, 62 total. Earlier, 2026-07-21: Phase 5b, complete audit against the **official 4.2.0 release notes** (verbatim, `cache/web/spark-420-relnotes.txt`) — the earlier sweep audited only the *blog*, a highlight subset, so this pass caught six feature-level gaps the release notes exposed and folded each into its topic: string **collation** (char/varchar, CTAS/RTAS, `SHOW COLLATIONS`, [SPARK-54870]/[SPARK-49543]/[SPARK-55528]) → B5; SQL **pipe-operator** aggregation + `|` token ([SPARK-54292]/[SPARK-51518]) → B8; `INSERT INTO … REPLACE` conditional overwrite ([SPARK-56001]/[SPARK-54803]) → B4; **named streaming sources/sinks** ([SPARK-54909]/[SPARK-56719]) → A7; **stream-stream join** update-mode + state format V4 ([SPARK-56384]/[SPARK-55628]) and **state-store reliability** ([SPARK-54121]/[SPARK-54106]/[SPARK-54063]/[SPARK-55058]) → A8. All six were pre-existing holes (collation and pipe syntax are 4.0 features the path never captured), not new 4.2.0 items. The long tail — library bumps, ~40 minor optimizer items, security hardening, K8s/JDBC plumbing, pandas `axis=1` — was deliberately left out: no distinct learnable surface. Earlier same day, Phase 5, full sweep of the "Introducing Apache Spark 4.2" blog — folded every feature the path had missed into its topic: Python Data Sources → B4; Real-Time Mode streaming → A7; pandas 3 + Arrow C Data / PyCapsule interop → I3; vector distance/similarity/normalization/aggregation functions → B7; DSv2 row-level / MERGE-perf / INSERT-schema-evolution / transaction-API work → A3; and `SYSTEM.BUILTIN` / `SYSTEM.SESSION` qualification + `time_bucket` + tuple sketches + `IGNORE`/`RESPECT NULLS` + top-K `max_by`/`min_by` → B8. A follow-up **verbatim** re-fetch of the blog — the earlier WebFetch paraphrase had silently dropped two items — added storage-partitioned-join improvements → A3 and Python-execution profiling/diagnostics → E3. Then backfilled **verified** SPARK-IDs into every new callout from local source (`repos/spark` @ `v4.2.0`), which surfaced two corrections: **pandas 3 is not the supported runtime** — runtime `install_requires` is unbounded `pandas>=2.2.0` but pandas ≥ 3.0.0 warns, and [SPARK-57974] states 4.2.0 does not support it (full support in 4.3.0, [SPARK-55139]); the blog overstated it; and **`IGNORE`/`RESPECT NULLS`** is new for *aggregate* functions (`collect_list`/`collect_set`/`array_agg`), not the analytic functions that already had it. Every other blog feature was already placed in a prior pass). Earlier, 2026-07-18: taxonomy re-derived from the Spark 4.2.0 feature surface, current job requirements, and the exam guides — rather than from what the available books cover. Spine changed from the Databricks certification track to Apache Spark itself, with the certs demoted to optional milestones; added A12 Kafka, `VARIANT` to I1, Iceberg to I8/I11/E5; de-vendored E5 and E7. Earlier the same day: verified releases and all three cert pages against official sources, 4.1.2 → 4.2.0, and folded 4.2.0 features into B7, B8, I3, I7, I10, A3, A11, E1, E3, E8
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026)
 >
@@ -430,7 +430,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Estimated time to complete this level:** 38–54 hrs
 
-**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I11** (the storage-and-table-format run) → I12. The level then ends with its checkpoint. I13–I15 sit just above that gate as optional depth — they are not required to pass it, and are read on demand rather than in sequence.
+**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I11** (the storage-and-table-format run) → I12. The level then ends with its checkpoint. I13–I18 sit around that gate as source-derived depth — they are not required to pass it, and are read on demand rather than in sequence.
 
 !!! info "Why the numbering jumps"
     I11 (Iceberg) closes the storage-and-table-format run; I13–I15 are optional-depth topics from a source sweep, numbered last because they sit outside the main line.
@@ -1077,7 +1077,7 @@ You are ready to leave this level when you can:
 
 **Estimated time to complete this level:** 44–66 hrs
 
-**Reading order:** A1 → A2 → A3 → A4 (the optimiser and tuning run) → A5 → A6 → **A7 → A8 → A12** (streaming, in that order — A12 assumes the semantics from A7/A8) → A9 → A10 → A11.
+**Reading order:** A1 → A2 → A3 → A4 (the optimiser and tuning run) → A5 → A6 → **A7 → A8 → A12** (streaming, in that order — A12 assumes the semantics from A7/A8) → A9 → A10 → A11. A13–A19 are source-derived depth, read on demand: A17–A19 extend the optimiser run (statistics and the CBO, runtime filtering, correlated subqueries), A13–A15 the shuffle-and-retry run, A16 stage-level scheduling.
 
 ---
 
@@ -1558,7 +1558,7 @@ You are ready to leave this level when you can:
 
 **Estimated time to complete this level:** 40–60+ hrs (ongoing)
 
-**Reading order:** E1 → E2 → E3 → E4 → E5 → E6 → E7 → E8 → E9. E10–E11 sit above the closing checkpoint as optional depth — not required to pass it, read on demand.
+**Reading order:** E1 → E2 → E3 → E4 → E5 → E6 → E7 → E8 → E9. E10–E16 sit around the closing checkpoint as source-derived depth — not required to pass it, read on demand.
 
 ---
 
@@ -2053,17 +2053,18 @@ You are operating at Expert level when you can:
 ```
 Beginner (B1–B9)              →  9 topics · 30–40 hrs   write correct Spark
     ↓
-Intermediate (I1–I12, I11)    → 12 topics · 38–54 hrs   real data, real formats, read a plan
+Intermediate (I1–I12)         → 12 topics · 38–54 hrs   real data, real formats, read a plan
     ↓
 Advanced (A1–A12)             → 12 topics · 44–66 hrs   make it fast, make it stream
     ↓
 Expert (E1–E9)                →  9 topics · 40–60+ hrs  run it in production
 
-Optional depth (I13–I15, E10–E11) → 5 topics, source-sweep derived; not on the main line
+Main line: 42 topics.
+Source-derived depth: 20 more — I13–I18, A13–A19, E10–E16. Off the main line, read on demand.
 Optional milestones: three Databricks certifications — see the section below
 ```
 
-**You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 47 including the 5 optional-depth topics). Next: ⬜ I6 — Caching and Persistence.
+**You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 62 topics in total, counting the 20 source-derived ones). Next: ⬜ I6 — Caching and Persistence.
 
 **Carrying 🔄:** B1–B9 and I1–I5 — every topic with a written chapter — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
@@ -2071,8 +2072,10 @@ Three contain claims that are actually *wrong* and should be cleared first: **B3
 
 **If you only do three things next:** clear I3 (it teaches a now-false performance model), do I6–I7 (caching and the Spark UI — everything in Advanced depends on being able to read a plan), then I8 with both table formats rather than Delta alone.
 
-!!! info "About the optional-depth topics (I13–I15, E10–E11)"
-    These five were derived from Spark source sweeps rather than from books, courses, or exam guides. They sit outside the main study line, still carry `Milestone: TBD`, and their only listed resource is the official docs. Treat them as reading prompts when you hit the underlying problem in practice (a `Task not serializable` error, a `groupByKey` OOM), not as sequential coursework.
+!!! info "About the source-derived topics (I13–I18, A13–A19, E10–E16)"
+    These twenty came from reading the Spark source rather than from books, courses, or exam guides — the [source map](reference/spark-source-map/index.md)'s sweeps scan a subsystem and report what is in it, independently of what this path already covers, so anything they surface that no topic named becomes a new topic here. That is the mechanism working, not the path drifting: roughly a third of the topics below exist because the code had something to teach that no book covers.
+
+    They sit off the main study line and are each written to the same standard as the rest — real resources, a concrete milestone, and an explicit note where no book covers the subject at all. Read them on demand, when you hit the underlying problem in practice (a `Task not serializable` error, a `groupByKey` OOM, a join that never got reordered), rather than as sequential coursework.
 
 ---
 
