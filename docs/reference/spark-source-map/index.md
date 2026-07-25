@@ -90,6 +90,9 @@ flowchart LR
     S0 --> S0c6["spark.api.mode — Classic vs Spark Connect selection"]
     S0 --> S0c7["The R bridge — RBackend and RRunner"]
     S0 --> S0c8["The Java bridge — JavaRDD and friends"]
+    S0 --> S0c9["Python worker log capture — the executor side"]
+    S0 --> S0c10["SerDeUtil and the pickle boundary"]
+    S0 --> S0c11["StreamingPythonRunner — the streaming worker"]
     S1["core"]
     S1 --> S1c0["Config declaration & typed builders (ConfigBuilder / TypedConfigBuilder)"]
     S1 --> S1c1["ConfigEntry hierarchy & readFrom resolution"]
@@ -403,7 +406,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — config-security | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — rpc-resources | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — api-bridge | — | ✅ complete | 4.2.0 | 2026-07-22 |
+| core — api-bridge | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | resource-managers/kubernetes — driver-executor | 89 | ⬜ pending | — | — |
 | resource-managers/kubernetes — auth-networking | — | ⬜ pending | — | — |
 | resource-managers/yarn — am-executor | 61 | ⬜ pending | — | — |

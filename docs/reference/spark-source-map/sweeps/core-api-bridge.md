@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-22
+swept_at: 2026-07-25
 group: api-bridge
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
 status: complete
@@ -24,6 +24,12 @@ concepts:
     topics: [I3, I4]
   - name: The Java bridge — JavaRDD and friends
     topics: [I4]
+  - name: Python worker log capture — the executor side
+    topics: [E3, I3]
+  - name: SerDeUtil and the pickle boundary
+    topics: [I3, I4, A5]
+  - name: StreamingPythonRunner — the streaming worker
+    topics: [A7, A8, I3]
 ---
 
 This group is the cross-language substrate under `core/src/main/scala/org/apache/spark/api/`. It answers a single question that both I3 (User-Defined Functions) and I4 (RDD Fundamentals) keep bumping into: **when you write a Python `lambda`, a `@udf`, or a pandas UDF, what actually runs it?** The answer is never "the JVM." The JVM forks (or reuses) an external Python process, streams the command and the rows to it over a socket, and reads results back. Everything else here — worker pooling, the socket handshake, traceback propagation, memory caps, the Py4J driver gateway, the R equivalent — is machinery around that one pipe.
@@ -272,6 +278,69 @@ The **ReaderIterator.read** loop switches on a framing length: `>=0` → that ma
 
 ---
 
+## Python worker log capture — the executor side
+
+**What it is:** the producer half of the mechanism the [storage sweep](core-storage-serializer.md) traces from the block side. A Python worker's stdout is normally redirected to the executor's stderr and lost. When log capture is active, that stream is wrapped first: every line is scanned for a `PYTHON_WORKER_LOGGING:` marker, and marked lines are diverted into a `RollingLogWriter` that stores them as `BlockManager` blocks instead of vanishing into the executor log.
+
+**Code path:** `PythonWorkerFactory.redirectStreamsToStderr` → `workerLogCapture.wrapInputStream(stdout)` → `CaptureWorkerLogsInputStream` reads line by line → marker present? → `RollingLogWriter.writeLog` → `PythonWorkerLogBlockId` block : pass through to stderr
+
+**Anchor files:**
+
+- [PythonWorkerFactory.scala:420](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L420) — capture exists **only if `PYSPARK_SPARK_SESSION_UUID` is in the worker env**; without it the `Option` is `None` and the stream is unwrapped
+- [PythonWorkerFactory.scala:428](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerFactory.scala#L428) — the wrap is applied to **stdout only**; stderr is redirected raw, so a Python traceback still goes to the executor log rather than into a block
+- [PythonWorkerLogCapture.scala:39](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerLogCapture.scala#L39) — one capture per session, with a `ConcurrentHashMap` of writers keyed by worker PID
+- [PythonWorkerLogCapture.scala:113](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerLogCapture.scala#L113) — the marker search: `line.indexOf("PYTHON_WORKER_LOGGING:")`
+- [PythonWorkerLogCapture.scala:148](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerLogCapture.scala#L148) — `CaptureWorkerLogsInputStream`, a line-buffered `InputStream` wrapper
+
+!!! info "It is a text protocol over stdout, not a side channel"
+
+    Capture works by string-matching a marker on each line of the worker's stdout. That has two consequences worth knowing: a bare `print()` with no marker is *not* captured — it passes through to the executor log as before, so this surfaces logs emitted through PySpark's logging integration rather than everything a UDF writes; and a line of user data that happens to contain the marker string is treated as a log line. The block side, retention and the 32 MiB roll are in the [storage sweep](core-storage-serializer.md).
+
+**Configs:** `spark.executor.python.worker.log.details`
+
+**Maps to topics:** E3, I3
+
+---
+
+## SerDeUtil and the pickle boundary
+
+**What it is:** how JVM objects become Python objects on the **RDD** path — the non-Arrow boundary. Pickling goes through Pyrolite's `Pickler`/`Unpickler`, and the batching is adaptive: `AutoBatchedPickler` starts at one object per batch and doubles or halves to keep each pickled batch roughly between 1 MB and 10 MB.
+
+**Anchor files:**
+
+- [SerDeUtil.scala:82](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/SerDeUtil.scala#L82) — `AutoBatchedPickler`
+- [SerDeUtil.scala:97](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/SerDeUtil.scala#L97) — the whole adaptive rule: `< 1 MB` → `batch *= 2`, `> 10 MB` → `batch /= 2`. Not a config, and it adapts per partition from a cold start of 1
+- [SerDeUtil.scala:83](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/SerDeUtil.scala#L83) — `useMemo = true`: the pickler memoises repeated object references *within a batch*, so batch size changes compression as well as framing
+- [SerDeUtil.scala:55](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/SerDeUtil.scala#L55) — constructors registered for both `__builtin__` and `builtins`, the Python 2/3 split still present in the unpickler
+- [SerDeUtil.scala:118](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/SerDeUtil.scala#L118) — `pythonToJava(rdd, batched)`: the reverse direction, where the caller must know whether the stream was batched
+
+!!! info "This is the path Arrow replaced, and it still runs"
+
+    `df.rdd`, `rdd.collect()` on a Python RDD, `parallelize` of Python objects, and every non-Arrow UDF path go through here — one pickled blob per adaptive batch, object by object. The Arrow path (`execution/arrow/`, covered by the `sql/core — python-arrow` group) moves columnar batches instead and is why pandas UDFs are faster than plain Python UDFs. When someone asks why `df.rdd.map(...)` is slow on a DataFrame that was fine in SQL, this boundary is the answer.
+
+**Maps to topics:** I3, I4, A5
+
+---
+
+## StreamingPythonRunner — the streaming worker
+
+**What it is:** a separate Python worker used by streaming query processing, notably for `foreachBatch` and stateful Python operators. Unlike `BasePythonRunner`, it does not stream records over the pipe: it hands the worker a **Spark Connect URL pointing back at the local session** and lets the Python side drive a real DataFrame API against it.
+
+**Anchor files:**
+
+- [StreamingPythonRunner.scala:43](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/StreamingPythonRunner.scala#L43) — the class
+- [StreamingPythonRunner.scala:63](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/StreamingPythonRunner.scala#L63) — `init()` returns the raw `(DataOutputStream, DataInputStream)` pair after a handshake
+- [StreamingPythonRunner.scala:74](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/StreamingPythonRunner.scala#L74) — `SPARK_CONNECT_LOCAL_URL`: the worker talks Connect back to the same JVM
+- [StreamingPythonRunner.scala:135](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/StreamingPythonRunner.scala#L135) — three distinct initialization failures: a communication exception, a **timeout**, and a non-zero response from Python
+
+!!! info "Why `foreachBatch` in Python can use the full DataFrame API"
+
+    A `foreachBatch` body receives a real DataFrame, not pickled rows — which only works because the Python side has a Connect session pointing back at the driver's own JVM. That is also why its failure modes differ from a UDF's: initialization can fail with a timeout or a protocol error before any user code runs, each with its own exception type, rather than surfacing as a Python traceback in the middle of a batch.
+
+**Maps to topics:** A7, A8, I3
+
+---
+
 ## Breadth check — all 30 slice configs
 
 | # | Config | Verdict | Concept / real owner |
@@ -308,3 +377,12 @@ The **ReaderIterator.read** loop switches on a framing length: `>=0` → that ma
 | 30 | `spark.yarn.isPython` | in-scope | Py4J driver gateway / app entry (set by `SparkSubmit`) |
 
 **In-scope: 26 · Out-of-scope noise: 4** (`spark.barrier.sync.timeout`, both `spark.scheduler.barrier.maxConcurrentTasksCheck.*`, `spark.unsafe.sorter.spill.reader.buffer.size`).
+
+---
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-07-22 | 4.2.0 | Initial sweep. 9 concepts, all 30 slice configs attributed in the breadth table above. |
+| 2026-07-25 | 4.2.0 | Re-sweep, the last of the nine core groups. The config slice was already exhaustive, so this run was driven by package breadth. Three concepts added: **Python worker log capture** — the executor-side producer for the block log writers the [storage sweep](core-storage-serializer.md) covers, which turns out to be a marker-string protocol over the worker's *stdout only*, active only when `PYSPARK_SPARK_SESSION_UUID` is set, so an unmarked `print()` is still lost; **`SerDeUtil` and the pickle boundary**, whose `AutoBatchedPickler` adapts its batch size from a cold start of 1 to keep pickled batches between 1 MB and 10 MB, and which is the path that makes `df.rdd.map(...)` slow next to the Arrow route; and **`StreamingPythonRunner`**, which hands its worker a Spark Connect URL pointing back at the local JVM — the reason a Python `foreachBatch` body receives a real DataFrame rather than pickled rows. |
