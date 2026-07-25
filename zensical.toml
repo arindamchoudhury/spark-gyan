@@ -48,6 +48,7 @@ nav = [
             { "core — API bridge" = "reference/spark-source-map/sweeps/core-api-bridge.md" },
             { "sql/catalyst — Analysis" = "reference/spark-source-map/sweeps/sql-catalyst-analysis.md" },
             { "sql/catalyst — Optimizer" = "reference/spark-source-map/sweeps/sql-catalyst-optimizer.md" },
+            { "sql/catalyst — Planner" = "reference/spark-source-map/sweeps/sql-catalyst-planner.md" },
         ]},
     ]},
     { "Spark Book" = [

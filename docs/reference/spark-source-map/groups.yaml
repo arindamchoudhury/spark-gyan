@@ -213,7 +213,7 @@ sql/catalyst:
     name: planner
     title: "Planner & physical operators"
     topics: [A1, A3, E1]
-    scope: "planning/ (QueryPlanner, GenericStrategy, plan-matching patterns e.g. ExtractEquiJoinKeys), execution/datasources/v2/ (DataSourceV2Relation, DataSourceV2Implicits)"
+    scope: "planning/ (QueryPlanner, GenericStrategy, plan-matching patterns e.g. ExtractEquiJoinKeys), execution/datasources/v2/ (DataSourceV2Relation, DataSourceV2Implicits), QueryPlanningTracker (per-phase and per-rule timing; sits at the catalyst root, not under planning/)"
     description: "The abstract planner framework and plan-matching patterns catalyst provides, plus V2 logical relations. SparkPlanner, SparkStrategies and every physical operator live in sql/core — see the sql/core query-execution group."
   - number: 4
     name: expressions

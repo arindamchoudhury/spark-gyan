@@ -352,6 +352,11 @@ flowchart LR
     S10 --> S10c23["Complex-type expression optimizations"]
     S10 --> S10c24["Rule-level observability — plan-change logging, validation, idempotence"]
     S10 --> S10c25["RewriteWithExpression — common subexpression elimination in the logical plan"]
+    S11["sql/catalyst"]
+    S11 --> S11c0["QueryPlanner — strategies, placeholders and the candidate iterator"]
+    S11 --> S11c1["Plan-matching patterns — the extractors every strategy is written against"]
+    S11 --> S11c2["DataSource V2 logical relations and the table implicits"]
+    S11 --> S11c3["QueryPlanningTracker — where the time went"]
 ```
 
 ## Topics discovered from the source
@@ -399,7 +404,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 |---|---|---|---|---|
 | sql/catalyst — analysis | 750 | ✅ partial | 4.2.0 | 2026-07-25 |
 | sql/catalyst — optimizer | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| sql/catalyst — planner | — | ⬜ pending | — | — |
+| sql/catalyst — planner | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — expressions | — | ⬜ pending | — | — |
 | sql/catalyst — types-parser | — | ⬜ pending | — | — |
 | sql/catalyst — framework | — | ⬜ pending | — | — |
