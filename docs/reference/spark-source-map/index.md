@@ -53,6 +53,9 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry | — | — | ⬜ |
 | A15 | Push-Based Shuffle | — | — | ⬜ |
 | A16 | Stage-Level Scheduling and Accelerator-Aware Resources (GPU/FPGA) | — | — | ⬜ |
+| A17 | Table and Column Statistics and the Cost-Based Optimizer | — | — | ⬜ |
+| A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters | — | — | ⬜ |
+| A19 | Correlated Subqueries and Decorrelation | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -273,6 +276,32 @@ flowchart LR
     S9 --> S9c10["CheckAnalysis â€” the error path"]
     S9 --> S9c11["View / CTE / subquery-body resolution"]
     S9 --> S9c12["char/varchar handling during analysis"]
+    S10["sql/catalyst"]
+    S10 --> S10c0["The Optimizer — batches, extension points and rule exclusion"]
+    S10 --> S10c1["The operator-optimization rule set and the Infer Filters sandwich"]
+    S10 --> S10c2["Finish Analysis — correctness rules wearing an optimizer badge"]
+    S10 --> S10c3["Predicate pushdown"]
+    S10 --> S10c4["Column pruning and nested schema pruning"]
+    S10 --> S10c5["Constant folding and expression simplification"]
+    S10 --> S10c6["Constraint propagation and filter inference"]
+    S10 --> S10c7["Rule-based join reorder, outer-join elimination and the cartesian check"]
+    S10 --> S10c8["Statistics — the two visitors and the estimation model"]
+    S10 --> S10c9["Cost-based join reorder (dynamic programming) and star-schema detection"]
+    S10 --> S10c10["Runtime filtering — bloom filters and dynamic partition pruning"]
+    S10 --> S10c11["Correlated subqueries — pull-up, decorrelation and the COUNT bug"]
+    S10 --> S10c12["CTE handling — inline, pushdown, and reuse as repartition"]
+    S10 --> S10c13["MergeSubplans and PlanMerger — scalar-subquery reuse (new in 4.2.0)"]
+    S10 --> S10c14["Set operations and distinct rewrites"]
+    S10 --> S10c15["Aggregate rewrites — distinct aggregates, Expand, decimals"]
+    S10 --> S10c16["Window optimizations and the window group limit"]
+    S10 --> S10c17["Limit and offset optimizations"]
+    S10 --> S10c18["Empty relations, one-row plans and local evaluation"]
+    S10 --> S10c19["Redundant-operator removal and collapsing"]
+    S10 --> S10c20["Typed-Dataset (object) optimizations"]
+    S10 --> S10c21["Correctness normalizations — floats, NaN and maps"]
+    S10 --> S10c22["Hints in the optimizer"]
+    S10 --> S10c23["Complex-type expression optimizations"]
+    S10 --> S10c24["Rule-level observability — plan-change logging, validation, idempotence"]
 ```
 
 ## Discovery gaps and refinement proposals
@@ -304,6 +333,9 @@ flowchart LR
 | spark.api.mode — Classic vs Spark Connect selection | core | gap | — | — |
 | unmanaged-memory-accounting | core | gap | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
 | whole-file-sources | core | gap | I17 | Whole-File and Binary RDD Sources |
+| Correlated subqueries — pull-up, decorrelation and the COUNT bug | sql/catalyst | gap | A19 | Correlated Subqueries and Decorrelation |
+| Runtime filtering — bloom filters and dynamic partition pruning | sql/catalyst | gap | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters |
+| Statistics — the two visitors and the estimation model | sql/catalyst | gap | A17 | Table and Column Statistics and the Cost-Based Optimizer |
 
 
 ## Sweep status
@@ -313,7 +345,7 @@ Which subsystems have been swept for source-concept discovery. Sweep in book-pri
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
 | sql/catalyst — analysis | 750 | ✅ complete | 4.2.0 | 2026-07-22 |
-| sql/catalyst — optimizer | — | ⬜ pending | — | — |
+| sql/catalyst — optimizer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — planner | — | ⬜ pending | — | — |
 | sql/catalyst — expressions | — | ⬜ pending | — | — |
 | sql/catalyst — types-parser | — | ⬜ pending | — | — |

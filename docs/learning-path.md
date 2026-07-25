@@ -277,6 +277,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 4. **Spark-docs → GROUP BY syntax** ([sql-ref-syntax-qry-select-groupby.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-groupby.html)) — `HAVING`, and the `ROLLUP` / `CUBE` / `GROUPING SETS` forms that the DataFrame `rollup()` and `cube()` methods map onto
 5. **Spark-docs → Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `spark.sql.shuffle.partitions` is *the* knob governing a `groupBy`'s cost, since it sets the partition count between the partial and final aggregate
 6. **Source trace — [B6 in the source map](reference/spark-source-map/topics/b6.md)** — why one `groupBy` becomes two operators in the plan, what `countDistinct` actually costs, and which of the three aggregate operators your functions select
+7. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the rewrites that happen to your `groupBy` before it is planned: `ReplaceDistinctWithAggregate`, `RewriteDistinctAggregates` (the rule that multiplies every input row N times for N distinct aggregates, and the 4.2.0 `OptimizeExpand` that can undo it), `EliminateDistinct`, `DecimalAggregates`, and the `map_sort` insertion that makes a `MapType` grouping key compare correctly at all
 
 **Milestone:** You can compute multiple aggregations in a single `agg()` call, use `F.when()` for conditional counting, and write a query equivalent to a SQL `GROUP BY ... HAVING`. Then, from the plan: run `explain()` on a `groupBy().sum()` and explain why `HashAggregateExec` appears twice, and predict how the plan changes when you add a single `countDistinct`.
 
@@ -313,6 +314,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 4. **Spark-docs → JOIN syntax** ([sql-ref-syntax-qry-select-join.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-join.html)) — every join type in SQL form, including the semi/anti variants the books skim; also where `NEAREST BY` is documented from 4.2.0
 5. **Spark-docs → Join Strategy Hints** ([sql-performance-tuning.html#join-strategy-hints-for-sql-queries](https://spark.apache.org/docs/latest/sql-performance-tuning.html#join-strategy-hints-for-sql-queries)) — the four hints (`BROADCAST`, `MERGE`, `SHUFFLE_HASH`, `SHUFFLE_REPLICATE_NL`) and the [adaptive skew-join](https://spark.apache.org/docs/latest/sql-performance-tuning.html#optimizing-skew-join) settings; a hint is a request the planner may decline, and this page says when
 6. **Source trace — [B7 in the source map](reference/spark-source-map/topics/b7.md)** — the three-line strategy priority chain that explains all join tuning, why a `BROADCAST` hint on the wrong side does nothing, and what happens when your join condition is not an equality
+7. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — everything that rewrites the join *before* a strategy is picked: which predicates can be pushed to which side of an outer join, why `isnotnull(joinKey)` appears in your plan without you writing it, `EliminateOuterJoin` quietly downgrading your `LEFT JOIN` to an inner join, and the float/NaN normalization that makes `-0.0` and `0.0` join as equal
 
 **Milestone:** You can perform all seven join types, explain what `left_semi` and `left_anti` return without looking it up, and name three situations where a broadcast join is appropriate. Then from the plan: run `explain()` on a large-large join, identify the strategy and the `Exchange` nodes feeding it, and predict which strategy you would get if you changed the condition from `a == b` to `a > b`.
 
@@ -350,6 +352,8 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 4. **Spark-docs → SQL Syntax reference** ([sql-ref-syntax.html](https://spark.apache.org/docs/latest/sql-ref-syntax.html)) — the full statement grammar. Worth knowing this exists as a reference rather than reading through: `selectExpr` and `F.expr` use the same parser, so anything documented here works inside them
 5. **Spark-docs → Identifiers and name resolution** ([sql-ref-identifier.html](https://spark.apache.org/docs/latest/sql-ref-identifier.html), [sql-ref-name-resolution.html](https://spark.apache.org/docs/latest/sql-ref-name-resolution.html)) — how a bare name becomes a table, view or column, and the qualification rules behind the temp-view shadowing described below
 6. **Source trace — [B8 in the source map](reference/spark-source-map/topics/b8.md)** — the three parser entry points, parameter binding as an analyzer rule, and `lookupRelation`'s branch order, which is where temp-view surprises come from
+7. **Spark-docs → Common Table Expressions** ([sql-ref-syntax-qry-select-cte.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-cte.html)) — `WITH` and `WITH RECURSIVE`; worth reading alongside the sweep below, which shows that a CTE is usually *inlined* rather than materialised
+8. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — what happens to your SQL after it parses: `EXCEPT`, `INTERSECT` and `DISTINCT` have no physical operator and are rewritten into joins and aggregates; `WITH` is inlined per definition by `InlineCTE`; and a correlated subquery becomes a semi/anti/outer join before planning
 
 **Milestone:** You can register a DataFrame as a temp view, query it with `spark.sql()`, and mix SQL expressions into a method-chained DataFrame pipeline. Then, with a user-supplied value in hand: write the query so the value can never be parsed as SQL, and say why your approach guarantees that rather than merely making it unlikely.
 
@@ -389,6 +393,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 4. **Spark-docs → ORDER BY** ([sql-ref-syntax-qry-select-orderby.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-orderby.html)) — `NULLS FIRST` / `NULLS LAST`, and the defaults that make descending order not a mirror of ascending
 5. **Spark-docs → Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the conditional-function section: `coalesce`, `nvl`, `nullif`, and `nanvl`, which is the only one that handles `NaN`
 6. **Source trace — [B9 in the source map](reference/spark-source-map/topics/b9.md)** — how a null is actually stored, the two optimizer rules that rewrite nulls before execution, and where three-valued logic changes a result rather than just a filter
+7. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the wider set of null rules: `NullPropagation` / `NullDownPropagation`, `ReplaceNullWithFalseInPredicate` (a `NULL` in predicate position behaves as `false`), and `constructIsNotNullConstraints` — the constraint machinery that infers `isnotnull` from a null-intolerant expression and materialises it as a real filter
 
 **Milestone:** You can explain why `F.count("col")` and `F.count("*")` return different results for a column with nulls. Then three that catch experienced people: predict what `NOT IN (subquery containing a null)` returns; predict whether `orderBy(c.desc())` puts nulls where `orderBy(c)` did; and say whether a `NaN` in a float column survives `dropna()`.
 
@@ -446,6 +451,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 4. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) + **Built-in Functions** ([sql-ref-functions-builtin.html](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)) — the array/map/struct function catalogue, including the higher-order functions (`transform`, `filter`, `aggregate`) that replace an explode/re-group round trip
 
 5. **Source trace — [I1 in the source map](reference/spark-source-map/topics/i1.md)** — why generators need their own plan node, what `explode_outer` actually adds, and why a higher-order function costs nothing where a UDF doing the same work costs a great deal
+6. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — why reading one field out of a wide struct can be cheap: `NestedColumnAliasing` rewrites the plan so the scan reads a narrower nested schema, `SimplifyExtractValueOps` means `struct(a, b).a` never builds the struct, chained `withField` calls collapse into one `UpdateFields`, and `from_json` is pruned to the fields you actually extract
 
 **Milestone:** You can flatten a JSON array-of-structs into rows, extract fields from nested structs, build an array column from grouped rows, and apply a lambda transform to every element of an array column. You can also state when `VARIANT` is the better choice than a declared `StructType`, and why. Then the one that catches people: given a column where some arrays are empty or null, predict how many rows survive `explode` versus `explode_outer`.
 
@@ -486,6 +492,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 3. **SDG Ch 7** — aggregations chapter includes window functions with the deepest semantic explanations
 4. **Spark-docs → Window Functions** ([sql-ref-syntax-qry-select-window.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-window.html)) — frame semantics stated precisely: `ROWS` vs `RANGE`, and what the default frame becomes once you add `ORDER BY` (the single most common window bug)
 5. **Source trace — [I2 in the source map](reference/spark-source-map/topics/i2.md)** — the six lines of `resolveFrame` that decide your default frame, why omitting `partitionBy` moves the entire dataset to one partition, and which frame implementation your window actually runs
+6. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the five rules that make windows cheaper before planning: `CollapseWindow` and `TransposeWindow` (two windows, one sort), `OptimizeWindowFunctions`, `EliminateWindowPartitions`, `LimitPushDownThroughWindow` — and `InferWindowGroupLimit`, which only fires above `spark.sql.optimizer.windowGroupLimitThreshold` (1000 rows per partition), so the top-N optimization you are counting on can quietly not apply
 
 !!! warning "Adding `orderBy` changes what an aggregate window computes — silently"
     Spark fills in a frame you did not write, and the default depends on whether an ordering is present:
@@ -616,6 +623,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 6. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `Partitioner`, `HashPartitioner` vs `RangePartitioner` with its reservoir sampling, `ShuffledRDD`, and the narrow `coalesce` path that avoids a shuffle
 7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — `computeValidLocalityLevels` and the delay-scheduling timers — including that a `NO_PREF` task is reported as `PROCESS_LOCAL`, so the UI's locality column can flatter you
 8. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the shuffle index format — a prefix sum of partition lengths — and the reduce-side locality preference with its hardcoded 0.2 fraction
+9. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — what the optimizer does to a repartition before it ever reaches the shuffle: `CollapseRepartition` merges adjacent ones, `OptimizeRepartition` drops a `repartition()` with no explicit number when the child's partitioning already matches, and `ReplaceCTERefWithRepartition` inserts one you did not ask for so a shared CTE is computed once
 
 **Milestone:** You can explain the difference between `repartition` and `coalesce`, set `spark.sql.shuffle.partitions` appropriately for your data volume, and write a DataFrame to exactly N files. Then the one that separates knowing the API from understanding it: explain why `df.transform(...).coalesce(1).write(...)` can be dramatically slower than the same pipeline with `repartition(1)`, and say what `explain()` would show in each case.
 
@@ -696,6 +704,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 5. **Spark-docs → Monitoring** ([monitoring.html](https://spark.apache.org/docs/latest/monitoring.html)) — the History Server, event logging, and the [REST API](https://spark.apache.org/docs/latest/monitoring.html#rest-api). Everything the UI renders is available as JSON at `/api/v1`, which turns "check the UI" into something you can automate
 6. **Source trace — [I7 in the source map](reference/spark-source-map/topics/i7.md)** — the UI is a read model over an event stream, and the stream drops events under load. Read this before trusting a number the UI shows you on a busy job
 7. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — where the UI's numbers come from: the listener events, the accumulator merge, and why skipped stages are grey — `MapOutputTracker` still holds their output
+8. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — how to see *why* a plan looks the way it does, rather than guessing: `spark.sql.planChangeLog.level` plus `.rules` / `.batches` logs the plan diff after a single named rule, and `spark.sql.planChangeValidation` checks after every rule that the plan is still resolved, schema-stable and free of dangling references. Both are off by default and neither is in the UI
 
 !!! warning "The UI is derived from an event stream that drops events under load — by design"
     Nothing in the UI is measured directly. The scheduler emits listener events onto a **bounded** asynchronous queue; when it fills, events are discarded so the scheduler is never blocked. The only evidence is one log line — *"Dropping event from queue … one of the listeners is too slow"* — and a counter.
@@ -1084,9 +1093,21 @@ You are ready to leave this level when you can:
 2. **SDG Ch 4** — Structured API internals; how plans are built
 3. **Rioux Ch 11** — the SQL tab of the Spark UI shows the physical plan; reading it after Ch 11's walkthrough makes both stick
 4. **Spark-docs → SQL Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `EXPLAIN EXTENDED`, join hints, AQE config; pair with the [EXPLAIN syntax reference](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html) for what each mode prints
-5. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — the **first** Catalyst phase (parse → **analyze** → optimize → plan): the fixed-point `RuleExecutor` loop and its ~60 resolution rules, how a column name becomes an `AttributeReference` (`ResolveReferences`, the hardest rule), catalog/function lookup, ANSI vs legacy type coercion, `CheckAnalysis` — the pass that produces every `AnalysisException` you see — and the new **single-pass Resolver** (the 4.0/4.1 rewrite of the analyzer, still off by default in 4.2.0)
+5. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the generated table of every `spark.sql.*` knob with its default and the version it landed in; the optimizer alone reads ~105 of them, so this is the reference to search rather than memorise
+6. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — the **first** Catalyst phase (parse → **analyze** → optimize → plan): the fixed-point `RuleExecutor` loop and its ~60 resolution rules, how a column name becomes an `AttributeReference` (`ResolveReferences`, the hardest rule), catalog/function lookup, ANSI vs legacy type coercion, `CheckAnalysis` — the pass that produces every `AnalysisException` you see — and the new **single-pass Resolver** (the 4.0/4.1 rewrite of the analyzer, still off by default in 4.2.0)
+7. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the **third** phase, and the one this topic is named after: the ~28 batches and the ~50-rule operator set run twice around `Infer Filters`, what predicate pushdown and column pruning actually do to the tree, where constant folding and constraint inference come from, why `Finish Analysis` runs correctness rules disguised as optimizations, and the `spark.sql.optimizer.excludedRules` / `planChangeLog` machinery for watching a single rule work on your own query
 
-**Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan. From the analyze phase: name which rule turns an `UnresolvedAttribute` into a bound column, explain why a self-join needs `DeduplicateRelations` before references can resolve, and say what distinguishes an `AnalysisException` (thrown by `CheckAnalysis` before execution) from a runtime error.
+**Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan. From the analyze phase: name which rule turns an `UnresolvedAttribute` into a bound column, explain why a self-join needs `DeduplicateRelations` before references can resolve, and say what distinguishes an `AnalysisException` (thrown by `CheckAnalysis` before execution) from a runtime error. From the optimize phase: set `spark.sql.planChangeLog.level=INFO` with `spark.sql.planChangeLog.rules` pinned to one rule and read the before/after plan diff it prints for your own query; then exclude that rule with `spark.sql.optimizer.excludedRules` and show the difference in the optimized plan.
+
+!!! info "\"Rule-based\" is not a metaphor — the optimizer is a list you can read"
+
+    Catalyst's optimizer is ~28 named batches of `LogicalPlan => LogicalPlan` rules, and the list
+    is source you can open. Two consequences worth internalising early: a rule can be turned off by
+    name (`spark.sql.optimizer.excludedRules`), and every rule's effect on your plan can be printed
+    (`spark.sql.planChangeLog.rules`). "The optimizer did something odd" is a debuggable statement,
+    not a guess. The [optimizer sweep](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)
+    maps the batch list; ~16 rules are on a non-excludable list because they are correctness
+    rewrites (set operations, subqueries, float normalization) rather than optimizations.
 
 !!! info "Four phases, and analysis is where your errors come from"
 
@@ -1126,6 +1147,8 @@ You are ready to leave this level when you can:
 2. **SDG Ch 8** — the most thorough treatment of join mechanics and join hints
 3. **Spark-docs → Join Hints** ([spark.apache.org/docs/latest/sql-performance-tuning.html#join-strategy-hints-for-sql-queries](https://spark.apache.org/docs/latest/sql-performance-tuning.html#join-strategy-hints-for-sql-queries))
 4. **ADEB Module 3** — skew join optimisation; data skew patterns
+5. **Spark-docs → SQL Hints** ([sql-ref-syntax-qry-select-hints.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-hints.html)) — the full hint grammar, including that a join hint is *attached to a join*, not to a table — which is why a hint on the wrong relation silently does nothing
+6. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the logical half of join tuning, which happens before any strategy is chosen: `ReorderJoin` and `EliminateOuterJoin`, `CostBasedJoinReorder`'s dynamic program and the four preconditions that must *all* hold before it runs, star-schema detection, and `EliminateResolvedHint` — the rule that moves your hint onto the `Join` node and, in doing so, freezes the join order around it
 
 **Milestone:** You can look at a query's physical plan, identify the join strategy, force a broadcast join on a table below the auto-broadcast threshold, and handle a skewed join key with salting.
 
@@ -1451,6 +1474,84 @@ You are ready to leave this level when you can:
 
 ---
 
+
+### ⬜ A17 — Table and Column Statistics and the Cost-Based Optimizer
+
+> *Discovered from the [sql/catalyst — optimizer source sweep](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md) (2026-07-25): the whole `statsEstimation/` package plus `CostBasedJoinReorder` back no existing topic. A1 names "cost-based optimisation" in one clause and never returns to it.*
+
+**What it is:** How Spark estimates the size and row count of every node in a logical plan, and what the cost-based optimizer does with those estimates. Two estimators exist and only one config chooses between them: with `spark.sql.cbo.enabled` **false** (the default) every plan is estimated by `sizeInBytes` alone; with it true, per-operator estimators use column statistics — distinct counts, min/max, null counts, optional equi-height histograms — to produce real row counts. Where those statistics come from (`ANALYZE TABLE … COMPUTE STATISTICS FOR COLUMNS`, data-source metadata, or AQE's runtime numbers), how to inspect them (`DESCRIBE EXTENDED`, `EXPLAIN COST`), and how the CBO consumes them in `CostBasedJoinReorder`'s dynamic program.
+
+**Why you need it:** Every cost-based decision downstream — join reordering, broadcast eligibility, runtime-filter thresholds — is only as good as the statistics behind it, and the failure mode is silence. Without `ANALYZE TABLE` the estimators fall back node by node to multiplying file sizes, so a filter that removes 99% of rows is invisible to the planner and turning the CBO on changes nothing.
+
+**Learn it with:**
+
+1. **No book in this path covers the CBO's statistics model.** LS2e Ch 7 and SDG Ch 19 cover tuning but stop at broadcast thresholds and caching; the estimation model postdates both. Read SDG Ch 4 / LS2e Ch 3 first only for where the optimizer sits in Catalyst.
+2. **Spark-docs → SQL Performance Tuning → "Leveraging Statistics"** ([sql-performance-tuning.html#leveraging-statistics](https://spark.apache.org/docs/latest/sql-performance-tuning.html#leveraging-statistics)) — the three sources of statistics (data source, catalog, runtime) and the three ways to inspect them; the shortest correct summary of this topic anywhere
+3. **Spark-docs → `ANALYZE TABLE`** ([sql-ref-syntax-aux-analyze-table.html](https://spark.apache.org/docs/latest/sql-ref-syntax-aux-analyze-table.html)) — the syntax that actually populates catalog statistics, including `FOR COLUMNS` and `FOR ALL COLUMNS`
+4. **Spark-docs → `EXPLAIN`** ([sql-ref-syntax-qry-explain.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html)) — `EXPLAIN COST` / `df.explain("cost")` prints the estimate attached to each plan node, which is how you tell a real row count from a fallback
+5. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the `spark.sql.cbo.*` and `spark.sql.statistics.*` families in one generated table
+6. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the "Statistics" and "Cost-based join reorder" concepts: the `cboEnabled` fork in `LogicalPlanStats.stats`, `BasicStatsPlanVisitor`'s per-operator dispatch and its silent `.getOrElse(fallback)`, `FilterEstimation`'s selectivity walk (and its 1/3 fallback for predicates it cannot reason about), and the four independent preconditions a join chain must satisfy before it is reordered at all
+
+**Milestone:** You can run `ANALYZE TABLE t COMPUTE STATISTICS FOR ALL COLUMNS`, confirm with `DESCRIBE EXTENDED` that column stats landed, and show with `EXPLAIN COST` that the same query's estimated row count changes when `spark.sql.cbo.enabled` is flipped. You can state which estimator runs for a given config, name the four conditions that must *all* hold before `CostBasedJoinReorder` reorders a join chain, and explain why adding a `BROADCAST` hint disables cost-based reordering for the whole chain.
+
+!!! warning "Enabling the CBO without statistics is a no-op, and nothing says so"
+
+    `spark.sql.cbo.enabled` and `spark.sql.cbo.joinReorder.enabled` both default to `false`. Setting
+    them true on tables that were never analysed changes almost nothing: each estimator returns
+    `None` and falls back to the size-only visitor node by node, and `CostBasedJoinReorder` refuses
+    to run at all because it requires a defined `rowCount` on *every* item in the join chain. There
+    is no warning — the plan simply comes out the same.
+
+---
+
+### ⬜ A18 — Runtime Filtering: Dynamic Partition Pruning and Bloom Filters
+
+> *Discovered from the [sql/catalyst — optimizer source sweep](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md) (2026-07-25): `InjectRuntimeFilter` and the `PartitionPruning` batch back no existing topic — A2 is AQE and A4 is skew, and neither of these rules is either.*
+
+**What it is:** Two optimizer rules that plant a filter on the *large* side of a join, computed at runtime from the *small* side. **Dynamic partition pruning** (Spark 3.0) inserts a `DynamicPruningSubquery` on a partition column so the fact-table scan lists only the partitions the dimension side actually produces — the star-schema case. **Runtime bloom filters** (Spark 3.3, on by default) handle the non-partitioned case: a bloom filter built from the small side's join keys is pushed as a `Filter` onto the large side's scan. Both are planned in `SparkOptimizer`, both are governed by size thresholds, and both check whether the other has already fired on the same key.
+
+**Why you need it:** These rules are the difference between scanning a whole fact table and scanning the slice that survives the dimension filter — often an order of magnitude. They are also the clearest case in the optimizer of a feature that *silently does nothing*: miss any one precondition (creation side over 10 MB, application side under 10 GB, no shuffle below the join, a non-trivial join-key expression, more than 10 filters already injected) and the rule returns the plan untouched with no diagnostic. Knowing the preconditions is the only way to tell "it didn't help" from "it never ran".
+
+**Learn it with:**
+
+1. **LS2e Ch 12** — the Spark 3.0 chapter; dynamic partition pruning is one of its headline items. Bloom-filter runtime filtering (3.3) postdates the book entirely — treat the docs and the source as primary for that half.
+2. **Spark-docs → SQL Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — read the join-strategy and AQE sections for the surrounding machinery; note that runtime filtering has **no dedicated docs page**, which is itself worth knowing
+3. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the `spark.sql.optimizer.dynamicPartitionPruning.*` and `spark.sql.optimizer.runtime.bloomFilter.*` families with their defaults; the closest thing to authoritative documentation these rules have
+4. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the "Runtime filtering" concept: every precondition in `tryInjectRuntimeFilter`, the `hasDynamicPruningSubquery` / `hasBloomFilter` guards that stop the two rules stacking, the `reuseBroadcastOnly` vs `fallbackFilterRatio` decision in DPP, and the cleanup batch that strips pruning filters which could not reach a scan
+
+**Milestone:** You can read an `EXPLAIN` plan and point at the `DynamicPruningSubquery` or `BloomFilterMightContain` node that proves a runtime filter was planted; explain why DPP requires a *partitioned* table while the bloom filter does not; and, given a join where neither fired, name which threshold or precondition blocked it.
+
+---
+
+### ⬜ A19 — Correlated Subqueries and Decorrelation
+
+> *Discovered from the [sql/catalyst — optimizer source sweep](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md) (2026-07-25): four optimizer rules plus the 1117-line `DecorrelateInnerQuery` and sixteen configs back no existing topic. B8 (Spark SQL) teaches the syntax and stops there.*
+
+**What it is:** Spark has no physical operator for a correlated subquery — every one is rewritten into a join before planning. `EXISTS` / `NOT EXISTS` become `LEFT SEMI` / `LEFT ANTI` joins; `IN` / `NOT IN` the same with an added key equality; a correlated scalar subquery becomes a `LEFT OUTER` join. Non-equality correlation (`WHERE outer.c > inner.a`) cannot be turned into a group-by key, so decorrelation introduces a **`DomainJoin`** — the distinct set of outer values joined into the subquery. And because a left outer join produces `NULL` where a `COUNT` must produce `0`, the rewrite carries explicit **COUNT-bug** compensation, with legacy flags that restore the old wrong answer.
+
+**Why you need it:** Correlated subqueries are the SQL feature most likely to fail at analysis with an unsupported-correlation error, to plan into an accidental cartesian product, or — under a legacy flag — to return a *wrong answer* rather than an error. The rewrite explains all three, and it is the only way to predict what a subquery will cost, since the subquery you wrote is not the plan that runs.
+
+**Learn it with:**
+
+1. **No book in this path covers decorrelation.** SDG Ch 8 and Rioux Ch 7 teach subquery *syntax*; none of them describe the rewrite, `DomainJoin`, or the COUNT bug. Treat the SQL reference and the source as primary.
+2. **Spark-docs → Subqueries** ([sql-ref-syntax-qry-select-subqueries.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-subqueries.html)) — the supported forms and, importantly, the documented restrictions on where a correlated subquery may appear
+3. **Spark-docs → LATERAL Subquery** ([sql-ref-syntax-qry-select-lateral-subquery.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-lateral-subquery.html)) — `LATERAL` is the explicit form of what decorrelation does implicitly, and reading it makes the rewrite obvious
+4. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the `spark.sql.optimizer.decorrelate*` family, including the three `legacy…IncorrectCountHandling` flags
+5. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the "Correlated subqueries" concept: `PullupCorrelatedPredicates` → `DecorrelateInnerQuery` → `RewritePredicateSubquery` / `RewriteCorrelatedScalarSubquery`, where `DomainJoin` is introduced and why, and the `mayHaveCountBug` detection that decides whether compensation is inserted
+
+**Milestone:** You can run `EXPLAIN` on an `EXISTS` subquery and a correlated scalar subquery and name the join type each became; explain what `DomainJoin` compensates for and why an equality-correlated subquery does not need one; and demonstrate the COUNT bug by flipping `spark.sql.optimizer.decorrelateSubqueryLegacyIncorrectCountHandling.enabled` and showing the result change from `0` to `NULL`.
+
+!!! warning "Three legacy flags in this family restore a known-wrong result"
+
+    `spark.sql.optimizer.decorrelateSubqueryLegacyIncorrectCountHandling.enabled`,
+    `…decorrelateExistsSubqueryLegacyIncorrectCountHandling.enabled` and
+    `…decorrelateSubqueryPreventConstantHoldingForCountBug.enabled` exist only for compatibility
+    with plans captured before Spark 3.5/4.0. Their defaults give the SQL-standard answer. Setting
+    the first two to `true` makes a correlated `COUNT` subquery return `NULL` instead of `0` for
+    non-matching outer rows — silent incorrectness, not a performance trade.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -1479,6 +1580,7 @@ You are ready to leave this level when you can:
 8. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the memory system end to end — pool sizing, the execution/storage asymmetry, the acquire/spill loop, Tungsten pages, and the leak detection that is suppressed exactly when leaks are likeliest
 9. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the block manager's read and write paths, the lock protocol underneath them, and how a block that is reported but unreadable retracts itself from the driver's registry
 10. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the messaging substrate every driver↔executor exchange rides: `RpcEnv`/`Dispatcher`/`Inbox` and the shared-vs-dedicated `MessageLoop` threading, local-shortcut vs `Outbox` remote routing, and the `RpcTimeout` fallback chain that explains why a stalled heartbeat surfaces as a `spark.network.timeout` error
+11. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the serialisation boundary from the *plan* side: `EliminateSerialization` removes the deserialize→serialize round trip between two typed `Dataset` operations, `ObjectSerializerPruning` narrows the encoder, and `ReassignLambdaVariableID` is what makes two structurally identical plans canonicalize equal so exchange/subquery reuse can fire. Note that none of this applies to PySpark — a Python UDF is extracted into its own eval node instead
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 

@@ -47,6 +47,7 @@ nav = [
             { "core — RPC & resources" = "reference/spark-source-map/sweeps/core-rpc-resources.md" },
             { "core — API bridge" = "reference/spark-source-map/sweeps/core-api-bridge.md" },
             { "sql/catalyst — Analysis" = "reference/spark-source-map/sweeps/sql-catalyst-analysis.md" },
+            { "sql/catalyst — Optimizer" = "reference/spark-source-map/sweeps/sql-catalyst-optimizer.md" },
         ]},
     ]},
     { "Spark Book" = [
