@@ -74,6 +74,8 @@ concepts:
     topics: [I1]
   - name: Rule-level observability — plan-change logging, validation, idempotence
     topics: [A1, I7]
+  - name: RewriteWithExpression — common subexpression elimination in the logical plan
+    topics: [A1, E1]
 ---
 
 # sql/catalyst — optimizer
@@ -805,6 +807,37 @@ Three mechanisms:
 
 ---
 
+## RewriteWithExpression — common subexpression elimination in the logical plan
+
+**What it is:** the rule that makes `With` expressions executable. Several `RuntimeReplaceable` expressions expand into a shape that would evaluate one child **twice** — `nvl2`, `between`, null-safe equality — so instead they build a `With(child, defs)` naming the shared subexpression once and referring to it through `CommonExpressionRef`. This rule then either pre-evaluates each definition in an injected `Project` below the operator, or inlines it when it is cheap enough not to bother.
+
+**Code path:** `apply` → `transformUpWithSubqueriesAndPruning(containsPattern(WITH_EXPRESSION))` → (aggregate? split into `Aggregate` + `Project` first) → `applyInternal` → `rewriteWithExprAndInputPlans` → per definition: `CollapseProject.isCheap`? inline : add an `Alias` to a new child `Project` → project away the extra columns to keep the schema unchanged
+
+**Anchor files:**
+
+- [RewriteWithExpression.scala:41](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/RewriteWithExpression.scala#L41) — the rule; its scaladoc notes that `With` is currently used only by a few `RuntimeReplaceable` expressions and that aggregate/window support would be needed to widen it
+- [RewriteWithExpression.scala:47](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/RewriteWithExpression.scala#L47) — the `PhysicalAggregation` case: a `With` inside an aggregate is split into the aggregate plus a `Project` above it, because injecting the pre-evaluation `Project` directly would produce an **invalid `Aggregate`**
+- [RewriteWithExpression.scala:85](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/RewriteWithExpression.scala#L85) — the injected `Project`, carrying the original output plus one alias per common expression
+- [RewriteWithExpression.scala:95](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/RewriteWithExpression.scala#L95) — the compensating `Project` that strips the extra columns, so the rule is schema-preserving
+- [RewriteWithExpression.scala:124](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/RewriteWithExpression.scala#L124) — the inline decision: `CollapseProject.isCheap(child)` **or** the id is never referenced
+- [RewriteWithExpression.scala:137](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/RewriteWithExpression.scala#L137) — a standing `TODO`: reference counts are not computed, so a common expression referenced *once* is still pre-evaluated in a `Project` rather than inlined
+- [RewriteWithExpression.scala:157](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/RewriteWithExpression.scala#L157) — the fallback: when a definition cannot be placed in a `Project`, it is force-inlined, re-introducing the double evaluation the mechanism exists to avoid
+- [With.scala:29](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/With.scala#L29) — `case class With(child, defs)`, the expression this rule consumes
+
+!!! info "Why `CollapseProject` is advised to run after it"
+
+    The rule's own scaladoc says so: it introduces new `Project` operators, one per operator that contained a `With`, and they are meant to be merged away afterwards. A plan inspected between the two rules — with `spark.sql.planChangeLog.level` turned up — shows more projections than the final plan has, which is expected rather than a missed optimization.
+
+!!! warning "The elimination is not guaranteed, and both escape hatches are silent"
+
+    Two paths put the duplicated evaluation back: a definition that cannot be hoisted into a `Project` is force-inlined at L157, and the missing reference-count logic at L137 means the rule cannot distinguish "referenced once, inline it" from "referenced many times, hoist it". Neither logs. So `nvl2(expensive_udf(x), a, b)` may or may not call the UDF twice depending on plan shape, with nothing in `EXPLAIN` naming the reason.
+
+**Configs:** none directly; observable through `spark.sql.planChangeLog.level` and `spark.sql.optimizer.excludedRules`
+
+**Maps to topics:** A1, E1
+
+---
+
 ## Breadth check — all 105 slice configs
 
 The slice is every `sql/catalyst` config whose key matches the optimizer's namespaces
@@ -897,3 +930,12 @@ with the reader's location noted.
     which 105 fall in this group's namespaces. The remainder belong to the other five catalyst
     groups (types/parser, expressions, analysis, framework) and to `sql/core` features whose
     configs are declared centrally in `SQLConf.scala`.
+
+---
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-07-25 | 4.2.0 | Initial sweep, the third Catalyst phase. 25 concepts; all 105 slice configs attributed in the breadth table above; three gaps proposed as topics — A17 (statistics and the CBO), A18 (runtime filtering), A19 (correlated subqueries and decorrelation). |
+| 2026-07-25 | 4.2.0 | Re-sweep later the same day, running both breadth checks independently. **Both came back essentially clean, which is the finding.** Config breadth: the 105-config table is genuinely exhaustive — an independent re-derivation of the slice appeared to show 21 uncited keys, but every one is covered by a range row using family shorthand (`74–82 spark.sql.optimizer.runtime* (9 keys)`), so the earlier claim holds and the discrepancy was in the check, not the page. Package breadth: 45 of 46 files cited. One concept added for the single gap — **`RewriteWithExpression`**, the rule behind `With` / `CommonExpressionRef`, i.e. common subexpression elimination at the logical-expression level, with two silent paths that put the duplicated evaluation back. This group is the best-covered in the map and needs no further sweeping at 4.2.0. |

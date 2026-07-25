@@ -351,6 +351,7 @@ flowchart LR
     S10 --> S10c22["Hints in the optimizer"]
     S10 --> S10c23["Complex-type expression optimizations"]
     S10 --> S10c24["Rule-level observability — plan-change logging, validation, idempotence"]
+    S10 --> S10c25["RewriteWithExpression — common subexpression elimination in the logical plan"]
 ```
 
 ## Topics discovered from the source
