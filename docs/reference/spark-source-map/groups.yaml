@@ -91,11 +91,17 @@ _meta:
     internal/ holds config/, io/ and plugin/; only config/ was ever swept. The
     token is now internal/config/, which documents the intent but does NOT make
     the two orphans visible to --coverage — that blind spot is unfixed, and any
-    future carving pass should walk nested packages by hand. Recommended
-    homes when it is made: internal/io/ -> core execution-engine, which already
-    sweeps OutputCommitCoordinator and would then hold both halves of the commit
-    story (topic E17); internal/plugin/ -> core monitoring, whose sweep already
-    covers the metrics sources plugins register and the two deploy-side plugins.
+    future carving pass should walk nested packages by hand.
+
+    Carving resolved the same day: internal/io/ -> core execution-engine, which
+    already sweeps OutputCommitCoordinator and now holds both halves of the
+    commit story (the authority that decides who may commit, and the protocol
+    that performs it) behind topic E17; internal/plugin/ -> core monitoring,
+    whose sweep already covers the metric sources plugins register and the two
+    deploy-side plugins. Both packages are now swept on those pages. Because a
+    class token resolves to its containing package, `internal` is claimed by
+    three groups — config-security (config/), execution-engine (io/) and
+    monitoring (plugin/) — split by theme, so all three carry shared_scope.
 
     Scope extension (2026-07-25, from the core shuffle-memory re-sweep): MapStatus and
     HighlyCompressedMapStatus named explicitly in shuffle-memory's scope. MapStatus.scala
@@ -131,8 +137,8 @@ core:
     name: execution-engine
     title: "Execution engine"
     topics: [B1, E1]
-    shared_scope: true   # scheduler/ shared with shuffle-memory, which owns MapStatus
-    scope: "scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext"
+    shared_scope: true   # scheduler/ shared with shuffle-memory (MapStatus); internal/ with config-security and monitoring
+    scope: "scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext, FileCommitProtocol and SparkHadoopWriter (internal/io/ — the committer half of output commit; OutputCommitCoordinator, the authority half, is already here)"
     description: ""
   - number: 3
     name: shuffle-memory
@@ -161,7 +167,8 @@ core:
     title: "Monitoring, UI & history"
     topics: [E3]
     modules: [common/utils, common/utils-java]   # Logging / SparkLoggerFactory live there
-    scope: "ui/ (SparkUI, WebUI pages), status/ (AppStatusStore, AppStatusListener — the store every UI page reads), metrics/ (MetricsSystem, sinks and sources), deploy/history/ (HistoryServer, FsHistoryProvider, event-log replay), Logging, SparkLoggerFactory, CallerContext (structured logging, MDC and the Hadoop caller context — the third observability channel)"
+    shared_scope: true   # internal/ shared with config-security (config/) and execution-engine (io/)
+    scope: "ui/ (SparkUI, WebUI pages), status/ (AppStatusStore, AppStatusListener — the store every UI page reads), metrics/ (MetricsSystem, sinks and sources), deploy/history/ (HistoryServer, FsHistoryProvider, event-log replay), Logging, SparkLoggerFactory, CallerContext (structured logging, MDC and the Hadoop caller context — the third observability channel), PluginContainer (internal/plugin/ — the spark.plugins framework whose plugins register metric sources here)"
     description: "The event-listener pipeline behind every number in the UI, the metrics system, and the History Server that replays finished applications from event logs"
   - number: 7
     name: config-security
@@ -170,8 +177,10 @@ core:
     modules: [common/utils]   # ConfigBuilder/ConfigEntry live in common/utils
     # Narrowed from a bare `internal/` on 2026-07-25: that token also claimed
     # internal/io/ (the Hadoop commit protocol) and internal/plugin/ (the
-    # spark.plugins framework), neither of which is config or security. See
-    # _meta.note; both are now unclaimed and awaiting a carving decision.
+    # spark.plugins framework), neither of which is config or security. Those
+    # went to execution-engine and monitoring respectively; see _meta.note.
+    # All three scopes tokenize `internal`, hence shared_scope here too.
+    shared_scope: true
     scope: "internal/config/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader, SparkConfigProvider, and the per-area config objects), security/ (SecurityManager, CryptoStreamUtils, GroupMappingServiceProvider), deploy/security/ (HadoopDelegationTokenManager and the shipped token providers)"
     description: "How every spark.* config is declared, typed, defaulted and read — the machinery behind the config catalog — plus authentication, ACLs and encryption"
   - number: 8

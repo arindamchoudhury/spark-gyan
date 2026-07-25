@@ -101,6 +101,8 @@ concepts:
     topics: [E3, E1]
   - name: streaming-id-aware-scheduler-logging
     topics: [E3, A8]
+  - name: the-hadoop-commit-protocol
+    topics: [E17, B4]
 ---
 
 The scheduling core: how an action becomes a job, a job becomes stages, a stage becomes tasks, and what happens when any of it fails. Swept in two halves — the driver-side job/stage layer (`DAGScheduler`) and the task-scheduling/executor layer (`TaskSchedulerImpl`, `TaskSetManager`, `Executor`).
@@ -807,10 +809,42 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
 ---
 
+## The Hadoop commit protocol
+
+**What it is:** the other half of [output commit coordination](#output-commit-coordination). The coordinator decides *who* may commit; `FileCommitProtocol` is *how* the commit happens. Tasks write to a staging directory, return a `TaskCommitMessage`, and the driver's `commitJob` promotes the staged output into the destination. The default implementation, `HadoopMapReduceCommitProtocol`, delegates to a Hadoop `OutputCommitter` and adds Spark's own handling for absolute-path outputs and dynamic partition overwrite.
+
+**Code path:** `FileCommitProtocol.instantiate(className, jobId, outputPath, dynamicPartitionOverwrite)` → `setupJob` → per task `setupTask` → `newTaskTempFile` (into `stagingDir`) → `commitTask` → `TaskCommitMessage` → driver `commitJob` → `committer.commitJob` + rename staged files → destination
+
+**Anchor files:**
+
+- [FileCommitProtocol.scala:51](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/FileCommitProtocol.scala#L51) — the abstract contract: `setupJob`/`commitJob`/`abortJob` on the driver, `setupTask`/`commitTask`/`abortTask` on the executor
+- [FileCommitProtocol.scala:210](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/FileCommitProtocol.scala#L210) — `instantiate`: reflective, trying the 3-arg constructor and falling back to 2-arg
+- [FileCommitProtocol.scala:229](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/FileCommitProtocol.scala#L229) — the fallback `require`: a custom committer without the 3-arg constructor **fails the job** when dynamic partition overwrite is on, rather than silently ignoring it
+- [HadoopMapReduceCommitProtocol.scala:108](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L108) — `stagingDir`, derived from the output path and job id
+- [HadoopMapReduceCommitProtocol.scala:127](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L127) — dynamic overwrite requires a partitioned write; an unpartitioned one raises
+- [HadoopMapReduceCommitProtocol.scala:183](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L183) — `commitJob`: the Hadoop committer first, then Spark's own absolute-path renames
+- [HadoopMapReduceCommitProtocol.scala:201](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L201) — a failed `fs.rename` throws mid-loop, **after** earlier renames have already landed
+- [HadoopMapReduceCommitProtocol.scala:207](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopMapReduceCommitProtocol.scala#L207) — dynamic overwrite deletes each destination partition directory *then* renames the staged one in
+
+!!! warning "`commitJob` is not atomic, and the window is proportional to output size"
+
+    The driver renames staged files one at a time. A failure partway through — or a driver killed during commit — leaves the destination with some new files and some old, and there is no rollback. Under dynamic partition overwrite it is worse: each partition is **deleted before** its replacement is renamed in, so a crash in that loop can leave a partition that exists in neither form. This is the structural reason the cloud committers exist; on a real filesystem the rename is cheap and the window is small, on an object store it is neither.
+
+!!! info "Where the two halves meet"
+
+    `commitTask` here is what `OutputCommitCoordinator.canCommit` gates. The coordinator guarantees exactly one attempt reaches this code for a given partition; this protocol guarantees that what that attempt wrote becomes visible atomically *per file*. Neither guarantees job-level atomicity — see the warning above. Both are traced on this page because topic **E17** needs both.
+
+**Configs:** `spark.sql.sources.commitProtocolClass`, `spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version`, `spark.sql.sources.partitionOverwriteMode`
+
+**Maps to topics:** E17, B4
+
+---
+
 ## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
 | 2026-07-19 | 4.2.0 | Initial sweep, in two halves. 27 concepts. Four discovery gaps proposed as topics: A13 (stage retry), A14 (determinism and rollback), E12 (executor exclusion), E13 (barrier execution). Push-based shuffle traced only at its driver-side boundaries, since it belongs to the `shuffle-memory` group. |
 | 2026-07-19 | 4.2.0 | Correction: this page originally read the absence of `spark.shuffle.push.*` from this group's slice as a `groups.yaml` carving gap. It is not — `shuffle-memory`'s scope names push-based shuffle and its slice holds all thirteen keys, and the [shuffle & memory sweep](core-shuffle-memory.md) covers the subsystem in full. |
+| 2026-07-25 | 4.2.0 | Carving fix: `internal/io/` moved into this group's scope and swept. The **Hadoop commit protocol** — `FileCommitProtocol` and `HadoopMapReduceCommitProtocol` — was claimed by `config-security`'s over-broad `internal/` token and covered by no sweep at all. It belongs here: `OutputCommitCoordinator` (already on this page) decides *who* may commit, and this is *how* the commit happens, so topic **E17** now has both halves in one place. The finding worth carrying: `commitJob` renames staged files one at a time with no rollback, and under dynamic partition overwrite each destination partition is deleted *before* its replacement is renamed in. |
 | 2026-07-25 | 4.2.0 | Re-sweep at the same Spark version, driven by the config-slice breadth check rather than a release. Five concepts added from keys and files the first pass never tied to anything: output commit coordination (proposed as **E17** — the first pass mentioned the coordinator in one clause of the speculation note and never traced it), unschedulable TaskSets and the abort timer, cluster-manager selection and local mode, `TaskInfo` accumulable retention, and streaming-aware scheduler logging. Correction: the stage-creation note cited `spark.resources.resourceProfileMergeConflicts`, which is not a Spark config key — the real one is `spark.scheduler.resource.profileMergeConflicts` (`DAGScheduler.scala:238`). |

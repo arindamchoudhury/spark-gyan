@@ -54,6 +54,8 @@ concepts:
     topics: [E3, E2]
   - name: RDDOperationGraph — the DAG visualization renderer
     topics: [E3, I7]
+  - name: The SparkPlugin framework
+    topics: [E3, E2]
 ---
 
 This page sweeps the **monitoring** group of Spark core at tag `v4.2.0`: the live status/UI pipeline, the metrics system, the History Server, and the event-log/listener-bus plumbing that feeds them. Every one of the 118 configs in the slice is attributed to a concept below. Line numbers were verified against the local checkout.
@@ -620,10 +622,41 @@ Three smaller knobs round it out. `spark.log.level` overrides all user log setti
 
 ---
 
+## The SparkPlugin framework
+
+**What it is:** the extension point behind `spark.plugins`, and the supported way to add a metric source, a background thread or an init hook on both the driver and every executor. `PluginContainer` loads each named `SparkPlugin`, asks it for a driver component and an executor component, and gives each one a `PluginContextImpl` carrying the `RpcEnv`, the `MetricsSystem`, the conf, the executor id and the discovered resources. It belongs on this page because registering metric sources is what plugins mostly do — and because the two deploy-side plugins the [submit & standalone sweep](core-submit-standalone.md) covers are instances of it.
+
+**Code path:** `SparkContext` / `SparkEnv` → `PluginContainer(ctx, resources)` → `Utils.loadExtensions(classOf[SparkPlugin], conf.get(PLUGINS).distinct, conf)` → `DriverPluginContainer` | `ExecutorPluginContainer` → per plugin `init(...)` → `registerMetrics` → `ctx.registerMetrics()`
+
+**Anchor files:**
+
+- [PluginContainer.scala:206](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/plugin/PluginContainer.scala#L206) — the factory; `conf.get(PLUGINS).distinct` means a duplicated class name loads once, and an empty list yields `None` so the container never exists
+- [PluginContainer.scala:53](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/plugin/PluginContainer.scala#L53) — `driverPlugin.init(sc, ctx)` returns a `Map[String, String]` of **extra conf**
+- [PluginContainer.scala:56](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/plugin/PluginContainer.scala#L56) — that map is written back into the `SparkConf` under `spark.plugins.internal.conf.<pluginClass>.<key>`
+- [PluginContainer.scala:111](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/plugin/PluginContainer.scala#L111) — the executor side reads that prefix back and strips it, so **the driver component configures the executor component** — the one channel a plugin has for propagating state at startup
+- [PluginContainer.scala:68](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/plugin/PluginContainer.scala#L68) — a `PluginEndpoint` is registered on the driver's `RpcEnv` **only if some plugin has a driver component**, which is how an executor plugin sends messages back
+- [PluginContainer.scala:72](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/plugin/PluginContainer.scala#L72) — `registerMetrics(appId)` is a separate phase from `init`, because the metrics system needs the application id
+- [PluginContainer.scala:191](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/plugin/PluginContainer.scala#L191) — `EXTRA_CONF_PREFIX`
+
+!!! info "Metric registration is two-phase, and that ordering is visible"
+
+    `init` runs at container construction; `registerMetrics` runs later, once the app id exists. A plugin that registers a source during `init` gets a source with no application id in its namespace. This is also why plugin metrics appear slightly after the built-in ones in a sink's first report.
+
+!!! warning "A plugin's `init` failure is not contained"
+
+    `init` is called inline while the container is being constructed, which happens during `SparkContext` / `SparkEnv` startup. A plugin that throws there takes the driver or the executor down with it — there is no per-plugin `try`. Combined with the fact that `spark.plugins` is read on both sides, a plugin jar missing from the executor classpath fails every executor at launch rather than degrading.
+
+**Configs:** `spark.plugins`, `spark.plugins.defaultList`, `spark.plugins.internal.conf.*` (written by the framework, not by users)
+
+**Maps to topics:** E3, E2
+
+---
+
 ## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
+| 2026-07-25 | 4.2.0 | Carving fix: `internal/plugin/` moved into this group's scope and swept. The **`SparkPlugin` framework** was claimed by `config-security`'s over-broad `internal/` token and covered by no sweep; it belongs here because registering metric sources is what plugins mostly do, and because the `DriverTimeoutPlugin` / `RedirectConsolePlugin` pair covered by the [submit & standalone sweep](core-submit-standalone.md) are instances of it. Findings: the driver component configures the executor component through a conf round-trip under `spark.plugins.internal.conf.`, metric registration is a separate phase from `init` because it needs the app id, and a plugin throwing in `init` takes the driver or executor down with it. |
 | 2026-07-25 | 4.2.0 | Re-sweep. The config slice was already exhaustively attributed by the 07-22 pass, so this run was driven purely by **package breadth**: `status/` was 45 files with 8 cited and `ui/` 40 with 12. Four concepts added — the **REST API v1 surface** (`/api/v1`, the thing to build alerting on, sharing the UI's port and its by-default-absent authentication, including live thread-dump endpoints), **KVStore serialization** (`spark.history.store.serializer` still defaulting to the JSON+GZip path the same source calls slow, while the live disk store forces protobuf), **`JWSFilter` and `CspNonce`** — which is the documented answer to the open REST submission endpoint the [submit & standalone sweep](core-submit-standalone.md) flagged — and **`RDDOperationGraph`**, the renderer consuming the scopes the [rdd-layer sweep](core-rdd-layer.md) traced. Also repaired a real defect in this file: 227 mojibake sequences from a UTF-8/cp1252 double-encoding in the 07-22 pass — every `→`, `—`, `…` and `≥` had been written as its three-character misdecoding, rendering as garbage in the concept names, headings and prose. `sql-catalyst-analysis.md` had 135 of the same and was repaired with it. |
 | 2026-07-25 | 4.2.0 | Added **structured logging, MDC and the caller context** — the `spark.log.*` family, which the new `check_drift.py --sweeps` config check found cited by no `core` sweep at all. It was a scope gap as much as a sweep gap: the mechanism lives in `common/utils` (`Logging`, `SparkLoggerFactory`) and no core group's scope reached it. `monitoring`'s scope and `modules:` now name it, since structured logging is the third observability channel alongside the event log and the metrics system. |
 | 2026-07-22 | 4.2.0 | Initial sweep. 19 concepts across the listener bus, the event log, the status store, the UI, the metrics system and the History Server. |
