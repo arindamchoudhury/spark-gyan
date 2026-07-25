@@ -130,6 +130,15 @@ def collect_proposals(swept: list[dict]) -> list[dict]:
 
 LEVEL_HEADING_RE = re.compile(r"^## (Beginner|Intermediate|Advanced|Expert)\s*$", re.MULTILINE)
 SUGGESTED_RE = re.compile(r"^## Suggested Study Sequence", re.MULTILINE)
+CODE_RE = re.compile(r"([BIAE])(\d+)$")
+
+
+def code_sort_key(code: str) -> tuple[int, int]:
+    """Sort topic codes the way the learning path reads them: B1 < B10 < I1 < A1 < E1."""
+    m = CODE_RE.match(code or "")
+    if not m:
+        return (9, 0)
+    return ("BIAE".index(m.group(1)), int(m.group(2)))
 
 
 def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list[str]:
@@ -178,11 +187,22 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
         existing_codes.add(code)
 
     if additions:
-        for pos, section, code in sorted(additions, key=lambda x: -x[0]):
-            text = text[:pos] + section + "\n" + text[pos:]
-            appended.append(code)
+        # Proposals from one sweep usually share a level, and so share an offset.
+        # Inserting them one at a time at that offset stacks them in reverse --
+        # each new section lands ahead of the one before it -- which produced
+        # A19, A18, A17 in a file whose every other block ascends. Group by
+        # offset and write each group as a single block in code order.
+        by_pos: dict[int, list[tuple[str, str]]] = {}
+        for pos, section, code in additions:
+            by_pos.setdefault(pos, []).append((code, section))
+        for pos in sorted(by_pos, reverse=True):
+            group = sorted(by_pos[pos], key=lambda cs: code_sort_key(cs[0]))
+            block = "".join(section + "\n" for _, section in group)
+            text = text[:pos] + block + text[pos:]
+            appended.extend(code for code, _ in group)
         lp.write_text(text, encoding="utf-8", newline="\n")
 
+    appended.sort(key=code_sort_key)
     return appended
 
 

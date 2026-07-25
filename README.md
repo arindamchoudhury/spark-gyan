@@ -44,7 +44,7 @@ The `spark-source-map` skill (in `~/.claude/skills/`) owns this pipeline. Say on
 |---|---|
 | `trace B7` | Traces the topic, writes `topics/b7.md`, adds the trace to that topic's "Learn it with" in `learning-path.md`, flips any stale chapter to 🔄, wires nav, commits |
 | `sweep core execution-engine` | Sweeps that one group, writes the sweep page, reconciles every topic it touched, fills in proposed topics, commits |
-| `regroup core` | Surveys with `--coverage`, proposes a carving, edits `groups.yaml`, loops `check_drift.py` to green, regenerates, syncs the copied tables, commits |
+| `regroup core` | Surveys with `--coverage` and `--sweeps`, proposes a carving, edits `groups.yaml`, loops `check_drift.py` to green, regenerates, syncs the copied tables, commits |
 | `refresh the spark configs` | Regenerates the catalog, runs the parser tests and the drift checks, commits |
 | `Spark 4.3 is out` | The whole release runbook below |
 | `update the coverage matrix` | Regenerates `index.md` |
@@ -77,7 +77,7 @@ python tools/spark_source_map/gen_coverage.py
 # Output: docs/reference/spark-source-map/index.md (+ learning-path.md if proposals exist)
 
 # Run tests
-python -m pytest tools/spark_source_map/test_gen_configs.py
+python -m pytest tools/spark_source_map/
 ```
 
 All scripts work from any directory. Never hand-edit generated files — re-run the generator instead.
@@ -173,14 +173,25 @@ One trap when extending a scope: a scope token is matched as a path *segment*, a
 | packages named in a `scope` resolve | ✓ | ✓ |
 | unclaimed packages (`--coverage`) | ✓ | ✗ |
 | two groups claiming one package (`--coverage`) | — | ✓ |
+| claimed package never cited by its sweep (`--sweeps`) | — | ✓ |
 
 `--coverage` joins every group's scope into one string, so a package claimed by *any* group counts as claimed. It will tell you `core` has a hole; it will not tell you which group should own it, or that one group's scope is thin.
 
 `--coverage` also reports the one per-group question that *is* well defined: **two groups claiming the identical package path**. Both sweeps would then walk the same code. A parent/child pair is fine and is not flagged — `sql/core`'s `query-execution` claims `execution/` while `joins-exec` claims `execution/joins/`, and sweeping one does not duplicate the other. Only an exact-path collision counts. Where the sharing is deliberate, set `shared_scope: true` on each group involved and the report labels it declared rather than flagging it; `resource-managers/kubernetes` is the standing example, splitting `k8s/` into `driver-executor` and `auth-networking` by theme.
 
-The wider gap is deliberate, because general per-group coverage is not well defined. Some groups partition by directory (`sql/core`'s seven groups each take a different `execution/*` child), others by concern *within* one directory — `resource-managers/kubernetes` splits `k8s/` into `driver-executor` and `auth-networking` by theme, not by path. There is no mechanical way to say a themed group "missed" a package, so such a check would be noise, or would force an unnatural path-based carving.
+A general per-group *completeness* score is not well defined. Some groups partition by directory (`sql/core`'s seven groups each take a different `execution/*` child), others by concern *within* one directory — `resource-managers/kubernetes` splits `k8s/` into `driver-executor` and `auth-networking` by theme, not by path. There is no mechanical way to say a themed group covered "enough" of a package, so a ratio threshold would be noise, or would force an unnatural path-based carving.
 
-Per-group completeness is enforced at sweep time instead, by the sweeper rather than a script: every config in the group's slice must tie to a concept, and one that doesn't means an area that was never visited. That check is mechanical, and the skill requires it before a sweep page is written.
+The falsifiable half of that question *is* checkable, and `--sweeps` checks it: a package a group's scope claims, whose sweep page cites **no file from it at all**, was never opened. That fails when the page says `status: complete`.
+
+```bash
+python tools/spark_source_map/check_drift.py --sweeps
+```
+
+It resolves each group's scope to real directories, counts the source files under them, and counts how many are named somewhere on the sweep page. The ratio it prints is informational — a sweep names the files carrying a concept, not every file — but zero is a claim the page cannot support. It found two on the first run: `core-submit-standalone.md` declared an `application-registration` concept in its front matter and never wrote the section, leaving `deploy/client/` (`StandaloneAppClient`) unswept, and `deploy/security/` turned out to be claimed by `submit-standalone` while actually being swept by `config-security`.
+
+The same report lists every topic trace sharing a topic code with each sweep, flagging any recorded against a different Spark version — two pages describing the same rules from different releases is a contradiction waiting to be read.
+
+The rest of per-group completeness is still enforced at sweep time, by the sweeper rather than a script: every config in the group's slice must tie to a concept, and one that doesn't means an area that was never visited. The skill requires that check before a sweep page is written.
 
 Spark 4.x moved classes between modules repeatedly — `StorageLevel` to `common/utils`, the `DataType` hierarchy to `sql/api`. A group can declare `modules: [sql/api]` to name the other modules its classes legitimately live in; that keeps the check strict instead of forcing scopes to stay vague enough to always pass.
 
@@ -289,6 +300,13 @@ python tools/spark_source_map/check_drift.py
 This is the step that earns the release. Spark moves classes between modules every major version — 4.x moved `StorageLevel` to `common/utils` and the `DataType` hierarchy to `sql/api` — and a `groups.yaml` scope naming a relocated class is prose, so nothing else notices. For each error: add the owning module to that group's `modules:` list, or fix the name. Then bump `_meta.spark_version` and `_meta.verified_at` in `groups.yaml` so the stamp matches the catalog and the checker goes green.
 
 Warnings about topic and sweep pages recorded against the old version are advisory. They mean the anchors on those pages likely moved.
+
+Then run the two inverse checks. `--coverage` names packages no group claims — new code in the release usually shows up here first. `--sweeps` names packages a group *does* claim that its sweep page never cites; a release that adds a package under an already-swept scope turns a `status: complete` page into an overclaim, and this is the only thing that notices.
+
+```bash
+python tools/spark_source_map/check_drift.py --coverage
+python tools/spark_source_map/check_drift.py --sweeps
+```
 
 **4. Regenerate the coverage matrix.**
 

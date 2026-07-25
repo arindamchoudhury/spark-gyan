@@ -15,10 +15,22 @@ package. This checker verifies what can be verified mechanically:
 Check 3 is the one that earns its keep: the sql/catalyst "planner" scope
 claimed SparkPlanner and SparkStrategies, both of which live in sql/core.
 
+Two inverse reports live behind flags:
+
+  --coverage  what exists that no scope claims (advisory; editorial call)
+  --sweeps    whether each sweep page's `status:` is supported by its
+              citations (fails a `complete` page that never opened a
+              package its own scope claims)
+
 Exit 1 on errors, 0 if only warnings. Read-only; writes nothing.
+
+Note for Windows consoles: this prints em dashes and arrows, which cp1252
+cannot encode. Run under `PYTHONIOENCODING=utf-8` if output errors.
 
 Usage:
     python tools/spark_source_map/check_drift.py [--source PATH] [--quiet]
+    python tools/spark_source_map/check_drift.py --coverage
+    python tools/spark_source_map/check_drift.py --sweeps
 """
 from __future__ import annotations
 
@@ -265,6 +277,132 @@ def report_overlaps(subsystems: dict) -> None:
         print(line + "   (shared_scope: declared intentional)")
 
 
+SRC_FILE_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_$]*\.(?:scala|java))\b")
+
+
+def scope_dirs(source: Path, mods: list[str], scope: str) -> dict[str, list[Path]]:
+    """Resolve each package path a scope claims to the directories it names.
+
+    A scope token is a path *suffix*, not an absolute one: 'execution/joins'
+    matches .../sql/execution/joins. A token may resolve in several modules
+    when a group declares extra `modules:`, so each maps to a list.
+    """
+    out: dict[str, list[Path]] = {}
+    for claim in sorted(claimed_paths(scope)):
+        hits: list[Path] = []
+        for m_name in mods:
+            mod = module_dir(source, m_name)
+            if not mod.is_dir():
+                continue
+            # A claim naming a module ("StorageLevel now in common/utils") is a
+            # module reference, not a package inside one -- skip it here.
+            if m_name == claim or m_name.startswith(claim + "/"):
+                continue
+            for d in mod.rglob("*"):
+                if not d.is_dir() or "target" in d.parts or "src" not in d.parts:
+                    continue
+                parts = d.parts
+                try:
+                    if parts[parts.index("src") + 1] != "main":
+                        continue
+                except IndexError:
+                    continue
+                rel = d.as_posix().lower()
+                if rel == claim or rel.endswith("/" + claim):
+                    hits.append(d)
+        if hits:
+            out[claim] = hits
+    return out
+
+
+def report_sweeps(source: Path, base: Path, subsystems: dict) -> int:
+    """Check each sweep page against the files its group's scope actually holds.
+
+    A sweep page sets its own `status:`; nothing else verifies it. This is the
+    mechanical half of that claim: every package a group's scope names should
+    have at least one file cited somewhere on the page, because a package the
+    sweeper never opened cannot have produced a concept. The cited/total ratio
+    is informational -- a sweep names the files that carry a concept, not every
+    file -- but a claimed package with *zero* citations on a page that says
+    `status: complete` is a scope the sweep silently skipped, and fails.
+
+    Also lists the topic traces that share a topic code with the sweep, so a
+    trace recorded against an older Spark than the sweep is visible rather than
+    left to contradict it quietly.
+    """
+    sweeps = base / "sweeps"
+    topics = base / "topics"
+    if not sweeps.is_dir():
+        print("no sweeps/ directory")
+        return 0
+
+    by_topic: dict[str, list[tuple[str, str]]] = {}
+    if topics.is_dir():
+        for p in sorted(topics.glob("*.md")):
+            fm = load_front_matter(p)
+            code = str(fm.get("topic", "")).strip()
+            if code:
+                by_topic.setdefault(code, []).append(
+                    (p.name, str(fm.get("spark_version", "?"))))
+
+    failures: list[str] = []
+    for page in sorted(sweeps.glob("*.md")):
+        fm = load_front_matter(page)
+        sub = str(fm.get("subsystem", "")).strip()
+        gname = str(fm.get("group", "")).strip()
+        status = str(fm.get("status", "")).strip()
+        group = next((g for g in (subsystems.get(sub) or [])
+                      if g.get("name") == gname), None)
+        if not group:
+            print(f"{page.name}: subsystem/group '{sub} / {gname}' not in groups.yaml — skipped\n")
+            continue
+
+        text = page.read_text(encoding="utf-8")
+        cited = {m.group(1) for m in SRC_FILE_RE.finditer(text)}
+        mods = [sub] + [m for m in (group.get("modules") or []) if m != sub]
+
+        print(f"{page.name}  ({sub} / {gname}, status: {status})")
+        for claim, dirs in scope_dirs(source, mods, group.get("scope") or "").items():
+            files = {f.name for d in dirs for f in d.rglob("*") if f.suffix in SRC_EXTS}
+            if not files:
+                continue
+            hit = files & cited
+            pct = 100 * len(hit) // len(files)
+            flag = ""
+            if not hit:
+                flag = "   <- no file from this package is cited"
+                if status == "complete":
+                    failures.append(f"{page.name}: claims status: complete but cites nothing "
+                                    f"from '{claim}/' ({len(files)} files)")
+            print(f"    {claim + '/':<34} {len(files):>4} files  {len(hit):>4} cited  "
+                  f"({pct:>3}%){flag}")
+
+        overlap = []
+        for concept in fm.get("concepts", []) or []:
+            for code in concept.get("topics", []) or []:
+                for tname, tver in by_topic.get(code, []):
+                    entry = (code, tname, tver)
+                    if entry not in overlap:
+                        overlap.append(entry)
+        if overlap:
+            sweep_ver = str(fm.get("spark_version", "?"))
+            print(f"    topic traces covering the same codes (sweep is Spark {sweep_ver}):")
+            for code, tname, tver in sorted(overlap):
+                mark = "" if tver == sweep_ver else f"   <- traced against {tver}"
+                print(f"      {code:<5} topics/{tname}{mark}")
+        print()
+
+    if failures:
+        print("Sweep pages whose status: complete is not supported by their citations:")
+        for f in failures:
+            print(f"  {f}")
+        print("\nEither sweep the missing packages, or set status: partial and name "
+              "what was left out.")
+        return 1
+    print("Every claimed package is cited by the sweep that claims it.")
+    return 0
+
+
 def load_front_matter(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
@@ -279,6 +417,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--coverage", action="store_true",
                     help="Report packages no group scope claims, and exit. Advisory, "
                          "never fails: judging what deserves a group is editorial.")
+    ap.add_argument("--sweeps", action="store_true",
+                    help="Check each sweep page against its group's scope, and exit. "
+                         "Fails when a page claiming status: complete cites no file from "
+                         "a package its scope claims.")
     args = ap.parse_args(argv)
 
     root = Path(__file__).resolve().parents[2]
@@ -305,6 +447,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.coverage:
         return report_coverage(source, subsystems, set(meta.get("plumbing") or []))
+
+    if args.sweeps:
+        return report_sweeps(source, base, subsystems)
 
     # --- 1. version stamp ----------------------------------------------------
     cat_version = None

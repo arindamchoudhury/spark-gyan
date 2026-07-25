@@ -2,7 +2,7 @@
 
 > Auto-generated from Apache Spark **4.2.0** source by `tools/spark_source_map/gen_configs.py`. Do not edit by hand — re-run the generator instead.
 
-**1558 configs** across the repo · 4 unparsed · generated 2026-07-19.
+**1558 configs** across the repo · 4 unparsed · generated 2026-07-25.
 
 ## Contents
 
@@ -17,9 +17,9 @@
     - **Group 2 — Execution engine** (topics B1, E1): scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext
     - **Group 3 — Shuffle & memory** (topics A4, E1): shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression, BytesToBytesMap (the Tungsten off-heap hash map, in core's Java tree)
     - **Group 4 — Storage & serialization** (topics I6, E1): storage/ (BlockManager, BlockManagerMaster, DiskBlockManager; StorageLevel now in common/utils), serializer/ (KryoSerializer vs JavaSerializer)
-    - **Group 5 — Submit & standalone cluster** (topics E2): SparkSubmit, SparkSubmitArguments, deploy/master/ (Master, WorkerInfo), deploy/worker/ (Worker, ExecutorRunner), deploy/rest/ (RestSubmissionServer), deploy/client/, deploy/security/
+    - **Group 5 — Submit & standalone cluster** (topics E2): SparkSubmit, SparkSubmitArguments, deploy/master/ (Master, WorkerInfo), deploy/worker/ (Worker, ExecutorRunner), deploy/rest/ (RestSubmissionServer), deploy/client/ (StandaloneAppClient)
     - **Group 6 — Monitoring, UI & history** (topics E3): ui/ (SparkUI, WebUI pages), status/ (AppStatusStore, AppStatusListener — the store every UI page reads), metrics/ (MetricsSystem, sinks and sources), deploy/history/ (HistoryServer, FsHistoryProvider, event-log replay)
-    - **Group 7 — Config system & security** (topics E2, E3): internal/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader), security/ (SecurityManager, CryptoStreamUtils)
+    - **Group 7 — Config system & security** (topics E2, E3): internal/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader), security/ (SecurityManager, CryptoStreamUtils), deploy/security/ (HadoopDelegationTokenManager)
     - **Group 8 — RPC & resource profiles** (topics E1, E2): rpc/ (RpcEndpoint, NettyRpcEnv), network/, resource/ (ResourceProfile, ExecutorResourceRequest, ResourceAllocator)
     - **Group 9 — Language API bridge** (topics I3, I4): api/python/ (PythonRDD, PythonRunner, Py4JServer), api/java/, api/r/
 - [resource-managers/kubernetes](#resource-managerskubernetes) — 89 configs

@@ -292,6 +292,37 @@ How an application gets from a `spark-submit` command line to running processes,
 
 ---
 
+## Application registration
+
+**What it is:** the driver side of the same handshake. `StandaloneSchedulerBackend` builds a `StandaloneAppClient` and starts it; the client fans `RegisterApplication` out to every configured master in parallel, exactly like a Worker, and retries the whole fan-out **3 times at 20-second intervals** before calling `markDead("All masters are unresponsive! Giving up.")`. Both numbers are hardcoded fields, not configs. A `registered` `AtomicBoolean` is the only guard: each parallel attempt re-checks it before connecting, and the retry timer cancels the outstanding futures once it flips.
+
+Once registered, the client is the driver's event feed from the Master. `ExecutorAdded`, `ExecutorUpdated` (which fans out to `executorRemoved` for a finished state and `executorDecommissioned` for `DECOMMISSIONED`), `WorkerRemoved` and `ApplicationRemoved` all arrive here and are forwarded to `StandaloneAppClientListener` — implemented by the scheduler backend. It is also the outbound path for dynamic allocation: `requestTotalExecutors` and `killExecutors` are `Future`-returning calls onto the Master.
+
+**Anchor files:**
+
+- [StandaloneSchedulerBackend.scala:135](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/StandaloneSchedulerBackend.scala#L135) — the only construction site: `new StandaloneAppClient(rpcEnv, masters, appDesc, this, conf)`
+- [StandaloneAppClient.scala:57](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClient.scala#L57) — `REGISTRATION_TIMEOUT_SECONDS = 20`, `REGISTRATION_RETRIES = 3`, both hardcoded
+- [StandaloneAppClient.scala:101](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClient.scala#L101) — `tryRegisterAllMasters`, one pool task per master, each short-circuiting on `registered.get`
+- [StandaloneAppClient.scala:128](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClient.scala#L128) — `registerWithMaster(nthRetry)`: the schedule/cancel/retry loop and the give-up branch
+- [StandaloneAppClient.scala:162](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClient.scala#L162) — `RegisteredApplication`, carrying an in-source `FIXME` about duplicate registrations
+- [StandaloneAppClient.scala:184](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClient.scala#L184) — `ExecutorUpdated` splitting into `executorRemoved` vs `executorDecommissioned`
+- [StandaloneAppClient.scala:264](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClient.scala#L264) — `markDisconnected` / `markDead`, the two terminal states the listener sees
+- [StandaloneAppClient.scala:313](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClient.scala#L313) — `requestTotalExecutors` / `killExecutors`, the dynamic-allocation path out to the Master
+- [StandaloneAppClientListener.scala:30](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/client/StandaloneAppClientListener.scala#L30) — the seven-callback contract the scheduler backend implements
+- [Master.scala:283](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/Master.scala#L283) — the master side: a STANDBY master **ignores the message without replying**, an active one registers, persists, replies, and calls `schedule()`
+
+!!! warning "Both ends of this handshake carry an in-source admission that duplicates are unhandled"
+
+    `Master.scala:284` reads `// TODO Prevent repeated registrations from some driver`, and the client's `RegisteredApplication` handler carries a `FIXME` naming two cases it does not handle: multiple `RegisteredApplication` replies from one master on a flaky network, and replies from *different* masters during a failover. The client simply overwrites `appId` and `master` with whichever arrived last. This is why a driver reconnecting across a master takeover can end up registered twice under different app IDs — visible in the Master UI as a duplicate application, with no error on either side.
+
+!!! info "Registration failure looks like a hang for a minute, then a hard death"
+
+    3 retries × 20 s means an unreachable master surfaces as roughly a **60-second silence** before `markDead`, and a STANDBY master never replies at all. A driver pointed at a standby-only master list therefore behaves identically to one pointed at a dead one.
+
+**Maps to topics:** E2, B1
+
+---
+
 ## Driver placement and executor allocation
 
 **What it is:** `schedule()` runs after every state change: waiting drivers first, then executors. `spark.deploy.spreadOutApps` changes **exactly one thing** — whether the inner allocation loop may iterate more than once on the same worker before moving on.
@@ -451,4 +482,5 @@ How an application gets from a `spark-submit` command line to running processes,
 
 | Date | Spark | What changed |
 |---|---|---|
+| 2026-07-25 | 4.2.0 | Filled the hole the new `check_drift.py --sweeps` check found: `application-registration` was declared in the front matter but had no prose section, leaving `deploy/client/` (`StandaloneAppClient`) — the driver's half of the registration handshake — unswept despite `status: complete`. Written up with the 3×20 s retry loop, the listener contract, the dynamic-allocation calls, and the `TODO`/`FIXME` pair admitting duplicate registrations are unhandled at both ends. Separately, `deploy/security/` was dropped from this group's scope: it is swept by `config-security`, which already claimed it via a bare `security/` token. |
 | 2026-07-19 | 4.2.0 | Initial sweep, in two halves (submission path; standalone Master/Worker). 27 concepts. Two gaps proposed: I18 (submit-time dependency management) and E16 (standalone HA and recovery). Two further gaps folded into existing topics rather than proposed, and the folding was done: submission-time config precedence into **B2**, and worker decommissioning into **E2**. Four high-consequence claims were verified at source before writing — the client/server split default on `spark.master.rest.enabled`, `RevokedLeadership` exiting 0, `MonarchyLeaderAgent` electing in its constructor, and `spark.deploy.defaultCores` being unlimited. |

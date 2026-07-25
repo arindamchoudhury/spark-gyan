@@ -6,7 +6,7 @@
 # resolvable paths — verify them against the checkout when bumping the version.
 _meta:
   spark_version: "4.2.0"
-  verified_at: 2026-07-19
+  verified_at: 2026-07-25
   source_root: C:/opt/learn/spark/repos/spark
   # Packages deliberately left without a group, so --coverage stops re-raising
   # them every run. Only add an entry once you have looked and judged: these are
@@ -67,11 +67,18 @@ _meta:
     status/, metrics/ and the History Server) and config-security (the config system and
     SecurityManager). core's largest group is now 116 files, down from 221.
 
+    Ownership fix (2026-07-25, prompted by the new --sweeps check): deploy/security/ was
+    claimed by submit-standalone but is swept by config-security, whose bare security/ token
+    already matched it by suffix. Moved the claim to config-security and named it explicitly;
+    submit-standalone's deploy/client/ now names StandaloneAppClient, the class its sweep had
+    declared as a concept but never written up.
+
     State: every class and package named here resolves in v4.2.0; every package in every
     swept module is either claimed by a group or recorded as plumbing; every topics: code
-    resolves in learning-path.md (47 topics). Re-check with:
+    resolves in learning-path.md (50 topics). Re-check with:
       python tools/spark_source_map/check_drift.py
       python tools/spark_source_map/check_drift.py --coverage
+      python tools/spark_source_map/check_drift.py --sweeps
 
 core:
   - number: 1
@@ -103,7 +110,7 @@ core:
     name: submit-standalone
     title: "Submit & standalone cluster"
     topics: [E2]
-    scope: "SparkSubmit, SparkSubmitArguments, deploy/master/ (Master, WorkerInfo), deploy/worker/ (Worker, ExecutorRunner), deploy/rest/ (RestSubmissionServer), deploy/client/, deploy/security/"
+    scope: "SparkSubmit, SparkSubmitArguments, deploy/master/ (Master, WorkerInfo), deploy/worker/ (Worker, ExecutorRunner), deploy/rest/ (RestSubmissionServer), deploy/client/ (StandaloneAppClient)"
     description: "How an application is submitted and how the standalone cluster manager places it: SparkSubmit's argument and dependency handling, the Master/Worker registration protocol, and the REST submission gateway"
   - number: 6
     name: monitoring
@@ -116,7 +123,7 @@ core:
     title: "Config system & security"
     topics: [E2, E3]
     modules: [common/utils]   # ConfigBuilder/ConfigEntry live in common/utils
-    scope: "internal/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader), security/ (SecurityManager, CryptoStreamUtils)"
+    scope: "internal/ (the config system itself: ConfigBuilder, ConfigEntry, ConfigReader), security/ (SecurityManager, CryptoStreamUtils), deploy/security/ (HadoopDelegationTokenManager)"
     description: "How every spark.* config is declared, typed, defaulted and read — the machinery behind the config catalog — plus authentication, ACLs and encryption"
   - number: 8
     name: rpc-resources
