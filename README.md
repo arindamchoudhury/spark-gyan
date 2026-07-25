@@ -2,11 +2,14 @@
 
 A [Zensical](https://zensical.org/) static site built from personal study notes on Apache Spark and PySpark.
 
-Three layers, in dependency order:
+Four layers, in dependency order:
 
-- `docs/learning-path.md` — the topic taxonomy (B/I/A/E codes), what to read for each, and where I am
+- `docs/learning-path.md` — the topic taxonomy (B/I/A/E codes), what to read for each, and where I am. 62 topics: 42 on the main line, 20 discovered from the Spark source
+- `docs/reference/spark-source-map/` — what the source itself says, mined from the checkout: a config catalog, per-topic traces, and per-subsystem sweeps. Feeds the path and backs the book with `file:line` anchors
 - `docs/books/<slug>/` — source-faithful reading notes, one directory per external book
 - `docs/spark-book/` — the synthesis: one chapter per learning-path topic, blending every source read on it
+
+Also `docs/reference/spark-feature-history/` — which release each feature actually shipped in.
 
 Targets **Spark 4.2.0**. Chapters 01–16 were written against 4.1.x; those with real drift are marked 🔄 in `docs/spark-book/index.md`.
 
@@ -47,17 +50,20 @@ The `spark-source-map` skill (in `~/.claude/skills/`) owns this pipeline. Say on
 | Say | It does |
 |---|---|
 | `trace B7` | Traces the topic, writes `topics/b7.md`, adds the trace to that topic's "Learn it with" in `learning-path.md`, flips any stale chapter to 🔄, wires nav, commits |
-| `sweep core execution-engine` | Sweeps that one group, writes the sweep page, reconciles every topic it touched, fills in proposed topics, commits |
-| `regroup core` | Surveys with `--coverage` and `--sweeps`, proposes a carving, edits `groups.yaml`, loops `check_drift.py` to green, regenerates, syncs the copied tables, commits |
+| `sweep core execution-engine` | Sweeps that one group, writes the sweep page, writes up every topic it discovered, reconciles every existing topic it touched, commits |
+| `regroup core` | Surveys with `--coverage` and `--sweeps`, proposes a carving, edits `groups.yaml`, loops `check_drift.py` to green, regenerates, syncs the table below, commits |
 | `refresh the spark configs` | Regenerates the catalog, runs the parser tests and the drift checks, commits |
+| `refresh the anchors` | Re-resolves every page's `file:line` anchors against the current checkout |
 | `Spark 4.3 is out` | The whole release runbook below |
 | `update the coverage matrix` | Regenerates `index.md` |
+
+The skill's own docs are split by verb: `SKILL.md` holds the design intent, the autonomy contract and the two deterministic verbs; `references/trace.md`, `references/sweep.md` and `references/maintenance.md` hold the rest, loaded when that verb runs.
 
 **A verb is a whole job, not a step.** It runs every command, fixes every checker to green, updates whatever the change invalidated, and commits — rather than handing back a list of commands for you to run.
 
 **When it stops and asks.** Four conditions, all observable rather than a judgement about confidence:
 
-1. The change would alter the **learning path's taxonomy** — adding, retitling or renumbering a topic. That is your curriculum, not its call.
+1. The change would **rearrange** the learning path — retitling, renumbering, reordering, merging or deleting topics you already have. That structure is your curriculum. *Adding* a topic the source turned up is not this condition: discovery is the point of a sweep, so new topics go in without asking, written to the same standard as the rest.
 2. **Two options are defensible and the source cannot decide** — which group owns a package, whether something is plumbing or deserves a group. It brings the options with file counts and a recommendation.
 3. **A fix would require inventing a fact** — a class that exists nowhere in the checkout, a config with no discoverable default. It says what it could not verify instead of writing a plausible guess.
 4. The action **reaches outside the repo or is hard to undo** — pushing, deleting a page with content, rewriting history.
@@ -104,12 +110,14 @@ Prints each group with its topics, its scope, and whether it has already been sw
 
 ```
 core
-  rdd-layer                [swept: complete, Spark 4.1.2, core-rdd-layer.md]
+  rdd-layer                [swept: complete, Spark 4.2.0, core-rdd-layer.md]
       topics: I4, I5, I6
-      scope:  rdd/, Dependency, Partition, Partitioner, broadcast/
-  execution-engine         [not swept]
+      scope:  rdd/, Dependency, Partition, Partitioner, broadcast/, partial/ (CountEvaluator, ...
+  execution-engine         [swept: complete, Spark 4.2.0, core-execution-engine.md]
       topics: B1, E1
       scope:  scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext
+  shuffle-memory           [swept: complete, Spark 4.2.0, core-shuffle-memory.md]
+      ...
 ```
 
 **Then ask the `spark-source-map` skill for that group by name:**
@@ -128,7 +136,7 @@ The sweep-status rows come from `groups.yaml`, which is authoritative for which 
 ---
 subsystem: core
 group: rdd-layer
-all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, infra]
+all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, submit-standalone]
 status: complete            # or: partial, when the group's scope isn't fully covered
 spark_version: "4.2.0"
 concepts:
@@ -258,7 +266,7 @@ python tools/spark_source_map/gen_configs.py   # renders group scopes into confi
 python tools/spark_source_map/gen_coverage.py  # adds the group's row to index.md
 ```
 
-`gen_configs.py` is easy to forget here — it looks like a catalog-only tool, but `configs/index.md` prints each subsystem's groups and their scopes, so editing `groups.yaml` without re-running it leaves that page describing the old carving. New groups appear in the sweep-status table as `⬜ pending` automatically. Then update the group table in this README and in the skill — both are hand-copied from `groups.yaml`, so they drift the moment you add a group. Check them against the file:
+`gen_configs.py` is easy to forget here — it looks like a catalog-only tool, but `configs/index.md` prints each subsystem's groups and their scopes, so editing `groups.yaml` without re-running it leaves that page describing the old carving. New groups appear in the sweep-status table as `⬜ pending` automatically. Then update the "Sweepable subsystems" table below — the skill's copy was removed in favour of `--list-groups`, so this README holds the only hand-copied one left, and it drifts the moment you add a group. Check it against the file:
 
 ```bash
 python -c "
@@ -293,7 +301,7 @@ Do this first. Everything downstream reads whatever is checked out, and none of 
 
 ```bash
 python tools/spark_source_map/gen_configs.py
-python -m pytest tools/spark_source_map/test_gen_configs.py
+python -m pytest tools/spark_source_map/
 ```
 
 Read the printed summary. Config count should be **> 1000** and in the same ballpark as last release — a sharp drop means a parser regression against new source syntax, not a shrinking Spark. If `unparsed` climbs above ~5, open `catalog.yaml`'s `unparsed:` block and confirm they are genuinely hard cases. Never hand-edit the catalog.
@@ -340,7 +348,7 @@ That handles the bookkeeping, **not the meaning**: a resolved anchor points at t
 
 **7. Commit the catalog, `groups.yaml`, `index.md`, and any re-traced pages together**, so the source map and the path never disagree in history.
 
-The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--source` or the `SPARK_SRC` environment variable.
+**Where the tools look for the Spark checkout.** `gen_configs.py` defaults to `C:/opt/learn/spark/repos/spark`, overridable with `--source` or the `SPARK_SRC` environment variable. `check_drift.py` and `refresh_anchors.py` instead read `_meta.source_root` from `groups.yaml`, also overridable with `--source` — so moving the checkout means editing that one field, not chasing an environment variable.
 
 > **Check the checkout before regenerating.** The catalog records whatever it parsed in `meta.spark_version`, with no warning if that isn't what you meant. A checkout left on `master` yields a `5.0.0-SNAPSHOT` catalog that looks perfectly valid. To target a release: `git -C C:/opt/learn/spark/repos/spark checkout v4.2.0`.
 
