@@ -189,6 +189,7 @@ One trap when extending a scope: a scope token is matched as a path *segment*, a
 | unclaimed packages (`--coverage`) | ✓ | ✗ |
 | two groups claiming one package (`--coverage`) | — | ✓ |
 | claimed package never cited by its sweep (`--sweeps`) | — | ✓ |
+| config family cited by no sweep of a fully-swept subsystem (`--sweeps`) | ✓ | ✗ (per-page counts are printed, but the judgement is subsystem-wide) |
 
 `--coverage` joins every group's scope into one string, so a package claimed by *any* group counts as claimed. It will tell you `core` has a hole; it will not tell you which group should own it, or that one group's scope is thin.
 
@@ -333,7 +334,7 @@ This is the step that earns the release. Spark moves classes between modules eve
 
 Warnings about topic and sweep pages recorded against the old version are advisory. They mean the anchors on those pages likely moved.
 
-Then run the two inverse checks. `--coverage` names packages no group claims — new code in the release usually shows up here first. `--sweeps` names packages a group *does* claim that its sweep page never cites; a release that adds a package under an already-swept scope turns a `status: complete` page into an overclaim, and this is the only thing that notices.
+Then run the two inverse checks. `--coverage` names packages no group claims — new code in the release usually shows up here first. `--sweeps` names what an already-swept group never wrote about, from both sides: packages its own scope claims but the page never cites, and — once every group of a subsystem is swept — config families no page mentions. A release does both to you at once: new packages under an existing scope, and new configs under an existing family. Either turns a `status: complete` page into an overclaim, and this is the only thing that notices.
 
 ```bash
 python tools/spark_source_map/check_drift.py --coverage
