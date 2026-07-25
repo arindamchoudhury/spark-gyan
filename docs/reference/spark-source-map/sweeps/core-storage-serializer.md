@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-19
+swept_at: 2026-07-25
 group: storage-serializer
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer,
   submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
@@ -63,6 +63,16 @@ concepts:
     topics: [E11, E1, I6]
   - name: storage-level-model
     topics: [I6, E1]
+  - name: block-id-taxonomy
+    topics: [I6, E1, I7]
+  - name: disk-block-object-writer
+    topics: [E1, A4]
+  - name: disk-store-and-encrypted-blocks
+    topics: [I6, E1, E2]
+  - name: memory-mapped-buffer-disposal
+    topics: [E1, I6]
+  - name: block-log-writers
+    topics: [E3, I3]
 ---
 
 Where a cached or shuffled block physically lives, how it is locked and located, and the serializers that turn objects into the bytes it stores. Swept in two halves — the block storage layer, and the serialization layer with the `StorageLevel` model.
@@ -82,8 +92,13 @@ Where a cached or shuffled block physically lives, how it is locked and located,
 - [BlockManager.scala:567](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L567) — `initialize(appId)`, deliberately not in the constructor
 - [BlockManager.scala:587](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L587) — external shuffle service registration ordered first
 - [BlockManager.scala:608](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L608) — `blockManagerId = idFromMaster`, the driver's version wins
+- [BlockManager.scala:337](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L337) — `waitForShuffleManagerInit`: the block manager registers with the driver *before* the executor's `ShuffleManager` exists, so a shuffle-migration request arriving in that window would NPE
 
-**Configs:** `spark.storage.replication.policy`, `spark.storage.replication.topologyMapper`, `spark.blockManager.port`
+!!! info "A second, narrower initialization race"
+
+    Registration order creates a window in which the driver believes this block manager can serve shuffle blocks but the executor's `ShuffleManager` is still null. Shuffle operations block on `waitForShuffleManagerInit` for up to `spark.storage.shuffleManager.initWaitingTimeout` and then throw `ShuffleManagerNotInitializedException` rather than dereferencing null. `BlockManagerDecommissioner` names that exception explicitly so a migration hitting the window is retried rather than treated as a lost block.
+
+**Configs:** `spark.storage.replication.policy`, `spark.storage.replication.topologyMapper`, `spark.blockManager.port`, `spark.storage.shuffleManager.initWaitingTimeout`
 
 **Maps to topics:** B1, E2
 
@@ -486,8 +501,121 @@ Where a cached or shuffled block physically lives, how it is locked and located,
 
 ---
 
+## The BlockId taxonomy
+
+**What it is:** the vocabulary of the whole subsystem. `BlockId` is a sealed hierarchy of ~20 case classes, each with a `name` that is the block's identity everywhere it surfaces — the Storage tab, the executor logs, the on-disk filename, and the network protocol. It round-trips: `BlockId.apply(name)` parses the string back through a table of regexes.
+
+**Anchor files:**
+
+- [BlockId.scala:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L37) — the sealed base and its `isRDD` / `isShuffle` / `isShuffleChunk` / `isBroadcast` predicates, which is how the rest of the code branches on block kind
+- [BlockId.scala:55](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L55) — `RDDBlockId(rddId, splitIndex)` → `rdd_5_12`, the name in the Storage tab
+- [BlockId.scala:62](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L62) — `ShuffleBlockId` and, below it, the batch, chunk, data, index, checksum, push and merged variants — seven distinct shuffle block kinds, which is why "shuffle block" is ambiguous in a log line
+- [BlockId.scala:265](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L265) — the regex table; every name format is defined here in one place
+- [BlockId.scala:290](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L290) — `apply(name)`; an unmatched name raises `UNRECOGNIZED_BLOCK_ID`
+- [BlockId.scala:241](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L241) — `TempLocalBlockId` / `TempShuffleBlockId`: UUID-named, the files you see accumulate in `spark.local.dir` during a spill
+
+!!! info "The name is the filename"
+
+    `DiskBlockManager.getFile` hashes `blockId.name`, so a block's identity string *is* its on-disk path component. That is what makes `rdd_5_12` greppable across the UI, the executor log and the local directory at once — and why a custom `BlockId` must produce a filesystem-safe name.
+
+**Maps to topics:** I6, E1, I7
+
+---
+
+## DiskBlockObjectWriter
+
+**What it is:** the single writer every shuffle write and every spill goes through. It layers a serialization stream over a compression stream over a buffered file stream, and exposes a **commit/revert** model: `commitAndGet()` closes out the current run of records and returns a `FileSegment` (offset + length), while `revertPartialWritesAndClose()` truncates the file back to the last committed position. Both are needed because many logical blocks share one physical file.
+
+**Anchor files:**
+
+- [DiskBlockObjectWriter.scala:236](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskBlockObjectWriter.scala#L236) — `commitAndGet`: flush, record the position, return the `FileSegment` the index file will point at
+- [DiskBlockObjectWriter.scala:274](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskBlockObjectWriter.scala#L274) — `revertPartialWritesAndClose`, and the metrics **decrement** at L279–280: a reverted write is subtracted from bytes and records written, so shuffle-write metrics reflect committed data only
+- [DiskBlockObjectWriter.scala:288](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskBlockObjectWriter.scala#L288) — the truncate to `committedPosition`
+- [DiskBlockObjectWriter.scala:293](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskBlockObjectWriter.scala#L293) — `ClosedByInterruptException` on a killed task is logged without a stack trace (SPARK-28340), so a cancelled job does not fill the log with alarming traces
+- [DiskBlockObjectWriter.scala:162](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskBlockObjectWriter.scala#L162) — `open()`: the stream is opened lazily on first write, which is why a writer for an empty partition costs no file handle
+
+!!! warning "Revert is best-effort, and a failed truncate is only logged"
+
+    If the truncate throws anything other than `ClosedByInterruptException`, it is logged and swallowed — the file keeps its partial tail. That is safe only because the *index* still points at `committedPosition`, so the trailing bytes are unreferenced. It does mean a spill file on disk can be larger than the data it represents.
+
+**Configs:** `spark.shuffle.file.buffer`, `spark.shuffle.sync`
+
+**Maps to topics:** E1, A4
+
+---
+
+## DiskStore and encrypted blocks
+
+**What it is:** the disk half of the block store. Writes go through a `WritableByteChannel` supplied by the caller, so the serializer and compressor write straight to the channel with no intermediate byte array. Reads return a `BlockData` whose implementation depends on encryption: plain blocks can be memory-mapped above a threshold, encrypted ones cannot and go through `EncryptedBlockData`, which decrypts on each read.
+
+**Anchor files:**
+
+- [DiskStore.scala:64](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskStore.scala#L64) — `put(blockId)(writeFunc)`: the caller writes into the channel, the store records the resulting size
+- [DiskStore.scala:52](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskStore.scala#L52) — `blockSizes`, kept in a separate map because the file length is not the logical size once encryption padding is involved
+- [DiskStore.scala:121](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskStore.scala#L121) — the branch on `getIOEncryptionKey()`; `spark.io.encryption.enabled` decides which `BlockData` you get
+- [DiskStore.scala:237](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskStore.scala#L237) — `EncryptedBlockData`: no memory mapping, no zero-copy transfer
+
+!!! info "IO encryption removes the zero-copy paths, here and in shuffle"
+
+    An encrypted block cannot be memory-mapped or `transferTo`'d, so `spark.storage.memoryMapThreshold` becomes irrelevant and every read decrypts. This is the storage-side counterpart of the shuffle-side demotion the [shuffle & memory sweep](core-shuffle-memory.md) records — enabling `spark.io.encryption.enabled` quietly costs performance in two separate subsystems. The key management itself belongs to the [config & security sweep](core-config-security.md).
+
+**Configs:** `spark.storage.memoryMapThreshold`, `spark.storage.memoryMapLimitForTests`, `spark.io.encryption.enabled`
+
+**Maps to topics:** I6, E1, E2
+
+---
+
+## Memory-mapped buffer disposal
+
+**What it is:** the reason Spark can memory-map block files at all without exhausting file descriptors. A `MappedByteBuffer`'s underlying mapping is released only when the buffer is garbage collected, which may be arbitrarily late. `StorageUtils.dispose` reaches through `sun.misc.Unsafe.invokeCleaner` to unmap it immediately.
+
+**Anchor files:**
+
+- [StorageUtils.scala:199](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/StorageUtils.scala#L199) — `bufferCleaner`: reflective access to `theUnsafe`, resolved once at class initialization
+- [StorageUtils.scala:206](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/StorageUtils.scala#L206) — the comment stating the trade plainly: an *unsafe* API, but waiting for GC "may lead to the depletion of off-heap memory or huge numbers of open files"
+- [StorageUtils.scala:214](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/StorageUtils.scala#L214) — `dispose` no-ops on anything that is not a `MappedByteBuffer`
+
+!!! warning "Reading a disposed buffer is undefined behaviour, not an exception"
+
+    The source says so directly: using the buffer after disposal "will cause errors". This is a JVM-level segfault risk rather than a Java exception, which is why disposal is confined to the block-store code paths that own the buffer's lifetime and is not exposed to users.
+
+**Maps to topics:** E1, I6
+
+---
+
+## Block log writers
+
+**What it is:** new in 4.2.0 ([SPARK-53755], with [SPARK-53975] building on it) — the `BlockManager` can now store **log output as blocks**. A `LogBlockWriter` serializes log lines to a temp file in the local dir and, on `save()`, registers it as a `LogBlockId`; `RollingLogWriter` rolls to a fresh block every 32 MiB. The first consumer is Python worker log capture, which is how a PySpark UDF's stdout/stderr becomes retrievable rather than lost on the executor.
+
+**Code path:** `PythonWorkerLogCapture` → `blockManager.getRollingLogWriter(new PythonWorkerLogBlockIdGenerator(sessionId, workerId))` → `RollingLogWriter.writeLog(logLine)` → `LogBlockWriter` → temp file → `save()` → block registered under `python_worker_log_<time>_<executor>_<session>_<worker>`
+
+**Anchor files:**
+
+- [BlockManager.scala:1539](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L1539) — `getRollingLogWriter`, with the **hardcoded** 32 MiB (`33554432L`) default roll size
+- [RollingLogWriter.scala:40](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/RollingLogWriter.scala#L40) — `shouldRollOver`: purely a byte count, no time-based roll
+- [RollingLogWriter.scala:57](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/RollingLogWriter.scala#L57) — `writeLog(logEntry, removeBlockOnException)`: on a write failure the block is either dropped entirely or **left possibly corrupt**, chosen by the caller
+- [LogBlockWriter.scala:34](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/LogBlockWriter.scala#L34) — the contract: `save` registers the block, `close` discards it; not safe for concurrent writes
+- [LogBlockWriter.scala:65](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/LogBlockWriter.scala#L65) — `Files.createTempFile` with owner-only permissions ([SPARK-57920]) — logs can contain user data, so the temp file is not world-readable
+- [BlockId.scala:227](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L227) — `PythonWorkerLogBlockId(lastLogTime, executorId, sessionId, workerId)`, and the parsing regex at L288
+- [PythonWorkerLogCapture.scala:44](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerLogCapture.scala#L44) — one writer per worker id, held in a `ConcurrentHashMap`
+
+!!! info "Where PySpark worker logs go in 4.2.0"
+
+    Before this, a `print()` or `logging` call inside a Python UDF went to the worker's stderr on the executor and was effectively unreachable unless you had node access. Capturing it into a block gives it a `BlockId`, a session and worker scope, and the same lifecycle as any other block. `spark.executor.python.worker.log.details` controls how much detail is captured. This is the concrete answer to "why can't I see my UDF's logs", and it is new enough that no book or blog covers it.
+
+!!! warning "Log blocks live in the local dir and roll only on size"
+
+    The roll size is a default parameter on `getRollingLogWriter`, not a `spark.*` config, so it cannot be tuned from configuration. A chatty worker produces 32 MiB blocks in `spark.local.dir`; a quiet one holds a partial block open, since there is no time-based roll.
+
+**Configs:** `spark.executor.python.worker.log.details`
+
+**Maps to topics:** E3, I3
+
+---
+
 ## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
+| 2026-07-25 | 4.2.0 | Re-sweep at the same Spark version. Both breadth checks contributed: the config slice surfaced `spark.storage.shuffleManager.initWaitingTimeout` tied to nothing, and package breadth was the larger gap — `storage/` is 40 files with 11 cited. Five concepts added: the **BlockId taxonomy** (~20 case classes whose `name` is simultaneously the UI label, the log string and the on-disk filename), **`DiskBlockObjectWriter`** and its commit/revert model that every shuffle write and spill runs through, **`DiskStore` and encrypted blocks** (IO encryption removing the memory-map and zero-copy paths, the storage-side twin of the shuffle-side demotion), **memory-mapped buffer disposal** via `Unsafe.invokeCleaner`, and **block log writers** — new in 4.2.0 ([SPARK-53755]/[SPARK-53975]), the mechanism that finally makes PySpark worker logs retrievable by storing them as `LogBlockId` blocks. The initialization concept also gained the `ShuffleManagerNotInitializedException` race it never mentioned. |
 | 2026-07-19 | 4.2.0 | Initial sweep, in two halves (block storage; serialization and StorageLevel). 24 concepts. One gap proposed: E15 (block locking and cache visibility). Two sweeper claims were checked at source and found wrong before writing — eviction order is LRU, not FIFO (`MemoryStore.scala:93` sets `accessOrder=true`), and E11 does already carry a "Learn it with" block. Recorded against existing topics rather than proposed: rack-aware replication silently needing two configs, under-replication not being an error, and decommission counting a gave-up migration as success. |

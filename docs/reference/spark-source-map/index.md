@@ -253,6 +253,11 @@ flowchart LR
     S7 --> S7c22["relocation-support"]
     S7 --> S7c23["serializer-manager-auto-selection"]
     S7 --> S7c24["storage-level-model"]
+    S7 --> S7c25["block-id-taxonomy"]
+    S7 --> S7c26["disk-block-object-writer"]
+    S7 --> S7c27["disk-store-and-encrypted-blocks"]
+    S7 --> S7c28["memory-mapped-buffer-disposal"]
+    S7 --> S7c29["block-log-writers"]
     S8["core"]
     S8 --> S8c0["master-url-resolution"]
     S8 --> S8c1["deploy-mode-matrix"]
@@ -376,7 +381,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-19 |
+| core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-22 |
 | core — config-security | — | ✅ complete | 4.2.0 | 2026-07-22 |
