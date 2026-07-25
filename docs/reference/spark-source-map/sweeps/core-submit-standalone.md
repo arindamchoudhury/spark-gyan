@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-19
+swept_at: 2026-07-25
 group: submit-standalone
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer,
   submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
@@ -74,6 +74,16 @@ concepts:
   - name: application-completion
     topics: [E2, B1]
   - name: standalone-observability
+    topics: [E3, E2]
+  - name: rest-server-and-protocol
+    topics: [E2, E3]
+  - name: identifier-generation
+    topics: [E2, E3]
+  - name: cluster-mode-driver-process
+    topics: [E2, B1]
+  - name: standalone-web-uis
+    topics: [E3, E2]
+  - name: deploy-plugins
     topics: [E3, E2]
 ---
 
@@ -478,9 +488,128 @@ Once registered, the client is the driver's event feed from the Master. `Executo
 
 ---
 
+## The REST server side
+
+**What it is:** the other half of the REST gateway the client concept covers. `RestSubmissionServer` is a small Jetty server the Master runs, mapping five URL prefixes to five servlets: submit, kill, status, **clear**, and **readyz**. It is a versioned JSON protocol, not an internal RPC — which is what makes it the one programmatic way to drive a standalone cluster from outside the JVM.
+
+**Anchor files:**
+
+- [RestSubmissionServer.scala:72](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/rest/RestSubmissionServer.scala#L72) — `contextToServlet`, the whole URL surface in one map
+- [StandaloneRestServer.scala:56](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/rest/StandaloneRestServer.scala#L56) — the standalone implementations; each servlet translates JSON into a Master RPC and back
+- [StandaloneRestServer.scala:155](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/rest/StandaloneRestServer.scala#L155) — `StandaloneReadyzRequestServlet`: a readiness endpoint, which is what a Kubernetes-style probe or a load balancer in front of the masters would poll
+- [RestSubmissionServer.scala:96](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/rest/RestSubmissionServer.scala#L96) — a `QueuedThreadPool` sized by `spark.master.rest.maxThreads`
+- [RestSubmissionServer.scala:98](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/rest/RestSubmissionServer.scala#L98) — `spark.master.rest.virtualThread.enabled`, honoured **only on Java 21+**; on an older JVM the config is silently ignored
+- [RestSubmissionServer.scala:144](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/rest/RestSubmissionServer.scala#L144) — `addFilters` from `spark.master.rest.filters`: the **only** authentication hook on this endpoint
+- [RestSubmissionServer.scala:160](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/rest/RestSubmissionServer.scala#L160) — `PROTOCOL_VERSION` shared with the client; a mismatch is a protocol error, not a connection error, so it does **not** trigger the client's legacy fallback
+
+!!! warning "An unauthenticated submission endpoint, enabled by default"
+
+    `spark.master.rest.enabled` defaults to `true` **server-side**, and the server has no authentication of its own — `spark.master.rest.filters` is the only way to add any, and the client's base URL is hardcoded `http://` with no HTTPS path. Anyone who can reach `spark.master.rest.port` can submit a driver that runs arbitrary code on the cluster. On any network that is not fully trusted, bind it deliberately or turn it off.
+
+**Configs:** `spark.master.rest.enabled`, `.port`, `.host`, `.maxThreads`, `.filters`, `.virtualThread.enabled`
+
+**Maps to topics:** E2, E3
+
+---
+
+## Identifier generation
+
+**What it is:** how `app-20231031224509-0008` and `driver-20231031224459-0019` are actually produced, and the 4.0.0 configs that let you change them. Both are `String.format` patterns with a timestamp and a counter; the counter can wrap on a modulo; and the Master can be told to use the application *name* as its id instead.
+
+**Anchor files:**
+
+- [Master.scala:1290](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/Master.scala#L1290) — `newApplicationId`: pattern, timestamp, `nextAppNumber`, then the modulo wrap
+- [Master.scala:1319](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/Master.scala#L1319) — `newDriverId`, the same shape with **no** modulo
+- [Master.scala:1134](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/Master.scala#L1134) — `useAppNameAsAppId`: the app id becomes the lower-cased name with whitespace stripped
+- [Deploy.scala:147](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/Deploy.scala#L147) — `spark.deploy.appIdPattern`, default `app-%s-%04d`, validated only for **whitespace**
+- [Deploy.scala:128](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/Deploy.scala#L128) — `spark.deploy.appNumberModulo`, minimum 1000, with the doc explaining that the timestamp prefix is expected to have advanced by then
+- [Worker.scala:68](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/Worker.scala#L68) — `spark.worker.idPattern`, the same idea for worker ids
+
+!!! warning "Uniqueness is your problem, and the config docs say so"
+
+    Both pattern configs carry an in-source "Please be careful to generate unique IDs", and the only validation is that the formatted result contains no whitespace. A pattern that drops the timestamp or the counter produces **colliding ids**, and `useAppNameAsAppId` makes every run of an app with the same name share one id — which is sometimes exactly what you want for log correlation and is a silent collision otherwise. The event logs, the History Server and the metrics namespace all key on that id.
+
+**Configs:** `spark.deploy.appIdPattern`, `.driverIdPattern`, `.appNumberModulo`, `spark.worker.idPattern`, `spark.master.useAppNameAsAppId.enabled`, `spark.master.useDriverIdAsAppName.enabled`
+
+**Maps to topics:** E2, E3
+
+---
+
+## The cluster-mode driver process
+
+**What it is:** what actually runs when a standalone driver is launched in cluster mode. `DriverRunner` does not fork the user's class directly — it forks `DriverWrapper`, which stands up an RPC endpoint, builds a classloader over the user jar, resolves the driver's own dependencies, and only then reflects into the user's `main`. The RPC endpoint is a `WorkerWatcher` whose sole job is to kill the JVM if the owning Worker disconnects.
+
+**Code path:** `DriverRunner` → fork `DriverWrapper <workerUrl> <userJar> <mainClass> [args]` → `WorkerWatcher` endpoint → `ChildFirstURLClassLoader` | `MutableURLClassLoader` → `setupDependencies` → `Utils.classForName(mainClass)` → `main`
+
+**Anchor files:**
+
+- [DriverWrapper.scala:42](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/DriverWrapper.scala#L42) — the argument shape: the user's class is an *argument*, exactly as the main-class-selection concept describes
+- [DriverWrapper.scala:48](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/DriverWrapper.scala#L48) — the `workerWatcher` endpoint, set up before anything user-supplied runs
+- [DriverWrapper.scala:54](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/DriverWrapper.scala#L54) — `spark.driver.userClassPathFirst` applies here too, with the user jar as the child-first URL
+- [DriverWrapper.scala:76](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/DriverWrapper.scala#L76) — `setupDependencies`: this is where `--packages` is resolved for standalone cluster mode, which is why the submit-side resolution is skipped for it
+- [WorkerWatcher.scala:52](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/WorkerWatcher.scala#L52) — `isWorker`: only the expected address counts
+- [WorkerWatcher.scala:76](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/WorkerWatcher.scala#L76) — `onDisconnected` → `exitNonZero()` → `System.exit(-1)`
+
+!!! info "A driver dies when its Worker does, even if the Master is fine"
+
+    `WorkerWatcher` exists so a cluster-mode driver cannot outlive the Worker that supervises it and become an orphan holding cluster resources. The consequence to know: restarting a Worker process kills every cluster-mode driver it supervises, `spark.driver.supervise` then relaunches them **with new driver ids** (SPARK-19900), and anything keyed to the old id — log paths, external tracking — does not follow.
+
+**Maps to topics:** E2, B1
+
+---
+
+## The standalone web UIs
+
+**What it is:** the Master and Worker each run their own small `WebUI`, entirely separate from the application `SparkUI` the [monitoring sweep](core-monitoring.md) covers. Master serves the cluster view, an application page, an environment page and a log page; Worker serves its own page plus log serving for the executors and drivers it supervises. The Master UI is also the only place a worker can be decommissioned by hand.
+
+**Anchor files:**
+
+- [MasterWebUI.scala:54](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/ui/MasterWebUI.scala#L54) — `initialize()`, attaching the pages
+- [MasterWebUI.scala:72](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/ui/MasterWebUI.scala#L72) — the decommission endpoint, attached **only** when `spark.decommission.enabled`
+- [MasterWebUI.scala:124](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/ui/MasterWebUI.scala#L124) — `spark.master.ui.decommission.allow.mode`: who may call it
+- [LogPage.scala:38](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/worker/ui/LogPage.scala#L38) — `renderLog`: the Worker serves executor and driver logs over HTTP, byte-ranged
+- [MasterPage.scala](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/master/ui/MasterPage.scala) — the cluster view, and the JSON endpoint that the [observability](#work-directory-cleanup-and-observability) concept notes is the only way to alert on recovery state
+
+!!! info "Two UIs, two retention settings, neither related to the application UI"
+
+    `spark.worker.ui.retainedExecutors` / `.retainedDrivers` bound what the Worker page shows, and `spark.deploy.retainedApplications` / `.retainedDrivers` bound the Master's. These are distinct from `spark.ui.retainedJobs`/`retainedStages`, which govern the *application* UI. A finished app disappearing from the Master page while its History Server entry survives is these limits, not an error. `spark.master.ui.historyServerUrl` is what makes the Master link to that entry at all.
+
+**Configs:** `spark.master.ui.port`, `.title`, `.historyServerUrl`, `.decommission.allow.mode`, `.visibleEnvVarPrefixes`, `spark.worker.ui.port`, `.retainedExecutors`, `.retainedDrivers`, `.compressedLogFileLengthCacheSize`, `spark.deploy.retainedApplications`, `.retainedDrivers`
+
+**Maps to topics:** E3, E2
+
+---
+
+## Deploy-side plugins
+
+**What it is:** two small `SparkPlugin` implementations shipped in `deploy/`, both solving operational problems that have no config-only answer. `DriverTimeoutPlugin` enforces a wall-clock limit on the driver. `RedirectConsolePlugin` (new in 4.1, [SPARK-52426]) replaces `System.out` / `System.err` with streams that write into the logging system.
+
+**Anchor files:**
+
+- [DriverTimeoutPlugin.scala:46](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/DriverTimeoutPlugin.scala#L46) — reads `spark.driver.timeout` and arms a timer
+- [DriverTimeoutPlugin.scala:56](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/DriverTimeoutPlugin.scala#L56) — on expiry, `System.exit(SparkExitCode.DRIVER_TIMEOUT)` — a hard exit with a distinct code, not a graceful stop
+- [RedirectConsolePlugin.scala:39](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/RedirectConsolePlugin.scala#L39) — `System.setOut(new LoggingPrintStream(stdoutLogger.info))`; stderr goes to `error`
+- [RedirectConsolePlugin.scala:50](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/RedirectConsolePlugin.scala#L50) — separate driver and executor plugins, each honouring its own `…redirectConsoleOutputs` list
+- [package.scala:1215](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/package.scala#L1215) — the `spark.driver.timeout` doc stating outright that `spark.plugins` must name the class
+
+!!! info "Neither is on unless you name it in `spark.plugins`"
+
+    Both are ordinary plugins, so `spark.driver.timeout` and the console-redirect configs do nothing on their own — the plugin class must be listed in `spark.plugins` first, and all three config docs say so explicitly. That is still easy to miss when the config exists and simply has no effect. `RedirectConsolePlugin` is the structured-logging answer to a library that prints instead of logging; combined with the block log writers in the [storage sweep](core-storage-serializer.md), 4.x has two independent mechanisms for capturing output that used to be lost.
+
+!!! warning "The two console-redirect keys are not spelled the same"
+
+    Driver side is `spark.driver.**log**.redirectConsoleOutputs`; executor side is `spark.executor.**logs**.redirectConsoleOutputs` — singular versus plural. Both are 4.1.0. Setting the symmetrical-looking name on either side is silently ignored, like any unknown `spark.*` key.
+
+**Configs:** `spark.driver.timeout`, `spark.driver.log.redirectConsoleOutputs`, `spark.executor.logs.redirectConsoleOutputs`, `spark.plugins`
+
+**Maps to topics:** E3, E2
+
+---
+
 ## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
+| 2026-07-25 | 4.2.0 | Re-sweep later the same day, driven by the config-slice breadth check: 13 of 18 `spark.deploy.*` and 10 of 16 `spark.worker.*` keys tied to no concept, and `deploy/rest/` was 7 files with 1 cited. Five concepts added: the **REST server side** (five servlets including `readyz` and `clear`, and the fact that an unauthenticated submission endpoint is on by default with `spark.master.rest.filters` as the only auth hook), **identifier generation** (the 4.0.0 `appIdPattern` / `driverIdPattern` / `appNumberModulo` family, validated only for whitespace), the **cluster-mode driver process** (`DriverWrapper` plus the `WorkerWatcher` that kills the driver when its Worker disconnects — and where standalone-cluster `--packages` actually resolves), the **standalone web UIs** (separate from the application `SparkUI`, with their own retention configs and the only manual decommission path), and the two **deploy-side plugins** (`DriverTimeoutPlugin`, and `RedirectConsolePlugin` from [SPARK-52426]). Recorded while verifying: the console-redirect keys are asymmetric — `spark.driver.log.…` versus `spark.executor.logs.…`. |
 | 2026-07-25 | 4.2.0 | Filled the hole the new `check_drift.py --sweeps` check found: `application-registration` was declared in the front matter but had no prose section, leaving `deploy/client/` (`StandaloneAppClient`) — the driver's half of the registration handshake — unswept despite `status: complete`. Written up with the 3×20 s retry loop, the listener contract, the dynamic-allocation calls, and the `TODO`/`FIXME` pair admitting duplicate registrations are unhandled at both ends. Separately, `deploy/security/` was dropped from this group's scope: it is swept by `config-security`, which already claimed it via a bare `security/` token. |
 | 2026-07-19 | 4.2.0 | Initial sweep, in two halves (submission path; standalone Master/Worker). 27 concepts. Two gaps proposed: I18 (submit-time dependency management) and E16 (standalone HA and recovery). Two further gaps folded into existing topics rather than proposed, and the folding was done: submission-time config precedence into **B2**, and worker decommissioning into **E2**. Four high-consequence claims were verified at source before writing — the client/server split default on `spark.master.rest.enabled`, `RevokedLeadership` exiting 0, `MonarchyLeaderAgent` electing in its constructor, and `spark.deploy.defaultCores` being unlimited. |

@@ -287,6 +287,11 @@ flowchart LR
     S8 --> S8c25["work-directory-cleanup"]
     S8 --> S8c26["application-completion"]
     S8 --> S8c27["standalone-observability"]
+    S8 --> S8c28["rest-server-and-protocol"]
+    S8 --> S8c29["identifier-generation"]
+    S8 --> S8c30["cluster-mode-driver-process"]
+    S8 --> S8c31["standalone-web-uis"]
+    S8 --> S8c32["deploy-plugins"]
     S9["sql/catalyst"]
     S9 --> S9c0["The Analyzer and the fixed-point RuleExecutor loop"]
     S9 --> S9c1["ResolveRelations / ResolveCatalogs â€” name to relation"]
@@ -382,7 +387,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-19 |
+| core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-22 |
 | core — config-security | — | ✅ complete | 4.2.0 | 2026-07-22 |
 | core — rpc-resources | — | ✅ complete | 4.2.0 | 2026-07-22 |
