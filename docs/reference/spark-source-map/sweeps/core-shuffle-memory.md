@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-19
+swept_at: 2026-07-25
 group: shuffle-memory
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer,
   submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
@@ -73,6 +73,20 @@ concepts:
       title: "Unmanaged Memory: Native Allocators Outside the Unified Pool"
       what: "Components that allocate outside Spark's pools — RocksDB state stores, native libraries — can register as UnmanagedMemoryConsumers. A daemon polls them and subtracts their usage from what execution and storage may allocate, but the polling interval defaults to 0s, which means disabled."
       why: "On a stock install this memory is invisible to the unified manager, which is the direct cause of the most common stateful-streaming complaint: the executor is killed for exceeding its container limit while the Spark UI shows plenty of free storage memory. Sizing executors from the UI's numbers is wrong by however much the native allocator holds."
+  - name: map-status-representation-and-size-accuracy
+    topics: []
+    propose:
+      code: A20
+      level: Advanced
+      title: "Map Output Sizes: What AQE and Skew Detection Actually See"
+      what: "Every map task reports its per-reducer output sizes as a MapStatus, and those sizes are lossy by construction: each is compressed to a single byte on a log-1.1 scale, and above spark.shuffle.minNumPartitionsToHighlyCompress (2000) partitions Spark switches to HighlyCompressedMapStatus, which keeps an empty-block bitmap, the exact-ish sizes of blocks above a threshold, and a single average for everything else."
+      why: "Every runtime decision that reasons about partition size — AQE's skew-join split, partition coalescing, reduce-side locality, the fetch-to-disk threshold — reads these numbers, not real ones. Above 2000 partitions the per-block sizes of ordinary blocks are literally the same average, and the skew-aware accuracy path is off by default (spark.shuffle.accurateBlockSkewedFactor = -1.0). Tuning a skewed-partition threshold in bytes against averaged inputs is the standard way to conclude that AQE 'does not detect' a skew it cannot see."
+  - name: spill-file-merging-and-read-ahead
+    topics: [E1, A4]
+  - name: host-local-disk-reading
+    topics: [A4, I5, E2]
+  - name: shuffle-cleanup-and-the-service-state-db
+    topics: [E2, E1]
 ---
 
 Where shuffle data is written, how it is read back, and the memory system both sit on. Swept in two halves — the shuffle write/read path, and memory management with the Tungsten structures and compression codecs underneath it.
@@ -532,7 +546,11 @@ Off-heap is a separate, **unreserved** budget: no 300 MB floor and no `spark.mem
 
     33–50% of the pointer array is reserved as sort scratch, and radix sort reserves *more* than Tim sort. Neither is a tunable.
 
-**Configs:** `spark.shuffle.spill.numElementsForceSpillThreshold`, `spark.shuffle.spill.maxSizeInBytesForSpillThreshold`, `spark.buffer.pageSize`
+!!! info "Radix sort is selected two different ways"
+
+    On the **shuffle** side it is a config: `spark.shuffle.sort.useRadixSort` (default `true`) is read once at [ShuffleExternalSorter.java:149](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/shuffle/sort/ShuffleExternalSorter.java#L149) and passed into `ShuffleInMemorySorter`, where it costs capacity — `array.size() / (useRadixSort ? 2 : 1.5)` at [ShuffleInMemorySorter.java:81](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/shuffle/sort/ShuffleInMemorySorter.java#L81), i.e. turning it *off* raises the spill threshold by a third. In `UnsafeInMemorySorter` there is no config at all: radix is used iff the prefix comparator implements `PrefixComparators.RadixSortSupport` ([UnsafeInMemorySorter.java:145](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/util/collection/unsafe/sort/UnsafeInMemorySorter.java#L145)) — a property of the sort key's type, not something you can set.
+
+**Configs:** `spark.shuffle.spill.numElementsForceSpillThreshold`, `spark.shuffle.spill.maxSizeInBytesForSpillThreshold`, `spark.buffer.pageSize`, `spark.shuffle.sort.useRadixSort`, `spark.shuffle.sort.initialBufferSize`
 
 **Maps to topics:** E1, A4
 
@@ -571,7 +589,11 @@ Off-heap is a separate, **unreserved** budget: no 300 MB floor and no `spark.mem
 
     The constructor converts a native-load `Error` into `IllegalArgumentException`, which `createCodec` catches alongside `ClassNotFoundException` — so the message blames the codec name rather than the library. Note also that `spark.shuffle.compress` and `spark.shuffle.spill.compress` are separate booleans over the **same** codec; they cannot use different ones.
 
-**Configs:** `spark.io.compression.codec` and its per-codec keys, `spark.shuffle.compress`, `spark.shuffle.spill.compress`
+!!! info "The per-codec knobs are chosen by codec, so most of them are inert"
+
+    Each codec reads only its own prefix, and `spark.io.compression.codec` picks one — so `spark.io.compression.zstd.level` (1), `.workers` (0, meaning single-threaded), `.strategy`, `.bufferSize` and `.bufferPool.enabled` do nothing under LZ4, and `spark.io.compression.lz4.blockSize` / `.snappy.blockSize` / `.lzf.parallel.enabled` do nothing under Zstd. Setting the wrong family is silent. Separately, `spark.shuffle.mapStatus.compression.codec` (ZSTD) is its own key and is **not** governed by `spark.io.compression.codec` — it compresses the map-status broadcast on the driver, not shuffle data.
+
+**Configs:** `spark.io.compression.codec`, `spark.shuffle.compress`, `spark.shuffle.spill.compress`; per-codec: `spark.io.compression.zstd.level`, `.zstd.workers`, `.zstd.strategy`, `.zstd.bufferSize`, `.zstd.bufferPool.enabled`, `spark.io.compression.lz4.blockSize`, `spark.io.compression.snappy.blockSize`, `spark.io.compression.lzf.parallel.enabled`
 
 **Maps to topics:** E1, A4
 
@@ -617,8 +639,113 @@ Off-heap is a separate, **unreserved** budget: no 300 MB floor and no `spark.mem
 
 ---
 
+## Map output size representation
+
+**What it is:** the numbers every size-based runtime decision rests on, and they are lossy twice over. A `MapStatus` reports one size per reduce partition, each compressed to **a single byte** as `log(size)` base 1.1 — up to ~35 GB with at most 10% error. Then, above `spark.shuffle.minNumPartitionsToHighlyCompress` (2000), the implementation switches from `CompressedMapStatus` (one byte *per block*) to `HighlyCompressedMapStatus`, which keeps a `RoaringBitmap` of empty blocks, byte-compressed sizes for blocks judged "huge", and **one average** shared by every other non-empty block.
+
+**Code path:** `ShuffleWriter` → `MapStatus.apply(loc, uncompressedSizes, …)` → `numPartitions > 2000`? `HighlyCompressedMapStatus.apply` : `new CompressedMapStatus` → threshold computation → `MapOutputTracker` → `getSizeForBlock` → AQE / skew detection / fetch planning
+
+**Anchor files:**
+
+- [MapStatus.scala:85](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L85) — the one branch that decides which representation a shuffle gets, on partition count alone
+- [MapStatus.scala:92](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L92) — `LOG_BASE = 1.1`, and the comment stating the ≤10% error and ~35 GB ceiling
+- [MapStatus.scala:99](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L99) — `compressSize`, clamped to 255: **every block above ~35 GB reports the same size**
+- [MapStatus.scala:290](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L290) — `accurateBlockSkewedFactor > 0` gates the whole skew-aware accuracy path
+- [MapStatus.scala:300](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L300) — the threshold: `max(median × factor, the maxAccurateSkewedBlockNumber-th largest)`, then capped by `accurateBlockThreshold`
+- [MapStatus.scala:307](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L307) — the `else`: with the factor at its default, only blocks above the flat 100 MB threshold are tracked individually
+- [MapStatus.scala:329](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L329) — `avgSize = totalSmallBlockSize / numSmallBlocks`, the number returned for every non-huge block
+- [MapStatus.scala:222](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MapStatus.scala#L222) — `getSizeForBlock`: huge block → its own size, everything else → `avgSize`
+
+!!! warning "Above 2000 partitions, per-block skew is invisible unless you opt in"
+
+    `spark.shuffle.accurateBlockSkewedFactor` defaults to **-1.0**, which takes the `else` branch and disables skew-relative accuracy entirely. What remains is the flat `spark.shuffle.accurateBlockThreshold` of 100 MB. So on a 2001-partition shuffle, a 90 MB block among 1 MB peers — a 90× skew — is reported as the *average*, and every consumer of that number, AQE's skew join included, sees a uniform distribution. Setting the factor to a positive value (5 is the documented starting point) is what makes moderate skew visible at all.
+
+!!! info "The representation is chosen by partition count, not by size"
+
+    2000 partitions of 1 KB each gets the lossy representation; 1999 partitions of 10 GB each gets the per-block one. `spark.shuffle.minNumPartitionsToHighlyCompress` exists because the driver holds one `MapStatus` per map task and the memory is real — but the trade is accuracy, and it is made on a proxy for size rather than size.
+
+**Configs:** `spark.shuffle.minNumPartitionsToHighlyCompress`, `spark.shuffle.accurateBlockThreshold`, `spark.shuffle.accurateBlockSkewedFactor`, `spark.shuffle.maxAccurateSkewedBlockNumber`, `spark.shuffle.mapStatus.compression.codec` (ZSTD), `spark.shuffle.mapOutput.parallelAggregationThreshold`, `spark.shuffle.mapOutput.dispatcher.numThreads`, `spark.shuffle.mapOutput.minSizeForBroadcast`
+
+**Maps to topics:** none — proposed as A20
+
+---
+
+## Spill file merging and read-ahead
+
+**What it is:** when `UnsafeExternalSorter` has spilled, the sorted output is a k-way merge across spill files. The classic path opens **every** spill reader at once, each carrying about 3 MB of buffers — so a task with a thousand spills needs gigabytes of buffer just to merge. Spark 4.2.0 adds a bounded multi-round merge that caps concurrent readers, at the cost of rewriting records once per intermediate round.
+
+**Code path:** `getSortedIterator` → spills empty? in-memory iterator : `spillMergeFactor != -1 && spills > factor`? `UnsafeSorterBoundedSpillMerger` (multi-round) : `UnsafeSorterSpillMerger` (open all) → per-file `UnsafeSorterSpillReader` → optional `ReadAheadInputStream`
+
+**Anchor files:**
+
+- [UnsafeExternalSorter.java:592](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/util/collection/unsafe/sort/UnsafeExternalSorter.java#L592) — the branch; `-1` keeps the legacy open-everything merge
+- [UnsafeExternalSorter.java:600](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/util/collection/unsafe/sort/UnsafeExternalSorter.java#L600) — "Original single-round merge: open all spill readers at once"
+- [UnsafeSorterBoundedSpillMerger.java:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/util/collection/unsafe/sort/UnsafeSorterBoundedSpillMerger.java#L37) — the class doc: ~3 MB per reader, the round arithmetic, eager deletion of consumed files, and the disk-I/O trade
+- [UnsafeSorterSpillReader.java:71](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/util/collection/unsafe/sort/UnsafeSorterSpillReader.java#L71) — read-ahead is on by default and wraps the *decompressed* stream, so it costs a thread and a second buffer per open reader
+- [UnsafeSorterSpillReader.java:68](https://github.com/apache/spark/blob/v4.2.0/core/src/main/java/org/apache/spark/util/collection/unsafe/sort/UnsafeSorterSpillReader.java#L68) — `spark.unsafe.sorter.spill.reader.buffer.size`, 1 MB, the dominant term in that ~3 MB
+
+!!! warning "The OOM this fixes is off by default"
+
+    `spark.unsafe.sorter.spill.merge.factor` is **internal and defaults to -1**, meaning the legacy unbounded merge. A task that spills heavily still opens every reader simultaneously and can OOM *during the merge*, after the sort itself succeeded — the confusing shape where a job dies at the end of a long-running stage. The doc suggests 64, which it says needs at most one intermediate round for ~4000 spills.
+
+!!! info "Merging is not the only thing spilling costs"
+
+    `spark.shuffle.spill.batchSize` (10000) sets how many records are serialized per batch when writing a spill; the serializer is reset between batches to bound its object-reference table. This is a write-side knob and is separate from the merge factor.
+
+**Configs:** `spark.unsafe.sorter.spill.merge.factor` (4.2.0, internal, -1), `spark.unsafe.sorter.spill.read.ahead.enabled`, `spark.unsafe.sorter.spill.reader.buffer.size`, `spark.shuffle.spill.batchSize`, `spark.shuffle.file.merge.buffer`
+
+**Maps to topics:** E1, A4
+
+---
+
+## Host-local disk reading
+
+**What it is:** the fourth fetch mode, and the one most people do not know exists. A block on a *different executor on the same host* is not fetched over the network — the reducer asks that executor's block manager for its local directories, then reads the file directly off shared disk. It needs the external shuffle service, and it is on by default.
+
+**Code path:** `partitionBlocksByFetchMode` → same host and `hostLocalDirManager` defined? → `hostLocalBlocksByExecutor` → `fetchHostLocalBlocks` → `getHostLocalDirs` (cached per executor) → `getHostLocalShuffleData` → direct file read
+
+**Anchor files:**
+
+- [ShuffleBlockFetcherIterator.scala:430](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/ShuffleBlockFetcherIterator.scala#L430) — the branch: `hostLocalDirManager.isDefined && address.host == blockManagerId.host`, evaluated **after** the local-executor branch and before remote
+- [ShuffleBlockFetcherIterator.scala:612](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/ShuffleBlockFetcherIterator.scala#L612) — `fetchHostLocalBlock`, reading the file with no network round trip
+- [ShuffleBlockFetcherIterator.scala:625](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/ShuffleBlockFetcherIterator.scala#L625) — "If we see an exception, stop immediately": a host-local read failure is not retried remotely, it fails the fetch
+- [ShuffleBlockFetcherIterator.scala:464](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/ShuffleBlockFetcherIterator.scala#L464) — the per-iterator INFO line that reports the host-local block count and bytes; the one place you can see whether it is working
+- [SparkContext.scala:3354](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkContext.scala#L3354) — `local-cluster` mode deliberately forces `spark.shuffle.readHostLocalDisk` off, because every executor shares a host there and it would mask remote-fetch bugs in tests
+
+!!! info "Enabled by default, but silently inert without the shuffle service"
+
+    `spark.shuffle.readHostLocalDisk` is `true`, but the branch also requires `hostLocalDirManager`, which exists only when an external shuffle client is configured. On a cluster without the shuffle service, every same-host block goes over the loopback network instead — a real cost on dense nodes, with no log line saying so. The block-count breakdown at L464 is how to check.
+
+**Configs:** `spark.shuffle.readHostLocalDisk`, `spark.shuffle.service.enabled`
+
+**Maps to topics:** A4, I5, E2
+
+---
+
+## Shuffle cleanup and the shuffle service state DB
+
+**What it is:** two pieces of housekeeping that decide whether shuffle files ever go away. `spark.shuffle.service.removeShuffle` lets the driver tell the *service* to delete a shuffle's files when the shuffle is unregistered, rather than leaving them until the application ends. And the service itself keeps a local state DB — RocksDB by default — so it can serve blocks for executors that registered before a service restart.
+
+**Anchor files:**
+
+- [BlockManagerMasterEndpoint.scala:126](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L126) — removal is attempted only when an external block-store client exists *and* the config is on
+- [DiskBlockManager.scala:88](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/DiskBlockManager.scala#L88) — the same config also decides whether the executor keeps its shuffle directories alive for the service
+- [ExternalShuffleService.scala:89](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/deploy/ExternalShuffleService.scala#L89) — the DB backend is read and logged at startup
+- [BlockManager.scala:1520](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManager.scala#L1520) — `spark.shuffle.sync` (default `false`): with it on, every shuffle file write is fsynced before the writer reports success
+
+!!! info "Long-lived applications leak shuffle files without this"
+
+    Before `removeShuffle` (3.3.0, now default `true`), the service held every shuffle's files for the life of the application. A long-running Connect or notebook session accumulated them until the driver exited. Both halves must line up: the driver-side removal at `BlockManagerMasterEndpoint` and the executor-side directory retention at `DiskBlockManager` read the same key.
+
+**Configs:** `spark.shuffle.service.removeShuffle`, `spark.shuffle.service.db.enabled`, `spark.shuffle.service.db.backend` (ROCKSDB), `spark.shuffle.service.name`, `spark.shuffle.service.port`, `spark.shuffle.registration.timeout`, `spark.shuffle.registration.maxAttempts`, `spark.shuffle.sync`
+
+**Maps to topics:** E2, E1
+
+---
+
 ## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
+| 2026-07-25 | 4.2.0 | Re-sweep at the same Spark version, driven by the config-slice breadth check. Four concepts added from keys tied to nothing: **map output size representation** (proposed as **A20** — the biggest find, since every size-based runtime decision including AQE skew detection reads byte-compressed and, above 2000 partitions, *averaged* sizes, with the skew-accuracy path off by default), **spill file merging and read-ahead** (including `spark.unsafe.sorter.spill.merge.factor`, new in 4.2.0 and defaulting to the legacy unbounded merge), **host-local disk reading**, and **shuffle cleanup and the service state DB**. Two existing concepts deepened rather than left thin: the per-codec tuning knobs under compression-codecs, and the two independent ways radix sort gets selected under UnsafeExternalSorter. `groups.yaml` extended to name `MapStatus` / `HighlyCompressedMapStatus` and `UnsafeSorterBoundedSpillMerger` — MapStatus.scala sits in `scheduler/`, so neither this sweep nor the execution-engine sweep had claimed it. |
 | 2026-07-19 | 4.2.0 | Initial sweep, in two halves (shuffle write/read; memory, Tungsten, compression). 27 concepts. Two gaps proposed: A15 (push-based shuffle) and E14 (unmanaged memory). Two further gaps folded into existing topics rather than proposed as new ones, and the folding was done, not just noted: the fetch-side failure taxonomy (three in-flight limits, the single-retry corruption budget, the Netty-OOM circuit breaker) now sits in **A13** alongside the driver-side half it completes, and the cross-cutting observability gap — writer selection, merge strategy, batch-fetch eligibility and merger-threshold failure all being debug-level or silent — now sits in **E3**, with the practical remedy of raising `org.apache.spark.shuffle` and `org.apache.spark.storage` to DEBUG on one representative run. |

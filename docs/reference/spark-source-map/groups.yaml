@@ -78,6 +78,16 @@ _meta:
     status/, metrics/ and the History Server) and config-security (the config system and
     SecurityManager). core's largest group is now 116 files, down from 221.
 
+    Scope extension (2026-07-25, from the core shuffle-memory re-sweep): MapStatus and
+    HighlyCompressedMapStatus named explicitly in shuffle-memory's scope. MapStatus.scala
+    lives in scheduler/, which execution-engine claims at package level, but the concept —
+    how map-output block sizes are represented and how much accuracy AQE's skew detection
+    actually gets — is shuffle's, and neither sweep had covered it. Naming a class still
+    resolves to its package, so --coverage correctly flagged scheduler/ as doubly claimed;
+    both groups now carry shared_scope: true, split by theme exactly as k8s is. A token for
+    UnsafeSorterBoundedSpillMerger was tried and dropped: it resolves into util/, which is
+    recorded as plumbing, and the class is already cited by the sweep without a scope claim.
+
     Ownership fix (2026-07-25, prompted by the new --sweeps check): deploy/security/ was
     claimed by submit-standalone but is swept by config-security, whose bare security/ token
     already matched it by suffix. Moved the claim to config-security and named it explicitly;
@@ -102,13 +112,17 @@ core:
     name: execution-engine
     title: "Execution engine"
     topics: [B1, E1]
+    shared_scope: true   # scheduler/ shared with shuffle-memory, which owns MapStatus
     scope: "scheduler/ (DAGScheduler, TaskScheduler, Stage), executor/, TaskContext, BarrierTaskContext"
     description: ""
   - number: 3
     name: shuffle-memory
     title: "Shuffle & memory"
     topics: [A4, E1]
-    scope: "shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression, BytesToBytesMap (the Tungsten off-heap hash map, in core's Java tree)"
+    scope: "shuffle/ (SortShuffleManager, push-based shuffle), memory/ (MemoryManager, off-heap), io/compression, BytesToBytesMap (the Tungsten off-heap hash map, in core's Java tree), MapStatus and HighlyCompressedMapStatus (the map-output size representation AQE and skew detection read; the file sits in scheduler/ but the concept is shuffle's)"
+    # scheduler/ is claimed by execution-engine too: that group owns the scheduling
+    # machinery, this one owns MapStatus. Split by theme, not by path, as in k8s.
+    shared_scope: true
     description: ""
   - number: 4
     name: storage-serializer

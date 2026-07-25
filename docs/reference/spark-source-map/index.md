@@ -56,6 +56,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A17 | Table and Column Statistics and the Cost-Based Optimizer | — | — | ⬜ |
 | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters | — | — | ⬜ |
 | A19 | Correlated Subqueries and Decorrelation | — | — | ⬜ |
+| A20 | Map Output Sizes: What AQE and Skew Detection Actually See | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -214,6 +215,10 @@ flowchart LR
     S6 --> S6c24["compression-codecs"]
     S6 --> S6c25["memory-release-and-leak-detection"]
     S6 --> S6c26["unmanaged-memory-accounting"]
+    S6 --> S6c27["map-status-representation-and-size-accuracy"]
+    S6 --> S6c28["spill-file-merging-and-read-ahead"]
+    S6 --> S6c29["host-local-disk-reading"]
+    S6 --> S6c30["shuffle-cleanup-and-the-service-state-db"]
     S7["core"]
     S7 --> S7c0["blockmanager-initialization"]
     S7 --> S7c1["driver-location-registry"]
@@ -334,6 +339,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | fetch-failure-and-stage-retry | core | new | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
 | indeterminate-stages-and-rollback | core | new | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
 | leader-election-and-ha | core | new | E16 | Standalone High Availability and Recovery |
+| map-status-representation-and-size-accuracy | core | new | A20 | Map Output Sizes: What AQE and Skew Detection Actually See |
 | output-commit-coordination | core | new | E17 | Output Commit Coordination and Speculative Write Safety |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
 | push-based-shuffle | core | new | A15 | Push-Based Shuffle |
@@ -360,7 +366,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/catalyst — framework | — | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-19 |
+| core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-19 |
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-22 |
