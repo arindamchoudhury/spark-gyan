@@ -202,6 +202,9 @@ flowchart LR
     S5 --> S5c10["ResourceUtils — discovery (resourcesFile vs script) and the dynamic-key resource configs"]
     S5 --> S5c11["ResourceAllocator — address assignment and the executor/task arithmetic"]
     S5 --> S5c12["Stage-level scheduling and accelerator-aware resources (GPU/FPGA)"]
+    S5 --> S5c13["BlockTransferService — the data plane"]
+    S5 --> S5c14["The RpcEnv file server"]
+    S5 --> S5c15["RpcCallContext and the reply contract"]
     S6["core"]
     S6 --> S6c0["shuffle-manager-registration"]
     S6 --> S6c1["writer-selection"]
@@ -397,7 +400,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — config-security | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — rpc-resources | — | ✅ complete | 4.2.0 | 2026-07-22 |
+| core — rpc-resources | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — api-bridge | — | ✅ complete | 4.2.0 | 2026-07-22 |
 | resource-managers/kubernetes — driver-executor | 89 | ⬜ pending | — | — |
 | resource-managers/kubernetes — auth-networking | — | ⬜ pending | — | — |

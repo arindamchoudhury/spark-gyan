@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-22
+swept_at: 2026-07-25
 group: rpc-resources
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
 status: complete
@@ -38,6 +38,12 @@ concepts:
       title: "Stage-Level Scheduling and Accelerator-Aware Resources (GPU/FPGA)"
       what: "Attaching a custom ResourceProfile to an RDD so a stage requests different CPUs/memory/accelerators than the app default, and how the scheduler discovers, validates, and assigns GPU/FPGA addresses to its tasks."
       why: "GPU inference/ML stages and mixed CPU/GPU pipelines are a real production pattern; no existing topic teaches ResourceProfiles, resource discovery, fractional-GPU sharing, or profile-merge conflicts."
+  - name: BlockTransferService — the data plane
+    topics: [E1, E2, A4, I6]
+  - name: The RpcEnv file server
+    topics: [E2, B1]
+  - name: RpcCallContext and the reply contract
+    topics: [E1]
 ---
 
 Spark's RPC layer is the actor-like messaging substrate underneath every driver↔executor exchange — task launches, status updates, heartbeats, BlockManager registration, map-output requests all ride it. The resources model layered on the same core is how Spark reasons about custom accelerators (GPU/FPGA) and how it counts how many tasks fit on an executor. This sweep traces both, plus the Netty transport plumbing they share.
@@ -363,6 +369,75 @@ flowchart LR
 
 ---
 
+## BlockTransferService — the data plane
+
+**What it is:** the *second* Netty server every executor runs. The RPC env carries control messages; `NettyBlockTransferService` carries **block bytes** — every shuffle fetch, every remote read of a cached partition, every block replication and every decommission migration. It is a distinct `TransportServer` on its own port with its own thread pools, and confusing it with the RPC env is why "the RPC layer" gets blamed for shuffle throughput problems.
+
+**Code path:** `BlockManager` → `blockTransferService.fetchBlocks(host, port, execId, blockIds, listener, tempFileManager)` → `RetryingBlockTransferor` (if `maxIORetries > 0`) → `OneForOneBlockFetcher` → remote `NettyBlockRpcServer` → `blockManager.getLocalBlockData` → bytes back to the listener
+
+**Anchor files:**
+
+- [BlockTransferService.scala:36](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/network/BlockTransferService.scala#L36) — the abstract contract, extending `BlockStoreClient`; `fetchBlockSync` and `uploadBlockSync` are the blocking wrappers over the async API
+- [NettyBlockTransferService.scala:69](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L69) — `init(blockDataManager)`: this service cannot start until the `BlockManager` exists, which is the other half of the initialization ordering the [storage sweep](core-storage-serializer.md) describes
+- [NettyBlockTransferService.scala:97](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L97) — `createServer`: its **own** `TransportServer`, separate from the RPC env's
+- [NettyBlockTransferService.scala:130](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L130) — `transportConf.maxIORetries()`, i.e. `spark.<module>.io.maxRetries` — a retry layer *below* the fetch-failure handling the [execution-engine sweep](core-execution-engine.md) traces, so a `FetchFailed` reaching the driver has already exhausted these
+- [NettyBlockTransferService.scala:137](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/network/netty/NettyBlockTransferService.scala#L137) — `createClient(host, port, maxRetries > 0)`: the third argument turns on connection retry only when block retries are enabled
+- [NettyBlockRpcServer.scala:79](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/network/netty/NettyBlockRpcServer.scala#L79) — the server-side message vocabulary: `OpenBlocks`, `FetchShuffleBlocks`, `UploadBlock`
+- [NettyBlockRpcServer.scala:172](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/network/netty/NettyBlockRpcServer.scala#L172) — `receiveStream` for `UploadBlockStream`: a replicated block above the size threshold streams rather than materialising in memory on the receiver
+
+!!! info "Two servers, two ports, two sets of thread configs"
+
+    `spark.rpc.io.*` sizes the control plane; `spark.shuffle.io.*` sizes this one, and `spark.blockManager.port` is where it listens. Both go through `SparkTransportConf`, which is why the config names look interchangeable and are not. A firewall rule that opens only `spark.driver.port` leaves block transfer broken while RPC works — the classic "the job starts and then hangs at the first shuffle" shape.
+
+!!! warning "There is a retry layer here that the driver never sees"
+
+    `maxIORetries` retries the *transfer* before any `FetchFailedException` is raised. So a stage that fails with `FetchFailed` has already burned this budget silently, and raising `spark.shuffle.io.maxRetries` / `.retryWait` changes how long a flaky network is tolerated before the driver's stage-retry machinery is even involved.
+
+**Configs:** `spark.blockManager.port`, `spark.shuffle.io.maxRetries`, `.retryWait`, `.preferDirectBufs`, `spark.rpc.io.*`, `spark.network.timeout`
+
+**Maps to topics:** E1, E2, A4, I6
+
+---
+
+## The RpcEnv file server
+
+**What it is:** where `SparkContext.addFile` and `addJar` actually put things when there is no external filesystem. `NettyStreamManager` implements both `StreamManager` and `RpcEnvFileServer`, registering files in three maps and serving them over the RPC transport as `spark://host:port/files/<name>` URIs — which is why an executor can fetch a driver-added jar with no HDFS or S3 involved.
+
+**Anchor files:**
+
+- [NettyStreamManager.scala:39](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/netty/NettyStreamManager.scala#L39) — the dual role, and the three registries: `files`, `jars`, `dirs`
+- [NettyStreamManager.scala:54](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/netty/NettyStreamManager.scala#L54) — `openStream` parses `<type>/<name>` out of the URI; an unknown type is a `require` failure, and a directory registered via `addDirectory` is resolved relative to its base
+- [NettyStreamManager.scala:50](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/netty/NettyStreamManager.scala#L50) — `getChunk` throws `UnsupportedOperationException`: this server is **stream-only**, unlike the block transfer service, so files are read sequentially and cannot be range-fetched
+- [NettyStreamManager.scala:65](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/netty/NettyStreamManager.scala#L65) — a missing or non-regular file returns `null` rather than raising, so the failure surfaces on the fetching side
+- [RpcEnv.scala:168](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/RpcEnv.scala#L168) — the `RpcEnvFileServer` contract: `addFile`, `addJar`, `addDirectory`, `addDirectoryIfAbsent`
+
+!!! info "This is why `addFile` scales badly and `--files` on a cluster FS does not"
+
+    Every executor fetching a driver-added file streams it from the **driver's** RPC server. On a large cluster that is one process serving N sequential reads of the same bytes, with no chunking and no peer-to-peer step — the opposite of how `TorrentBroadcast` spreads a broadcast variable. For anything large, staging on a shared filesystem and passing a URI keeps the driver out of the data path.
+
+**Maps to topics:** E2, B1
+
+---
+
+## RpcCallContext and the reply contract
+
+**What it is:** the object an endpoint's `receiveAndReply` uses to answer. Three methods only — `reply`, `sendFailure`, `senderAddress` — with two implementations chosen by whether the caller is in this JVM: `LocalNettyRpcCallContext` hands the value straight to the caller's promise, `RemoteNettyRpcCallContext` serializes it onto the transport.
+
+**Anchor files:**
+
+- [RpcCallContext.scala:24](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/RpcCallContext.scala#L24) — the whole trait
+- [NettyRpcCallContext.scala:31](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcCallContext.scala#L31) — `reply` and `sendFailure` both funnel into one abstract `send`
+- [NettyRpcCallContext.scala:44](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcCallContext.scala#L44) — the local context: no serialization, which is the same local shortcut the send/ask concept describes
+- [NettyRpcCallContext.scala:57](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcCallContext.scala#L57) — the remote context
+
+!!! warning "An endpoint that neither replies nor fails hangs the caller until the timeout"
+
+    Nothing enforces that `receiveAndReply` calls exactly one of `reply` or `sendFailure`. A branch that returns without answering leaves the caller's future unresolved until its `RpcTimeout` fires — which is why several timeouts in Spark exist and why the [execution-engine sweep](core-execution-engine.md) records that exceptions thrown inside `resourceOffers`/`statusUpdate` are swallowed by this framework (SPARK-31485): a swallowed exception is also an unsent reply.
+
+**Maps to topics:** E1
+
+---
+
 ## Breadth check — all 22 slice configs mapped
 
 | # | Config | Default | Concept | Topic |
@@ -391,3 +466,12 @@ flowchart LR
 | 22 | `spark.worker.resourcesFile` | None | ResourceUtils — discovery (worker) | E2 |
 
 **Prefix-read (dynamic-key, NOT in the config catalog):** `spark.executor.resource.{name}.amount` · `spark.executor.resource.{name}.discoveryScript` · `spark.executor.resource.{name}.vendor` · `spark.driver.resource.{name}.amount` · `spark.driver.resource.{name}.discoveryScript` · `spark.driver.resource.{name}.vendor` · `spark.task.resource.{name}.amount` — all read by `ResourceUtils` via `SparkConf.getAllWithPrefix`, mapped under the *ResourceUtils* and *ResourceAllocator* concepts. Also role-scoped `spark.{driver,executor}.rpc.netty.dispatcher.numThreads` (read in `SharedMessageLoop.getNumOfThreads`) and `spark.{rpc,files}.io.{serverThreads,clientThreads}` (read in `TransportConf`) are dynamic/module-scoped and thus not standalone catalog entries.
+
+---
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-07-22 | 4.2.0 | Initial sweep (RPC layer; resource profiles). 13 concepts, all 22 slice configs attributed in the breadth table above. One gap proposed: A16 (stage-level scheduling and accelerator-aware resources). |
+| 2026-07-25 | 4.2.0 | Re-sweep. The config slice was already exhaustive, so this run was driven by package breadth, walking nested packages by hand after the [config & security sweep](core-config-security.md) established that `--coverage` cannot see them. `network/` was 5 files with 1 cited, and the gap was substantive: the **`BlockTransferService` data plane** had no concept at all. Three added — the block transfer service (a *second* Netty server per executor, its own port and thread configs, carrying every shuffle fetch and cached-block read, with an `maxIORetries` retry layer that runs entirely below the driver's fetch-failure handling), the **`RpcEnv` file server** (`NettyStreamManager`, stream-only, and why `addFile` puts the driver in the data path for every executor), and the **`RpcCallContext` reply contract** (nothing enforces that an endpoint answers, so a missing reply hangs the caller until its `RpcTimeout`). |
