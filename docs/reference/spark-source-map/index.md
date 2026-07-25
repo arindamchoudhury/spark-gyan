@@ -37,6 +37,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I16 | Approximate Actions and Partial Results | — | — | ⬜ |
 | I17 | Whole-File and Binary RDD Sources | — | — | ⬜ |
 | I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars | — | — | ⬜ |
+| I19 | Sampling: sample, takeSample, and Stratified Sampling | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -173,6 +174,13 @@ flowchart LR
     S4 --> S4c11["accumulator-v2"]
     S4 --> S4c12["async-rdd-actions"]
     S4 --> S4c13["serialization"]
+    S4 --> S4c14["sampling"]
+    S4 --> S4c15["hadoop-input-rdds"]
+    S4 --> S4c16["cogroup-and-ordered-operations"]
+    S4 --> S4c17["composition-and-zip-rdds"]
+    S4 --> S4c18["partition-coalescer-algorithm"]
+    S4 --> S4c19["partition-evaluator-api"]
+    S4 --> S4c20["rdd-operation-scope"]
     S5["core"]
     S5 --> S5c0["RpcEnv and endpoint registration"]
     S5 --> S5c1["Dispatcher, Inbox, and the MessageLoop threading model"]
@@ -343,6 +351,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | output-commit-coordination | core | new | E17 | Output Commit Coordination and Speculative Write Safety |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
 | push-based-shuffle | core | new | A15 | Push-Based Shuffle |
+| sampling | core | new | I19 | Sampling: sample, takeSample, and Stratified Sampling |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
 | spark.api.mode — Classic vs Spark Connect selection | core | new | — | — |
 | unmanaged-memory-accounting | core | new | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
@@ -364,7 +373,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/catalyst — expressions | — | ⬜ pending | — | — |
 | sql/catalyst — types-parser | — | ⬜ pending | — | — |
 | sql/catalyst — framework | — | ⬜ pending | — | — |
-| core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-19 |
+| core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-19 |
