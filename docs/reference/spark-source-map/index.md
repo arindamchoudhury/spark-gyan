@@ -304,43 +304,43 @@ flowchart LR
     S10 --> S10c24["Rule-level observability — plan-change logging, validation, idempotence"]
 ```
 
-## Discovery gaps and refinement proposals
+## Topics discovered from the source
 
-**Gap** = no learning-path topic covers this concept at all. **Refinement** = covered by a broader topic, but warrants a dedicated topic. Both are auto-appended to `learning-path.md` when `gen_coverage.py` runs.
+Source-first sweeps discover concepts independently of the learning path; these are the ones it did not already cover. **New** = no topic covered the concept at all. **Refinement** = a broader topic touched it, but it warrants its own. Both are auto-appended to `learning-path.md` when `gen_coverage.py` runs — growing the path is the point of sweeping, not a side effect.
 
 | Concept | Subsystem | Kind | Proposed code | Proposed title |
 |---|---|---|---|---|
-| Config declaration & typed builders (ConfigBuilder / TypedConfigBuilder) | core | gap | — | — |
-| ConfigEntry hierarchy & readFrom resolution | core | gap | — | — |
-| ConfigReader variable substitution & config providers | core | gap | — | — |
-| Proxy-user custom classpath control (slice keyword artifact) | core | gap | — | — |
-| SparkConf deprecation & alternate-key handling | core | gap | — | — |
-| Stage-level scheduling and accelerator-aware resources (GPU/FPGA) | core | gap | A16 | Stage-Level Scheduling and Accelerator-Aware Resources (GPU/FPGA) |
+| Config declaration & typed builders (ConfigBuilder / TypedConfigBuilder) | core | new | — | — |
+| ConfigEntry hierarchy & readFrom resolution | core | new | — | — |
+| ConfigReader variable substitution & config providers | core | new | — | — |
+| Proxy-user custom classpath control (slice keyword artifact) | core | new | — | — |
+| SparkConf deprecation & alternate-key handling | core | new | — | — |
+| Stage-level scheduling and accelerator-aware resources (GPU/FPGA) | core | new | A16 | Stage-Level Scheduling and Accelerator-Aware Resources (GPU/FPGA) |
 | accumulator-v2 | core | refinement | E10 | AccumulatorV2: Distributed Side-Effect Counters |
-| approximate-actions | core | gap | I16 | Approximate Actions and Partial Results |
+| approximate-actions | core | new | I16 | Approximate Actions and Partial Results |
 | async-rdd-actions | core | refinement | I15 | AsyncRDDActions: Non-Blocking Job Submission |
-| barrier-execution | core | gap | E13 | Barrier Execution Mode |
-| block-locking | core | gap | E15 | Block Locking and Cache Visibility |
+| barrier-execution | core | new | E13 | Barrier Execution Mode |
+| block-locking | core | new | E15 | Block Locking and Cache Visibility |
 | closure-cleaning | core | refinement | I14 | Closure Cleaning and the Task-Not-Serializable Problem |
-| dependency-resolution | core | gap | I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars |
-| executor-exclusion | core | gap | E12 | Executor Exclusion and Health Tracking |
-| fetch-failure-and-stage-retry | core | gap | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
-| indeterminate-stages-and-rollback | core | gap | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
-| leader-election-and-ha | core | gap | E16 | Standalone High Availability and Recovery |
+| dependency-resolution | core | new | I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars |
+| executor-exclusion | core | new | E12 | Executor Exclusion and Health Tracking |
+| fetch-failure-and-stage-retry | core | new | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
+| indeterminate-stages-and-rollback | core | new | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
+| leader-election-and-ha | core | new | E16 | Standalone High Availability and Recovery |
 | pair-rdd-functions | core | refinement | I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey |
-| push-based-shuffle | core | gap | A15 | Push-Based Shuffle |
+| push-based-shuffle | core | new | A15 | Push-Based Shuffle |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
-| spark.api.mode — Classic vs Spark Connect selection | core | gap | — | — |
-| unmanaged-memory-accounting | core | gap | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
-| whole-file-sources | core | gap | I17 | Whole-File and Binary RDD Sources |
-| Correlated subqueries — pull-up, decorrelation and the COUNT bug | sql/catalyst | gap | A19 | Correlated Subqueries and Decorrelation |
-| Runtime filtering — bloom filters and dynamic partition pruning | sql/catalyst | gap | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters |
-| Statistics — the two visitors and the estimation model | sql/catalyst | gap | A17 | Table and Column Statistics and the Cost-Based Optimizer |
+| spark.api.mode — Classic vs Spark Connect selection | core | new | — | — |
+| unmanaged-memory-accounting | core | new | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
+| whole-file-sources | core | new | I17 | Whole-File and Binary RDD Sources |
+| Correlated subqueries — pull-up, decorrelation and the COUNT bug | sql/catalyst | new | A19 | Correlated Subqueries and Decorrelation |
+| Runtime filtering — bloom filters and dynamic partition pruning | sql/catalyst | new | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters |
+| Statistics — the two visitors and the estimation model | sql/catalyst | new | A17 | Table and Column Statistics and the Cost-Based Optimizer |
 
 
 ## Sweep status
 
-Which subsystems have been swept for source-concept discovery. Sweep in book-priority order: `sql/catalyst`, `sql/core` first.
+Which subsystems have been swept for source-concept discovery. Order by discovery yield — densest unexplored subsystems first (`sql/catalyst`, `sql/core`), not by what the book needs next.
 
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|

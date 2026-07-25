@@ -164,7 +164,7 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
         title = p.get("title", code)
         what = p.get("what", "")
         why = p.get("why", "")
-        kind = "gap" if p.get("gap") else "refinement"
+        kind = "new topic" if p.get("gap") else "refinement"
         section = (
             f"\n### ⬜ {code} — {title}\n\n"
             f"> Discovered from source sweep ({kind}): `{p['subsystem']}: {p['concept']}`\n\n"
@@ -287,12 +287,14 @@ def build_index(root: Path) -> str:
     L.append("")
 
     # --- discovery gaps -----------------------------------------------------
-    L.append("## Discovery gaps and refinement proposals")
+    L.append("## Topics discovered from the source")
     L.append("")
     L.append(
-        "**Gap** = no learning-path topic covers this concept at all. "
-        "**Refinement** = covered by a broader topic, but warrants a dedicated topic. "
-        "Both are auto-appended to `learning-path.md` when `gen_coverage.py` runs.")
+        "Source-first sweeps discover concepts independently of the learning path; these are "
+        "the ones it did not already cover. **New** = no topic covered the concept at all. "
+        "**Refinement** = a broader topic touched it, but it warrants its own. Both are "
+        "auto-appended to `learning-path.md` when `gen_coverage.py` runs — growing the path "
+        "is the point of sweeping, not a side effect.")
     L.append("")
     if gaps:
         L.append("| Concept | Subsystem | Kind | Proposed code | Proposed title |")
@@ -300,7 +302,7 @@ def build_index(root: Path) -> str:
         for sub, cname, propose, is_gap in sorted(gaps, key=lambda x: (x[0], x[1])):
             pcode = propose.get("code", "—") if propose else "—"
             ptitle = propose.get("title", "—") if propose else "—"
-            kind = "gap" if is_gap else "refinement"
+            kind = "new" if is_gap else "refinement"
             L.append(f"| {cname} | {sub} | {kind} | {pcode} | {ptitle} |")
         L.append("")
     else:
@@ -335,7 +337,8 @@ def build_index(root: Path) -> str:
     L.append("")
     L.append(
         "Which subsystems have been swept for source-concept discovery. "
-        "Sweep in book-priority order: `sql/catalyst`, `sql/core` first.")
+        "Order by discovery yield — densest unexplored subsystems first "
+        "(`sql/catalyst`, `sql/core`), not by what the book needs next.")
     L.append("")
     L.append("| Subsystem | Configs | Status | Spark version | When |")
     L.append("|---|---|---|---|---|")

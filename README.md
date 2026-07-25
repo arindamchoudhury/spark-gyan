@@ -34,7 +34,11 @@ Tools in `tools/spark_source_map/` mine the Apache Spark source using a hybrid t
 
 **Two tracing directions:**
 - **Topic-first** (`trace <code>`) — start from a learning-path topic, find the backing source classes and configs. Output: `topics/<code>.md`.
-- **Source-first sweep** (`sweep <subsystem>`) — scan a subsystem, surface concepts the learning path doesn't yet cover. Output: `sweeps/<slug>.md` + proposals auto-appended to `learning-path.md`.
+- **Source-first sweep** (`sweep <subsystem>`) — scan a subsystem and report what is in it, whether or not anything covers it yet. Output: `sweeps/<slug>.md` + new topics appended to `learning-path.md`.
+
+**The sweeper discovers topics to learn independently of the book and of the learning path.** That is the point of the source-first direction: it asks *what is in this code*, not *what does the curriculum still need*. So the learning path is an **output** of sweeping, not a filter on it — concepts no topic covers are the deliverable, sweeps grow the path as a matter of course, and sweep order follows discovery yield rather than whichever chapter is next. A run that surfaces nothing new has swept too shallowly.
+
+Writing the book from all this is a separate job, owned by the `spark-book` and `book-gap-filler` skills. The source map discovers, documents, and extends the path; it does not write chapters.
 
 ### Driving it from Claude Code
 
@@ -71,10 +75,13 @@ python tools/spark_source_map/gen_configs.py
 python tools/spark_source_map/check_drift.py
 
 # Regenerate the landing page / coverage matrix
-# Also appends proposed topics from sweep gaps to learning-path.md automatically.
+# Also appends topics discovered by sweeps to learning-path.md automatically.
 # Pass --no-write-proposals to skip the learning-path update.
 python tools/spark_source_map/gen_coverage.py
-# Output: docs/reference/spark-source-map/index.md (+ learning-path.md if proposals exist)
+# Output: docs/reference/spark-source-map/index.md (+ learning-path.md if there are new topics)
+
+# Re-resolve file:line anchors against a newer Spark (dry run; --apply to write)
+python tools/spark_source_map/refresh_anchors.py --to v4.3.0
 
 # Run tests
 python -m pytest tools/spark_source_map/
@@ -128,7 +135,7 @@ concepts:
   - name: broadcast
     topics: [I4, E1]        # learning-path codes this concept backs
   - name: pair-rdd-functions
-    topics: []              # [] = discovery gap; add a propose: block, and
+    topics: []              # no topic covers this yet — the sweep's product.
     propose:                # gen_coverage.py appends it to learning-path.md
       code: I13
       level: Intermediate
@@ -314,7 +321,16 @@ python tools/spark_source_map/check_drift.py --sweeps
 python tools/spark_source_map/gen_coverage.py
 ```
 
-**5. Decide what to re-trace, and don't just bump tags.** The warnings from step 3 list every page whose anchors predate the new release. Re-tracing is a real pass over the source, not a find-and-replace on the version in the GitHub URLs: line numbers drift heavily between releases (26 of 33 anchors moved for B3 between 4.1.2 and 4.2.0), and a stale anchor still renders perfectly on GitHub while pointing at the wrong code. Re-verify each anchor against the local checkout, then update the page's `spark_version`, `traced_at`, and refresh-log row. Pages that pin deliberately (`version_pinned`) need no action.
+**5. Re-resolve the anchors mechanically, then decide what to re-trace.** The warnings from step 3 list every page whose anchors predate the new release. Never find-and-replace the tag in the URLs: line numbers drift heavily between releases (26 of 33 anchors moved for B3 between 4.1.2 and 4.2.0; across the whole corpus a two-release move relocates roughly 40% of 1300+ anchors), and a stale anchor still renders perfectly on GitHub while pointing at the wrong code.
+
+```bash
+python tools/spark_source_map/refresh_anchors.py --to v<new>          # dry run first
+python tools/spark_source_map/refresh_anchors.py --to v<new> --apply
+```
+
+This reads each anchor's line *as it was at the version the page records*, finds that line in the new version, and rewrites the URL, the `#L`, and every `:N` in the label. Anything it cannot resolve is reported and left alone, and a page with unresolved anchors keeps its old `spark_version` so it stays flagged. `version_pinned` pages are skipped.
+
+That handles the bookkeeping, **not the meaning**: a resolved anchor points at the same line of source, and says nothing about whether the prose around it is still true. Read the diff, and re-trace properly wherever the code moved a long way, resolved "via declaration", or where the release changed behaviour. Then update each page's `traced_at` and refresh-log row.
 
 **6. Reconcile the prose layers.**
 
@@ -329,6 +345,8 @@ The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--
 > **Check the checkout before regenerating.** The catalog records whatever it parsed in `meta.spark_version`, with no warning if that isn't what you meant. A checkout left on `master` yields a `5.0.0-SNAPSHOT` catalog that looks perfectly valid. To target a release: `git -C C:/opt/learn/spark/repos/spark checkout v4.2.0`.
 
 ### Sweepable subsystems
+
+This table is hand-copied from `groups.yaml` and is the last such copy left — it goes stale the moment a subsystem is regrouped. For the live carving, plus each group's scope and whether it has already been swept, run `python tools/spark_source_map/gen_coverage.py --list-groups`.
 
 | Subsystem | Groups |
 |---|---|
@@ -345,9 +363,9 @@ The Spark source defaults to `C:/opt/learn/spark/repos/spark`; override with `--
 | `connector/kafka-0-10-sql` | source-sink |
 | `connector/profiler` | async-profiler |
 
-Sweep in book-priority order: `sql/catalyst` and `sql/core` first — highest config density, and closest to what the book covers.
+Order by discovery yield, not by what the book needs next: `sql/catalyst` and `sql/core` first, being the densest in configs and in concepts per file. A group whose concepts back no written chapter is still worth sweeping — often the chapter is missing *because* that code has never been mapped.
 
-**Config counts are deliberately not repeated here.** The sweep-status table in `docs/reference/spark-source-map/index.md` is generated from `catalog.yaml` on every `gen_coverage.py` run, so it is always current; a copy in this file is a second number to maintain, and it rotted last time (this section carried v4.1.2 counts well past the 4.2.0 refresh, and disagreed with its own prose). Counts also say where a config is *declared*, not where the feature runs — nearly every SQL config is declared in `sql/catalyst`'s `SQLConf.scala`, so `sql/core` and `sql/pipelines` show none at all while holding the physical execution for most of the book's topics.
+**Config counts are deliberately not repeated here.** The sweep-status table in `docs/reference/spark-source-map/index.md` is generated from `catalog.yaml` on every `gen_coverage.py` run, so it is always current; a copy in this file is a second number to maintain, and it rotted last time (this section carried v4.1.2 counts well past the 4.2.0 refresh, and disagreed with its own prose). Counts also say where a config is *declared*, not where the feature runs — nearly every SQL config is declared in `sql/catalyst`'s `SQLConf.scala`, so `sql/core` and `sql/pipelines` show none at all while holding the physical execution behind most of what Spark does.
 
 Two subsystems are not where their name suggests:
 
