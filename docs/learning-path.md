@@ -221,6 +221,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 9. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — what happens *after* your rows are written: the `FileCommitProtocol` staging model, why a write lands in a temp directory first, and the fact that `commitJob` promotes files one rename at a time with no rollback — so a driver killed mid-commit leaves a partly-written destination
 10. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — two analysis-time write behaviours: `CHECK` constraints become a `CheckInvariant` expression inserted above the write (so enforcement costs per row and appears in `EXPLAIN`), and `ResolveSchemaEvolution` reconciles an incoming schema against the table's
 11. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the catalyst half of DataSource V2: `DataSourceV2Relation` before a scan is built, `DataSourceV2ScanRelation` after, and the capability model — `supports` is a set-membership test against what the connector *declares*, so an undeclared capability is a clean analysis error and a falsely declared one fails much later
+12. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the parser layer under `spark.read`: `CSVOptions` / `JSONOptions` / `XmlOptions` are the real option reference, `enforceSchema=true` (the CSV default) means the header is **skipped and matched by position** rather than validated, and every format funnels malformed records through one 70-line `FailureSafeParser` whose PERMISSIVE default emits a row of nulls with no signal
 
 **Milestone:** You can read multi-file datasets with glob patterns, declare a schema programmatically with `StructType`, write in append/overwrite mode, and explain why Parquet is preferred for analytical workloads. Then two the source makes checkable: predict how many tasks a read of N files will produce and say which config capped it, and explain what happens to already-written files when a write fails halfway.
 
@@ -253,6 +254,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 5. **Spark-docs → `pyspark.sql.types` reference** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/data_types.html)) — every type class with its Python-value mapping; the table to check before assuming a Python type maps the way you expect
 6. **Source trace — [B5 in the source map](reference/spark-source-map/topics/b5.md)** — the three input surfaces converging on one `DataType` tree, the three separate "is this cast allowed" rules, and — the one to read first — exactly where Spark does and does not enforce a schema
 7. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — where `CHECK` constraints are turned into plan expressions, and the analysis-side handling of char/varchar padding and collation
+8. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — what a schema is underneath: `DataType` has three non-interchangeable text forms (`json` for the metastore, `catalogString` for `printSchema`, `sql` for DDL) and **four** notions of equality; `CHAR(n)` / `VARCHAR(n)` are erased to `StringType` plus a metadata key, so `printSchema` cannot show what you declared; and the `TIME` type defaults to `Utils.isTesting` — present in the source, off in any real session
 
 **Milestone:** You can define a schema without `inferSchema`, validate that incoming data matches it, and explain the cost of `inferSchema` on large files. Then the part that changes how you write pipelines: declare a column `nullable=False`, read a file containing nulls in it, and predict what happens before you run it.
 
@@ -367,6 +369,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 7. **Spark-docs → Common Table Expressions** ([sql-ref-syntax-qry-select-cte.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-cte.html)) — `WITH` and `WITH RECURSIVE`; worth reading alongside the sweep below, which shows that a CTE is usually *inlined* rather than materialised
 8. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — what happens to your SQL after it parses: `EXCEPT`, `INTERSECT` and `DISTINCT` have no physical operator and are rewritten into joins and aggregates; `WITH` is inlined per definition by `InlineCTE`; and a correlated subquery becomes a semi/anti/outer join before planning
 9. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `RDDOperationScope`, the mechanism behind the DAG visualization's named, nested boxes: every public RDD operation wraps its body in `withScope` and each RDD records the scope stack from a job local property, which is why a custom RDD built outside it appears unlabelled
+10. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — what happens to the SQL text: a two-stage parse (fast SLL, then a full LL retry, so a failing query is parsed **twice**), `ParseException` being a subclass of `AnalysisException`, and `AstBuilder`'s 222 visitors turning the parse tree into an *unresolved* plan. Also that SQL scripting, cursors and the pipe operator are gated inside the visitor rather than the grammar, which is why their errors name the feature
 
 **Milestone:** You can register a DataFrame as a temp view, query it with `spark.sql()`, and mix SQL expressions into a method-chained DataFrame pipeline. Then, with a user-supplied value in hand: write the query so the value can never be parsed as SQL, and say why your approach guarantees that rather than merely making it unlikely.
 
@@ -834,6 +837,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 5. **Spark-docs → ORC** ([sql-data-sources-orc.html](https://spark.apache.org/docs/latest/sql-data-sources-orc.html)) and **Avro** ([sql-data-sources-avro.html](https://spark.apache.org/docs/latest/sql-data-sources-avro.html)) — the two comparison points: ORC is Parquet's architecture with different defaults, Avro is the row-oriented case and ships as a separate artifact
 6. **Source trace — [I10 in the source map](reference/spark-source-map/topics/i10.md)** — where columnar execution actually stops, why pushdown is per-filter rather than per-format, and what `VARIANT` changed
 7. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — how a V2 table reports statistics: `computeStats` asks the connector through `SupportsReportStatistics`, and a format that does not implement it gets the default estimate — which is what starves the cost-based optimizer regardless of how good the file-level metadata is
+8. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the three text formats' parsers in detail: Univocity for CSV with its 20480-column and column-pruning limits, Jackson for JSON with **filter pushdown into the parser** and partial results, and the 4.1 Stax rewrite for XML with the old parser still behind `spark.sql.legacy.useLegacyXMLParser`. Also `singleVariantColumn`, the JSON option that ingests a whole record as one `VARIANT`
 
 !!! info "Spark is columnar at the scan and nowhere else"
     The vectorized reader fills `ColumnarBatch`es of 4096 rows directly from Parquet row groups, constructing no per-row objects. Then `ColumnarToRowExec` converts the batch to `UnsafeRow` as soon as an operator cannot consume columnar input — which, in open-source Spark, is almost immediately.
@@ -1178,6 +1182,7 @@ disabling ANSI mode session-wide; explain why a cast rejected in a `SELECT` can 
 2. **Spark-docs → SHOW COLLATIONS** ([sql-ref-syntax-aux-show-collations.html](https://spark.apache.org/docs/latest/sql-ref-syntax-aux-show-collations.html)) — the catalogue of available collations and the naming scheme (`SYSTEM.BUILTIN.UTF8_LCASE`, ICU locales, the `_AI` / `_CI` / `_RTRIM` suffixes)
 3. **Spark-docs → String Functions** ([api/sql/string-functions](https://spark.apache.org/docs/latest/api/sql/string-functions/)) — `collate` and `collation`, plus which string functions are collation-aware
 4. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the collation concept: `Collate` is a pure metadata pass-through with no runtime cost, and the real machinery is `CollationKey`, injected into **join keys** by `HashJoin` so that hashing agrees with comparison
+5. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the type-system half of collation: `StringType` is a *parameterized* type carrying a `collationId`, so `STRING` and `STRING COLLATE UTF8_LCASE` are different types that need coercion to union; `supportsBinaryEquality` and `supportsBinaryOrdering` are the predicates every collation-aware operation branches on
 
 !!! warning "No book covers this"
 
@@ -1215,6 +1220,7 @@ you join on frequently.
 2. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) — `VariantType`, added in 4.0.0, and where it sits relative to `StructType` and `MapType`
 3. **Spark-docs → JSON Functions** ([api/sql/json-functions](https://spark.apache.org/docs/latest/api/sql/json-functions/)) — the `get_json_object` / `from_json` surface variant is meant to replace; read it to see what re-parsing per access costs
 4. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the VARIANT concept: `failOnError` is the *only* difference between `parse_json` and `try_parse_json`, the path grammar is parsed once per expression rather than per row, and the `col:field.sub` dot syntax is a `SemiStructuredExtract` node the analyzer rewrites into `variant_get`
+5. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — how a VARIANT column gets created on read: the `singleVariantColumn` JSON option routes the whole record through a root converter into one variant value, sharing the same `JacksonParser` that a schema-driven read uses — so the parse modes and `_corrupt_record` behave identically
 
 !!! warning "No book covers this"
 
@@ -1235,6 +1241,121 @@ you join on frequently.
 `schema_of_variant_agg` to discover the actual shape of a column you did not write; explain what
 `try_parse_json` changes and on what input; and state one case where a declared `StructType` is
 still the better choice.
+
+---
+
+
+### ⬜ I23 — Schema Inference for CSV, JSON and XML
+
+> Discovered from source sweep (new topic): `sql/catalyst: Schema inference — one type lattice, three formats`
+
+**What it is:** The shared algorithm behind `inferSchema`: per-value type guessing, a `compatibleType` lattice that widens conflicts toward `StringType`, a distributed fold over partitions, and the `samplingRatio` / `preferDate` / `prefersDecimal` knobs that steer it.
+
+**Why you need it:** Inference is a full extra job over the data, its result depends on what happened to be in the sample, and understanding the widening lattice is the difference between debugging a surprise `string` column and re-running with an explicit schema.
+
+**Learn it with:**
+
+1. **Spark-docs → CSV Files** ([sql-data-sources-csv.html](https://spark.apache.org/docs/latest/sql-data-sources-csv.html)) — the option table is the reference: `inferSchema`, `samplingRatio`, `preferDate`, `enforceSchema`, `nullValue`, `emptyValue`, and the read/write split on several of them
+2. **Spark-docs → JSON Files** ([sql-data-sources-json.html](https://spark.apache.org/docs/latest/sql-data-sources-json.html)) and **XML Files** ([sql-data-sources-xml.html](https://spark.apache.org/docs/latest/sql-data-sources-xml.html)) — the same shape of table for the other two formats; XML's `rowTag` is the one option with no default
+3. **Rioux Ch 6** — reading semi-structured JSON and building a schema by hand; the book's argument for explicit schemas is the right one, and this topic is why
+4. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the inference concept: the try-in-order ladder (integer → long → decimal → double → date → timestamp → boolean → **string**), `compatibleType` as a lattice whose top element is `StringType`, the distributed `mapPartitions` + `fold`, and `canonicalizeType` dropping all-null JSON fields out of the schema entirely
+
+!!! warning "Inference is a job, not a peek"
+
+    `infer` is a full pass over the input before your query runs — unbounded for CSV, bounded by
+    `samplingRatio` for JSON. Two things follow: the inferred schema can change between runs when
+    the data changes, and you pay for the pass every time. Supplying an explicit schema removes
+    both costs at once.
+
+!!! info "A surprise `string` column means the lattice widened"
+
+    `compatibleType` widens conflicting guesses, and `StringType` is the top element. One
+    unparseable value anywhere in the scanned data turns the whole column to `string` — with no
+    warning and no indication of which row caused it. For JSON, the bottom element `NullType` is
+    dropped at canonicalization, so a field that was null in every sampled record does not appear
+    in the schema at all.
+
+**Milestone:** You can read the same CSV with and without `inferSchema` and show the difference in
+job count in the Spark UI; explain why a column of integers with one `"N/A"` infers as `string` and
+name the function responsible; predict what happens to a JSON field that is `null` in every sampled
+record; and state what `samplingRatio` does and does not bound for each of the three formats.
+
+---
+
+
+### ⬜ I24 — Malformed Records: PERMISSIVE, DROPMALFORMED, FAILFAST and _corrupt_record
+
+> Discovered from source sweep (new topic): `sql/catalyst: Malformed record handling — FailureSafeParser and the corrupt-record column`
+
+**What it is:** The three parse modes shared by CSV, JSON and XML, the `FailureSafeParser` that implements them, and the rules governing the `_corrupt_record` column — it must be declared in the schema, must be a nullable `STRING`, and cannot be selected on its own.
+
+**Why you need it:** PERMISSIVE is the default, so by default a malformed row becomes a row of nulls and nothing tells you; and the corrupt-record column that would tell you is subject to three separate rules that each produce a different confusing error.
+
+**Learn it with:**
+
+1. **Spark-docs → CSV Files** ([sql-data-sources-csv.html](https://spark.apache.org/docs/latest/sql-data-sources-csv.html)) — the `mode` and `columnNameOfCorruptRecord` options, documented per format; the same two appear on the [JSON](https://spark.apache.org/docs/latest/sql-data-sources-json.html) and [XML](https://spark.apache.org/docs/latest/sql-data-sources-xml.html) pages
+2. **Spark-docs → Error Conditions** ([sql-error-conditions.html](https://spark.apache.org/docs/latest/sql-error-conditions.html)) — look up `MALFORMED_RECORDS_DETECTED_IN_RECORD_PARSING` and `INVALID_CORRUPT_RECORD_TYPE`; they are what FAILFAST and a mistyped corrupt-record column produce
+3. **Rioux Ch 6** — the book reads JSON with permissive defaults throughout and never mentions the mode; read it, then come back and check what its examples would do to a malformed record
+4. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the malformed-record concept: `FailureSafeParser` is 70 lines and contains the entire behaviour, including the branch where **a schema without a corrupt-record field discards the bad record**, and `ParseMode.fromString` silently falling back to PERMISSIVE on an unrecognised mode name
+
+!!! warning "The default loses data silently"
+
+    PERMISSIVE emits a row of nulls for a record it could not parse. No counter, no metric, no log
+    line. A pipeline with an explicit schema and no `_corrupt_record` column can null out every row
+    of a file and report success. Use FAILFAST while developing, and add the corrupt-record column
+    in production if you want to keep the evidence.
+
+!!! info "Three rules govern `_corrupt_record`, with three different errors"
+
+    It must be **declared in the schema** — otherwise the raw record is thrown away and you get
+    nulls. It must be a **nullable STRING** — otherwise `INVALID_CORRUPT_RECORD_TYPE`. And it
+    **cannot be the only column your query references** — the datasource refuses, because there
+    would be nothing to parse against. None of these follows from the option's name.
+
+**Milestone:** You can read a file containing one malformed record under all three modes and
+describe the output of each; add `_corrupt_record` to a schema and retrieve the raw text of a bad
+row; explain what happens when the column is declared as a non-nullable string, and what happens
+when you `select` only that column; and say why `spark.sql.files.ignoreCorruptFiles` is a different
+mechanism from `mode`.
+
+---
+
+
+### ⬜ I25 — Decimal Precision, Scale, and Silent Rounding
+
+> Discovered from source sweep (new topic): `sql/catalyst: DecimalType and Decimal — precision, scale, and the adjustment rule`
+
+**What it is:** How Spark derives the precision and scale of a decimal result: the 38-digit ceiling, the `adjustPrecisionScale` rule that sacrifices fractional digits to protect integral ones, and the six-digit floor it will not go below.
+
+**Why you need it:** A chain of decimal multiplications or divisions silently loses fractional digits — or overflows to null — according to a rule nobody reads, and `spark.sql.decimalOperations.allowPrecisionLoss` picks which of the two failure modes you get.
+
+**Learn it with:**
+
+1. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) — `DecimalType`, its 38-digit limit, and the Java/Python type it maps to
+2. **Spark-docs → ANSI Compliance** ([sql-ref-ansi-compliance.html](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html)) — the arithmetic-overflow section: with ANSI on, a decimal that cannot be represented raises instead of returning null, which interacts directly with the precision-loss setting
+3. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — `spark.sql.decimalOperations.allowPrecisionLoss`, whose one-line description does not convey what it trades
+4. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the decimal concept: `adjustPrecisionScale` and its formula `adjustedScale = max(38 - intDigits, min(scale, 6))`, the `MINIMUM_ADJUSTED_SCALE = 6` floor, and `MAX_LONG_DIGITS = 18` — the boundary at which a `Decimal` stops being a `Long` and an `UnsafeRow` field stops being fixed-width
+
+!!! warning "No book covers this"
+
+    SDG, LS2e and Rioux all mention `DecimalType` as a type you can declare. None describes how the
+    precision and scale of a *result* are derived, which is where the data loss happens. The rule
+    is inherited from Hive, which took it from SQL Server, and it is documented in a source comment
+    rather than in the docs.
+
+!!! warning "You get one of two failure modes and neither is loud"
+
+    With `allowPrecisionLoss=true` (the default), a result needing more than 38 digits keeps its
+    integral digits and drops fractional ones — to a floor of 6. Multiply three `DECIMAL(20,10)`
+    columns and the declared scale collapses, with no warning. Set it to `false` and the same
+    expression returns **null** instead (or raises, under ANSI mode). For financial arithmetic,
+    decide which one you want before the pipeline is in production rather than after a reconcile
+    fails.
+
+**Milestone:** You can compute the result type of `DECIMAL(20,10) * DECIMAL(20,10)` by hand from
+the adjustment formula and confirm it with `printSchema`; show the same expression returning null
+under `allowPrecisionLoss=false`; explain why `DECIMAL(18,2)` and `DECIMAL(19,2)` differ in storage
+as well as range; and name the config that permits a negative scale and why it is off.
 
 ---
 
@@ -1267,6 +1388,7 @@ still the better choice.
 8. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the `PartitionEvaluator` API ([SPARK-43061]), which is how a physical operator's `doExecute` actually runs on an RDD in 3.5+: a serialized *factory* builds per-partition state on the executor rather than a closure capturing driver state
 9. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the planner *framework*: `QueryPlanner.plan()` returns a lazy iterator of candidates and the caller takes the **first**, so physical planning is rule-order-driven rather than cost-driven. Also `QueryPlanningTracker`, whose `topRulesByTime` answers "which rule is slow on my query" directly
 10. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the layer every rule above operates on: `foldable`, `deterministic`, `nullIntolerant`, `canonicalized` / `semanticEquals` are the declarative properties that gate constant folding, pushdown, constraint inference and expression reuse. `semanticEquals` is false whenever either side is non-deterministic, which is why one `rand()` removes a subtree from every reuse optimization at once. Also `With` / `CommonExpressionRef`, the expression-level CTE that rules use to avoid duplicating a subtree
+11. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the phase *before* parse → analyze → optimize → plan: how text becomes the unresolved plan the analyzer receives. `AstBuilder` emits `UnresolvedRelation` / `UnresolvedAttribute` / `UnresolvedFunction` and nothing else, which is the precise boundary between a `PARSE_*` error and an analysis one
 
 **Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan. From the analyze phase: name which rule turns an `UnresolvedAttribute` into a bound column, explain why a self-join needs `DeduplicateRelations` before references can resolve, and say what distinguishes an `AnalysisException` (thrown by `CheckAnalysis` before execution) from a runtime error. From the optimize phase: set `spark.sql.planChangeLog.level=INFO` with `spark.sql.planChangeLog.rules` pinned to one rule and read the before/after plan diff it prints for your own query; then exclude that rule with `spark.sql.optimizer.excludedRules` and show the difference in the optimized plan.
 
@@ -1891,6 +2013,54 @@ adding `vector_avg` to a grouped aggregation changes which aggregate operator yo
 
 ---
 
+
+### ⬜ A24 — SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration
+
+> Discovered from source sweep (new topic): `sql/catalyst: The grammar — keyword categories and the parser feature flags`
+
+**What it is:** How Spark turns SQL text into a plan: the ANTLR grammar's two keyword lists, the two-stage SLL-then-LL parse, the identifier-quoting and pipe-syntax flags, and the ANTLR DFA cache that can exhaust driver memory on a query-heavy driver.
+
+**Why you need it:** Every SQL error message you have ever read was produced here, the three ANSI *parser* flags are all still off even though ANSI mode is on by default, and an unbounded parser cache is a real and undiagnosed cause of driver OOM on long-lived SQL services.
+
+**Learn it with:**
+
+1. **Spark-docs → ANSI Compliance, SQL Keywords** ([sql-ref-ansi-compliance.html](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html)) — the generated reserved / non-reserved keyword table, which is the rendered form of the two lists in the grammar
+2. **Spark-docs → Identifiers** ([sql-ref-identifier.html](https://spark.apache.org/docs/latest/sql-ref-identifier.html)) and **IDENTIFIER clause** ([sql-ref-identifier-clause.html](https://spark.apache.org/docs/latest/sql-ref-identifier-clause.html)) — backquoting, double-quoting, and the clause that lets an identifier be computed
+3. **Spark-docs → Literals** ([sql-ref-literals.html](https://spark.apache.org/docs/latest/sql-ref-literals.html)) and **Parameter Markers** ([sql-ref-parameter-markers.html](https://spark.apache.org/docs/latest/sql-ref-parameter-markers.html)) — the `:name` / `?` surface whose implementation is textual substitution
+4. **Spark-docs → SQL Syntax** ([sql-ref-syntax.html](https://spark.apache.org/docs/latest/sql-ref-syntax.html)) — the statement catalogue, i.e. the user-facing rendering of the grammar's `statement` rule
+5. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the parser concepts: the two-stage SLL→LL strategy (a failing query is parsed twice), the seven grammar member flags set in `configureParser`, the 345/410-keyword split, `AstBuilder`'s 222 visitors, textual parameter substitution with `PositionMapper`, and the ANTLR DFA cache with its ~9.7 KB-per-state estimate
+
+!!! warning "ANSI mode is on by default; the ANSI *parser* flags are not"
+
+    `spark.sql.ansi.enabled` defaults to true in Spark 4.x, but `spark.sql.ansi.enforceReservedKeywords`,
+    `spark.sql.ansi.doubleQuotedIdentifiers` and `spark.sql.ansi.relationPrecedence` each default to
+    **false**. So `SELECT` still works as a column alias, `"x"` is still a *string literal* rather
+    than an identifier, and `t1, t2 JOIN t3` still groups left. Enabling ANSI mode changes what your
+    casts do (topic **I20**), not what your identifiers mean.
+
+!!! warning "The ANTLR parser cache is unbounded and its management is off by default"
+
+    ANTLR memoizes prediction decisions in a DFA cache that is never purged and lives on the driver,
+    at roughly 9.7 KB per state. Spark 4.1 added `spark.sql.parser.manageParserCaches` plus a static
+    and a ratio-based flush threshold — all three disabled by default, so Spark does not even measure
+    the cache. On a long-lived driver serving many distinct statements (notebook server, Thrift
+    server, templated SQL) this grows without bound and presents as an unexplained driver OOM.
+
+!!! info "No book covers the parser"
+
+    SDG, LS2e and Rioux all teach Spark SQL as a language and none opens the grammar. That is
+    usually the right call — but it means the keyword lists, the dialect flags, and the parse-time
+    feature gates are only discoverable from the docs pages above and the source.
+
+**Milestone:** You can explain why a syntax error costs roughly twice a successful parse; predict
+whether `SELECT "abc"` returns a string or fails, under default settings and with
+`doubleQuotedIdentifiers` on; name which of reserved-keyword enforcement, double-quoted identifiers
+and relation precedence you would have to enable to make Spark's parser genuinely ANSI; and
+describe the symptom, the measurement and the fix for an ANTLR DFA cache growing on a long-lived
+driver.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -1922,6 +2092,7 @@ adding `vector_avg` to a grouped aggregation changes which aggregate operator yo
 11. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the serialisation boundary from the *plan* side: `EliminateSerialization` removes the deserialize→serialize round trip between two typed `Dataset` operations, `ObjectSerializerPruning` narrows the encoder, and `ReassignLambdaVariableID` is what makes two structurally identical plans canonicalize equal so exchange/subquery reuse can fire. Note that none of this applies to PySpark — a Python UDF is extracted into its own eval node instead
 12. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the `planLater` placeholder mechanism that lets a strategy plan one operator without knowing how its children will execute, and the cartesian fold over placeholders that makes planning time explode if a custom strategy returns several candidates per operator
 13. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the execution engine at expression level: the `UnsafeRow` layout (null bitmap, one 8-byte word per field regardless of type, variable-length tail), the Janino compile path and its 100-entry class cache, the whole-stage `produce`/`consume` protocol and its fallbacks, and `objects.scala` — the deserialize/call/serialize sandwich that is the real cost of every typed `Dataset.map`
+14. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the type system's internal view: `PhysicalDataType` is the storage-and-ordering projection where several logical types collapse into one (`DateType`, `YearMonthIntervalType` and `IntegerType` are all `PhysicalIntegerType`) and where every sort's `Ordering` comes from. Also the 4.2.0 **Types Framework** (`catalyst/types/ops/`), the seam new types will arrive through, currently behind a test-only flag
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 

@@ -41,6 +41,9 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I20 | ANSI Mode, EvalMode, and Error-Safe Evaluation with try_* | — | — | ⬜ |
 | I21 | String Collation | — | — | ⬜ |
 | I22 | The VARIANT Type and Semi-Structured Data | — | — | ⬜ |
+| I23 | Schema Inference for CSV, JSON and XML | — | — | ⬜ |
+| I24 | Malformed Records: PERMISSIVE, DROPMALFORMED, FAILFAST and _corrupt_record | — | — | ⬜ |
+| I25 | Decimal Precision, Scale, and Silent Rounding | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -64,6 +67,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A21 | Subexpression Elimination and Common Expression Reuse | — | — | ⬜ |
 | A22 | Approximate Aggregation with Sketches | — | — | ⬜ |
 | A23 | Vector Expressions for Embeddings and Similarity | — | — | ⬜ |
+| A24 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -386,6 +390,27 @@ flowchart LR
     S12 --> S12c1["Plan-matching patterns — the extractors every strategy is written against"]
     S12 --> S12c2["DataSource V2 logical relations and the table implicits"]
     S12 --> S12c3["QueryPlanningTracker — where the time went"]
+    S13["sql/catalyst"]
+    S13 --> S13c0["The parser pipeline — ANTLR, the two-stage strategy, and where ParseException comes from"]
+    S13 --> S13c1["The grammar — keyword categories and the parser feature flags"]
+    S13 --> S13c2["AstBuilder — 222 visitors and the unresolved plan"]
+    S13 --> S13c3["Parameter markers — textual substitution and position mapping"]
+    S13 --> S13c4["The ANTLR DFA cache — an unbounded parser cache on the driver"]
+    S13 --> S13c5["The DataType hierarchy and its three serialized forms"]
+    S13 --> S13c6["StructType — the schema object practitioners actually hold"]
+    S13 --> S13c7["DecimalType and Decimal — precision, scale, and the adjustment rule"]
+    S13 --> S13c8["StringType and collation in the type system"]
+    S13 --> S13c9["CHAR and VARCHAR — declared, then erased"]
+    S13 --> S13c10["TIME, TIMESTAMP_NTZ, and the timestamp-type switch"]
+    S13 --> S13c11["The Types Framework — the 4.2.0 refactor behind a test-only flag"]
+    S13 --> S13c12["Physical types and DataTypeUtils — the catalyst-side view of a DataType"]
+    S13 --> S13c13["UpCastRule — the loss-free widening lattice"]
+    S13 --> S13c14["UserDefinedType and UDTRegistration"]
+    S13 --> S13c15["CSV parsing — Univocity, the option surface, and header checking"]
+    S13 --> S13c16["JSON parsing — Jackson, filter pushdown, and the single-variant column"]
+    S13 --> S13c17["XML parsing — Stax and the 4.1 rewrite"]
+    S13 --> S13c18["Schema inference — one type lattice, three formats"]
+    S13 --> S13c19["Malformed record handling — FailureSafeParser and the corrupt-record column"]
 ```
 
 ## Topics discovered from the source
@@ -423,12 +448,18 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Cast, EvalMode and ANSI — the three evaluation modes and where the errors come from | sql/catalyst | new | I20 | ANSI Mode, EvalMode, and Error-Safe Evaluation with try_* |
 | Collation — Collate, CollationKey, and collation-aware hashing | sql/catalyst | new | I21 | String Collation |
 | Correlated subqueries — pull-up, decorrelation and the COUNT bug | sql/catalyst | new | A19 | Correlated Subqueries and Decorrelation |
+| DecimalType and Decimal — precision, scale, and the adjustment rule | sql/catalyst | new | I25 | Decimal Precision, Scale, and Silent Rounding |
 | Geospatial ST expressions — the GEOGRAPHY/GEOMETRY beachhead | sql/catalyst | new | — | — |
+| Malformed record handling — FailureSafeParser and the corrupt-record column | sql/catalyst | new | I24 | Malformed Records: PERMISSIVE, DROPMALFORMED, FAILFAST and _corrupt_record |
 | Runtime filtering — bloom filters and dynamic partition pruning | sql/catalyst | new | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters |
+| Schema inference — one type lattice, three formats | sql/catalyst | new | I23 | Schema Inference for CSV, JSON and XML |
 | Sketch-based approximate aggregates | sql/catalyst | new | A22 | Approximate Aggregation with Sketches |
 | Statistics — the two visitors and the estimation model | sql/catalyst | new | A17 | Table and Column Statistics and the Cost-Based Optimizer |
 | Subexpression elimination — the same expression, evaluated once | sql/catalyst | new | A21 | Subexpression Elimination and Common Expression Reuse |
+| The ANTLR DFA cache — an unbounded parser cache on the driver | sql/catalyst | new | — | — |
+| The Types Framework — the 4.2.0 refactor behind a test-only flag | sql/catalyst | new | — | — |
 | The VARIANT type and semi-structured extraction | sql/catalyst | new | I22 | The VARIANT Type and Semi-Structured Data |
+| The grammar — keyword categories and the parser feature flags | sql/catalyst | new | A24 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration |
 | Vector expressions — similarity and norms over float arrays | sql/catalyst | new | A23 | Vector Expressions for Embeddings and Similarity |
 
 
@@ -442,7 +473,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/catalyst — optimizer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — planner | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — expressions | — | ✅ complete | 4.2.0 | 2026-07-26 |
-| sql/catalyst — types-parser | — | ⬜ pending | — | — |
+| sql/catalyst — types-parser | — | ✅ complete | 4.2.0 | 2026-07-26 |
 | sql/catalyst — framework | — | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
