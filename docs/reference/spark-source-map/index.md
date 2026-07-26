@@ -38,6 +38,9 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I17 | Whole-File and Binary RDD Sources | — | — | ⬜ |
 | I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars | — | — | ⬜ |
 | I19 | Sampling: sample, takeSample, and Stratified Sampling | — | — | ⬜ |
+| I20 | ANSI Mode, EvalMode, and Error-Safe Evaluation with try_* | — | — | ⬜ |
+| I21 | String Collation | — | — | ⬜ |
+| I22 | The VARIANT Type and Semi-Structured Data | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -58,6 +61,9 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters | — | — | ⬜ |
 | A19 | Correlated Subqueries and Decorrelation | — | — | ⬜ |
 | A20 | Map Output Sizes: What AQE and Skew Detection Actually See | — | — | ⬜ |
+| A21 | Subexpression Elimination and Common Expression Reuse | — | — | ⬜ |
+| A22 | Approximate Aggregation with Sketches | — | — | ⬜ |
+| A23 | Vector Expressions for Embeddings and Similarity | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -326,37 +332,60 @@ flowchart LR
     S9 --> S9c15["Time-travel resolution"]
     S9 --> S9c16["Table constraints and schema evolution"]
     S10["sql/catalyst"]
-    S10 --> S10c0["The Optimizer — batches, extension points and rule exclusion"]
-    S10 --> S10c1["The operator-optimization rule set and the Infer Filters sandwich"]
-    S10 --> S10c2["Finish Analysis — correctness rules wearing an optimizer badge"]
-    S10 --> S10c3["Predicate pushdown"]
-    S10 --> S10c4["Column pruning and nested schema pruning"]
-    S10 --> S10c5["Constant folding and expression simplification"]
-    S10 --> S10c6["Constraint propagation and filter inference"]
-    S10 --> S10c7["Rule-based join reorder, outer-join elimination and the cartesian check"]
-    S10 --> S10c8["Statistics — the two visitors and the estimation model"]
-    S10 --> S10c9["Cost-based join reorder (dynamic programming) and star-schema detection"]
-    S10 --> S10c10["Runtime filtering — bloom filters and dynamic partition pruning"]
-    S10 --> S10c11["Correlated subqueries — pull-up, decorrelation and the COUNT bug"]
-    S10 --> S10c12["CTE handling — inline, pushdown, and reuse as repartition"]
-    S10 --> S10c13["MergeSubplans and PlanMerger — scalar-subquery reuse (new in 4.2.0)"]
-    S10 --> S10c14["Set operations and distinct rewrites"]
-    S10 --> S10c15["Aggregate rewrites — distinct aggregates, Expand, decimals"]
-    S10 --> S10c16["Window optimizations and the window group limit"]
-    S10 --> S10c17["Limit and offset optimizations"]
-    S10 --> S10c18["Empty relations, one-row plans and local evaluation"]
-    S10 --> S10c19["Redundant-operator removal and collapsing"]
-    S10 --> S10c20["Typed-Dataset (object) optimizations"]
-    S10 --> S10c21["Correctness normalizations — floats, NaN and maps"]
-    S10 --> S10c22["Hints in the optimizer"]
-    S10 --> S10c23["Complex-type expression optimizations"]
-    S10 --> S10c24["Rule-level observability — plan-change logging, validation, idempotence"]
-    S10 --> S10c25["RewriteWithExpression — common subexpression elimination in the logical plan"]
+    S10 --> S10c0["The Expression contract — eval, doGenCode, and the traits the optimizer reads"]
+    S10 --> S10c1["CodegenContext and CodeGenerator — Janino, the class cache, and the JVM limits"]
+    S10 --> S10c2["Whole-stage codegen — produce/consume and the three ways it silently turns itself off"]
+    S10 --> S10c3["Interpreted fallback — CodegenFallback, the factory mode, and the interpreted projections"]
+    S10 --> S10c4["Projections, BoundReference and the UnsafeRow binary format"]
+    S10 --> S10c5["Subexpression elimination — the same expression, evaluated once"]
+    S10 --> S10c6["Cast, EvalMode and ANSI — the three evaluation modes and where the errors come from"]
+    S10 --> S10c7["The aggregate expression framework — four modes and three implementation styles"]
+    S10 --> S10c8["Sketch-based approximate aggregates"]
+    S10 --> S10c9["Window expressions — frames, offsets and the rank family"]
+    S10 --> S10c10["Higher-order functions and lambda variables"]
+    S10 --> S10c11["Generators — explode, inline, and the one-to-many contract"]
+    S10 --> S10c12["UDF expressions — ScalaUDF, PythonUDF, and the V2 function catalog"]
+    S10 --> S10c13["Object expressions — the serde layer behind encoders and the typed API"]
+    S10 --> S10c14["Subquery expressions — the plan that lives inside an expression"]
+    S10 --> S10c15["Runtime filtering expressions — DynamicPruning and BloomFilterMightContain"]
+    S10 --> S10c16["With and CommonExpressionRef — expression-level CTEs"]
+    S10 --> S10c17["Nondeterministic and partition-aware expressions"]
+    S10 --> S10c18["Collation — Collate, CollationKey, and collation-aware hashing"]
+    S10 --> S10c19["The VARIANT type and semi-structured extraction"]
+    S10 --> S10c20["Vector expressions — similarity and norms over float arrays"]
+    S10 --> S10c21["Geospatial ST expressions — the GEOGRAPHY/GEOMETRY beachhead"]
     S11["sql/catalyst"]
-    S11 --> S11c0["QueryPlanner — strategies, placeholders and the candidate iterator"]
-    S11 --> S11c1["Plan-matching patterns — the extractors every strategy is written against"]
-    S11 --> S11c2["DataSource V2 logical relations and the table implicits"]
-    S11 --> S11c3["QueryPlanningTracker — where the time went"]
+    S11 --> S11c0["The Optimizer — batches, extension points and rule exclusion"]
+    S11 --> S11c1["The operator-optimization rule set and the Infer Filters sandwich"]
+    S11 --> S11c2["Finish Analysis — correctness rules wearing an optimizer badge"]
+    S11 --> S11c3["Predicate pushdown"]
+    S11 --> S11c4["Column pruning and nested schema pruning"]
+    S11 --> S11c5["Constant folding and expression simplification"]
+    S11 --> S11c6["Constraint propagation and filter inference"]
+    S11 --> S11c7["Rule-based join reorder, outer-join elimination and the cartesian check"]
+    S11 --> S11c8["Statistics — the two visitors and the estimation model"]
+    S11 --> S11c9["Cost-based join reorder (dynamic programming) and star-schema detection"]
+    S11 --> S11c10["Runtime filtering — bloom filters and dynamic partition pruning"]
+    S11 --> S11c11["Correlated subqueries — pull-up, decorrelation and the COUNT bug"]
+    S11 --> S11c12["CTE handling — inline, pushdown, and reuse as repartition"]
+    S11 --> S11c13["MergeSubplans and PlanMerger — scalar-subquery reuse (new in 4.2.0)"]
+    S11 --> S11c14["Set operations and distinct rewrites"]
+    S11 --> S11c15["Aggregate rewrites — distinct aggregates, Expand, decimals"]
+    S11 --> S11c16["Window optimizations and the window group limit"]
+    S11 --> S11c17["Limit and offset optimizations"]
+    S11 --> S11c18["Empty relations, one-row plans and local evaluation"]
+    S11 --> S11c19["Redundant-operator removal and collapsing"]
+    S11 --> S11c20["Typed-Dataset (object) optimizations"]
+    S11 --> S11c21["Correctness normalizations — floats, NaN and maps"]
+    S11 --> S11c22["Hints in the optimizer"]
+    S11 --> S11c23["Complex-type expression optimizations"]
+    S11 --> S11c24["Rule-level observability — plan-change logging, validation, idempotence"]
+    S11 --> S11c25["RewriteWithExpression — common subexpression elimination in the logical plan"]
+    S12["sql/catalyst"]
+    S12 --> S12c0["QueryPlanner — strategies, placeholders and the candidate iterator"]
+    S12 --> S12c1["Plan-matching patterns — the extractors every strategy is written against"]
+    S12 --> S12c2["DataSource V2 logical relations and the table implicits"]
+    S12 --> S12c3["QueryPlanningTracker — where the time went"]
 ```
 
 ## Topics discovered from the source
@@ -391,9 +420,16 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | spark.api.mode — Classic vs Spark Connect selection | core | new | — | — |
 | unmanaged-memory-accounting | core | new | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
 | whole-file-sources | core | new | I17 | Whole-File and Binary RDD Sources |
+| Cast, EvalMode and ANSI — the three evaluation modes and where the errors come from | sql/catalyst | new | I20 | ANSI Mode, EvalMode, and Error-Safe Evaluation with try_* |
+| Collation — Collate, CollationKey, and collation-aware hashing | sql/catalyst | new | I21 | String Collation |
 | Correlated subqueries — pull-up, decorrelation and the COUNT bug | sql/catalyst | new | A19 | Correlated Subqueries and Decorrelation |
+| Geospatial ST expressions — the GEOGRAPHY/GEOMETRY beachhead | sql/catalyst | new | — | — |
 | Runtime filtering — bloom filters and dynamic partition pruning | sql/catalyst | new | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters |
+| Sketch-based approximate aggregates | sql/catalyst | new | A22 | Approximate Aggregation with Sketches |
 | Statistics — the two visitors and the estimation model | sql/catalyst | new | A17 | Table and Column Statistics and the Cost-Based Optimizer |
+| Subexpression elimination — the same expression, evaluated once | sql/catalyst | new | A21 | Subexpression Elimination and Common Expression Reuse |
+| The VARIANT type and semi-structured extraction | sql/catalyst | new | I22 | The VARIANT Type and Semi-Structured Data |
+| Vector expressions — similarity and norms over float arrays | sql/catalyst | new | A23 | Vector Expressions for Embeddings and Similarity |
 
 
 ## Sweep status
@@ -405,7 +441,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/catalyst — analysis | 750 | ✅ partial | 4.2.0 | 2026-07-25 |
 | sql/catalyst — optimizer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — planner | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| sql/catalyst — expressions | — | ⬜ pending | — | — |
+| sql/catalyst — expressions | — | ✅ complete | 4.2.0 | 2026-07-26 |
 | sql/catalyst — types-parser | — | ⬜ pending | — | — |
 | sql/catalyst — framework | — | ⬜ pending | — | — |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-25 |

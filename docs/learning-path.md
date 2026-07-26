@@ -286,6 +286,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 5. **Spark-docs → Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `spark.sql.shuffle.partitions` is *the* knob governing a `groupBy`'s cost, since it sets the partition count between the partial and final aggregate
 6. **Source trace — [B6 in the source map](reference/spark-source-map/topics/b6.md)** — why one `groupBy` becomes two operators in the plan, what `countDistinct` actually costs, and which of the three aggregate operators your functions select
 7. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the rewrites that happen to your `groupBy` before it is planned: `ReplaceDistinctWithAggregate`, `RewriteDistinctAggregates` (the rule that multiplies every input row N times for N distinct aggregates, and the 4.2.0 `OptimizeExpand` that can undo it), `EliminateDistinct`, `DecimalAggregates`, and the `map_sort` insertion that makes a `MapType` grouping key compare correctly at all
+8. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the expression side of aggregation: the four `AggregateMode`s (`Partial`, `PartialMerge`, `Final`, `Complete`) that make one function into both halves of a shuffle, and the three implementation tiers — declarative, imperative, typed-imperative — that decide whether you get `HashAggregateExec` or `ObjectHashAggregateExec`. One `collect_list` or `percentile` in the projection moves the whole aggregation to the slower operator
 
 **Milestone:** You can compute multiple aggregations in a single `agg()` call, use `F.when()` for conditional counting, and write a query equivalent to a SQL `GROUP BY ... HAVING`. Then, from the plan: run `explain()` on a `groupBy().sum()` and explain why `HashAggregateExec` appears twice, and predict how the plan changes when you add a single `countDistinct`.
 
@@ -464,6 +465,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 5. **Source trace — [I1 in the source map](reference/spark-source-map/topics/i1.md)** — why generators need their own plan node, what `explode_outer` actually adds, and why a higher-order function costs nothing where a UDF doing the same work costs a great deal
 6. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — why reading one field out of a wide struct can be cheap: `NestedColumnAliasing` rewrites the plan so the scan reads a narrower nested schema, `SimplifyExtractValueOps` means `struct(a, b).a` never builds the struct, chained `withField` calls collapse into one `UpdateFields`, and `from_json` is pruned to the fields you actually extract
+7. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the mechanism behind the array/map functions: higher-order functions bind their lambda's parameter types from the *element* type after the arguments resolve, and `NamedLambdaVariable` is a `CodegenFallback` — so one `transform(...)` disables whole-stage codegen for the entire `Project` it sits in, not just for itself
 
 **Milestone:** You can flatten a JSON array-of-structs into rows, extract fields from nested structs, build an array column from grouped rows, and apply a lambda transform to every element of an array column. You can also state when `VARIANT` is the better choice than a declared `StructType`, and why. Then the one that catches people: given a column where some arrays are empty or null, predict how many rows survive `explode` versus `explode_outer`.
 
@@ -505,6 +507,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 4. **Spark-docs → Window Functions** ([sql-ref-syntax-qry-select-window.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-window.html)) — frame semantics stated precisely: `ROWS` vs `RANGE`, and what the default frame becomes once you add `ORDER BY` (the single most common window bug)
 5. **Source trace — [I2 in the source map](reference/spark-source-map/topics/i2.md)** — the six lines of `resolveFrame` that decide your default frame, why omitting `partitionBy` moves the entire dataset to one partition, and which frame implementation your window actually runs
 6. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the five rules that make windows cheaper before planning: `CollapseWindow` and `TransposeWindow` (two windows, one sort), `OptimizeWindowFunctions`, `EliminateWindowPartitions`, `LimitPushDownThroughWindow` — and `InferWindowGroupLimit`, which only fires above `spark.sql.optimizer.windowGroupLimitThreshold` (1000 rows per partition), so the top-N optimization you are counting on can quietly not apply
+7. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the frame machinery: `RowFrame` counts rows and `RangeFrame` compares against the sort key (which is why `RANGE` needs exactly one `ORDER BY` column), and `SizeBasedWindowFunction` (`percent_rank`, `cume_dist`, `ntile`) needs the partition size, so the whole partition buffers before any row is emitted. Also why `window()` and `OVER (...)` share a name and nothing else
 
 !!! warning "Adding `orderBy` changes what an aggregate window computes — silently"
     Spark fills in a frame you did not write, and the default depends on whether an ordering is present:
@@ -545,6 +548,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 7. **Source trace — [I3 in the source map](reference/spark-source-map/topics/i3.md)** — the eval-type integer that identifies every UDF flavour, why a UDF's output is permanently nullable, and what worker reuse actually buys you
 8. **Source sweep — [core — api-bridge in the source map](reference/spark-source-map/sweeps/core-api-bridge.md)** — the machine *underneath* every UDF: `BasePythonRunner`'s exact wire protocol (command → broadcasts → the eval-type integer → rows), the `PythonWorkerFactory` daemon/reuse/idle-pool/UDS lifecycle, and the failure plumbing that turns a Python crash, hang, or OOM into a Spark error (`faulthandler`, traceback dump, kill timeout, the Linux-only `setrlimit` memory cap)
 9. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — new in 4.2.0: Python worker logs are captured into the `BlockManager` as `PythonWorkerLogBlockId` blocks ([SPARK-53755]/[SPARK-53975]), which is what finally makes a `print()` or `logging` call inside a UDF retrievable instead of stranded on the executor
+10. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the catalyst-side view: `PythonUDF` has no `eval` and no `doGenCode` at all — it is a marker carrying an `evalType`, extracted by a planner rule — while `ScalaUDF` runs in-process and pays per-argument encoder conversion instead. Also the V2 function catalog's *magic method*: a `ScalarFunction` whose `invoke` signature matches code-generates into a direct static call rather than a boxed `produceResult`
 
 **Milestone:** You can replace a Python UDF with a pandas UDF and measure the speedup **on 4.2.0** — not quote a book's figure; you can load an ML model once per partition using an Iterator UDF and say which config makes that pay off; you can test a UDF locally without a SparkSession. Then, from `explain()`: name which eval operator your UDF ran under, and explain why chaining a plain UDF and a pandas UDF in one `select` costs more than chaining two of the same kind.
 
@@ -722,6 +726,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 9. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the `BlockId` taxonomy behind every name in the Storage tab: `rdd_5_12` is an `RDDBlockId`, and the seven distinct shuffle block kinds are why "shuffle block" in a log line is ambiguous
 10. **Source sweep — [core — monitoring in the source map](reference/spark-source-map/sweeps/core-monitoring.md)** — the two renderers behind the tabs you read: `RDDOperationGraph`, which rebuilds the DAG view from the scope strings each `StageInfo` carries and truncates it past `spark.ui.dagGraph.retainedRootRDDs`, and the `/api/v1` REST resources that serve the same numbers as JSON — scrape those rather than the HTML
 11. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — `QueryPlanningTracker`: the four phases (`parsing`, `analysis`, `optimization`, `planning`) behind the SQL tab's timings, and `topRulesByTime(k)` for the per-rule breakdown. A query whose *planning* phase dominates is unusual and points at a strategy returning many candidates
+12. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — what a missing `*` in `EXPLAIN` actually means: whole-stage codegen has three independent off-switches (a `CodegenFallback` expression anywhere in the operator, too many nested output *or input* fields, columnar execution) plus a fourth — the interpreted fallback — that leaves the plan text unchanged. And the 8000-byte HotSpot JIT limit sits far below `spark.sql.codegen.hugeMethodLimit`, so `too long to be JIT compiled` in the executor log is the diagnosis for a query that codegens and still crawls
 
 !!! warning "The UI is derived from an event stream that drops events under load — by design"
     Nothing in the UI is measured directly. The scheduler emits listener events onto a **bounded** asynchronous queue; when it fills, events are discarded so the scheduler is never blocked. The only evidence is one log line — *"Dropping event from queue … one of the listeners is too slow"* — and a counter.
@@ -1120,6 +1125,119 @@ You are ready to leave this level when you can:
 
 ---
 
+
+### ⬜ I20 — ANSI Mode, EvalMode, and Error-Safe Evaluation with try_*
+
+> Discovered from source sweep (new topic): `sql/catalyst: Cast, EvalMode and ANSI — the three evaluation modes and where the errors come from`
+
+**What it is:** The three per-expression evaluation modes (LEGACY, ANSI, TRY) that decide whether an overflow, a bad cast or a division by zero returns null or raises an error, and the `try_*` function family that opts one expression out of the session setting.
+
+**Why you need it:** ANSI mode is on by default in Spark 4.x, so casts and arithmetic that returned null on Spark 3.x now fail the job — and `try_cast` / `try_add` are the per-expression escape hatch that lets you keep strictness everywhere else.
+
+**Learn it with:**
+
+1. **Spark-docs → ANSI Compliance** ([sql-ref-ansi-compliance.html](https://spark.apache.org/docs/latest/sql-ref-ansi-compliance.html)) — the reference page for this topic: the arithmetic and cast tables, the **three** kinds of type conversion (cast, store assignment, type coercion), the reserved-keyword list, and the `spark.sql.storeAssignmentPolicy` setting that governs `INSERT`
+2. **Spark-docs → Conversion Functions** ([api/sql/conversion-functions](https://spark.apache.org/docs/latest/api/sql/conversion-functions/)) — where `cast` and `try_cast` are specified side by side; the rest of the `try_*` family (`try_add`, `try_divide`, `try_element_at`, `try_to_number`, …) is spread across the math, string and collection groups of the [built-in function index](https://spark.apache.org/docs/latest/api/sql/)
+3. **Spark-docs → Migration Guide, SQL** ([sql-migration-guide.html](https://spark.apache.org/docs/latest/sql-migration-guide.html)) — the Spark 3.x → 4.x entries are largely *this topic*; read it as the list of queries that change meaning
+4. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the `Cast` / `EvalMode` concept: three separate cast-validity tables (`canCast`, `canAnsiCast`, `canANSIStoreAssign`), why `try_add` is an `EvalMode.TRY` arithmetic node rather than a try/catch, and where the "line N, position M" context in a Spark 4 error message comes from
+
+!!! warning "No book covers this"
+
+    Rioux, SDG and LS2e were all written against Spark 3.x, where `spark.sql.ansi.enabled` defaulted
+    to **false**. Every cast and overflow example in them describes the LEGACY mode behaviour —
+    null on failure. On Spark 4 the same code raises. This topic is the largest silent behaviour
+    gap between the books and the engine you are running.
+
+!!! info "`try_add` is not a try/catch, and the difference is visible"
+
+    `try_add(a, b)` rewrites to `Add(a, b, EvalMode.TRY)` — the addition itself checks for overflow
+    and returns null. It does **not** suppress an error raised by a child expression, so
+    `try_add(1, cast('x' as int))` still fails in ANSI mode. Wrap the failing operation, not the
+    outer one.
+
+**Milestone:** You can predict, for `SELECT CAST('abc' AS INT)` and for an `INT` addition that
+overflows, what Spark 3.5 returns and what Spark 4.2 does; rewrite both to return null without
+disabling ANSI mode session-wide; explain why a cast rejected in a `SELECT` can be accepted by an
+`INSERT INTO` the same column (store assignment is a different table); and name what
+`spark.sql.storeAssignmentPolicy` changes that `spark.sql.ansi.enabled` does not.
+
+---
+
+
+### ⬜ I21 — String Collation
+
+> Discovered from source sweep (new topic): `sql/catalyst: Collation — Collate, CollationKey, and collation-aware hashing`
+
+**What it is:** Per-column collation on `StringType` (Spark 4.0+): the `COLLATE` clause and `collate()` function, what `UTF8_BINARY` / `UTF8_LCASE` / ICU collations change about comparison and equality, and the collation key that makes grouping and joining agree with comparison.
+
+**Why you need it:** Collation changes the meaning of `=`, `GROUP BY`, `DISTINCT` and join keys on string columns, and it is the supported replacement for the `lower(col) = lower(col)` idiom — but only if you know which operations are collation-aware and which fall back to bytes.
+
+**Learn it with:**
+
+1. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) — `StringType` takes a collation parameter, defaulting to `UTF8_BINARY`; this is where the type-level story starts
+2. **Spark-docs → SHOW COLLATIONS** ([sql-ref-syntax-aux-show-collations.html](https://spark.apache.org/docs/latest/sql-ref-syntax-aux-show-collations.html)) — the catalogue of available collations and the naming scheme (`SYSTEM.BUILTIN.UTF8_LCASE`, ICU locales, the `_AI` / `_CI` / `_RTRIM` suffixes)
+3. **Spark-docs → String Functions** ([api/sql/string-functions](https://spark.apache.org/docs/latest/api/sql/string-functions/)) — `collate` and `collation`, plus which string functions are collation-aware
+4. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the collation concept: `Collate` is a pure metadata pass-through with no runtime cost, and the real machinery is `CollationKey`, injected into **join keys** by `HashJoin` so that hashing agrees with comparison
+
+!!! warning "No book covers this"
+
+    Collation landed in Spark 4.0, after all three books. Their advice for case-insensitive
+    matching is `lower(a) = lower(b)`, which is still correct but defeats every pushdown and
+    partition-pruning opportunity on that column. `a = b COLLATE UTF8_LCASE` is the replacement.
+
+!!! warning "Non-binary collation costs an ICU key per string, per shuffle"
+
+    Any collation other than `UTF8_BINARY` fails `supportsBinaryEquality`, so hashing a string
+    column computes a collation sort key for every value — at every hash partitioning, join and
+    aggregation, not once. Collation is a correctness feature with a real and recurring shuffle
+    cost; apply it to the columns that need it, not to the schema.
+
+**Milestone:** You can declare a column with `COLLATE UTF8_LCASE` and show that a join on it
+matches rows differing only in case; explain why the join still produces correct results despite
+being hash-based (name the expression that makes it work); state what `collation(col)` returns and
+what `SHOW COLLATIONS` is for; and give one reason to keep `lower()` instead of collating a column
+you join on frequently.
+
+---
+
+
+### ⬜ I22 — The VARIANT Type and Semi-Structured Data
+
+> Discovered from source sweep (new topic): `sql/catalyst: The VARIANT type and semi-structured extraction`
+
+**What it is:** Spark 4's binary `VARIANT` type for schema-free JSON-like data: `parse_json`, path extraction with `variant_get`, `schema_of_variant` for discovering what is in there, `variant_explode`, and the dot-notation extraction the analyzer rewrites into `variant_get`.
+
+**Why you need it:** It replaces the store-JSON-as-a-string pattern with a binary format that keeps types and supports indexed path access, and — unlike a fixed struct schema — it tolerates fields appearing and disappearing between batches.
+
+**Learn it with:**
+
+1. **Spark-docs → Variant Functions** ([api/sql/variant-functions](https://spark.apache.org/docs/latest/api/sql/variant-functions/)) — the 11-function surface: `parse_json` / `try_parse_json`, `variant_get` / `try_variant_get`, `is_variant_null`, `schema_of_variant`, `schema_of_variant_agg`, `variant_explode`, `to_variant_object`
+2. **Spark-docs → Data Types** ([sql-ref-datatypes.html](https://spark.apache.org/docs/latest/sql-ref-datatypes.html)) — `VariantType`, added in 4.0.0, and where it sits relative to `StructType` and `MapType`
+3. **Spark-docs → JSON Functions** ([api/sql/json-functions](https://spark.apache.org/docs/latest/api/sql/json-functions/)) — the `get_json_object` / `from_json` surface variant is meant to replace; read it to see what re-parsing per access costs
+4. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the VARIANT concept: `failOnError` is the *only* difference between `parse_json` and `try_parse_json`, the path grammar is parsed once per expression rather than per row, and the `col:field.sub` dot syntax is a `SemiStructuredExtract` node the analyzer rewrites into `variant_get`
+
+!!! warning "No book covers this"
+
+    `VARIANT` arrived in Spark 4.0, after all three books. Their answer for semi-structured data is
+    a string column plus `from_json` with a declared schema, or `get_json_object` per access — both
+    of which re-parse text on every read and neither of which tolerates a changing shape.
+
+!!! info "Shredding is a separate, storage-side topic"
+
+    The `spark.sql.variant.*` shredding configs control how a variant column is physically laid out
+    in Parquet so that a path extraction becomes a column read rather than a scan of the blob.
+    That is a datasource and optimizer concern, not an expression one — it is worth knowing the
+    knobs exist (`writeShredding.enabled`, `pushVariantIntoScan`) before benchmarking variant
+    against a flattened struct schema.
+
+**Milestone:** You can ingest a JSON column as `VARIANT`, extract a nested field with both
+`variant_get` and the `:` dot syntax, and show they produce the same plan; use
+`schema_of_variant_agg` to discover the actual shape of a column you did not write; explain what
+`try_parse_json` changes and on what input; and state one case where a declared `StructType` is
+still the better choice.
+
+---
+
 ## Advanced
 
 **Goal:** Write high-performance, production-grade pipelines. Understand Spark's optimiser deeply enough to fix it when it makes wrong decisions. Handle streaming workloads. Build ML pipelines.
@@ -1148,6 +1266,7 @@ You are ready to leave this level when you can:
 
 8. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — the `PartitionEvaluator` API ([SPARK-43061]), which is how a physical operator's `doExecute` actually runs on an RDD in 3.5+: a serialized *factory* builds per-partition state on the executor rather than a closure capturing driver state
 9. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the planner *framework*: `QueryPlanner.plan()` returns a lazy iterator of candidates and the caller takes the **first**, so physical planning is rule-order-driven rather than cost-driven. Also `QueryPlanningTracker`, whose `topRulesByTime` answers "which rule is slow on my query" directly
+10. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the layer every rule above operates on: `foldable`, `deterministic`, `nullIntolerant`, `canonicalized` / `semanticEquals` are the declarative properties that gate constant folding, pushdown, constraint inference and expression reuse. `semanticEquals` is false whenever either side is non-deterministic, which is why one `rand()` removes a subtree from every reuse optimization at once. Also `With` / `CommonExpressionRef`, the expression-level CTE that rules use to avoid duplicating a subtree
 
 **Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan. From the analyze phase: name which rule turns an `UnresolvedAttribute` into a bound column, explain why a self-join needs `DeduplicateRelations` before references can resolve, and say what distinguishes an `AnalysisException` (thrown by `CheckAnalysis` before execution) from a runtime error. From the optimize phase: set `spark.sql.planChangeLog.level=INFO` with `spark.sql.planChangeLog.rules` pinned to one rule and read the before/after plan diff it prints for your own query; then exclude that rule with `spark.sql.optimizer.excludedRules` and show the difference in the optimized plan.
 
@@ -1251,6 +1370,7 @@ You are ready to leave this level when you can:
 2. **LS2e Ch 11** — distributed ML inference using pandas UDFs
 3. **Spark-docs → Apache Arrow in PySpark** ([tutorial/sql/arrow_pandas.html](https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html)) — Series→Scalar and the grouped-map function APIs; note 4.2.0 adds an iterator API for `GROUPED_AGG`
 4. **Source sweep — [core — api-bridge in the source map](reference/spark-source-map/sweeps/core-api-bridge.md)** — the boundary a pandas UDF avoids: `SerDeUtil`'s `AutoBatchedPickler` pickles object by object, adapting its batch size from a cold start of 1 to keep each batch between 1 MB and 10 MB. That is the cost the Arrow path replaces, and the concrete reason `df.rdd.map(...)` is slow on a DataFrame that was fine in SQL
+5. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the expression the planner extracts: `PythonUDF` is `Unevaluable`, and its `evalType` (`SQL_ARROW_BATCHED_UDF`, scalar pandas, grouped-agg, UDTF) is the single field that decides which worker protocol and which batching you get
 
 **Milestone:** You can apply a custom rolling-median UDF over an ordered window using a pandas UDF, and load an ML model once per executor partition using an Iterator UDF.
 
@@ -1461,6 +1581,7 @@ You are ready to leave this level when you can:
 2. **Spark-docs → RDD Programming Guide, RDD Persistence** ([rdd-programming-guide.html#rdd-persistence](https://spark.apache.org/docs/latest/rdd-programming-guide.html#rdd-persistence)) — checkpointing, the prescribed fix
 3. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the static and runtime detection paths, `maxAttemptIdToIgnore`, and the query-level rollback that can abort your job because of a different, already-finished job
 4. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the storage-side half of correctness under retry: cache visibility tracking holds a block written by a still-running task invisible until the driver learns the task succeeded, and a `TODO` acknowledges that an indeterminate RDD can produce different replicas under one `BlockId`
+5. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the expression-level source of indeterminacy: `Nondeterministic` requires an explicit `initialize(partitionIndex)` before `eval`, and `monotonically_increasing_id()` encodes the partition index in bits 33–63 (`partitionMask = partitionIndex << 33`), so every value changes when the partition count does — a repartition, a different cluster size, or an AQE coalesce
 
 !!! warning "Docs coverage is thin, book coverage is nil"
 
@@ -1588,6 +1709,7 @@ You are ready to leave this level when you can:
 2. **Spark-docs → SQL Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — read the join-strategy and AQE sections for the surrounding machinery; note that runtime filtering has **no dedicated docs page**, which is itself worth knowing
 3. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the `spark.sql.optimizer.dynamicPartitionPruning.*` and `spark.sql.optimizer.runtime.bloomFilter.*` families with their defaults; the closest thing to authoritative documentation these rules have
 4. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the "Runtime filtering" concept: every precondition in `tryInjectRuntimeFilter`, the `hasDynamicPruningSubquery` / `hasBloomFilter` guards that stop the two rules stacking, the `reuseBroadcastOnly` vs `fallbackFilterRatio` decision in DPP, and the cleanup batch that strips pruning filters which could not reach a scan
+5. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the two runtime-filter expressions themselves: `BloomFilterMightContain` type-checks that its filter side is a **literal or a scalar subquery** (it must be computable before the probe runs), and `DynamicPruningSubquery.onlyInBroadcast` is the flag deciding whether the pruning filter is worth a separate subquery execution or may only free-ride on an existing broadcast
 
 **Milestone:** You can read an `EXPLAIN` plan and point at the `DynamicPruningSubquery` or `BloomFilterMightContain` node that proves a runtime filter was planted; explain why DPP requires a *partitioned* table while the bloom filter does not; and, given a join where neither fired, name which threshold or precondition blocked it.
 
@@ -1608,6 +1730,7 @@ You are ready to leave this level when you can:
 3. **Spark-docs → LATERAL Subquery** ([sql-ref-syntax-qry-select-lateral-subquery.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-lateral-subquery.html)) — `LATERAL` is the explicit form of what decorrelation does implicitly, and reading it makes the rewrite obvious
 4. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the `spark.sql.optimizer.decorrelate*` family, including the three `legacy…IncorrectCountHandling` flags
 5. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the "Correlated subqueries" concept: `PullupCorrelatedPredicates` → `DecorrelateInnerQuery` → `RewritePredicateSubquery` / `RewriteCorrelatedScalarSubquery`, where `DomainJoin` is introduced and why, and the `mayHaveCountBug` detection that decides whether compensation is inserted
+6. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the expression shape underneath the decorrelation rules: `SubqueryExpression` carries `plan`, `outerAttrs`, `joinCond` and a hint, `isCorrelated` is simply `outerAttrs.nonEmpty`, and all of them are `Unevaluable` — so a subquery that survives to execution is a bug in the rewrite, not a slow path
 
 **Milestone:** You can run `EXPLAIN` on an `EXISTS` subquery and a correlated scalar subquery and name the join type each became; explain what `DomainJoin` compensates for and why an equality-correlated subquery does not need one; and demonstrate the COUNT bug by flipping `spark.sql.optimizer.decorrelateSubqueryLegacyIncorrectCountHandling.enabled` and showing the result change from `0` to `NULL`.
 
@@ -1648,6 +1771,126 @@ You are ready to leave this level when you can:
 
 ---
 
+
+### ⬜ A21 — Subexpression Elimination and Common Expression Reuse
+
+> Discovered from source sweep (new topic): `sql/catalyst: Subexpression elimination — the same expression, evaluated once`
+
+**What it is:** The mechanism that detects semantically identical subtrees in a projection or filter and evaluates each one once per row instead of once per occurrence — plus the `With` expression, which lets a rule declare reuse explicitly.
+
+**Why you need it:** It is on by default, it silently does nothing for whole classes of expression (lambdas, conditionals, non-deterministic subtrees), and when it does not fire the cost is a full re-evaluation per duplicate — which is how one expensive UDF written three times in a `select` runs three times per row.
+
+**Learn it with:**
+
+1. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — `spark.sql.subexpressionElimination.enabled` and `.cache.maxEntries` are the only two of the family that are public; the other two (`.skipForShortcutExpr`, `.filterExec.enabled`) are internal and documented nowhere but the source
+2. **Spark-docs → SQL Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — context for where this sits relative to the tuning levers that *are* documented; read it to see that this one is not among them
+3. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the subexpression-elimination concept: `EquivalentExpressions` counts by `semanticEquals`, `ExpressionStats.useCount > 1` is the trigger, and the three exclusions (`LAMBDA_VARIABLE`, `CodegenFallback` children, anything non-deterministic) that decide whether it fires at all. Also the `With` / `CommonExpressionRef` concept — the *declared* form of the same idea, visible in the plan where this one is not
+
+!!! warning "No book covers this"
+
+    None of SDG, LS2e or Rioux mentions subexpression elimination. It is invisible in `EXPLAIN` —
+    the plan shows the duplicated expression either way — so the only evidence it fired is the
+    generated code (`spark.sql.codegen.logLevel=INFO`, or `df.queryExecution.debug.codegen()`).
+
+!!! warning "It does not fire for the case people most expect"
+
+    A subtree containing a lambda variable (anything inside `transform` / `filter` / `aggregate`)
+    is excluded outright; a `CodegenFallback` expression contributes no children, so shared work
+    *underneath* a Python UDF or an imperative aggregate is invisible; and `semanticEquals` is
+    false whenever either side is non-deterministic. Writing `expensive_udf(x)` three times in one
+    `select` and expecting one evaluation is the standard disappointment — hoist it into its own
+    `withColumn` instead.
+
+**Milestone:** You can dump the generated code for a projection containing the same subexpression
+twice and point at the extracted helper method; name the three conditions that disable elimination
+for a subtree; explain the difference between `With`/`CommonExpressionRef` and subexpression
+elimination (declared vs discovered, plan-visible vs codegen-only); and say why
+`spark.sql.subexpressionElimination.filterExec.enabled` exists — i.e. what eager column
+materialization costs on a highly selective filter.
+
+---
+
+
+### ⬜ A22 — Approximate Aggregation with Sketches
+
+> Discovered from source sweep (new topic): `sql/catalyst: Sketch-based approximate aggregates`
+
+**What it is:** The family of aggregate functions backed by probabilistic sketches — HyperLogLog++ for distinct counts, KLL for quantiles, Theta and tuple sketches for set operations, Count-Min for frequencies, and approx_top_k for heavy hitters — including the sketch *state* functions that let you persist a partial sketch and merge it later.
+
+**Why you need it:** They turn aggregations that need a full shuffle-and-sort into bounded-memory single-pass ones, and the accumulate/combine/estimate split lets you precompute daily sketches and union them across arbitrary date ranges without touching the raw data again.
+
+**Learn it with:**
+
+1. **Spark-docs → Sketch Functions** ([api/sql/sketch-functions](https://spark.apache.org/docs/latest/api/sql/sketch-functions/)) — the whole family in one place, 40 functions in Spark 4.2: `approx_count_distinct`, the `hll_sketch_agg` / `hll_union_agg` / `hll_sketch_estimate` triple, KLL quantiles, Theta and tuple sketches, `approx_top_k_accumulate` / `_combine` / `_estimate`
+2. **Spark-docs → Agg Functions** ([api/sql/agg-functions](https://spark.apache.org/docs/latest/api/sql/agg-functions/)) — the exact counterparts (`count_distinct`, `percentile`, `collect_set`) each sketch replaces, so you can state what accuracy is being traded for what
+3. **Apache DataSketches documentation** ([datasketches.apache.org](https://datasketches.apache.org/)) — Spark's HLL, KLL, Theta and tuple sketches are this library; the accuracy/size tables and the theory behind them live there, not in the Spark docs
+4. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the sketch concept: `relativeSD` sizes the HLL++ buffer so accuracy is literally a memory dial, and every one of these is a `TypedImperativeAggregate`, which means `ObjectHashAggregateExec` and no whole-stage codegen for the aggregation
+
+!!! warning "No book covers this"
+
+    SDG and LS2e mention `approx_count_distinct` in a list of functions. None covers the sketch
+    *state* functions, which are the ones that change how you model a table — and the tuple-sketch
+    family is new in Spark 4.2.0, after all three books.
+
+!!! info "The state functions are the point, not the estimates"
+
+    `approx_count_distinct` saves one shuffle. `hll_sketch_agg` + `hll_union_agg` changes the shape
+    of the problem: store one sketch per (day, segment), and a distinct count over *any* date range
+    becomes a union of pre-computed sketches with no access to the raw rows. Same for
+    `approx_top_k_accumulate` / `_combine`. That is a data-modelling capability rather than an
+    optimization, and it is invisible if you only read the estimate functions.
+
+!!! warning "Approximate does not mean cheap per row"
+
+    Every sketch aggregate is a `TypedImperativeAggregate`: the aggregation runs in
+    `ObjectHashAggregateExec` rather than `HashAggregateExec`, gets no whole-stage codegen, and
+    serializes/deserializes its buffer at every shuffle boundary. What you buy is a *bounded*
+    buffer and one pass — not a cheaper inner loop.
+
+**Milestone:** You can replace an exact `count(distinct)` with `approx_count_distinct` and state
+the resulting error bound and where it came from; build a table of daily HLL sketches and answer a
+30-day distinct count from it without rescanning the source; explain why the aggregation plan
+changes operator when you add a sketch function to a projection of ordinary sums; and name a case
+where a Theta sketch is needed rather than HLL (set intersection or difference, which HLL cannot
+do).
+
+---
+
+
+### ⬜ A23 — Vector Expressions for Embeddings and Similarity
+
+> Discovered from source sweep (new topic): `sql/catalyst: Vector expressions — similarity and norms over float arrays`
+
+**What it is:** The `vector_funcs` family added in Spark 4.2: cosine similarity, inner product, L2 distance, norm and normalize over `array<float>` columns, plus `vector_avg` and `vector_sum` aggregates for centroids.
+
+**Why you need it:** Embedding columns are now ordinary Spark data, and these push similarity scoring into the engine instead of a Python UDF — which is the difference between a codegen-friendly expression and a per-row round trip to a Python worker.
+
+**Learn it with:**
+
+1. **Spark-docs → Vector Functions** ([api/sql/vector-functions](https://spark.apache.org/docs/latest/api/sql/vector-functions/)) — all seven: `vector_cosine_similarity`, `vector_inner_product`, `vector_l2_distance`, `vector_norm`, `vector_normalize`, `vector_avg`, `vector_sum`
+2. **Spark-docs → Array Functions** ([api/sql/array-functions](https://spark.apache.org/docs/latest/api/sql/array-functions/)) — there is no `VECTOR` type; these operate on `array<float>`, so the ordinary array surface is what you build and reshape embeddings with
+3. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the vector concept: the scalar functions are `RuntimeReplaceable`, rewriting to a `StaticInvoke` of a hand-written Java kernel; `vector_avg` / `vector_sum` are `ImperativeAggregate`s and therefore `CodegenFallback`
+
+!!! warning "No book covers this"
+
+    These landed in Spark 4.2.0 (2026), long after all three books. The prior art they replace is a
+    pandas UDF over numpy, or `mllib`'s `Vector` type — neither of which is what these functions
+    use.
+
+!!! warning "Strictly `array<float>`, same dimension"
+
+    The type check rejects `array<double>` and `array<int>` outright. An embedding column stored as
+    doubles needs an explicit cast before any of these work, and on a large table that cast is not
+    free — decide the storage type when you write the column, not when you query it.
+
+**Milestone:** You can score a query embedding against a table of stored embeddings with
+`vector_cosine_similarity` and read the resulting plan; explain why the scalar functions appear in
+the plan as their replacement expression rather than by name (`RuntimeReplaceable`); state what
+happens if the two arrays have different dimensions or the column is `array<double>`; and say why
+adding `vector_avg` to a grouped aggregation changes which aggregate operator you get.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -1678,6 +1921,7 @@ You are ready to leave this level when you can:
 10. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the messaging substrate every driver↔executor exchange rides: `RpcEnv`/`Dispatcher`/`Inbox` and the shared-vs-dedicated `MessageLoop` threading, local-shortcut vs `Outbox` remote routing, and the `RpcTimeout` fallback chain that explains why a stalled heartbeat surfaces as a `spark.network.timeout` error
 11. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the serialisation boundary from the *plan* side: `EliminateSerialization` removes the deserialize→serialize round trip between two typed `Dataset` operations, `ObjectSerializerPruning` narrows the encoder, and `ReassignLambdaVariableID` is what makes two structurally identical plans canonicalize equal so exchange/subquery reuse can fire. Note that none of this applies to PySpark — a Python UDF is extracted into its own eval node instead
 12. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the `planLater` placeholder mechanism that lets a strategy plan one operator without knowing how its children will execute, and the cartesian fold over placeholders that makes planning time explode if a custom strategy returns several candidates per operator
+13. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the execution engine at expression level: the `UnsafeRow` layout (null bitmap, one 8-byte word per field regardless of type, variable-length tail), the Janino compile path and its 100-entry class cache, the whole-stage `produce`/`consume` protocol and its fallbacks, and `objects.scala` — the deserialize/call/serialize sandwich that is the real cost of every typed `Dataset.map`
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
