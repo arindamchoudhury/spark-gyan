@@ -329,6 +329,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 
 8. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `CoGroupedRDD`, the primitive every RDD join bottoms out in, and the detail that carries over to DataFrames: the shuffle decision is made **per side**, so a parent already partitioned on the join key gets a narrow dependency while the other side shuffles alone
 9. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — why a join becomes a `BroadcastNestedLoopJoin`: `ExtractEquiJoinKeys` did not match, because no predicate was an equality between one side's attributes and the other's. The strategy selection itself is in sql/core; the shape recognition is here
+10. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the join vocabulary itself: `joinTypes.scala` including `ExistenceJoin` (the internal type a subquery rewrite produces) and `UsingJoin` / `NaturalJoin` (which exist only until analysis rewrites them), plus the hint machinery — and `HintInfo.merge`, where **two conflicting strategy hints on one join do not error: the first wins with a warning**. Check for a second hint before concluding the optimizer ignored yours
 
 **Milestone:** You can perform all seven join types, explain what `left_semi` and `left_anti` return without looking it up, and name three situations where a broadcast join is appropriate. Then from the plan: run `explain()` on a large-large join, identify the strategy and the `Exchange` nodes feeding it, and predict which strategy you would get if you changed the condition from `a == b` to `a > b`.
 
@@ -370,6 +371,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 8. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — what happens to your SQL after it parses: `EXCEPT`, `INTERSECT` and `DISTINCT` have no physical operator and are rewritten into joins and aggregates; `WITH` is inlined per definition by `InlineCTE`; and a correlated subquery becomes a semi/anti/outer join before planning
 9. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `RDDOperationScope`, the mechanism behind the DAG visualization's named, nested boxes: every public RDD operation wraps its body in `withScope` and each RDD records the scope stack from a job local property, which is why a custom RDD built outside it appears unlabelled
 10. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — what happens to the SQL text: a two-stage parse (fast SLL, then a full LL retry, so a failing query is parsed **twice**), `ParseException` being a subclass of `AnalysisException`, and `AstBuilder`'s 222 visitors turning the parse tree into an *unresolved* plan. Also that SQL scripting, cursors and the pipe operator are gated inside the visitor rather than the grammar, which is why their errors name the feature
+11. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — what the session catalog actually holds: temp views are a plain in-memory `HashMap` and die with the session; global temp views live in a virtual database (`spark.sql.globalTempDatabase`); the file-source relation cache **never expires by default** (`spark.sql.metadataCacheTTLSeconds = -1`), which is what `REFRESH TABLE` exists for; and `spark.sql.catalogImplementation` is a *static* conf defaulting to `in-memory`
 
 **Milestone:** You can register a DataFrame as a temp view, query it with `spark.sql()`, and mix SQL expressions into a method-chained DataFrame pipeline. Then, with a user-supplied value in hand: write the query so the value can never be parsed as SQL, and say why your approach guarantees that rather than merely making it unlikely.
 
@@ -730,6 +732,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 10. **Source sweep — [core — monitoring in the source map](reference/spark-source-map/sweeps/core-monitoring.md)** — the two renderers behind the tabs you read: `RDDOperationGraph`, which rebuilds the DAG view from the scope strings each `StageInfo` carries and truncates it past `spark.ui.dagGraph.retainedRootRDDs`, and the `/api/v1` REST resources that serve the same numbers as JSON — scrape those rather than the HTML
 11. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — `QueryPlanningTracker`: the four phases (`parsing`, `analysis`, `optimization`, `planning`) behind the SQL tab's timings, and `topRulesByTime(k)` for the per-rule breakdown. A query whose *planning* phase dominates is unusual and points at a strategy returning many candidates
 12. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — what a missing `*` in `EXPLAIN` actually means: whole-stage codegen has three independent off-switches (a `CodegenFallback` expression anywhere in the operator, too many nested output *or input* fields, columnar execution) plus a fourth — the interpreted fallback — that leaves the plan text unchanged. And the 8000-byte HotSpot JIT limit sits far below `spark.sql.codegen.hugeMethodLimit`, so `too long to be JIT compiled` in the executor log is the diagnosis for a query that codegens and still crawls
+13. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — two things that make a plan readable: a `!` prefix on an operator means `missingInput` is non-empty (it references a column its children do not provide), and per-rule timings come from `QueryExecutionMetering` — process-wide via `RuleExecutor.dumpTimeSpent()`, per-query via `QueryPlanningTracker`. Reach for the tracker on one slow query, the meter when profiling a rule across a workload
 
 !!! warning "The UI is derived from an event stream that drops events under load — by design"
     Nothing in the UI is measured directly. The scheduler emits listener events onto a **bounded** asynchronous queue; when it fills, events are discarded so the scheduler is never blocked. The only evidence is one log line — *"Dropping event from queue … one of the listeners is too slow"* — and a counter.
@@ -905,6 +908,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 1. **Spark-docs → SQL Scripting** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — the canonical reference; covers all statement types with examples
 2. **Spark 4.0 release notes** — understand which constructs were added in 4.0 vs 4.1
 3. **Source** — `sql/catalyst/.../parser/SqlBaseParser.g4` for the grammar; the scripting execution lives under `sql/core/.../scripting/`
+4. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — where SQL scripting's state lives: `VariableManager` / `TempVariableManager` back `DECLARE` and `SET VARIABLE`, `SqlScriptingContextManager` pushes a scoped manager for a script's local variables, and `SQLFunction` stores a SQL UDF as **text** that is re-parsed on use. Cursors arrived in 4.2.0 behind `spark.sql.scripting.cursorEnabled` (default false)
 
 !!! info "No book covers this — docs and source only"
     SQL scripting landed in Spark 4.0, after every book in the resources table. Rioux (2022), LS2e (2020) and SDG (2018) have nothing on it. Treat the docs page as primary and verify behaviour against your own 4.2.0 stack rather than waiting for a book to catch up.
@@ -1389,6 +1393,7 @@ as well as range; and name the config that permits a negative scale and why it i
 9. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the planner *framework*: `QueryPlanner.plan()` returns a lazy iterator of candidates and the caller takes the **first**, so physical planning is rule-order-driven rather than cost-driven. Also `QueryPlanningTracker`, whose `topRulesByTime` answers "which rule is slow on my query" directly
 10. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the layer every rule above operates on: `foldable`, `deterministic`, `nullIntolerant`, `canonicalized` / `semanticEquals` are the declarative properties that gate constant folding, pushdown, constraint inference and expression reuse. `semanticEquals` is false whenever either side is non-deterministic, which is why one `rand()` removes a subtree from every reuse optimization at once. Also `With` / `CommonExpressionRef`, the expression-level CTE that rules use to avoid duplicating a subtree
 11. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the phase *before* parse → analyze → optimize → plan: how text becomes the unresolved plan the analyzer receives. `AstBuilder` emits `UnresolvedRelation` / `UnresolvedAttribute` / `UnresolvedFunction` and nothing else, which is the precise boundary between a `PARSE_*` error and an analysis one
+12. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the substrate all four phases run on: `TreeNode`'s immutability and structural sharing, the **two** independent pruning mechanisms (170 tree patterns; 163 rule ids against a hard cap of 192), `RuleExecutor`'s batch/fixed-point loop with its max-iterations warning and test-only idempotence check, and `spark.sql.planChangeValidation` — which names the exact rule and batch that corrupted a plan, and is the right first move before bisecting with `excludedRules`
 
 **Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan. From the analyze phase: name which rule turns an `UnresolvedAttribute` into a bound column, explain why a self-join needs `DeduplicateRelations` before references can resolve, and say what distinguishes an `AnalysisException` (thrown by `CheckAnalysis` before execution) from a runtime error. From the optimize phase: set `spark.sql.planChangeLog.level=INFO` with `spark.sql.planChangeLog.rules` pinned to one rule and read the before/after plan diff it prints for your own query; then exclude that rule with `spark.sql.optimizer.excludedRules` and show the difference in the optimized plan.
 
@@ -1444,6 +1449,7 @@ as well as range; and name the config that permits a negative scale and why it i
 6. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the logical half of join tuning, which happens before any strategy is chosen: `ReorderJoin` and `EliminateOuterJoin`, `CostBasedJoinReorder`'s dynamic program and the four preconditions that must *all* hold before it runs, star-schema detection, and `EliminateResolvedHint` — the rule that moves your hint onto the `Join` node and, in doing so, freezes the join order around it
 7. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — `MERGE INTO` / `UPDATE` / `DELETE` are rewritten during **analysis**, not planning, and the strategy is chosen from what the connector supports: `SupportsDelta` gets a row-level delta plan, everything else rewrites whole groups (typically whole files). Identical SQL, very different cost per table format
 8. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — `ExtractEquiJoinKeys`, the extractor every join strategy pattern-matches against. A predicate with no references on one side is not a join key, and if nothing survives the test the join falls through to nested-loop or cartesian — which is why a `LIKE` or an inequality silently changes your join strategy
+9. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the mechanism a join strategy is chosen *against*: `ShuffleSpec`'s `isCompatibleWith` / `canCreatePartitioning` decide whether one side can dictate the shuffle for both, gated by `spark.sql.requireAllClusterKeysForCoPartition` (default true) — which is why two large tables clustered on overlapping-but-not-identical keys still shuffle both sides. Also `KeyedPartitioning`, the 4.2.0 storage-partitioned-join rewrite
 
 **Milestone:** You can look at a query's physical plan, identify the join strategy, force a broadcast join on a table below the auto-broadcast threshold, and handle a skewed join key with salting.
 
@@ -1471,6 +1477,7 @@ as well as range; and name the config that permits a negative scale and why it i
 7. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — why skew spills (a task's ceiling is 1/N of the pool regardless of partition size), the size estimation behind 'it OOMed instead of spilling', and the three in-flight limits on the fetch side
 8. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the shuffle-block staleness path, and the serializer properties that decide whether the fast shuffle write path is available at all
 9. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the block-transfer retry layer that runs *below* the driver's fetch-failure handling: by the time a `FetchFailed` reaches the DAG scheduler, `spark.shuffle.io.maxRetries` attempts have already been spent silently
+10. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — where a shuffle comes from in the first place: `Partitioning.satisfies(Distribution)` is the whole rule, and its partition-count precondition is checked **first** and is `final`. Before tuning skew, confirm which requirement forced the exchange you are looking at — and note `HashPartitioning.partitionIdExpression` (`Pmod(CollationAwareMurmur3Hash(keys), numPartitions)`), the literal formula deciding which partition a row lands in
 
 **Milestone:** You can diagnose a skewed stage from the Spark UI task-time histogram, apply a salting strategy, and measure the improvement.
 
@@ -1529,6 +1536,7 @@ as well as range; and name the config that permits a negative scale and why it i
 3. **DEB Module 1** — Auto Loader as a streaming file source into Delta (production pattern)
 4. **Source sweep — [core — api-bridge in the source map](reference/spark-source-map/sweeps/core-api-bridge.md)** — `StreamingPythonRunner`, which hands its Python worker a Spark Connect URL pointing back at the local JVM instead of streaming pickled rows. That is why a Python `foreachBatch` body receives a real DataFrame, and why its startup can fail with a timeout or a protocol error before any of your code runs
 5. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — `UnsupportedOperationChecker`, the source of nearly every "not supported in streaming" message: the batch/streaming split, the arity rules on `mapGroupsWithState`, and the global-watermark correctness check
+6. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the catalyst-side markers: `isStreaming` propagates up from the leaves so one streaming source makes the whole plan streaming, and `StatefulOpClusteredDistribution` pins both the clustering **and** the partition count because state is keyed by partition id across restarts. New in 4.2.0: `SequentialStreamingUnion`, a backfill-then-live union whose children run to completion in order, and `StreamingSourceIdentifyingName`
 
 **Milestone:** You can write a streaming job that reads new Parquet files from a directory, applies a transformation, and appends results to a Delta table — and restart it from a checkpoint without data loss.
 
@@ -1992,6 +2000,7 @@ do).
 1. **Spark-docs → Vector Functions** ([api/sql/vector-functions](https://spark.apache.org/docs/latest/api/sql/vector-functions/)) — all seven: `vector_cosine_similarity`, `vector_inner_product`, `vector_l2_distance`, `vector_norm`, `vector_normalize`, `vector_avg`, `vector_sum`
 2. **Spark-docs → Array Functions** ([api/sql/array-functions](https://spark.apache.org/docs/latest/api/sql/array-functions/)) — there is no `VECTOR` type; these operate on `array<float>`, so the ordinary array surface is what you build and reshape embeddings with
 3. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the vector concept: the scalar functions are `RuntimeReplaceable`, rewriting to a `StaticInvoke` of a hand-written Java kernel; `vector_avg` / `vector_sum` are `ImperativeAggregate`s and therefore `CodegenFallback`
+4. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the **join** half of vector search, which this topic was proposed without: `NearestByJoin`, new in 4.2.0, gives SQL a top-K nearest-neighbour join (`... JOIN base APPROX NEAREST 10 BY SIMILARITY <expr>`). Note from the source that `APPROX` and `EXACT` currently do the same thing — both are a brute-force rewrite, so the join is a cartesian product with a top-K per left row; the flag exists so future indexed strategies can fire on `APPROX` alone
 
 !!! warning "No book covers this"
 
@@ -2061,6 +2070,97 @@ driver.
 
 ---
 
+
+### ⬜ A25 — Storage-Partitioned Joins
+
+> Discovered from source sweep (new topic): `sql/catalyst: KeyedPartitioning — the 4.2.0 storage-partitioned-join refactor`
+
+**What it is:** Joining two DSv2 tables on their declared partition transforms without shuffling either side: the connector reports partition values, Spark matches them, and the join runs partition-to-partition — with a grouping step when a table has several splits per key.
+
+**Why you need it:** It is the only way to get a shuffle-free join on tables too large to broadcast and not bucketed the Spark way, it is how Iceberg and Delta avoid re-shuffling partitioned tables, and Spark 4.2 rewrote the mechanism (`KeyGroupedPartitioning` became `KeyedPartitioning` with an explicit grouped flag).
+
+**Learn it with:**
+
+1. **Spark-docs → Performance Tuning, Storage Partition Join** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — the only user-facing documentation this feature has: the config family (`spark.sql.sources.v2.bucketing.enabled`, `.pushPartValues.enabled`, `.partiallyClusteredDistribution.enabled`, `spark.sql.requireAllClusterKeysForCoPartition`) and a worked Iceberg example. The stated success criterion is worth memorising: **the plan contains no `Exchange` before the join**
+2. **Spark-docs → Data Source V2** ([sql-data-sources-v2.html](https://spark.apache.org/docs/latest/sql-data-sources-v2.html)) — the connector side: a table declares partition transforms and reports partition values, which is the precondition for any of this
+3. **Apache Iceberg documentation** ([iceberg.apache.org/docs/latest/spark-queries](https://iceberg.apache.org/docs/latest/spark-queries/)) — the reference connector implementation, and `spark.sql.iceberg.planning.preserve-data-grouping`, the Iceberg-side switch the Spark docs' example pairs with
+4. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the `KeyedPartitioning` concept: the grouped-vs-ungrouped distinction with a worked before/after example from the source, `KeyedShuffleSpec` for the co-partitioning half, and why `spark.sql.requireAllClusterKeysForCoPartition` (default true) disqualifies a side whose clustering keys are a superset or subset of the join keys
+
+!!! warning "No book covers this"
+
+    SPJ landed in Spark 3.3 and was substantially rewritten in 4.2; SDG, LS2e and Rioux all predate
+    it. Their answer for a large-to-large join is bucketing (Spark's own, v1) or accepting the
+    shuffle. SPJ is the DSv2 replacement and behaves quite differently — in particular it depends
+    on what the *connector* reports, not on how Spark wrote the data.
+
+!!! warning "Renamed in 4.2.0: `KeyGroupedPartitioning` → `KeyedPartitioning`"
+
+    A source-level break for connectors, extensions and tests that reference the class by name, from
+    SPARK-55535 / SPARK-55092. It does not appear in the query-author migration guide because no
+    query author names the class. If you maintain a DSv2 connector, this is the entry that matters.
+
+!!! info "Several splits per key is the normal case, and it needs a grouping step"
+
+    A connector may hand Spark several file splits sharing one partition value. That is not a valid
+    clustered distribution — the same key would appear in two partitions — so the join cannot
+    proceed until `GroupPartitionsExec` merges them. Spark 4.2 made this explicit with an
+    `isGrouped` flag and separate `satisfies` / `groupedSatisfies` predicates; before, the
+    distinction was implicit and a recurring planning-bug source.
+
+**Milestone:** You can set up two partitioned V2 tables (Iceberg is the easiest), join them on the
+partition columns, and show an `EXPLAIN` with **no `Exchange` above either scan**; then break it by
+turning off `spark.sql.sources.v2.bucketing.enabled` and show the two exchanges reappear. You can
+explain why a join on a *subset* of the partition columns still shuffles under the default
+`requireAllClusterKeysForCoPartition`, and say what has to be true of the connector — not of Spark
+— for any of it to be possible.
+
+---
+
+
+### ⬜ A26 — Distribution, Partitioning, and Why Spark Inserts an Exchange
+
+> Discovered from source sweep (new topic): `sql/catalyst: Distribution and Partitioning — the contract that decides whether you get a shuffle`
+
+**What it is:** The requirement-and-satisfaction contract every physical operator is planned against: an operator declares a `requiredChildDistribution`, each child reports an `outputPartitioning`, and an `Exchange` is inserted exactly when `partitioning.satisfies(distribution)` returns false.
+
+**Why you need it:** It is the single mechanism behind every 'why is there a shuffle here' question, it explains why a repartition on the same columns can still be followed by another shuffle, and `satisfies` has a numPartitions precondition that surprises people who thought clustering was enough.
+
+**Learn it with:**
+
+1. **Spark-docs → SQL Performance Tuning** ([sql-performance-tuning.html](https://spark.apache.org/docs/latest/sql-performance-tuning.html)) — `spark.sql.shuffle.partitions`, the AQE coalescing section, and the repartition hints; all of them are levers on the contract this topic describes, documented from the outside
+2. **Spark-docs → EXPLAIN** ([sql-ref-syntax-qry-explain.html](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-explain.html)) — `EXPLAIN FORMATTED` is how you read where the `Exchange` nodes landed and what partitioning each one produces
+3. **SDG Ch 19** — the partitioning-and-shuffle discussion; correct as far as it goes, but it describes *when* Spark shuffles without giving the rule, which is the gap this topic fills
+4. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the distribution/partitioning concept: the `Distribution` and `Partitioning` hierarchies, `satisfies` and its `final` partition-count precondition, `PartitioningCollection` (why a join output can satisfy several requirements), `HashPartitioning.partitionIdExpression` — the literal formula placing a row — and the `ShuffleSpec` concept for the two-sided case
+
+!!! info "The rule is one line, and everything follows from it"
+
+    `EnsureRequirements` inserts an `Exchange` between an operator and a child exactly when
+    `child.outputPartitioning.satisfies(operator.requiredChildDistribution)` is false. Every
+    "unexpected shuffle" question resolves to: what did the operator require, what did the child
+    report, and which clause of `satisfies` failed.
+
+!!! warning "Matching the clustering columns is not sufficient — the partition count must match"
+
+    `satisfies` checks `requiredNumPartitions` **before** the clustering test, and the method is
+    `final`, so no partitioning can opt out. A child already hash-partitioned on exactly the join
+    keys still gets an exchange if its partition count differs from the requirement's. This is the
+    usual explanation for "I called `repartition(200, 'k')` and it still shuffled".
+
+!!! info "Streaming pins the partition count for a correctness reason"
+
+    `StatefulOpClusteredDistribution` requires both the clustering *and* an exact partition count,
+    because streaming state is keyed by partition id and must survive restarts. That is also why
+    `HashPartitioning.partitionIdExpression` carries a documented cross-version stability
+    guarantee — changing the hash would silently mis-route state.
+
+**Milestone:** You can take a query with an unexpected `Exchange`, name which operator's
+`requiredChildDistribution` caused it and which clause of `satisfies` the child failed; demonstrate
+a case where `repartition(n, col)` does not prevent a downstream shuffle and explain why; describe
+what `PartitioningCollection` buys a chain of joins on the same key; and say why changing
+`spark.sql.shuffle.partitions` mid-pipeline can introduce an exchange rather than remove one.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -2093,6 +2193,7 @@ driver.
 12. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the `planLater` placeholder mechanism that lets a strategy plan one operator without knowing how its children will execute, and the cartesian fold over placeholders that makes planning time explode if a custom strategy returns several candidates per operator
 13. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the execution engine at expression level: the `UnsafeRow` layout (null bitmap, one 8-byte word per field regardless of type, variable-length tail), the Janino compile path and its 100-entry class cache, the whole-stage `produce`/`consume` protocol and its fallbacks, and `objects.scala` — the deserialize/call/serialize sandwich that is the real cost of every typed `Dataset.map`
 14. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the type system's internal view: `PhysicalDataType` is the storage-and-ordering projection where several logical types collapse into one (`DateType`, `YearMonthIntervalType` and `IntegerType` are all `PhysicalIntegerType`) and where every sort's `Ordering` comes from. Also the 4.2.0 **Types Framework** (`catalyst/types/ops/`), the seam new types will arrive through, currently behind a test-only flag
+15. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — two internals this topic needs and does not have: `ExpressionEncoder`, whose serializer and deserializer are ordinary `objects/` expression trees (so an encoder bug is a generated-Java compile error, not a serialization exception) and whose `AgnosticEncoder` half lives in `sql/api` so a Connect client can hold one; and `Origin` / `CurrentOrigin`, the `ThreadLocal` behind the Spark 4 error messages that point at the line of your DataFrame code
 
 **Milestone:** You can explain the difference between execution memory and storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface.
 
@@ -2268,6 +2369,7 @@ driver.
 4. **Databricks Unity Catalog docs** ([docs.databricks.com/data-governance/unity-catalog/](https://docs.databricks.com/data-governance/unity-catalog/)) — the most complete governance implementation; the reference for row filters and column masks
 5. **ADEB Module 2** — PII handling, pseudonymisation, CDF for deletion propagation (platform-specific, but the patterns generalise)
 6. **Source sweep — [core — config & security in the source map](reference/spark-source-map/sweeps/core-config-security.md)** — the delegation-token provider SPI behind Kerberised access: `ServiceLoader`-loaded providers, a per-provider enable key built by `String.format` (so it never appears in the config catalog), and `hadoopFSsToAccess` — which is why a second Kerberised filesystem fails at the first task that touches it rather than at submit, unless you name it in `spark.kerberos.access.hadoopFileSystems`
+7. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the catalog object model and its audit seam: `CatalogTable` / `CatalogTablePartition` / `CatalogStatistics` are the case classes behind everything `DESCRIBE TABLE` prints, and `ExternalCatalogWithListener` posts a **pre- and post-event for every DDL operation** to the Spark listener bus — a supported hook for lineage and audit that needs no metastore access
 
 **Milestone:** You can explain what a catalog is responsible for versus the table format, name the trade-off between Unity Catalog and a REST-catalog implementation, create a row filter restricting a table to the current user's region, set column-level masking on a PII field, and trace a lineage graph from a gold table back to its sources.
 

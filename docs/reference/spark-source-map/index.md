@@ -68,6 +68,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A22 | Approximate Aggregation with Sketches | — | — | ⬜ |
 | A23 | Vector Expressions for Embeddings and Similarity | — | — | ⬜ |
 | A24 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration | — | — | ⬜ |
+| A25 | Storage-Partitioned Joins | — | — | ⬜ |
+| A26 | Distribution, Partitioning, and Why Spark Inserts an Exchange | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -359,58 +361,76 @@ flowchart LR
     S10 --> S10c20["Vector expressions — similarity and norms over float arrays"]
     S10 --> S10c21["Geospatial ST expressions — the GEOGRAPHY/GEOMETRY beachhead"]
     S11["sql/catalyst"]
-    S11 --> S11c0["The Optimizer — batches, extension points and rule exclusion"]
-    S11 --> S11c1["The operator-optimization rule set and the Infer Filters sandwich"]
-    S11 --> S11c2["Finish Analysis — correctness rules wearing an optimizer badge"]
-    S11 --> S11c3["Predicate pushdown"]
-    S11 --> S11c4["Column pruning and nested schema pruning"]
-    S11 --> S11c5["Constant folding and expression simplification"]
-    S11 --> S11c6["Constraint propagation and filter inference"]
-    S11 --> S11c7["Rule-based join reorder, outer-join elimination and the cartesian check"]
-    S11 --> S11c8["Statistics — the two visitors and the estimation model"]
-    S11 --> S11c9["Cost-based join reorder (dynamic programming) and star-schema detection"]
-    S11 --> S11c10["Runtime filtering — bloom filters and dynamic partition pruning"]
-    S11 --> S11c11["Correlated subqueries — pull-up, decorrelation and the COUNT bug"]
-    S11 --> S11c12["CTE handling — inline, pushdown, and reuse as repartition"]
-    S11 --> S11c13["MergeSubplans and PlanMerger — scalar-subquery reuse (new in 4.2.0)"]
-    S11 --> S11c14["Set operations and distinct rewrites"]
-    S11 --> S11c15["Aggregate rewrites — distinct aggregates, Expand, decimals"]
-    S11 --> S11c16["Window optimizations and the window group limit"]
-    S11 --> S11c17["Limit and offset optimizations"]
-    S11 --> S11c18["Empty relations, one-row plans and local evaluation"]
-    S11 --> S11c19["Redundant-operator removal and collapsing"]
-    S11 --> S11c20["Typed-Dataset (object) optimizations"]
-    S11 --> S11c21["Correctness normalizations — floats, NaN and maps"]
-    S11 --> S11c22["Hints in the optimizer"]
-    S11 --> S11c23["Complex-type expression optimizations"]
-    S11 --> S11c24["Rule-level observability — plan-change logging, validation, idempotence"]
-    S11 --> S11c25["RewriteWithExpression — common subexpression elimination in the logical plan"]
+    S11 --> S11c0["TreeNode — immutability, transform, and the reflective copy"]
+    S11 --> S11c1["Tree patterns and rule ids — the two pruning mechanisms"]
+    S11 --> S11c2["Rule and RuleExecutor — batches, fixed point, idempotence and plan validation"]
+    S11 --> S11c3["QueryExecutionMetering and PlanChangeLogger — per-rule cost and per-rule diffs"]
+    S11 --> S11c4["QueryPlan — output, references, missingInput and canonicalization"]
+    S11 --> S11c5["LogicalPlan and the integrity checks"]
+    S11 --> S11c6["AnalysisHelper — the analyzed flag that stops re-analysis"]
+    S11 --> S11c7["The logical operator set — basicLogicalOperators, join types, hints and CTEs"]
+    S11 --> S11c8["NearestByJoin — the 4.2.0 top-K similarity join"]
+    S11 --> S11c9["Distribution and Partitioning — the contract that decides whether you get a shuffle"]
+    S11 --> S11c10["ShuffleSpec and co-partitioning — how two sides agree on a shuffle"]
+    S11 --> S11c11["KeyedPartitioning — the 4.2.0 storage-partitioned-join refactor"]
+    S11 --> S11c12["SessionCatalog — temp views, the relation cache, and session state"]
+    S11 --> S11c13["The catalog object model — CatalogTable, ExternalCatalog and the event bus"]
+    S11 --> S11c14["Session variables and SQL-defined routines in the catalog"]
+    S11 --> S11c15["ExpressionEncoder and the agnostic encoder split"]
+    S11 --> S11c16["Streaming logical plans"]
     S12["sql/catalyst"]
-    S12 --> S12c0["QueryPlanner — strategies, placeholders and the candidate iterator"]
-    S12 --> S12c1["Plan-matching patterns — the extractors every strategy is written against"]
-    S12 --> S12c2["DataSource V2 logical relations and the table implicits"]
-    S12 --> S12c3["QueryPlanningTracker — where the time went"]
+    S12 --> S12c0["The Optimizer — batches, extension points and rule exclusion"]
+    S12 --> S12c1["The operator-optimization rule set and the Infer Filters sandwich"]
+    S12 --> S12c2["Finish Analysis — correctness rules wearing an optimizer badge"]
+    S12 --> S12c3["Predicate pushdown"]
+    S12 --> S12c4["Column pruning and nested schema pruning"]
+    S12 --> S12c5["Constant folding and expression simplification"]
+    S12 --> S12c6["Constraint propagation and filter inference"]
+    S12 --> S12c7["Rule-based join reorder, outer-join elimination and the cartesian check"]
+    S12 --> S12c8["Statistics — the two visitors and the estimation model"]
+    S12 --> S12c9["Cost-based join reorder (dynamic programming) and star-schema detection"]
+    S12 --> S12c10["Runtime filtering — bloom filters and dynamic partition pruning"]
+    S12 --> S12c11["Correlated subqueries — pull-up, decorrelation and the COUNT bug"]
+    S12 --> S12c12["CTE handling — inline, pushdown, and reuse as repartition"]
+    S12 --> S12c13["MergeSubplans and PlanMerger — scalar-subquery reuse (new in 4.2.0)"]
+    S12 --> S12c14["Set operations and distinct rewrites"]
+    S12 --> S12c15["Aggregate rewrites — distinct aggregates, Expand, decimals"]
+    S12 --> S12c16["Window optimizations and the window group limit"]
+    S12 --> S12c17["Limit and offset optimizations"]
+    S12 --> S12c18["Empty relations, one-row plans and local evaluation"]
+    S12 --> S12c19["Redundant-operator removal and collapsing"]
+    S12 --> S12c20["Typed-Dataset (object) optimizations"]
+    S12 --> S12c21["Correctness normalizations — floats, NaN and maps"]
+    S12 --> S12c22["Hints in the optimizer"]
+    S12 --> S12c23["Complex-type expression optimizations"]
+    S12 --> S12c24["Rule-level observability — plan-change logging, validation, idempotence"]
+    S12 --> S12c25["RewriteWithExpression — common subexpression elimination in the logical plan"]
     S13["sql/catalyst"]
-    S13 --> S13c0["The parser pipeline — ANTLR, the two-stage strategy, and where ParseException comes from"]
-    S13 --> S13c1["The grammar — keyword categories and the parser feature flags"]
-    S13 --> S13c2["AstBuilder — 222 visitors and the unresolved plan"]
-    S13 --> S13c3["Parameter markers — textual substitution and position mapping"]
-    S13 --> S13c4["The ANTLR DFA cache — an unbounded parser cache on the driver"]
-    S13 --> S13c5["The DataType hierarchy and its three serialized forms"]
-    S13 --> S13c6["StructType — the schema object practitioners actually hold"]
-    S13 --> S13c7["DecimalType and Decimal — precision, scale, and the adjustment rule"]
-    S13 --> S13c8["StringType and collation in the type system"]
-    S13 --> S13c9["CHAR and VARCHAR — declared, then erased"]
-    S13 --> S13c10["TIME, TIMESTAMP_NTZ, and the timestamp-type switch"]
-    S13 --> S13c11["The Types Framework — the 4.2.0 refactor behind a test-only flag"]
-    S13 --> S13c12["Physical types and DataTypeUtils — the catalyst-side view of a DataType"]
-    S13 --> S13c13["UpCastRule — the loss-free widening lattice"]
-    S13 --> S13c14["UserDefinedType and UDTRegistration"]
-    S13 --> S13c15["CSV parsing — Univocity, the option surface, and header checking"]
-    S13 --> S13c16["JSON parsing — Jackson, filter pushdown, and the single-variant column"]
-    S13 --> S13c17["XML parsing — Stax and the 4.1 rewrite"]
-    S13 --> S13c18["Schema inference — one type lattice, three formats"]
-    S13 --> S13c19["Malformed record handling — FailureSafeParser and the corrupt-record column"]
+    S13 --> S13c0["QueryPlanner — strategies, placeholders and the candidate iterator"]
+    S13 --> S13c1["Plan-matching patterns — the extractors every strategy is written against"]
+    S13 --> S13c2["DataSource V2 logical relations and the table implicits"]
+    S13 --> S13c3["QueryPlanningTracker — where the time went"]
+    S14["sql/catalyst"]
+    S14 --> S14c0["The parser pipeline — ANTLR, the two-stage strategy, and where ParseException comes from"]
+    S14 --> S14c1["The grammar — keyword categories and the parser feature flags"]
+    S14 --> S14c2["AstBuilder — 222 visitors and the unresolved plan"]
+    S14 --> S14c3["Parameter markers — textual substitution and position mapping"]
+    S14 --> S14c4["The ANTLR DFA cache — an unbounded parser cache on the driver"]
+    S14 --> S14c5["The DataType hierarchy and its three serialized forms"]
+    S14 --> S14c6["StructType — the schema object practitioners actually hold"]
+    S14 --> S14c7["DecimalType and Decimal — precision, scale, and the adjustment rule"]
+    S14 --> S14c8["StringType and collation in the type system"]
+    S14 --> S14c9["CHAR and VARCHAR — declared, then erased"]
+    S14 --> S14c10["TIME, TIMESTAMP_NTZ, and the timestamp-type switch"]
+    S14 --> S14c11["The Types Framework — the 4.2.0 refactor behind a test-only flag"]
+    S14 --> S14c12["Physical types and DataTypeUtils — the catalyst-side view of a DataType"]
+    S14 --> S14c13["UpCastRule — the loss-free widening lattice"]
+    S14 --> S14c14["UserDefinedType and UDTRegistration"]
+    S14 --> S14c15["CSV parsing — Univocity, the option surface, and header checking"]
+    S14 --> S14c16["JSON parsing — Jackson, filter pushdown, and the single-variant column"]
+    S14 --> S14c17["XML parsing — Stax and the 4.1 rewrite"]
+    S14 --> S14c18["Schema inference — one type lattice, three formats"]
+    S14 --> S14c19["Malformed record handling — FailureSafeParser and the corrupt-record column"]
 ```
 
 ## Topics discovered from the source
@@ -449,7 +469,9 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Collation — Collate, CollationKey, and collation-aware hashing | sql/catalyst | new | I21 | String Collation |
 | Correlated subqueries — pull-up, decorrelation and the COUNT bug | sql/catalyst | new | A19 | Correlated Subqueries and Decorrelation |
 | DecimalType and Decimal — precision, scale, and the adjustment rule | sql/catalyst | new | I25 | Decimal Precision, Scale, and Silent Rounding |
+| Distribution and Partitioning — the contract that decides whether you get a shuffle | sql/catalyst | new | A26 | Distribution, Partitioning, and Why Spark Inserts an Exchange |
 | Geospatial ST expressions — the GEOGRAPHY/GEOMETRY beachhead | sql/catalyst | new | — | — |
+| KeyedPartitioning — the 4.2.0 storage-partitioned-join refactor | sql/catalyst | new | A25 | Storage-Partitioned Joins |
 | Malformed record handling — FailureSafeParser and the corrupt-record column | sql/catalyst | new | I24 | Malformed Records: PERMISSIVE, DROPMALFORMED, FAILFAST and _corrupt_record |
 | Runtime filtering — bloom filters and dynamic partition pruning | sql/catalyst | new | A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters |
 | Schema inference — one type lattice, three formats | sql/catalyst | new | I23 | Schema Inference for CSV, JSON and XML |
@@ -474,7 +496,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/catalyst — planner | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — expressions | — | ✅ complete | 4.2.0 | 2026-07-26 |
 | sql/catalyst — types-parser | — | ✅ complete | 4.2.0 | 2026-07-26 |
-| sql/catalyst — framework | — | ⬜ pending | — | — |
+| sql/catalyst — framework | — | ✅ complete | 4.2.0 | 2026-07-26 |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-25 |

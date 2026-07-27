@@ -51,6 +51,7 @@ nav = [
             { "sql/catalyst — Planner" = "reference/spark-source-map/sweeps/sql-catalyst-planner.md" },
             { "sql/catalyst — Expressions & codegen" = "reference/spark-source-map/sweeps/sql-catalyst-expressions.md" },
             { "sql/catalyst — Types & SQL parser" = "reference/spark-source-map/sweeps/sql-catalyst-types-parser.md" },
+            { "sql/catalyst — Catalyst framework" = "reference/spark-source-map/sweeps/sql-catalyst-framework.md" },
         ]},
     ]},
     { "Spark Book" = [
