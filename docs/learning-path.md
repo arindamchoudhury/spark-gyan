@@ -223,6 +223,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 10. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — two analysis-time write behaviours: `CHECK` constraints become a `CheckInvariant` expression inserted above the write (so enforcement costs per row and appears in `EXPLAIN`), and `ResolveSchemaEvolution` reconciles an incoming schema against the table's
 11. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — the catalyst half of DataSource V2: `DataSourceV2Relation` before a scan is built, `DataSourceV2ScanRelation` after, and the capability model — `supports` is a set-membership test against what the connector *declares*, so an undeclared capability is a clean analysis error and a falsely declared one fails much later
 12. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the parser layer under `spark.read`: `CSVOptions` / `JSONOptions` / `XmlOptions` are the real option reference, `enforceSchema=true` (the CSV default) means the header is **skipped and matched by position** rather than validated, and every format funnels malformed records through one 70-line `FailureSafeParser` whose PERMISSIVE default emits a row of nulls with no signal
+13. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — what changes when the table came from a Hive metastore rather than a path: a Spark table's authoritative schema is **JSON in table properties** (split at 4000 chars), so Hive DDL against it changes what Hive sees and not what Spark reads; whether the table is Hive-readable at all is decided at create time by a five-branch method that logs and never fails; and writes go to a `.hive-staging` directory before a Hive `loadTable`/`loadPartition`, so visibility semantics are Hive's
 
 **Milestone:** You can read multi-file datasets with glob patterns, declare a schema programmatically with `StructType`, write in append/overwrite mode, and explain why Parquet is preferred for analytical workloads. Then two the source makes checkable: predict how many tasks a read of N files will produce and say which config capped it, and explain what happens to already-written files when a write fails halfway.
 
@@ -556,6 +557,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 9. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — new in 4.2.0: Python worker logs are captured into the `BlockManager` as `PythonWorkerLogBlockId` blocks ([SPARK-53755]/[SPARK-53975]), which is what finally makes a `print()` or `logging` call inside a UDF retrievable instead of stranded on the executor
 10. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the catalyst-side view: `PythonUDF` has no `eval` and no `doGenCode` at all — it is a marker carrying an `evalType`, extracted by a planner rule — while `ScalaUDF` runs in-process and pays per-argument encoder conversion instead. Also the V2 function catalog's *magic method*: a `ScalarFunction` whose `invoke` signature matches code-generates into a direct static call rather than a boxed `produceResult`
 11. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — what has to happen before the Python worker protocol even starts on Connect: the UDF crosses the wire as a serialized closure, and the classes it references must already have been uploaded as artifacts into the session's own classloader. A UDF that works classically and fails remotely with `ClassNotFoundException` is this, not the worker
+12. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — the JVM-side Hive UDF wrappers (`HiveSimpleUDF`, `HiveGenericUDF`, `HiveGenericUDTF`, `HiveUDAFFunction`), which let a decade of Hive functions run unchanged. They defer `deterministic` and `foldable` to Hive's own `@UDFType` annotation — so a UDF whose annotation lies breaks constant folding and subexpression elimination — and `HiveGenericUDTF` is a `CodegenFallback`, costing its whole operator's whole-stage codegen
 
 **Milestone:** You can replace a Python UDF with a pandas UDF and measure the speedup **on 4.2.0** — not quote a book's figure; you can load an ML model once per partition using an Iterator UDF and say which config makes that pay off; you can test a UDF locally without a SparkSession. Then, from `explain()`: name which eval operator your UDF ran under, and explain why chaining a plain UDF and a pandas UDF in one `select` costs more than chaining two of the same kind.
 
@@ -843,6 +845,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 6. **Source trace — [I10 in the source map](reference/spark-source-map/topics/i10.md)** — where columnar execution actually stops, why pushdown is per-filter rather than per-format, and what `VARIANT` changed
 7. **Source sweep — [sql/catalyst — planner in the source map](reference/spark-source-map/sweeps/sql-catalyst-planner.md)** — how a V2 table reports statistics: `computeStats` asks the connector through `SupportsReportStatistics`, and a format that does not implement it gets the default estimate — which is what starves the cost-based optimizer regardless of how good the file-level metadata is
 8. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the three text formats' parsers in detail: Univocity for CSV with its 20480-column and column-pruning limits, Jackson for JSON with **filter pushdown into the parser** and partial results, and the 4.1 Stax rewrite for XML with the old parser still behind `spark.sql.legacy.useLegacyXMLParser`. Also `singleVariantColumn`, the JSON option that ingests a whole record as one `VARIANT`
+9. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — the same Parquet and ORC files are read by **two completely different code paths**. Conversion to Spark's vectorised datasource is decided by `serde.toLowerCase.contains("parquet")`, so a renamed SerDe drops you onto Hive's row-at-a-time SerDe reader with no vectorisation or pushdown — `Scan hive` in the plan where you expected `FileScan parquet`. Also `spark.sql.orc.impl=hive`, the legacy ORC reader that still lives in this module
 
 !!! info "Spark is columnar at the scan and nowhere else"
     The vectorized reader fills `ColumnarBatch`es of 4096 rows directly from Parquet row groups, constructing no per-row objects. Then `ColumnarToRowExec` converts the batch to `UnsafeRow` as soon as an operator cannot consume columnar input — which, in open-source Spark, is almost immediately.
@@ -1846,6 +1849,7 @@ You are ready to leave this level when you can:
 3. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the `spark.sql.optimizer.dynamicPartitionPruning.*` and `spark.sql.optimizer.runtime.bloomFilter.*` families with their defaults; the closest thing to authoritative documentation these rules have
 4. **Source sweep — [sql/catalyst — optimizer in the source map](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)** — the "Runtime filtering" concept: every precondition in `tryInjectRuntimeFilter`, the `hasDynamicPruningSubquery` / `hasBloomFilter` guards that stop the two rules stacking, the `reuseBroadcastOnly` vs `fallbackFilterRatio` decision in DPP, and the cleanup batch that strips pruning filters which could not reach a scan
 5. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the two runtime-filter expressions themselves: `BloomFilterMightContain` type-checks that its filter side is a **literal or a scalar subquery** (it must be computable before the probe runs), and `DynamicPruningSubquery.onlyInBroadcast` is the flag deciding whether the pruning filter is worth a separate subquery execution or may only free-ride on an existing broadcast
+6. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — partition pruning against a Hive metastore, which is a different mechanism from the runtime filters this topic covers: with `spark.sql.hive.metastorePartitionPruning` the predicate is sent to the metastore; without it (or with a predicate the metastore cannot express) Spark fetches **every** partition's metadata to the driver and filters locally. Three separate fallback configs exist because metastore-side pruning is fragile
 
 **Milestone:** You can read an `EXPLAIN` plan and point at the `DynamicPruningSubquery` or `BloomFilterMightContain` node that proves a runtime filter was planted; explain why DPP requires a *partitioned* table while the bloom filter does not; and, given a join where neither fired, name which threshold or precondition blocked it.
 
@@ -2167,6 +2171,50 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 
 ---
 
+
+### ⬜ A27 — Hive Table Conversion: When Spark Reads Hive Tables Natively
+
+> Discovered from source sweep (new topic): `sql/hive: RelationConversions — reading a Hive table with Spark's own reader`
+
+**What it is:** The `spark.sql.hive.convertMetastore*` family, which decides whether a Parquet or ORC table defined in the Hive metastore is read and written through Spark's own vectorised datasource or through Hive's SerDe path — separately for reads, inserts, CTAS and `INSERT OVERWRITE DIRECTORY`.
+
+**Why you need it:** The native path gets vectorised reads, filter and column pushdown and the file-index cache; the SerDe path gets none of them. All eight switches default to on, so most people are already relying on this — and the cases where conversion silently does *not* happen are exactly the ones where a table is unexpectedly slow.
+
+**Learn it with:**
+
+1. **Spark-docs → Hive Tables** ([sql-data-sources-hive-tables.html](https://spark.apache.org/docs/latest/sql-data-sources-hive-tables.html)) — the user-facing view of Hive-table support and the `hive-site.xml` placement it depends on
+2. **Spark-docs → Runtime SQL Configuration** ([configuration.html#runtime-sql-configuration](https://spark.apache.org/docs/latest/configuration.html#runtime-sql-configuration)) — the eight `spark.sql.hive.convert*` keys with their defaults and the release each landed in; the one-line descriptions are the whole of their documentation
+3. **Spark-docs → Parquet Files** ([sql-data-sources-parquet.html](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html)) — the "Hive metastore Parquet table conversion" section, including the schema-reconciliation rules that apply when conversion happens
+4. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — the `RelationConversions` concept: the substring test that decides conversion, the four independent switches for read / insert / CTAS / `INSERT DIRECTORY`, and the SerDe path (`HadoopTableReader`) you fall onto when it does not fire
+
+!!! warning "Conversion is decided by a substring match on the SerDe class name"
+
+    The whole test is `serde.toLowerCase.contains("parquet")` or `.contains("orc")`. A table
+    registered with a custom or renamed SerDe that stores Parquet but is not *called* Parquet will
+    not convert — it reads row-at-a-time through Hive's SerDe with no vectorisation, no filter
+    pushdown and no column pruning. Nothing in `EXPLAIN` says why; the tell is `Scan hive` where you
+    expected `FileScan parquet`.
+
+!!! info "Reads, inserts, CTAS and INSERT DIRECTORY are four separate switches"
+
+    They arrived across four releases (1.1.1, 3.0.0, 3.3.0, 4.0.0) and can disagree. Reading a table
+    natively while writing it through Hive is a legitimate configuration — and usually the right one
+    when the write must be visible to Hive with Hive's own file layout.
+
+!!! warning "No book covers this"
+
+    SDG, LS2e and Rioux all treat "Spark reads Hive tables" as a single capability. None mentions
+    that there are two entirely different read paths over the same files, or that a config chooses
+    between them.
+
+**Milestone:** You can create a Hive-serde Parquet table, query it, and show `FileScan parquet` in
+the plan; set `spark.sql.hive.convertMetastoreParquet=false`, re-run, and show `Scan hive` plus the
+loss of pushdown in the plan. You can name the four independent conversion switches and say which
+release each arrived in; explain why a table with a custom SerDe name never converts; and state
+what the converted relation is cached in and why that cache does not expire.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -2228,6 +2276,7 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 10. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the resource model behind executor/task sizing: how `spark.executor.cores` + `spark.task.cpus` + custom `spark.*.resource.{name}.amount` combine into the *limiting-resource* arithmetic that decides how many tasks an executor runs, and how accelerator addresses get discovered (resources file vs discovery script). Stage-level scheduling proper is its own topic — see [A16](#a16-stage-level-scheduling-and-accelerator-aware-resources-gpufpga)
 11. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — Connect as a deployment surface: the gRPC server is a **`SparkPlugin`** started inside an ordinary driver (`spark.plugins`), its port and bind address are *static* confs fixed at start, authentication is one pre-shared bearer token, and anything stronger has to come from a custom `ServerInterceptor` or a proxy in front. Treat an unprotected Connect port as equivalent to an unprotected driver
 12. **Source sweep — [connector/profiler — async-profiler in the source map](reference/spark-source-map/sweeps/connector-profiler-async-profiler.md)** — a deployment-shaped gotcha worth knowing before someone asks for profiling in production: the module lives behind the `jvm-profiler` Maven profile and its `ap-loader-all` native dependency is `provided` scope, so **a standard Spark distribution ships neither**. On Kubernetes it additionally requires `spark.kubernetes.executor.deleteOnTermination=false`, because pods are otherwise reclaimed while the profiler's final flush is still running
+13. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — two deployment-shaped facts: the six metastore-interop configs are all **static**, so attaching Spark to an existing metastore is a submit-time decision that cannot be corrected on a running session; and on a Kerberised cluster `HiveDelegationTokenProvider` logs a **warning** and returns no token when acquisition fails, surfacing much later as an executor authentication error
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
@@ -2381,6 +2430,7 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 5. **ADEB Module 2** — PII handling, pseudonymisation, CDF for deletion propagation (platform-specific, but the patterns generalise)
 6. **Source sweep — [core — config & security in the source map](reference/spark-source-map/sweeps/core-config-security.md)** — the delegation-token provider SPI behind Kerberised access: `ServiceLoader`-loaded providers, a per-provider enable key built by `String.format` (so it never appears in the config catalog), and `hadoopFSsToAccess` — which is why a second Kerberised filesystem fails at the first task that touches it rather than at submit, unless you name it in `spark.kerberos.access.hadoopFileSystems`
 7. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the catalog object model and its audit seam: `CatalogTable` / `CatalogTablePartition` / `CatalogStatistics` are the case classes behind everything `DESCRIBE TABLE` prints, and `ExternalCatalogWithListener` posts a **pre- and post-event for every DDL operation** to the Spark listener bus — a supported hook for lineage and audit that needs no metastore access
+8. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — the Hive metastore as a governed catalog: `HiveExternalCatalog` implements the `ExternalCatalog` interface the framework sweep describes, stores Spark's schema in reserved `spark.sql.*` table properties, stamps every table with the Spark version that created it, and serialises **all** metastore access behind one `synchronized` lock. Kerberos access uses a delegation token whose acquisition failure is only a warning
 
 **Milestone:** You can explain what a catalog is responsible for versus the table format, name the trade-off between Unity Catalog and a REST-catalog implementation, create a row filter restricting a table to the current user's region, set column-level masking on a PII field, and trace a lineage graph from a gold table back to its sources.
 
@@ -2856,6 +2906,51 @@ and name the hottest method in a stage you already knew was slow. You can explai
 lost every `dfsWriteInterval` seconds and why that trade cannot be avoided; state the three silent
 reasons a JFR file might never appear; and name the Kubernetes setting without which the tail of
 every profile is lost.
+
+---
+
+
+### ⬜ E21 — Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars
+
+> Discovered from source sweep (new topic): `sql/hive: Two Hive versions — the bundled client and the metastore it talks to`
+
+**What it is:** How Spark talks to a metastore it was not compiled against: `spark.sql.hive.metastore.version` selects a version shim, `spark.sql.hive.metastore.jars` supplies that version's jars, and an isolated classloader keeps them from colliding with Spark's own Hive — with `sharedPrefixes` and `barrierPrefixes` as the escape hatches.
+
+**Why you need it:** Spark 4.2 bundles Hive 2.3.10 but can talk to metastores from 2.0 to 4.1, and getting that pairing wrong produces classloader errors that look like nothing else in Spark. It is the first thing to configure when attaching Spark to an existing data platform, and the configs are all static — you cannot fix it on a running session.
+
+**Learn it with:**
+
+1. **Spark-docs → Hive Tables** ([sql-data-sources-hive-tables.html](https://spark.apache.org/docs/latest/sql-data-sources-hive-tables.html)) — the reference for this topic: where `hive-site.xml`, `core-site.xml` and `hdfs-site.xml` go, and the "Interacting with Different Versions of Hive Metastore" section documenting all six configs. Note its key sentence — *independent of the metastore version, Spark compiles against the built-in Hive for SerDes, UDFs and UDAFs* — which is exactly the two-version split this topic is about
+2. **Spark-docs → Configuration** ([configuration.html](https://spark.apache.org/docs/latest/configuration.html)) — confirm for yourself that all six are listed as static; `spark.sql.warehouse.dir` also belongs here, having replaced `hive.metastore.warehouse.dir` in Spark 2.0
+3. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — the isolated-classloader concept: the three-way split into **barrier** classes (redefined per client), **shared** classes (Spark's copy — all of `org.apache.hadoop.` *except* `org.apache.hadoop.hive.`) and everything else loaded from the isolated jars, plus the shim ladder (`Shim_v2_0` … `Shim_v4_1`, each extending the previous) that absorbs the per-version API differences
+
+!!! warning "All six configs are static — `spark.conf.set` does nothing and says nothing"
+
+    `spark.sql.hive.version`, `.metastore.version`, `.metastore.jars`, `.metastore.jars.path`,
+    `.metastore.sharedPrefixes` and `.metastore.barrierPrefixes` are `buildStaticConf`. They are read
+    once when the session's Hive client is built, so setting them in a notebook is silently
+    ineffective. This is a `spark-submit` / cluster-config decision.
+
+!!! info "`sharedPrefixes` is the fix for a metastore database driver"
+
+    The classic failure: your metastore is backed by a database whose JDBC driver Spark does not
+    list as shared, so the driver class is loaded twice — once on each side of the isolation
+    boundary — and you get a `ClassNotFoundException` or a `ClassCastException` naming it. Adding
+    its package to `spark.sql.hive.metastore.sharedPrefixes` is the intended remedy.
+    `barrierPrefixes` is the mirror image, for your own classes that must bind to the isolated Hive.
+
+!!! warning "No book covers this"
+
+    All three books assume the default `builtin` metastore. The version-shim and classloader
+    machinery only matters when Spark meets a metastore someone else operates — which is most
+    enterprise deployments, and none of the books' subject matter.
+
+**Milestone:** You can point a Spark session at a metastore of a different version than the bundled
+Hive, using `spark.sql.hive.metastore.version` plus `jars=path`, and confirm from the driver log
+that the isolated loader started. You can explain why `spark.sql.hive.version` cannot be set at all;
+say which three buckets a class can fall into and what decides each; diagnose a doubled JDBC-driver
+class to the right config; and state why none of this can be fixed without restarting the
+application.
 
 ---
 

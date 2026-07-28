@@ -70,6 +70,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A24 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration | — | — | ⬜ |
 | A25 | Storage-Partitioned Joins | — | — | ⬜ |
 | A26 | Distribution, Partitioning, and Why Spark Inserts an Exchange | — | — | ⬜ |
+| A27 | Hive Table Conversion: When Spark Reads Hive Tables Natively | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -90,6 +91,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection | — | — | ⬜ |
 | E19 | Spark Connect Artifacts: Shipping Code to a Remote Session | — | — | ⬜ |
 | E20 | JVM Profiling on a Cluster: async-profiler, Flame Graphs and JFR | — | — | ⬜ |
+| E21 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars | — | — | ⬜ |
 
 ## Source concept map
 
@@ -472,6 +474,21 @@ flowchart LR
     S17 --> S17c8["The declarative guarantee — blocking side-effecting SQL"]
     S17 --> S17c9["PipelineAnalysisContext — knowing you are inside a flow function"]
     S17 --> S17c10["Where the engine actually lives"]
+    S18["sql/hive"]
+    S18 --> S18c0["Two Hive versions — the bundled client and the metastore it talks to"]
+    S18 --> S18c1["IsolatedClientLoader — barrier, hive and shared classes"]
+    S18 --> S18c2["The HiveClient shim ladder"]
+    S18 --> S18c3["HiveExternalCatalog — a Spark schema inside Hive table properties"]
+    S18 --> S18c4["Hive-compatible versus Spark-specific persistence"]
+    S18 --> S18c5["RelationConversions — reading a Hive table with Spark's own reader"]
+    S18 --> S18c6["Case-sensitive schema inference and INFER_AND_SAVE"]
+    S18 --> S18c7["HiveTableScanExec and metastore partition pruning"]
+    S18 --> S18c8["HadoopTableReader — the SerDe read path"]
+    S18 --> S18c9["InsertIntoHiveTable — staging directories and dynamic partitions"]
+    S18 --> S18c10["HiveInspectors — the ObjectInspector bridge"]
+    S18 --> S18c11["Hive UDFs, UDAFs and UDTFs"]
+    S18 --> S18c12["The legacy Hive ORC reader"]
+    S18 --> S18c13["Hive delegation tokens"]
 ```
 
 ## Topics discovered from the source
@@ -528,6 +545,10 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Artifacts — shipping JARs, classes and UDFs to a remote session | sql/connect | new | E19 | Spark Connect Artifacts: Shipping Code to a Remote Session |
 | Reattachable execution — surviving a broken response stream | sql/connect | new | E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection |
 | The JDBC driver — jdbc:sc:// and how far it goes | sql/connect | new | — | — |
+| IsolatedClientLoader — barrier, hive and shared classes | sql/hive | new | — | — |
+| RelationConversions — reading a Hive table with Spark's own reader | sql/hive | new | A27 | Hive Table Conversion: When Spark Reads Hive Tables Natively |
+| The HiveClient shim ladder | sql/hive | new | — | — |
+| Two Hive versions — the bundled client and the metastore it talks to | sql/hive | new | E21 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars |
 
 
 ## Sweep status
@@ -557,7 +578,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/connect — client-server | 44 | ✅ complete | 4.2.0 | 2026-07-27 |
 | sql/connect — declarative-pipelines | — | ✅ complete | 4.2.0 | 2026-07-27 |
 | streaming — dstream | 28 | ⬜ pending | — | — |
-| sql/hive — hive-metastore | 17 | ⬜ pending | — | — |
+| sql/hive — hive-metastore | 17 | ✅ complete | 4.2.0 | 2026-07-28 |
 | connector/kafka-0-10 — consumer | 8 | ⬜ pending | — | — |
 | connector/kafka-0-10-sql — source-sink | 8 | ⬜ pending | — | — |
 | connector/profiler — async-profiler | 7 | ✅ complete | 4.2.0 | 2026-07-27 |
