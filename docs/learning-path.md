@@ -2227,6 +2227,7 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 9. **Source sweep — [core — config & security in the source map](reference/spark-source-map/sweeps/core-config-security.md)** — the whole cluster-security surface: how `SecurityManager` mints the auth secret differently per cluster manager (generated on YARN/local, mounted file on k8s, *required in conf* otherwise), the `AuthEngine` X25519 handshake and its SASL fallback, IO (shuffle-spill) encryption, and the Kerberos delegation-token renewal loop — plus the config engine itself (fallback keys, `${…}` substitution, deprecated-key handling) that every knob in this topic is built on
 10. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the resource model behind executor/task sizing: how `spark.executor.cores` + `spark.task.cpus` + custom `spark.*.resource.{name}.amount` combine into the *limiting-resource* arithmetic that decides how many tasks an executor runs, and how accelerator addresses get discovered (resources file vs discovery script). Stage-level scheduling proper is its own topic — see [A16](#a16-stage-level-scheduling-and-accelerator-aware-resources-gpufpga)
 11. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — Connect as a deployment surface: the gRPC server is a **`SparkPlugin`** started inside an ordinary driver (`spark.plugins`), its port and bind address are *static* confs fixed at start, authentication is one pre-shared bearer token, and anything stronger has to come from a custom `ServerInterceptor` or a proxy in front. Treat an unprotected Connect port as equivalent to an unprotected driver
+12. **Source sweep — [connector/profiler — async-profiler in the source map](reference/spark-source-map/sweeps/connector-profiler-async-profiler.md)** — a deployment-shaped gotcha worth knowing before someone asks for profiling in production: the module lives behind the `jvm-profiler` Maven profile and its `ap-loader-all` native dependency is `provided` scope, so **a standard Spark distribution ships neither**. On Kubernetes it additionally requires `spark.kubernetes.executor.deleteOnTermination=false`, because pods are otherwise reclaimed while the profiler's final flush is still running
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
@@ -2287,6 +2288,7 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 11. **Source sweep — [core — api-bridge in the source map](reference/spark-source-map/sweeps/core-api-bridge.md)** — the executor half of PySpark worker logging: capture is a `PYTHON_WORKER_LOGGING:` marker scan over the worker's **stdout only**, active only when `PYSPARK_SPARK_SESSION_UUID` is set — so an unmarked `print()` still goes to the executor log, and a traceback on stderr is never captured
 12. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — Connect's observability story: every execution carries a user id, a session id and an operation id and posts started/analyzed/readyForExecution/finished events to the listener bus, so "which user ran the query that filled the driver" is answerable from the event log — better than a classic multi-tenant driver, where jobs are attributable only by job group. The Connect server tab and its History Server plugin read the same events
 13. **Source sweep — [sql/connect — declarative pipelines in the source map](reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md)** — pipeline progress as an event stream: `PipelineEventSender` runs on a daemon thread with a bounded queue, and above `spark.sql.pipelines.event.queue.capacity` (1000) it **drops intermediate events with no log line and no gap marker**. Run outcomes and terminal flow events always survive, so the final report stays correct — but tooling that counts intermediate events will under-count on a large pipeline
+14. **Source sweep — [connector/profiler — async-profiler in the source map](reference/spark-source-map/sweeps/connector-profiler-async-profiler.md)** — the observability tool this topic does not currently mention and the official docs do not either: Spark ships an **async-profiler plugin** (`org.apache.spark.profiler.ProfilerPlugin`, since 4.0) that captures wall-clock, allocation and lock profiles from driver and executor JVMs as JFR files and syncs them to a DFS path. Metrics tell you a stage is slow; this tells you which method. Note it is not built by default and `monitoring.html` never mentions it — see the proposed **E20** for the full treatment
 
 !!! warning "Group-based ACLs deny silently when group lookup fails"
 
@@ -2795,6 +2797,65 @@ from an external JAR, watch it fail, and fix it with `addArtifact`; explain why 
 no such step on a classic submit; describe what a `ClassFinder` does in a REPL and why an
 interactively defined lambda works without you uploading anything; and predict what happens to your
 uploaded artifacts after an hour of inactivity.
+
+---
+
+
+### ⬜ E20 — JVM Profiling on a Cluster: async-profiler, Flame Graphs and JFR
+
+> Discovered from source sweep (new topic): `connector/profiler: The async-profiler command strings and the default argument set`
+
+**What it is:** Capturing CPU, wall-clock, allocation and lock profiles from driver and executor JVMs with Spark's built-in async-profiler plugin, shipping the resulting JFR files off the cluster, and reading them as flame graphs.
+
+**Why you need it:** The Spark UI tells you which stage is slow and how much it spilled; it cannot tell you which method is burning the CPU or which lock is contended. Profiling is the only way to answer that on a real cluster, and Spark has shipped a plugin for it since 4.0 that almost nobody knows is there.
+
+**Learn it with:**
+
+1. **The module README** ([connector/profiler/README.md](https://github.com/apache/spark/blob/v4.2.0/connector/profiler/README.md)) — the *only* first-party documentation: build commands, the supported-platform list, the required JVM flags, the full config table and a complete `spark-submit` example. Start here, because the official docs site does not cover this plugin at all
+2. **Async Profiler Manual** ([krzysztofslusarski.github.io](https://krzysztofslusarski.github.io/2022/12/12/async-manual.html)) — the reference the README itself points to for what the profiler actually does; Spark passes `spark.profiler.asyncProfiler.args` through untouched, so this is where `event=`, `interval=`, `alloc=` and `chunktime=` are specified
+3. **async-profiler → Profiler Options** ([github.com/async-profiler/async-profiler](https://github.com/async-profiler/async-profiler/blob/v4.0/docs/ProfilerOptions.md)) — the option list for the v4.x line Spark bundles via `ap-loader`
+4. **Spark-docs → Monitoring and Instrumentation** ([monitoring.html](https://spark.apache.org/docs/latest/monitoring.html)) — read the "Advanced Instrumentation" section for what Spark *does* document (jstack, jmap, Ganglia, the `SparkPlugin` API) and note the gap this topic fills
+5. **Spark-docs → Tuning** ([tuning.html](https://spark.apache.org/docs/latest/tuning.html)) — the tuning advice a profile lets you target instead of guess at
+6. **Source sweep — [connector/profiler — async-profiler in the source map](reference/spark-source-map/sweeps/connector-profiler-async-profiler.md)** — the whole module in seven concepts: the sampling draw and its quantisation, the silent no-op paths, the wall-clock default, the stop/dump/resume gap on every DFS sync, and the packaging that stops most people ever reaching it
+
+!!! warning "No book covers this, and neither do the official docs"
+
+    The plugin arrived in Spark 4.0, after SDG, LS2e and Rioux. It is also absent from
+    `monitoring.html` — verified against the 4.2.0 docs, which cover the metrics system, the REST
+    API and external tools like jstack and Ganglia but never mention `ProfilerPlugin`,
+    `spark.profiler.*` or JFR. The module README is the only first-party source, which is why this
+    topic leans on it and on async-profiler's own documentation.
+
+!!! warning "Three things must line up before a single sample is taken"
+
+    The module is behind the `jvm-profiler` Maven profile (and SBT's `optionallyEnabledProjects`),
+    and its `ap-loader-all` native dependency is `provided` scope — so a standard distribution
+    ships **neither**. You need a build that includes the module, the `ap-loader` bundle on the
+    runtime classpath, and `spark.plugins=org.apache.spark.profiler.ProfilerPlugin`. Only then do
+    `spark.profiler.driver.enabled` / `spark.profiler.executor.enabled` matter.
+
+!!! warning "Set the JVM flags or the flame graph will lie to you"
+
+    Without `-XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints -XX:+PreserveFramePointer` on
+    `spark.executor.extraJavaOptions`, the profiler still runs and still produces a plausible-looking
+    flame graph — with truncated or misattributed stacks. This is the single most important
+    prerequisite, and it is easy to skip because nothing warns you.
+
+!!! info "The default is a wall-clock profile, not a CPU profile"
+
+    `event=wall` samples all threads including blocked ones. For Spark that is usually the right
+    question — a slow stage is often waiting on I/O, a lock or a shuffle fetch — but if you are
+    hunting CPU burn you must set `event=cpu` explicitly. The default arguments also turn on
+    allocation profiling every 2 MB and lock profiling at 10 ms, so one run answers several
+    questions at once.
+
+**Milestone:** You can build Spark with `-Pjvm-profiler`, run a job with the plugin enabled and
+`spark.profiler.dfsDir` set, and retrieve a JFR file per profiled executor; open it as a flame graph
+and name the hottest method in a stage you already knew was slow. You can explain why
+`spark.profiler.executor.fraction=0.005` does not profile one executor in two hundred; say what is
+lost every `dfsWriteInterval` seconds and why that trade cannot be avoided; state the three silent
+reasons a JFR file might never appear; and name the Kubernetes setting without which the tail of
+every profile is lost.
 
 ---
 
