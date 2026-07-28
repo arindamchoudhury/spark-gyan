@@ -87,6 +87,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E15 | Block Locking and Cache Visibility | — | — | ⬜ |
 | E16 | Standalone High Availability and Recovery | — | — | ⬜ |
 | E17 | Output Commit Coordination and Speculative Write Safety | — | — | ⬜ |
+| E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection | — | — | ⬜ |
+| E19 | Spark Connect Artifacts: Shipping Code to a Remote Session | — | — | ⬜ |
 
 ## Source concept map
 
@@ -431,6 +433,24 @@ flowchart LR
     S14 --> S14c17["XML parsing — Stax and the 4.1 rewrite"]
     S14 --> S14c18["Schema inference — one type lattice, three formats"]
     S14 --> S14c19["Malformed record handling — FailureSafeParser and the corrupt-record column"]
+    S15["sql/connect"]
+    S15 --> S15c0["The protobuf contract — twelve RPCs and the relation surface"]
+    S15 --> S15c1["SparkConnectService — the gRPC server, its interceptors and its size limits"]
+    S15 --> S15c2["SparkConnectPlanner — protobuf relations into a Catalyst logical plan"]
+    S15 --> S15c3["SessionHolder and the session manager — isolation, timeouts and tombstones"]
+    S15 --> S15c4["The plan cache — keyed on the protobuf message"]
+    S15 --> S15c5["ExecuteHolder and the execution thread — job tags, interrupts and abandonment"]
+    S15 --> S15c6["Reattachable execution — surviving a broken response stream"]
+    S15 --> S15c7["Retry policy and error enrichment across the wire"]
+    S15 --> S15c8["Arrow result streaming — batches, size limits and chunking"]
+    S15 --> S15c9["Artifacts — shipping JARs, classes and UDFs to a remote session"]
+    S15 --> S15c10["Server extensions — relation, expression and command plugins, and gRPC interceptors"]
+    S15 --> S15c11["Connect ML and the model cache"]
+    S15 --> S15c12["The Connect server UI and its event stream"]
+    S15 --> S15c13["The client API surface and the classic/Connect split"]
+    S15 --> S15c14["Connect type operations — the 4.2.0 client half of the Types Framework"]
+    S15 --> S15c15["Streaming over Connect — query cache, listener bus and foreachBatch"]
+    S15 --> S15c16["The JDBC driver — jdbc:sc:// and how far it goes"]
 ```
 
 ## Topics discovered from the source
@@ -483,6 +503,9 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | The VARIANT type and semi-structured extraction | sql/catalyst | new | I22 | The VARIANT Type and Semi-Structured Data |
 | The grammar — keyword categories and the parser feature flags | sql/catalyst | new | A24 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration |
 | Vector expressions — similarity and norms over float arrays | sql/catalyst | new | A23 | Vector Expressions for Embeddings and Similarity |
+| Artifacts — shipping JARs, classes and UDFs to a remote session | sql/connect | new | E19 | Spark Connect Artifacts: Shipping Code to a Remote Session |
+| Reattachable execution — surviving a broken response stream | sql/connect | new | E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection |
+| The JDBC driver — jdbc:sc:// and how far it goes | sql/connect | new | — | — |
 
 
 ## Sweep status
@@ -509,7 +532,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | resource-managers/kubernetes — driver-executor | 89 | ⬜ pending | — | — |
 | resource-managers/kubernetes — auth-networking | — | ⬜ pending | — | — |
 | resource-managers/yarn — am-executor | 61 | ⬜ pending | — | — |
-| sql/connect — client-server | 44 | ⬜ pending | — | — |
+| sql/connect — client-server | 44 | ✅ complete | 4.2.0 | 2026-07-27 |
 | sql/connect — declarative-pipelines | — | ⬜ pending | — | — |
 | streaming — dstream | 28 | ⬜ pending | — | — |
 | sql/hive — hive-metastore | 17 | ⬜ pending | — | — |

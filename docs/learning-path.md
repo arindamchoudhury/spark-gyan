@@ -139,6 +139,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 6. **Spark-docs → `pyspark.sql.SparkSession` API reference** ([API reference](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.SparkSession.html)) — the full builder surface (`appName`, `master`, `config`, `remote`, `enableHiveSupport`, `getOrCreate`, `create`) in one table; keep it open while working
 7. **Source trace — [B2 in the source map](reference/spark-source-map/topics/b2.md)** — `getOrCreate`'s real resolution order (thread-local active session → global default → construct new); what `SharedState` owns versus `SessionState`, which is the model that makes `newSession` / `cloneSession` / `create` follow from something rather than needing to be memorised; and how extensions attach
 8. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — how a config gets its value *before* a session exists: the four-stage precedence pipeline and the option table that `--conf` cannot override
+9. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — there are **two** complete `SparkSession` implementations: the classic one and `sql/connect/common`'s, which builds protobuf instead of plans. Both sit behind the `sql/api` interfaces, and `ConnectClientUnsupportedErrors` is the enumerated list of where they diverge — read it rather than guessing whether an API works on Connect
 
 !!! info "`SharedState` vs `SessionState` — learn this and the session API stops needing memorisation"
     A `SparkSession` owns two state objects, and every confusing session behaviour follows from which one holds what.
@@ -554,6 +555,7 @@ You are ready to leave this level when you can build a complete end-to-end batch
 8. **Source sweep — [core — api-bridge in the source map](reference/spark-source-map/sweeps/core-api-bridge.md)** — the machine *underneath* every UDF: `BasePythonRunner`'s exact wire protocol (command → broadcasts → the eval-type integer → rows), the `PythonWorkerFactory` daemon/reuse/idle-pool/UDS lifecycle, and the failure plumbing that turns a Python crash, hang, or OOM into a Spark error (`faulthandler`, traceback dump, kill timeout, the Linux-only `setrlimit` memory cap)
 9. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — new in 4.2.0: Python worker logs are captured into the `BlockManager` as `PythonWorkerLogBlockId` blocks ([SPARK-53755]/[SPARK-53975]), which is what finally makes a `print()` or `logging` call inside a UDF retrievable instead of stranded on the executor
 10. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the catalyst-side view: `PythonUDF` has no `eval` and no `doGenCode` at all — it is a marker carrying an `evalType`, extracted by a planner rule — while `ScalaUDF` runs in-process and pays per-argument encoder conversion instead. Also the V2 function catalog's *magic method*: a `ScalarFunction` whose `invoke` signature matches code-generates into a direct static call rather than a boxed `produceResult`
+11. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — what has to happen before the Python worker protocol even starts on Connect: the UDF crosses the wire as a serialized closure, and the classes it references must already have been uploaded as artifacts into the session's own classloader. A UDF that works classically and fails remotely with `ClassNotFoundException` is this, not the worker
 
 **Milestone:** You can replace a Python UDF with a pandas UDF and measure the speedup **on 4.2.0** — not quote a book's figure; you can load an ML model once per partition using an Iterator UDF and say which config makes that pay off; you can test a UDF locally without a SparkSession. Then, from `explain()`: name which eval operator your UDF ran under, and explain why chaining a plain UDF and a pandas UDF in one `select` costs more than chaining two of the same kind.
 
@@ -1394,6 +1396,7 @@ as well as range; and name the config that permits a negative scale and why it i
 10. **Source sweep — [sql/catalyst — expressions in the source map](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)** — the layer every rule above operates on: `foldable`, `deterministic`, `nullIntolerant`, `canonicalized` / `semanticEquals` are the declarative properties that gate constant folding, pushdown, constraint inference and expression reuse. `semanticEquals` is false whenever either side is non-deterministic, which is why one `rand()` removes a subtree from every reuse optimization at once. Also `With` / `CommonExpressionRef`, the expression-level CTE that rules use to avoid duplicating a subtree
 11. **Source sweep — [sql/catalyst — types & parser in the source map](reference/spark-source-map/sweeps/sql-catalyst-types-parser.md)** — the phase *before* parse → analyze → optimize → plan: how text becomes the unresolved plan the analyzer receives. `AstBuilder` emits `UnresolvedRelation` / `UnresolvedAttribute` / `UnresolvedFunction` and nothing else, which is the precise boundary between a `PARSE_*` error and an analysis one
 12. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the substrate all four phases run on: `TreeNode`'s immutability and structural sharing, the **two** independent pruning mechanisms (170 tree patterns; 163 rule ids against a hard cap of 192), `RuleExecutor`'s batch/fixed-point loop with its max-iterations warning and test-only idempotence check, and `spark.sql.planChangeValidation` — which names the exact rule and batch that corrupted a plan, and is the right first move before bisecting with `excludedRules`
+13. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — the *other* front end onto Catalyst: `SparkConnectPlanner` builds the same unresolved `LogicalPlan` from 63 protobuf relation types that `AstBuilder` builds from SQL text. They share no code, which is why a new logical feature lands as a catalyst change, a grammar change **and** a proto change in one release — `NearestByJoin` did exactly that in 4.2.0
 
 **Milestone:** You can generate `EXPLAIN(true, true)` output for a query, identify which stage performs the shuffle, and verify that a filter was pushed below a join in the physical plan. From the analyze phase: name which rule turns an `UnresolvedAttribute` into a bound column, explain why a self-join needs `DeduplicateRelations` before references can resolve, and say what distinguishes an `AnalysisException` (thrown by `CheckAnalysis` before execution) from a runtime error. From the optimize phase: set `spark.sql.planChangeLog.level=INFO` with `spark.sql.planChangeLog.rules` pinned to one rule and read the before/after plan diff it prints for your own query; then exclude that rule with `spark.sql.optimizer.excludedRules` and show the difference in the optimized plan.
 
@@ -1537,6 +1540,7 @@ as well as range; and name the config that permits a negative scale and why it i
 4. **Source sweep — [core — api-bridge in the source map](reference/spark-source-map/sweeps/core-api-bridge.md)** — `StreamingPythonRunner`, which hands its Python worker a Spark Connect URL pointing back at the local JVM instead of streaming pickled rows. That is why a Python `foreachBatch` body receives a real DataFrame, and why its startup can fail with a timeout or a protocol error before any of your code runs
 5. **Source sweep — [sql/catalyst — analysis in the source map](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)** — `UnsupportedOperationChecker`, the source of nearly every "not supported in streaming" message: the batch/streaming split, the arity rules on `mapGroupsWithState`, and the global-watermark correctness check
 6. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — the catalyst-side markers: `isStreaming` propagates up from the leaves so one streaming source makes the whole plan streaming, and `StatefulOpClusteredDistribution` pins both the clustering **and** the partition count because state is keyed by partition id across restarts. New in 4.2.0: `SequentialStreamingUnion`, a backfill-then-live union whose children run to completion in order, and `StreamingSourceIdentifyingName`
+7. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — streaming's remote lifecycle: the server keeps a per-session registry of running queries, `foreachBatch` runs **on the server** against a server-side DataFrame with the closure shipped as an artifact, and listener events come back over a long-lived response stream. The consequence to plan for is that a session timeout terminates the queries it started
 
 **Milestone:** You can write a streaming job that reads new Parquet files from a directory, applies a transformation, and appends results to a Delta table — and restart it from a checkpoint without data loss.
 
@@ -1587,6 +1591,7 @@ as well as range; and name the config that permits a negative scale and why it i
 2. **LS2e Ch 10–11** — end-to-end pipeline example + MLflow experiment tracking
 3. **IBM-ML** (Coursera, ~8 hrs) — regression, classification, clustering, and pipelines with hands-on labs
 4. **Spark-docs → MLlib Guide** ([spark.apache.org/docs/latest/ml-guide.html](https://spark.apache.org/docs/latest/ml-guide.html)) — full transformer/estimator catalogue
+5. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — MLlib over the wire: a model cannot be serialized into a response, so the server holds it in a per-session `MLCache` and the client's model object is a reference id. The cache is bounded by driver heap (`maxInMemorySize`, a quarter of it by default), spills to disk rather than evicting, and is **per session** — so fitting many models in one long-lived notebook is a driver-memory question
 
 **Milestone:** You can build a `Pipeline` that imputes nulls, scales features, assembles a vector, trains a logistic regression, and finds the best hyperparameters with `CrossValidator` — then save and reload the fitted `PipelineModel`.
 
@@ -2220,6 +2225,7 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 8. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — the submission path end to end, standalone placement arithmetic, and the graceful worker drain that a rolling restart depends on
 9. **Source sweep — [core — config & security in the source map](reference/spark-source-map/sweeps/core-config-security.md)** — the whole cluster-security surface: how `SecurityManager` mints the auth secret differently per cluster manager (generated on YARN/local, mounted file on k8s, *required in conf* otherwise), the `AuthEngine` X25519 handshake and its SASL fallback, IO (shuffle-spill) encryption, and the Kerberos delegation-token renewal loop — plus the config engine itself (fallback keys, `${…}` substitution, deprecated-key handling) that every knob in this topic is built on
 10. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the resource model behind executor/task sizing: how `spark.executor.cores` + `spark.task.cpus` + custom `spark.*.resource.{name}.amount` combine into the *limiting-resource* arithmetic that decides how many tasks an executor runs, and how accelerator addresses get discovered (resources file vs discovery script). Stage-level scheduling proper is its own topic — see [A16](#a16-stage-level-scheduling-and-accelerator-aware-resources-gpufpga)
+11. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — Connect as a deployment surface: the gRPC server is a **`SparkPlugin`** started inside an ordinary driver (`spark.plugins`), its port and bind address are *static* confs fixed at start, authentication is one pre-shared bearer token, and anything stronger has to come from a custom `ServerInterceptor` or a proxy in front. Treat an unprotected Connect port as equivalent to an unprotected driver
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
@@ -2278,6 +2284,7 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 9. **Source sweep — [core — rdd-layer in the source map](reference/spark-source-map/sweeps/core-rdd-layer.md)** — `RDDOperationScope`, the presentational layer behind the DAG visualization, and `ContextCleaner`'s weak-reference cleanup loop with its periodic `System.gc()` — both are things you will see in a driver thread dump and neither is documented elsewhere
 10. **Source sweep — [core — storage & serialization in the source map](reference/spark-source-map/sweeps/core-storage-serializer.md)** — the 4.2.0 block log writers: `RollingLogWriter` stores log output as `BlockManager` blocks, rolling every 32 MiB, which is the mechanism behind retrievable PySpark worker logs
 11. **Source sweep — [core — api-bridge in the source map](reference/spark-source-map/sweeps/core-api-bridge.md)** — the executor half of PySpark worker logging: capture is a `PYTHON_WORKER_LOGGING:` marker scan over the worker's **stdout only**, active only when `PYSPARK_SPARK_SESSION_UUID` is set — so an unmarked `print()` still goes to the executor log, and a traceback on stderr is never captured
+12. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — Connect's observability story: every execution carries a user id, a session id and an operation id and posts started/analyzed/readyForExecution/finished events to the listener bus, so "which user ran the query that filled the driver" is answerable from the event log — better than a classic multi-tenant driver, where jobs are attributable only by job group. The Connect server tab and its History Server plugin read the same events
 
 !!! warning "Group-based ACLs deny silently when group lookup fails"
 
@@ -2446,6 +2453,7 @@ what `PartitioningCollection` buys a chain of joins on the same key; and say why
 2. **Databricks Spark Associate Cert** — Spark Connect is 5% of the exam; a good forcing function to study it
 3. **Spark-docs → Connect gotchas** ([spark-connect-gotchas.html](https://spark.apache.org/docs/latest/spark-connect-gotchas.html)) and [app development with Connect](https://spark.apache.org/docs/latest/app-dev-spark-connect.html) — the behavioural differences that bite in practice, including what JVM access is unavailable
 4. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — how `--remote` enters submission as a mutually-exclusive alternative to `--master`, and why the Connect server may only run in cluster mode under YARN
+5. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — the **first source-derived material behind this topic**, and the one sweep that covers it end to end: the twelve RPCs and 65 relation messages, `SparkConnectPlanner` (a second front end that builds an unresolved `LogicalPlan`, alongside the SQL parser), `SessionHolder` and its 60-minute idle timeout, the plan cache keyed on the serialized protobuf, reattachable execution, artifacts, retries and error enrichment. Note two things that shape day-to-day use: `df.show()` is a *relation type* so it is a network round trip, and built-in auth is a **single pre-shared token** with a client-supplied, untrusted `user_id`
 
 !!! info "No book covers this — docs only"
     Spark Connect arrived in 3.4 and became the default `pyspark` REPL mode in 4.x, after all four books. LS2e and SDG describe classic mode exclusively and never flag the distinction, which makes them quietly wrong about what a UDF can reach. Docs and your own local server are the sources here.
@@ -2696,6 +2704,94 @@ You are operating at Expert level when you can:
     The source comment at the escape hatch cites SPARK-8029: two attempts of the same task can run simultaneously even with speculation disabled, because a stage retry does not kill the old attempt. Turning speculation off does not make the coordinator redundant.
 
 **Milestone:** You can explain what happens to the second attempt when two attempts of one task both reach the commit point, say why a `TaskCommitDenied` failure does not consume the task's retry budget, name the one call site the coordinator guards and give an example of a write that bypasses it, and describe why `fileoutputcommitter.algorithm.version=2` is faster and when it is unsafe.
+
+---
+
+
+### ⬜ E18 — Reattachable Execution: How Spark Connect Survives a Dropped Connection
+
+> Discovered from source sweep (new topic): `sql/connect: Reattachable execution — surviving a broken response stream`
+
+**What it is:** The mechanism that makes a Connect query survive a broken gRPC stream: the server buffers responses and numbers them, the client tracks the last response id it consumed and issues `ReattachExecute` to resume from there, and `ReleaseExecute` tells the server what it may forget.
+
+**Why you need it:** It is why a long-running Connect query is not killed by a load balancer's idle timeout, it is the reason the server holds a per-execution response buffer you can size wrong, and every 'INVALID_HANDLE.OPERATION_NOT_FOUND' a Connect user has ever seen comes from this protocol.
+
+**Learn it with:**
+
+1. **Spark-docs → Spark Connect Overview** ([spark-connect-overview.html](https://spark.apache.org/docs/latest/spark-connect-overview.html)) — the architecture this sits inside; the reattach protocol itself is not documented, so read this for context and take the mechanism from the source
+2. **Spark-docs → Configuration** ([configuration.html](https://spark.apache.org/docs/latest/configuration.html)) — the `spark.connect.execute.reattachable.*` and `spark.connect.execute.manager.*` families, which are the only user-facing surface this feature has
+3. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — the reattachable-execution concept: the numbered server-side response buffer, the client's `lastReturnedResponseId`, the asynchronous `ReleaseExecute`, and the sender's voluntary 2-minute / 1 GB stream deadline
+
+!!! warning "No book covers this"
+
+    Spark Connect postdates SDG, LS2e and Rioux entirely, and the reattach protocol is not in the
+    official docs either — it exists in the proto comments and the client iterator's scaladoc. This
+    topic is source-only, which is precisely why it is worth writing down.
+
+!!! info "A healthy session looks like repeated stream failures"
+
+    `spark.connect.execute.reattachable.senderMaxStreamDuration` defaults to **2 minutes**: the
+    server ends each response stream cleanly and the client resumes with `ReattachExecute`, so no
+    single gRPC stream lives long enough for a proxy or load balancer to time it out. Packet
+    captures and gRPC access logs of a working long query show a sequence of short streams — that
+    is the design, not a symptom.
+
+!!! warning "The retry buffer is driver memory, per execution"
+
+    `observerRetryBufferSize` (10 MB) of already-sent responses is retained behind the consumer for
+    every reattachable execution so a reattach can replay. Many concurrent large-result queries
+    multiply it. Disabling reattachable execution removes the buffer and the resilience together.
+
+**Milestone:** You can explain why the server ends a response stream every two minutes and what the
+client does next; name the three things that make a retried `ExecutePlan` safe (client-generated
+operation id, response ids, `ReattachExecute`) and why an outer retry loop around the client is
+*not* safe; describe what `ReleaseExecute` frees and what happens if a client never sends it; and
+say what a client must do to lose a query permanently (stop polling for longer than
+`detachedTimeout`, five minutes by default).
+
+---
+
+
+### ⬜ E19 — Spark Connect Artifacts: Shipping Code to a Remote Session
+
+> Discovered from source sweep (new topic): `sql/connect: Artifacts — shipping JARs, classes and UDFs to a remote session`
+
+**What it is:** How code reaches a Connect server: `addArtifact` chunks and hashes files over a streaming RPC, the server stages and verifies them, and each session gets an isolated classloader over its own artifact directory — plus the automatic class-file upload that makes a Scala closure work at all.
+
+**Why you need it:** On a Connect session there is no shared JVM, so a UDF's class, its dependencies and any JAR you used to `--jars` must be transferred explicitly; not knowing this is the single most common reason working classic code fails on Connect.
+
+**Learn it with:**
+
+1. **Spark-docs → Spark Connect Overview** ([spark-connect-overview.html](https://spark.apache.org/docs/latest/spark-connect-overview.html)) — the "Client application development" section is the one place this is documented: **"JAR dependencies must be uploaded to the server using `SparkSession#addArtifact`"**, and a `ClassFinder` must be registered so user code's classfiles are picked up and uploaded
+2. **Spark-docs → Configuration** ([configuration.html](https://spark.apache.org/docs/latest/configuration.html)) — `spark.connect.copyFromLocalToFs.allowDestLocal`, the one artifact-related knob
+3. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — the artifacts concept: 32 KB chunking over a client-streaming RPC, content hashing so an unchanged artifact is not re-sent, CRC verification before staged files are installed, and the **per-session classloader** that makes uploaded classes visible to execution
+
+!!! warning "No book covers this, and `--jars` does not apply"
+
+    On a classic submit, `--jars` and `--packages` place dependencies on the driver and executors.
+    A Connect client is a separate process that may not be on the cluster at all, so the equivalent
+    is `spark.addArtifact(...)` against the **session**. Working classic code that fails on Connect
+    with `ClassNotFoundException` is nearly always this, and none of the three books mentions it
+    because all three predate Connect.
+
+!!! warning "Artifacts die with the session"
+
+    They are per session and per classloader, so a session idle timeout
+    (`spark.connect.session.manager.defaultSessionTimeout`, 60 minutes) discards every uploaded JAR
+    and class along with temp views and cached DataFrames. A notebook that worked before lunch and
+    throws `ClassNotFoundException` after it has not lost its JAR — it has lost its session.
+
+!!! info "Re-adding the same artifact is nearly free"
+
+    The client hashes each artifact and asks the server via `ArtifactStatus` whether it already has
+    it. Adding the same JAR repeatedly costs one round trip, not a re-upload — so defensive
+    `addArtifact` calls at the top of a script are cheap and are the right habit.
+
+**Milestone:** You can start a Connect session, define a Scala or Python UDF that references a class
+from an external JAR, watch it fail, and fix it with `addArtifact`; explain why the same code needs
+no such step on a classic submit; describe what a `ClassFinder` does in a REPL and why an
+interactively defined lambda works without you uploading anything; and predict what happens to your
+uploaded artifacts after an hour of inactivity.
 
 ---
 
