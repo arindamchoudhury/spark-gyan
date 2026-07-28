@@ -53,6 +53,7 @@ nav = [
             { "sql/catalyst — Types & SQL parser" = "reference/spark-source-map/sweeps/sql-catalyst-types-parser.md" },
             { "sql/catalyst — Catalyst framework" = "reference/spark-source-map/sweeps/sql-catalyst-framework.md" },
             { "sql/connect — Client & server" = "reference/spark-source-map/sweeps/sql-connect-client-server.md" },
+            { "sql/connect — Declarative pipelines" = "reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md" },
         ]},
     ]},
     { "Spark Book" = [

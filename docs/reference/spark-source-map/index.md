@@ -451,6 +451,18 @@ flowchart LR
     S15 --> S15c14["Connect type operations — the 4.2.0 client half of the Types Framework"]
     S15 --> S15c15["Streaming over Connect — query cache, listener bus and foreachBatch"]
     S15 --> S15c16["The JDBC driver — jdbc:sc:// and how far it goes"]
+    S16["sql/connect"]
+    S16 --> S16c0["The pipelines command set — nine commands, six implemented"]
+    S16 --> S16c1["PipelinesHandler — the command dispatch and its session state"]
+    S16 --> S16c2["DataflowGraphRegistry — a graph per id, per session"]
+    S16 --> S16c3["Defining outputs — four output types and identifier qualification"]
+    S16 --> S16c4["Defining flows and the source-code origin trail"]
+    S16 --> S16c5["AutoCDC over Connect — the 4.2.0 declarative SCD API"]
+    S16 --> S16c6["StartRun — refresh selection, dry runs and the storage requirement"]
+    S16 --> S16c7["PipelineEventSender — asynchronous events and what gets dropped"]
+    S16 --> S16c8["The declarative guarantee — blocking side-effecting SQL"]
+    S16 --> S16c9["PipelineAnalysisContext — knowing you are inside a flow function"]
+    S16 --> S16c10["Where the engine actually lives"]
 ```
 
 ## Topics discovered from the source
@@ -533,7 +545,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | resource-managers/kubernetes — auth-networking | — | ⬜ pending | — | — |
 | resource-managers/yarn — am-executor | 61 | ⬜ pending | — | — |
 | sql/connect — client-server | 44 | ✅ complete | 4.2.0 | 2026-07-27 |
-| sql/connect — declarative-pipelines | — | ⬜ pending | — | — |
+| sql/connect — declarative-pipelines | — | ✅ complete | 4.2.0 | 2026-07-27 |
 | streaming — dstream | 28 | ⬜ pending | — | — |
 | sql/hive — hive-metastore | 17 | ⬜ pending | — | — |
 | connector/kafka-0-10 — consumer | 8 | ⬜ pending | — | — |

@@ -146,8 +146,9 @@ the network.
     Anything stronger is expected to come from a custom interceptor or a proxy in front. Treat an
     unprotected Connect port as equivalent to an unprotected driver.
 
-**Configs:** `spark.connect.grpc.binding.port` (15002), `.binding.address`, `.port.maxRetries`,
-`spark.connect.grpc.maxInboundMessageSize`, `.maxMetadataSize` (1024),
+**Configs:** `spark.connect.grpc.binding.port` (15002), `spark.connect.grpc.binding.address`,
+`spark.connect.grpc.port.maxRetries`, `spark.connect.grpc.maxInboundMessageSize`,
+`spark.connect.grpc.maxMetadataSize` (1024),
 `spark.connect.grpc.interceptor.classes`, `spark.connect.authenticate.token` (4.0.0)
 
 **Maps to topics:** E9, E2
@@ -217,7 +218,8 @@ wrapping an **isolated** `SparkSession` — its own SQL conf, temp views, artifa
     (`closedSessionsTombstonesSize`, 1000) is what makes that error legible at all.
 
 **Configs:** `spark.connect.session.manager.defaultSessionTimeout` (60m, 4.0.0),
-`.maintenanceInterval` (30s), `.closedSessionsTombstonesSize` (1000),
+`spark.connect.session.manager.maintenanceInterval` (30s),
+`spark.connect.session.manager.closedSessionsTombstonesSize` (1000),
 `spark.connect.session.inactiveOperations.cacheExpiration` (30, 4.1.0)
 
 **Maps to topics:** E9
@@ -245,8 +247,9 @@ result turns repeated analysis into a map lookup.
     and the cached values are analyzed plans, which are not small. It is a correctness-neutral
     performance knob in both directions.
 
-**Configs:** `spark.connect.session.planCache.enabled` (true, 4.0.0), `.maxSize` (32),
-`.alwaysCacheDataSourceReadsEnabled` (true, 4.1.0)
+**Configs:** `spark.connect.session.planCache.enabled` (true, 4.0.0),
+`spark.connect.session.planCache.maxSize` (32),
+`spark.connect.session.planCache.alwaysCacheDataSourceReadsEnabled` (true, 4.1.0)
 
 **Maps to topics:** E9
 
@@ -277,7 +280,8 @@ carries a **job tag** applied to every Spark job the execution starts, which is 
     (`abandonedTombstonesSize`, 10000) is what turns the next request into a clear error.
 
 **Configs:** `spark.connect.execute.manager.detachedTimeout` (5m),
-`.maintenanceInterval` (30s), `.abandonedTombstonesSize` (10000)
+`spark.connect.execute.manager.maintenanceInterval` (30s),
+`spark.connect.execute.manager.abandonedTombstonesSize` (10000)
 
 **Maps to topics:** E9
 
@@ -326,7 +330,9 @@ with `lastReturnedResponseId` → a new sender attaches to the same observer
     where streams do not break.
 
 **Configs:** `spark.connect.execute.reattachable.enabled` (true, 3.5.0),
-`.observerRetryBufferSize` (10m), `.senderMaxStreamDuration` (2m), `.senderMaxStreamSize` (1g)
+`spark.connect.execute.reattachable.observerRetryBufferSize` (10m),
+`spark.connect.execute.reattachable.senderMaxStreamDuration` (2m),
+`spark.connect.execute.reattachable.senderMaxStreamSize` (1g)
 
 **Maps to topics:** none yet — proposed as **E18**
 
@@ -464,8 +470,9 @@ without forking the schema.
     the registries cache after the first load — so adding a plugin needs a server restart, not just
     a conf change.
 
-**Configs:** `spark.connect.extensions.relation.classes`, `.expression.classes`, `.command.classes`
-(all 3.4.0), `.getStatus.classes` (4.1.0), `spark.connect.grpc.interceptor.classes`
+**Configs:** `spark.connect.extensions.relation.classes`, `spark.connect.extensions.expression.classes`,
+`spark.connect.extensions.command.classes` (all 3.4.0),
+`spark.connect.extensions.getStatus.classes` (4.1.0), `spark.connect.grpc.interceptor.classes`
 
 **Maps to topics:** E9
 
@@ -494,8 +501,11 @@ handle.
     multiply them.
 
 **Configs:** `spark.connect.session.connectML.mlCache.memoryControl.enabled` (true, 4.1.0),
-`.maxInMemorySize` (¼ of max heap), `.maxModelSize` (1g), `.maxStorageSize` (10g),
-`.offloadingTimeout` (15), `spark.connect.ml.backend.classes` (4.0.0)
+`spark.connect.session.connectML.mlCache.memoryControl.maxInMemorySize` (¼ of max heap),
+`spark.connect.session.connectML.mlCache.memoryControl.maxModelSize` (1g),
+`spark.connect.session.connectML.mlCache.memoryControl.maxStorageSize` (10g),
+`spark.connect.session.connectML.mlCache.memoryControl.offloadingTimeout` (15),
+`spark.connect.ml.backend.classes` (4.0.0)
 
 **Maps to topics:** A9, E9
 
@@ -521,7 +531,7 @@ events go to the listener bus, a listener writes them into the KV store, pages r
     event log — genuinely better than a classic multi-tenant driver, where jobs are attributable
     only by whatever job group the submitter happened to set.
 
-**Configs:** `spark.sql.connect.ui.retainedSessions` (200), `.retainedStatements` (200)
+**Configs:** `spark.sql.connect.ui.retainedSessions` (200), `spark.sql.connect.ui.retainedStatements` (200)
 
 **Maps to topics:** E3, E9
 
