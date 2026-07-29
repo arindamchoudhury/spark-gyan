@@ -156,3 +156,17 @@ Terms that come from reading the Spark source rather than from any book — most
 | **RuntimeReplaceable** | An expression that exists only for parsing and analysis and is expanded into its real implementation by `ReplaceExpressions` in the optimizer's first batch. It is why `EXPLAIN` on `nvl(a, b)` shows `coalesce`. | [sql/catalyst — optimizer](spark-source-map/sweeps/sql-catalyst-optimizer.md) |
 | **Schema pruning** | Narrowing the *read* schema so a columnar source reads only the fields used — including individual fields of a nested struct (`NestedColumnAliasing` rewrites the plan; `SchemaPruning` narrows the scan). | [sql/catalyst — optimizer](spark-source-map/sweeps/sql-catalyst-optimizer.md) |
 | **Star-schema detection** | A heuristic that identifies a fact table and its dimension tables by cardinality and referential-integrity ratios, used to constrain the join-reorder search space. | [sql/catalyst — optimizer](spark-source-map/sweeps/sql-catalyst-optimizer.md) |
+
+## From Spark 4.2.0
+
+| Term | Meaning | Source |
+| --- | --- | --- |
+| **Auto CDC** | Declarative SCD Type 1 upserts in Spark Declarative Pipelines: you describe how change events update the target table instead of assembling the merge yourself. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **`CHANGES` clause** | SQL syntax for reading a row-level change feed, in batch or streaming, from any connector that implements the DSv2 CDC interface. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **`GEOGRAPHY` / `GEOMETRY`** | 4.2.0's native geospatial types, carrying an SRID on the type, with WKB/WKT and Parquet I/O. Enabled by default (`spark.sql.geospatial.enabled`, internal). `GEOMETRY` is planar, `GEOGRAPHY` is on the ellipsoid. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **Metric View** | A declarative semantic layer defined with `CREATE VIEW … WITH METRICS`: a business metric written once and reused, so every query computes it the same way. A *semantic* layer, not access control. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **`NEAREST BY`** | A top-K nearest-neighbour join primitive added in 4.2.0 — `NearestByDistance` and `NearestBySimilarity` in Catalyst, with a DataFrame API. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **`QUALIFY`** | Filters on a window function's result directly, without wrapping the query in a subquery to make the window column referenceable. Landed in 4.2.0 after being open since Spark 3.1. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **SQL `PATH`** | A search path for unqualified function and view names, set with `SET PATH` and read with `CURRENT_PATH()`. Persisted into views and SQL functions so they resolve the same way later. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **Real-Time Mode (RTM)** | A Structured Streaming trigger targeting low latency, exposed to PySpark in 4.2.0. | [4.2.0 release](../research-cache/spark-420-release.md) |
+| **SRID** | Spatial Reference System Identifier — the coordinate system a geospatial value is expressed in. Carried on the type in Spark's `GEOMETRY`/`GEOGRAPHY`; 4.2.0 ships a full registry built from PROJ 9.7.1. | [4.2.0 release](../research-cache/spark-420-release.md) |

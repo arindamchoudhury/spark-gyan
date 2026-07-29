@@ -277,6 +277,13 @@ df.printSchema()
 
 This is common in notebooks during exploration — build a small pandas table, convert, apply Spark transforms.
 
+!!! warning "🔄 The Arrow default flipped in Spark 4.2.0 (verified 2026-07-29)"
+    This chapter was written against 4.1.x, where `createDataFrame(pandas_df)` and `toPandas()` pickled row by row unless you set `spark.sql.execution.arrow.pyspark.enabled=true`. On **4.2.0 both take the Arrow path by default**.
+
+    The flip is easy to miss because it happened on a *different* key: `spark.sql.execution.arrow.pyspark.enabled` has no default of its own — it is a `fallbackConf` onto the deprecated `spark.sql.execution.arrow.enabled`, and that key went `false` → `true`. Confirmed by diffing `SQLConf.scala` between `v4.1.0` and `v4.2.0-rc6`; detail in the [4.2.0 research cache](../research-cache/spark-420-release.md).
+
+    Consequences worth knowing: conversion is faster and lower-overhead, but the Arrow path has its own type rules — `ArrayType` of `TimestampType` is unsupported and falls back with a `RuntimeWarning`, and PyArrow becomes a de-facto requirement for these two calls rather than an opt-in.
+
 ### `spark.range()` — quick integer sequence
 
 Creates a single-column DataFrame named `id`, useful for testing or generating synthetic data:
@@ -381,7 +388,7 @@ This is why DataFrame code is significantly faster than equivalent RDD code — 
 
 - **`InternalRow`** — a Scala **trait** (interface), not a concrete class. It defines the row API: `getInt(i)`, `getString(i)`, `isNullAt(i)`, etc. `InternalRow` is the static type parameter in `RDD[InternalRow]` — the actual runtime objects are `UnsafeRow` instances. The fallback concrete implementation `GenericInternalRow` uses a plain `Array[Any]` of JVM objects and appears when whole-stage codegen is disabled (`spark.sql.codegen.wholeStage=false`), during Catalyst analysis and planning (before execution begins), or when codegen compilation fails at runtime (`spark.sql.codegen.fallback=true`, the default) — never during normal Tungsten execution.
 - **`UnsafeRow`** — a concrete implementation of `InternalRow` backed by a raw byte array. Three contiguous regions: a null bit-set, fixed-length fields (8-byte aligned), and variable-length data. No per-field Java objects. **By default the byte array is allocated on the JVM heap**; `sun.misc.Unsafe` is used to write into it with unaligned memory access — the "Unsafe" name refers to the write API, not off-heap allocation. True off-heap storage requires `spark.memory.offHeap.enabled=true`. This is the format data lives in during execution, shuffles, and sorting.
-- **Apache Arrow** — columnar batch format used when crossing the JVM↔Python boundary for pandas UDFs. A single Arrow `RecordBatch` transfers an entire column at a time instead of row-by-row, eliminating per-row serialization overhead. Spark converts `UnsafeRow` partitions to Arrow batches at the boundary and back on return.
+- **Apache Arrow** — columnar batch format used when crossing the JVM↔Python boundary. A single Arrow `RecordBatch` transfers an entire column at a time instead of row-by-row, eliminating per-row serialization overhead. Spark converts `UnsafeRow` partitions to Arrow batches at the boundary and back on return. On 4.1.x this applied to pandas UDFs only; on **4.2.0 it is also the default for plain `@F.udf`, `toPandas()` and `createDataFrame(pandas_df)`** (see the callout above).
 
 ### Why Tungsten chose row-oriented storage
 
@@ -440,7 +447,7 @@ df_expensive.unpersist()
 | **Storage location** | JVM heap — each element is a GC-managed object | `UnsafeRow` binary byte arrays, **on-heap by default**; true off-heap requires `spark.memory.offHeap.enabled=true` |
 | **GC pressure** | High — every element adds GC overhead; large RDDs cause long GC pauses | Minimal — one byte array per row instead of one JVM object per field; fully GC-free only with off-heap enabled |
 | **Memory overhead** | PySpark: ~28 bytes/element (Python `int` object — object header + ref count + size field). Scala/Java: ~16 bytes/element (boxed `Integer` — 8-byte JVM header + 4-byte value + 4-byte padding). 1M integers: **~28 MB** (PySpark) or **~16 MB** (Scala/Java) | ~16 bytes/row for a single-column `IntType`: 8-byte null bitmap + 8-byte field slot (all types padded to 8 bytes). 1M single-column integers: **~16 MB**. No JVM object headers; GC-free off-heap. |
-| **PySpark extra cost** | Python object → cloudpickle → JVM → back for every operation | Stays in JVM/off-heap throughout execution. Python touches data only at action boundaries (`collect()`, `take()`, `first()`, `show()`, `toPandas()`) or when a Python UDF runs (row-by-row serialization) or a pandas UDF runs (Arrow batch). |
+| **PySpark extra cost** | Python object → cloudpickle → JVM → back for every operation | Stays in JVM/off-heap throughout execution. Python touches data only at action boundaries (`collect()`, `take()`, `first()`, `show()`, `toPandas()`) or when a UDF runs — Arrow batch for a pandas UDF, and for a plain `@F.udf` too on 4.2.0; row-by-row serialization only on 4.1.x, or on 4.2.0 with `useArrow=False`. |
 | **Cache format** | Deserialized Java objects or serialized byte arrays | `CachedBatch` — a **columnar** in-memory format (values for each column packed together); enables compression and vectorized reads. Different from the execution format (`UnsafeRow`). |
 
 **Why "exactly 4 MB for 1M integers" is wrong — UnsafeRow actual layout:**

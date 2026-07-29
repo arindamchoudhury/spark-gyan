@@ -5,9 +5,15 @@ Links collected from all books — a single place to find them later.
 ## Official Apache Spark docs
 
 - Apache Spark home — <https://spark.apache.org/>
+- Spark 4.2.0 release notes — <https://spark.apache.org/releases/spark-release-4-2-0.html>
 - Spark 4.1.1 release notes — <https://spark.apache.org/releases/spark-release-4-1-0.html>
 - PySpark API reference — <https://spark.apache.org/docs/latest/api/python/>
 - Spark migration guide (3.x → 4.0) — <https://spark.apache.org/docs/latest/migration-guide.html>
+
+## Release commentary
+
+- Databricks — Introducing Apache Spark 4.2 — <https://www.databricks.com/blog/introducing-apache-spark-42>
+- Medium (cralle) — What developers need to know about Apache Spark 4.2 — <https://medium.com/@cralle/what-developers-need-to-know-about-apache-spark-4-2-bcc70f2c7c7d> (accurate but partial; no code, no configs, no breaking changes — see the [4.2.0 research cache](../research-cache/spark-420-release.md))
 
 ## PySpark on PyPI
 

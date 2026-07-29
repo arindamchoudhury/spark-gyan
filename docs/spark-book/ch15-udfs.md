@@ -51,11 +51,13 @@ When Spark executes Python code on data, it must cross the JVM-Python boundary. 
 | UDF type | Data boundary crossing | Use when |
 |---|---|---|
 | Built-in `F.` function | None — runs in JVM | Always prefer if available |
-| Arrow-native UDF (`useArrow=True`, Spark 4.1+) | Per Arrow batch, no pandas | Need raw speed, `pyarrow.compute` covers the logic |
+| Arrow-native UDF (`@F.udf`, **the default from 4.2.0**; `useArrow=True` on 4.1) | Per Arrow batch, no pandas | Need raw speed, `pyarrow.compute` covers the logic |
 | pandas UDF (`@F.pandas_udf`) | Per Arrow batch (thousands of rows) | Custom vectorisable logic; ML ecosystem integration |
-| Python UDF (`@F.udf`) | Per row (pickle) | Last resort; unavoidable record-by-record logic |
+| Python UDF (`@F.udf(..., useArrow=False)`) | Per row (pickle) | Last resort; unavoidable record-by-record logic |
 
 **Python UDF** (`@F.udf`): Spark pickles each row, calls your function, unpickles the result. Slowest; no Catalyst visibility. The return type defaults to `StringType()` if omitted — always declare it explicitly.
+
+> **On 4.2.0 you have to ask for this path.** `useArrow` defaults to `None`, which reads `spark.sql.execution.pythonUDF.arrow.enabled` — `false` in 4.1.0, **`true`** in 4.2.0. A plain `@F.udf` is therefore Arrow-batched, and per-row pickle needs an explicit `useArrow=False`. Both rows above are correct; which one you land on depends on the version. Verified by diffing `SQLConf.scala` between `v4.1.0` and `v4.2.0-rc6` — see the [4.2.0 research cache](../research-cache/spark-420-release.md).
 
 **pandas UDF** (`@F.pandas_udf`): Spark serialises batches of rows as Apache Arrow arrays, calls your function with `pd.Series` (or `pd.DataFrame`) arguments, deserialises the result. One function call per batch of 10,000 rows (default `spark.sql.execution.arrow.maxRecordsPerBatch`). Typically 5–10× faster than Python UDFs for vectorisable operations.
 

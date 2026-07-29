@@ -23,13 +23,22 @@ The language gap only reappears at the **Python↔JVM boundary** — whenever Py
 | Crossing point | Direction | Notes |
 |---|---|---|
 | `df.collect()` | JVM → Python | All rows serialised and sent to the driver |
-| `df.toPandas()` | JVM → Python | Uses Arrow by default in Spark 3.3+ |
+| `df.toPandas()` | JVM → Python | Uses Arrow by default **from Spark 4.2.0**, not earlier — see the note below |
 | `df.show()` | JVM → Python (driver only) | Only the displayed rows |
 | Python UDF called in a transformation | JVM → Python (executor) → JVM | Per-row or per-batch, every executor |
 | RDD `map(lambda)`, `filter(lambda)`, etc. | JVM → Python (executor) → JVM | Per-partition, every operation |
 | RDD `collect()` | JVM → Python (driver) | All partitions |
 
 The executor-side crossings (UDFs, RDD lambdas) are the expensive ones — they happen at scale, on every partition, for every operation in the chain.
+
+!!! warning "🔄 Two Arrow defaults flipped in Spark 4.2.0 (verified 2026-07-29)"
+    This page was written against 4.1.x and the `toPandas()` row above previously said "Arrow by default in Spark 3.3+", which was never true. Both of these were confirmed by diffing `SQLConf.scala` between `v4.1.0` and `v4.2.0-rc6`:
+
+    **`spark.sql.execution.arrow.enabled`: `false` → `true`.** `spark.sql.execution.arrow.pyspark.enabled` has no default of its own — it is a `fallbackConf` onto that deprecated key. So `toPandas()` and `createDataFrame(pandas_df)` went from pickle to Arrow *in 4.2.0*, not in 3.3.
+
+    **`spark.sql.execution.pythonUDF.arrow.enabled`: `false` → `true`.** A plain `@F.udf` is now Arrow-serialized, so the eval-type table below no longer describes the default path — see the note under it.
+
+    Full detail in the [4.2.0 research cache](../research-cache/spark-420-release.md).
 
 ---
 
@@ -42,6 +51,8 @@ When you register a UDF, Spark chooses an evaluation strategy based on how it wa
 | `SQL_BATCHED_UDF` | `@F.udf` / `F.udf()` with standard Python function | Row-by-row pickle | Slowest |
 | `SQL_ARROW_BATCHED_UDF` | `@F.udf` with `useArrow=True`, or pandas UDF `@F.pandas_udf` with scalar type | Arrow batch per partition | ~10× faster than row-by-row |
 | `SQL_TABLE_UDF` | `@F.pandas_udf` with iterator or grouped map type | Arrow batches, streaming | Flexible for stateful per-group logic |
+
+> **On 4.2.0 the first two rows swap places as the default.** `useArrow` defaults to `None`, which reads `spark.sql.execution.pythonUDF.arrow.enabled` — now `true`. So a plain `@F.udf` gets `SQL_ARROW_BATCHED_UDF`, and you reach `SQL_BATCHED_UDF` only by passing `useArrow=False`. The "~10× faster" figure was measured *against* the old default, so it no longer describes the gap you would see between an unmodified `@F.udf` and a `@F.pandas_udf`. The cost hierarchy still holds directionally; the multipliers need re-measuring.
 
 **Suppressing the Spark 4.x Arrow inference warning.**
 
