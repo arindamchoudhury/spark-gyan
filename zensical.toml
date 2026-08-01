@@ -52,6 +52,7 @@ nav = [
             { "sql/catalyst — Expressions & codegen" = "reference/spark-source-map/sweeps/sql-catalyst-expressions.md" },
             { "sql/catalyst — Types & SQL parser" = "reference/spark-source-map/sweeps/sql-catalyst-types-parser.md" },
             { "sql/catalyst — Catalyst framework" = "reference/spark-source-map/sweeps/sql-catalyst-framework.md" },
+            { "sql/core — Query execution" = "reference/spark-source-map/sweeps/sql-core-query-execution.md" },
             { "sql/connect — Client & server" = "reference/spark-source-map/sweeps/sql-connect-client-server.md" },
             { "sql/connect — Declarative pipelines" = "reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md" },
             { "connector/profiler — async-profiler" = "reference/spark-source-map/sweeps/connector-profiler-async-profiler.md" },
