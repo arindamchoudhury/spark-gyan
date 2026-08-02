@@ -75,6 +75,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A28 | LIMIT, OFFSET and the Incremental Take Loop | — | — | ⬜ |
 | A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator | — | — | ⬜ |
 | A30 | Join-Side Buffering and Spill: Why One Key Kills a Task | — | — | ⬜ |
+| A31 | AQE Cost Evaluation: When a Better Plan Is Thrown Away | — | — | ⬜ |
+| A32 | Runtime Empty-Relation Elimination and the All-Null Anti Join Short-Circuit | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -98,6 +100,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E21 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars | — | — | ⬜ |
 | E22 | Columnar Execution and the ColumnarRule Plugin API | — | — | ⬜ |
 | E23 | Transactional Writes: DSv2 Catalog Transactions | — | — | ⬜ |
+| E24 | Extending AQE: The Four Rule Injection Points | — | — | ⬜ |
 
 ## Source concept map
 
@@ -481,61 +484,90 @@ flowchart LR
     S17 --> S17c9["PipelineAnalysisContext — knowing you are inside a flow function"]
     S17 --> S17c10["Where the engine actually lives"]
     S18["sql/core"]
-    S18 --> S18c0["JoinSelection — the decision ladder, and what a hint actually overrides"]
-    S18 --> S18c1["Build-side selection — the three size tests and the statistic they lack"]
-    S18 --> S18c2["The join operator hierarchy — BaseJoinExec, ShuffledJoin, HashJoin"]
-    S18 --> S18c3["BroadcastHashJoinExec — no shuffle, and an output partitioning that expands"]
-    S18 --> S18c4["HashedRelation — the build-side map, and the three sentinel relations"]
-    S18 --> S18c5["Long-key packing and LongToUnsafeRowMap's dense mode"]
-    S18 --> S18c6["SortMergeJoinExec and SortMergeJoinScanner"]
-    S18 --> S18c7["ShuffledHashJoinExec — and full outer joins without a sort"]
-    S18 --> S18c8["BroadcastNestedLoopJoinExec — the fallback with no size check"]
-    S18 --> S18c9["CartesianProductExec"]
-    S18 --> S18c10["Join codegen — five shapes and four independent off-switches"]
-    S18 --> S18c11["Null-aware anti join — the NOT IN rewrite and its three sentinels"]
-    S18 --> S18c12["Collation-aware join keys and binary-stable types"]
-    S18 --> S18c13["LeftSingle and ExistenceJoin — the join types you cannot write"]
-    S18 --> S18c14["Skew markers on join operators"]
-    S18 --> S18c15["Join-side buffering and spill"]
+    S18 --> S18c0["The AQE loop — createQueryStages, materialize, re-optimize, repeat"]
+    S18 --> S18c1["InsertAdaptiveSparkPlan — the seven ways a query opts out of AQE"]
+    S18 --> S18c2["Query stages — five kinds, and what "materialized" means"]
+    S18 --> S18c3["ResultQueryStageExec — the final plan is itself a stage"]
+    S18 --> S18c4["Runtime statistics — isRuntime, and the one number AQE actually has"]
+    S18 --> S18c5["LogicalQueryStage — keeping the logical plan in sync so it can be re-optimized"]
+    S18 --> S18c6["The two rule lists — preparation rules vs query-stage optimizer rules"]
+    S18 --> S18c7["Cost evaluation — a re-plan is adopted only if the cost does not rise"]
+    S18 --> S18c8["CoalesceShufflePartitions — the target size is not the advisory size"]
+    S18 --> S18c9["The coalescing algorithm and its four silent bail-outs"]
+    S18 --> S18c10["OptimizeSkewedJoin — splitting by map ranges, and the cartesian expansion"]
+    S18 --> S18c11["OptimizeSkewInRebalancePartitions — the REBALANCE path has its own skew rule"]
+    S18 --> S18c12["OptimizeShuffleWithLocalRead — how a runtime broadcast join loses its shuffle"]
+    S18 --> S18c13["DynamicJoinSelection — demoting broadcast and preferring shuffled hash"]
+    S18 --> S18c14["Dynamic broadcast conversion — the headline AQE feature with no rule of its own"]
+    S18 --> S18c15["AQEShuffleReadExec — the one operator all three read rules produce"]
+    S18 --> S18c16["AQEShuffleReadRule and ValidateRequirements — rules that are silently reverted"]
+    S18 --> S18c17["AQEPropagateEmptyRelation — whole subtrees deleted at runtime"]
+    S18 --> S18c18["Adaptive dynamic partition pruning — reusing the broadcast, or paying for a second one"]
+    S18 --> S18c19["Adaptive subqueries — recursive planning, reuse, and the all-or-nothing fallback"]
+    S18 --> S18c20["Exchange reuse across stages — the stageCache and its two lookups"]
+    S18 --> S18c21["ValidateSparkPlan — an invalid re-plan is discarded, not raised"]
+    S18 --> S18c22["Stage failure, cancellation, and the errors you actually see"]
+    S18 --> S18c23["AQEUtils.getRequiredDistribution — protecting the user's repartition"]
+    S18 --> S18c24["AQE and cached plans — TableCacheQueryStageExec and the partitioning veto"]
+    S18 --> S18c25["AQE and streaming — stateless yes, stateful no"]
+    S18 --> S18c26["Reading an AQE plan — Initial Plan, Current Plan, Final Plan"]
+    S18 --> S18c27["The four AQE rule injection points"]
     S19["sql/core"]
-    S19 --> S19c0["QueryExecution — the lazy phase pipeline from logical plan to RDD"]
-    S19 --> S19c1["SQLExecution — execution ids, and what makes a query appear in the SQL tab"]
-    S19 --> S19c2["SparkPlan — the physical operator contract"]
-    S19 --> S19c3["SparkPlanner and SparkStrategies — where the physical operator is actually chosen"]
-    S19 --> S19c4["SparkOptimizer — the optimizer batches that only exist in sql/core"]
-    S19 --> S19c5["The preparations chain — the rules that run after planning"]
-    S19 --> S19c6["Whole-stage codegen — fusing operators into one generated loop"]
-    S19 --> S19c7["EXPLAIN — the five modes, operator ids, and extended explain providers"]
-    S19 --> S19c8["In-memory cache — CacheManager, InMemoryRelation and the CachedBatchSerializer API"]
-    S19 --> S19c9["SQL metrics — accumulators with a metric type, and the last-attempt problem"]
-    S19 --> S19c10["The SQL tab — SQLAppStatusListener, SparkPlanGraph, and event-log filtering"]
-    S19 --> S19c11["Commands — why DDL runs before you call an action"]
-    S19 --> S19c12["Physical subquery execution — the driver-side jobs that run before the main one"]
-    S19 --> S19c13["SortExec and the spill path"]
-    S19 --> S19c14["Typed object operators — where JVM objects cross into UnsafeRow"]
-    S19 --> S19c15["SQL cursors and session variables"]
-    S19 --> S19c16["sql/core's own analyzer rules — v1/v2 command routing, self-joins, metric views"]
-    S19 --> S19c17["Statistics and sketch helpers — ANALYZE TABLE, approxQuantile, freqItems"]
-    S19 --> S19c18["Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator"]
-    S19 --> S19c19["LIMIT and OFFSET — the incremental take loop"]
-    S19 --> S19c20["Recursive CTEs — UnionLoopExec"]
-    S19 --> S19c21["Columnar execution and the ColumnarRule plugin API"]
-    S19 --> S19c22["Transaction-scoped query execution"]
-    S20["sql/hive"]
-    S20 --> S20c0["Two Hive versions — the bundled client and the metastore it talks to"]
-    S20 --> S20c1["IsolatedClientLoader — barrier, hive and shared classes"]
-    S20 --> S20c2["The HiveClient shim ladder"]
-    S20 --> S20c3["HiveExternalCatalog — a Spark schema inside Hive table properties"]
-    S20 --> S20c4["Hive-compatible versus Spark-specific persistence"]
-    S20 --> S20c5["RelationConversions — reading a Hive table with Spark's own reader"]
-    S20 --> S20c6["Case-sensitive schema inference and INFER_AND_SAVE"]
-    S20 --> S20c7["HiveTableScanExec and metastore partition pruning"]
-    S20 --> S20c8["HadoopTableReader — the SerDe read path"]
-    S20 --> S20c9["InsertIntoHiveTable — staging directories and dynamic partitions"]
-    S20 --> S20c10["HiveInspectors — the ObjectInspector bridge"]
-    S20 --> S20c11["Hive UDFs, UDAFs and UDTFs"]
-    S20 --> S20c12["The legacy Hive ORC reader"]
-    S20 --> S20c13["Hive delegation tokens"]
+    S19 --> S19c0["JoinSelection — the decision ladder, and what a hint actually overrides"]
+    S19 --> S19c1["Build-side selection — the three size tests and the statistic they lack"]
+    S19 --> S19c2["The join operator hierarchy — BaseJoinExec, ShuffledJoin, HashJoin"]
+    S19 --> S19c3["BroadcastHashJoinExec — no shuffle, and an output partitioning that expands"]
+    S19 --> S19c4["HashedRelation — the build-side map, and the three sentinel relations"]
+    S19 --> S19c5["Long-key packing and LongToUnsafeRowMap's dense mode"]
+    S19 --> S19c6["SortMergeJoinExec and SortMergeJoinScanner"]
+    S19 --> S19c7["ShuffledHashJoinExec — and full outer joins without a sort"]
+    S19 --> S19c8["BroadcastNestedLoopJoinExec — the fallback with no size check"]
+    S19 --> S19c9["CartesianProductExec"]
+    S19 --> S19c10["Join codegen — five shapes and four independent off-switches"]
+    S19 --> S19c11["Null-aware anti join — the NOT IN rewrite and its three sentinels"]
+    S19 --> S19c12["Collation-aware join keys and binary-stable types"]
+    S19 --> S19c13["LeftSingle and ExistenceJoin — the join types you cannot write"]
+    S19 --> S19c14["Skew markers on join operators"]
+    S19 --> S19c15["Join-side buffering and spill"]
+    S20["sql/core"]
+    S20 --> S20c0["QueryExecution — the lazy phase pipeline from logical plan to RDD"]
+    S20 --> S20c1["SQLExecution — execution ids, and what makes a query appear in the SQL tab"]
+    S20 --> S20c2["SparkPlan — the physical operator contract"]
+    S20 --> S20c3["SparkPlanner and SparkStrategies — where the physical operator is actually chosen"]
+    S20 --> S20c4["SparkOptimizer — the optimizer batches that only exist in sql/core"]
+    S20 --> S20c5["The preparations chain — the rules that run after planning"]
+    S20 --> S20c6["Whole-stage codegen — fusing operators into one generated loop"]
+    S20 --> S20c7["EXPLAIN — the five modes, operator ids, and extended explain providers"]
+    S20 --> S20c8["In-memory cache — CacheManager, InMemoryRelation and the CachedBatchSerializer API"]
+    S20 --> S20c9["SQL metrics — accumulators with a metric type, and the last-attempt problem"]
+    S20 --> S20c10["The SQL tab — SQLAppStatusListener, SparkPlanGraph, and event-log filtering"]
+    S20 --> S20c11["Commands — why DDL runs before you call an action"]
+    S20 --> S20c12["Physical subquery execution — the driver-side jobs that run before the main one"]
+    S20 --> S20c13["SortExec and the spill path"]
+    S20 --> S20c14["Typed object operators — where JVM objects cross into UnsafeRow"]
+    S20 --> S20c15["SQL cursors and session variables"]
+    S20 --> S20c16["sql/core's own analyzer rules — v1/v2 command routing, self-joins, metric views"]
+    S20 --> S20c17["Statistics and sketch helpers — ANALYZE TABLE, approxQuantile, freqItems"]
+    S20 --> S20c18["Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator"]
+    S20 --> S20c19["LIMIT and OFFSET — the incremental take loop"]
+    S20 --> S20c20["Recursive CTEs — UnionLoopExec"]
+    S20 --> S20c21["Columnar execution and the ColumnarRule plugin API"]
+    S20 --> S20c22["Transaction-scoped query execution"]
+    S21["sql/hive"]
+    S21 --> S21c0["Two Hive versions — the bundled client and the metastore it talks to"]
+    S21 --> S21c1["IsolatedClientLoader — barrier, hive and shared classes"]
+    S21 --> S21c2["The HiveClient shim ladder"]
+    S21 --> S21c3["HiveExternalCatalog — a Spark schema inside Hive table properties"]
+    S21 --> S21c4["Hive-compatible versus Spark-specific persistence"]
+    S21 --> S21c5["RelationConversions — reading a Hive table with Spark's own reader"]
+    S21 --> S21c6["Case-sensitive schema inference and INFER_AND_SAVE"]
+    S21 --> S21c7["HiveTableScanExec and metastore partition pruning"]
+    S21 --> S21c8["HadoopTableReader — the SerDe read path"]
+    S21 --> S21c9["InsertIntoHiveTable — staging directories and dynamic partitions"]
+    S21 --> S21c10["HiveInspectors — the ObjectInspector bridge"]
+    S21 --> S21c11["Hive UDFs, UDAFs and UDTFs"]
+    S21 --> S21c12["The legacy Hive ORC reader"]
+    S21 --> S21c13["Hive delegation tokens"]
 ```
 
 ## Topics discovered from the source
@@ -592,11 +624,14 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Artifacts — shipping JARs, classes and UDFs to a remote session | sql/connect | new | E19 | Spark Connect Artifacts: Shipping Code to a Remote Session |
 | Reattachable execution — surviving a broken response stream | sql/connect | new | E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection |
 | The JDBC driver — jdbc:sc:// and how far it goes | sql/connect | new | — | — |
+| AQEPropagateEmptyRelation — whole subtrees deleted at runtime | sql/core | new | A32 | Runtime Empty-Relation Elimination and the All-Null Anti Join Short-Circuit |
 | Columnar execution and the ColumnarRule plugin API | sql/core | new | E22 | Columnar Execution and the ColumnarRule Plugin API |
+| Cost evaluation — a re-plan is adopted only if the cost does not rise | sql/core | new | A31 | AQE Cost Evaluation: When a Better Plan Is Thrown Away |
 | Join-side buffering and spill | sql/core | new | A30 | Join-Side Buffering and Spill: Why One Key Kills a Task |
 | LIMIT and OFFSET — the incremental take loop | sql/core | new | A28 | LIMIT, OFFSET and the Incremental Take Loop |
 | Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator | sql/core | new | I26 | Observing Metrics Mid-Query: df.observe() and the Observation API |
 | Recursive CTEs — UnionLoopExec | sql/core | new | A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator |
+| The four AQE rule injection points | sql/core | new | E24 | Extending AQE: The Four Rule Injection Points |
 | Transaction-scoped query execution | sql/core | new | E23 | Transactional Writes: DSv2 Catalog Transactions |
 | IsolatedClientLoader — barrier, hive and shared classes | sql/hive | new | — | — |
 | RelationConversions — reading a Hive table with Spark's own reader | sql/hive | new | A27 | Hive Table Conversion: When Spark Reads Hive Tables Natively |
@@ -637,7 +672,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | connector/profiler — async-profiler | 7 | ✅ complete | 4.2.0 | 2026-07-27 |
 | sql/core — query-execution | — | ✅ partial | 4.2.0 | 2026-08-01 |
 | sql/core — joins-exec | — | ✅ complete | 4.2.0 | 2026-08-01 |
-| sql/core — adaptive | — | ⬜ pending | — | — |
+| sql/core — adaptive | — | ✅ complete | 4.2.0 | 2026-08-02 |
 | sql/core — datasources | — | ⬜ pending | — | — |
 | sql/core — agg-window-exchange | — | ⬜ pending | — | — |
 | sql/core — python-arrow | — | ⬜ pending | — | — |

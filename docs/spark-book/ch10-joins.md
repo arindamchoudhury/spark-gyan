@@ -14,6 +14,8 @@
 
     **AQE re-decides after the shuffle.** `DynamicJoinSelection` can promote a sort-merge join to a broadcast once real sizes are known, using a separate threshold. Skew splitting requires a partition to exceed *both* 5× the median *and* 256MB, which explains "AQE didn't fix my skew".
 
+    **Added by the sql/core — adaptive sweep (2026-08-02):** the re-decision is one-way. Once a broadcast stage has materialized, `LogicalQueryStageStrategy` forces the join to stay a broadcast hash join regardless of what the size tests now say, because reverting would discard the broadcast and add a shuffle — so `spark.sql.adaptive.autoBroadcastJoinThreshold` only ever promotes. And skew splitting divides a partition by *map-index range*, never by key, so a single hot key is untouched no matter how the thresholds are set. Detail in the [sql/core — adaptive sweep](../reference/spark-source-map/sweeps/sql-core-adaptive.md).
+
     Also missing: `preferSortMergeJoin=true` gating shuffled hash join out by default; `canBroadcastBySize` using an estimate rather than a measurement; and that the shuffle is a separate `Exchange` node inserted by `EnsureRequirements`, not part of the join operator. Full list in the [B7 source trace](../reference/spark-source-map/topics/b7.md).
 
     The originally-noted gap: Spark 4.2.0 adds `NEAREST BY` ([SPARK-56395]), a top-K ranking join primitive for nearest-neighbour queries with Catalyst support and a DataFrame API. It is not one of the seven relational join types this chapter covers and needs its own section — probably after the seven, framed as "the eighth thing called a join that isn't one."
