@@ -12,6 +12,8 @@
 
     Also missing: the three separate cast rules (`canCast` for explicit casts, `canUpCast` for implicit coercion, `canANSIStoreAssign` for table writes — why a `select` can succeed where an `INSERT` fails); that `spark.sql.ansi.enabled` selects between two complete coercion rule sets rather than tightening one; `spark.sql.caseSensitive` defaulting to `false`; `CHAR`/`VARCHAR` being erased to `StringType` with padding reapplied at plan time; `StructType.merge` behind `mergeSchema`; DDL strings going through the real SQL grammar; and the `schema.json()` round-trip. Full list in the [B5 source trace](../reference/spark-source-map/topics/b5.md).
 
+    **Added by the sql/core — datasources sweep (2026-08-04):** where an *inferred* schema comes from, which the chapter treats as a single act. With `mergeSchema` off — the default for both Parquet and ORC — Spark reads a summary file if one exists and otherwise **one arbitrary part-file**, on the explicit assumption that every other file matches. A column present only in newer files therefore may not appear in the DataFrame at all, with no error and no warning. Separately, matching the schema's columns to the file's columns is a *per-format* rule with four different answers (by name, by position, by field ID, by header) — the new topic E25 covers the family. Detail in the [sql/core — datasources sweep](../reference/spark-source-map/sweeps/sql-core-datasources.md).
+
 Schema is the contract between your data and your code. An explicit schema catches corrupt data at ingestion time, prevents silent type coercions, and makes pipelines self-documenting. A missing schema turns bugs into mysteries.
 
 ---
