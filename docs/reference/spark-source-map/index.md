@@ -84,6 +84,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A33 | Two-Level Hash Aggregation and the Codegen Fast Hash Map | — | — | ⬜ |
 | A34 | Segment-Tree Window Frames: O(log W) Sliding Windows | — | — | ⬜ |
 | A35 | Python Data Sources: Writing a Connector Without the JVM | — | — | ⬜ |
+| A36 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -110,6 +111,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E24 | Extending AQE: The Four Rule Injection Points | — | — | ⬜ |
 | E25 | Column Matching Between File and Table Schema: by Name, by Position, by Field ID | — | — | ⬜ |
 | E26 | transformWithStateInPySpark: The Per-Task State Server | — | — | ⬜ |
+| E27 | The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance | — | — | ⬜ |
+| E28 | Offline State Repartition: Changing shuffle.partitions on a Stateful Query | — | — | ⬜ |
 
 ## Source concept map
 
@@ -671,21 +674,55 @@ flowchart LR
     S23 --> S23c20["Recursive CTEs — UnionLoopExec"]
     S23 --> S23c21["Columnar execution and the ColumnarRule plugin API"]
     S23 --> S23c22["Transaction-scoped query execution"]
-    S24["sql/hive"]
-    S24 --> S24c0["Two Hive versions — the bundled client and the metastore it talks to"]
-    S24 --> S24c1["IsolatedClientLoader — barrier, hive and shared classes"]
-    S24 --> S24c2["The HiveClient shim ladder"]
-    S24 --> S24c3["HiveExternalCatalog — a Spark schema inside Hive table properties"]
-    S24 --> S24c4["Hive-compatible versus Spark-specific persistence"]
-    S24 --> S24c5["RelationConversions — reading a Hive table with Spark's own reader"]
-    S24 --> S24c6["Case-sensitive schema inference and INFER_AND_SAVE"]
-    S24 --> S24c7["HiveTableScanExec and metastore partition pruning"]
-    S24 --> S24c8["HadoopTableReader — the SerDe read path"]
-    S24 --> S24c9["InsertIntoHiveTable — staging directories and dynamic partitions"]
-    S24 --> S24c10["HiveInspectors — the ObjectInspector bridge"]
-    S24 --> S24c11["Hive UDFs, UDAFs and UDTFs"]
-    S24 --> S24c12["The legacy Hive ORC reader"]
-    S24 --> S24c13["Hive delegation tokens"]
+    S24["sql/core"]
+    S24 --> S24c0["StreamExecution — one thread, a state machine, and a stored death cause"]
+    S24 --> S24c1["TriggerExecutor — four trigger shapes behind one interface"]
+    S24 --> S24c2["MicroBatchExecution — the batch loop, and the two-log write-ahead protocol"]
+    S24 --> S24c3["No-data batches — the second reason a trigger fires"]
+    S24 --> S24c4["StreamExecutionContext and StreamProgress — per-batch state, and why offsets are a map"]
+    S24 --> S24c5["Trigger.AvailableNow — three wrappers that fake a bounded source"]
+    S24 --> S24c6["Async progress tracking — taking the checkpoint write off the critical path"]
+    S24 --> S24c7["ProgressReporter, MetricsReporter and the listener bus — where StreamingQueryProgress comes from"]
+    S24 --> S24c8["HDFSMetadataLog and CompactibleFileStreamLog — an append-only log on a filesystem that may not rename atomically"]
+    S24 --> S24c9["CheckpointFileManager — atomic-rename abstraction, and the 4.1.0 checksum wrapper"]
+    S24 --> S24c10["IncrementalExecution — the rules that turn a batch plan into a stateful one"]
+    S24 --> S24c11["WatermarkTracker — one global watermark, and the min/max policy that decides it"]
+    S24 --> S24c12["WatermarkPropagator — two watermarks per operator, and why a chained stateful query needs a simulation"]
+    S24 --> S24c13["The StateStore API — versions, column families, and a commit that returns a number"]
+    S24 --> S24c14["StateStoreRDD and the coordinator — placing a partition where its state already is"]
+    S24 --> S24c15["HDFSBackedStateStoreProvider — deltas, snapshots, and the whole map in JVM memory"]
+    S24 --> S24c16["RocksDBStateStoreProvider — changelog checkpointing and the snapshot upload queue"]
+    S24 --> S24c17["State checkpoint IDs — the V2 lineage that makes a state store verifiable"]
+    S24 --> S24c18["Row checksums and auto snapshot repair — two 4.1.0 corruption defences, one on by default"]
+    S24 --> S24c19["State schema evolution — StateSchemaCompatibilityChecker and the operator metadata log"]
+    S24 --> S24c20["Offline state repartition — changing a stateful query's partition count"]
+    S24 --> S24c21["The maintenance thread — snapshotting, cleanup, and unloading providers"]
+    S24 --> S24c22["statefulOperators — the base traits, the watermark predicates, and the metrics"]
+    S24 --> S24c23["Streaming aggregation and session windows — two state managers, two formats"]
+    S24 --> S24c24["Streaming deduplication and limits — the cheapest stateful operators, and their traps"]
+    S24 --> S24c25["flatMapGroupsWithState — the legacy arbitrary-state operator and GroupState"]
+    S24 --> S24c26["Stream-stream join — four state stores per side, and the eviction predicates"]
+    S24 --> S24c27["transformWithState — a handle, typed state variables, timers and TTL"]
+    S24 --> S24c28["FileStreamSource — the seen-files map, the trigger limits, and cleanSource"]
+    S24 --> S24c29["FileStreamSink and the _spark_metadata log — a sink whose output only Spark can read correctly"]
+    S24 --> S24c30["The built-in sources and sinks — rate, socket, memory, console, foreach"]
+    S24 --> S24c31["Continuous processing and the epoch coordinator"]
+    S24 --> S24c32["Real-Time Mode — an allowlist as the feature gate"]
+    S25["sql/hive"]
+    S25 --> S25c0["Two Hive versions — the bundled client and the metastore it talks to"]
+    S25 --> S25c1["IsolatedClientLoader — barrier, hive and shared classes"]
+    S25 --> S25c2["The HiveClient shim ladder"]
+    S25 --> S25c3["HiveExternalCatalog — a Spark schema inside Hive table properties"]
+    S25 --> S25c4["Hive-compatible versus Spark-specific persistence"]
+    S25 --> S25c5["RelationConversions — reading a Hive table with Spark's own reader"]
+    S25 --> S25c6["Case-sensitive schema inference and INFER_AND_SAVE"]
+    S25 --> S25c7["HiveTableScanExec and metastore partition pruning"]
+    S25 --> S25c8["HadoopTableReader — the SerDe read path"]
+    S25 --> S25c9["InsertIntoHiveTable — staging directories and dynamic partitions"]
+    S25 --> S25c10["HiveInspectors — the ObjectInspector bridge"]
+    S25 --> S25c11["Hive UDFs, UDAFs and UDTFs"]
+    S25 --> S25c12["The legacy Hive ORC reader"]
+    S25 --> S25c13["Hive delegation tokens"]
 ```
 
 ## Topics discovered from the source
@@ -749,11 +786,14 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | File listing — parallel discovery, the status cache, and basePath | sql/core | new | I28 | Driver-Side File Listing: The Cost Before Any Task Runs |
 | Join-side buffering and spill | sql/core | new | A30 | Join-Side Buffering and Spill: Why One Key Kills a Task |
 | LIMIT and OFFSET — the incremental take loop | sql/core | new | A28 | LIMIT, OFFSET and the Incremental Take Loop |
+| MicroBatchExecution — the batch loop, and the two-log write-ahead protocol | sql/core | new | A36 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart |
 | Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator | sql/core | new | I26 | Observing Metrics Mid-Query: df.observe() and the Observation API |
+| Offline state repartition — changing a stateful query's partition count | sql/core | new | E28 | Offline State Repartition: Changing shuffle.partitions on a Stateful Query |
 | Partition value type inference — the seven-step ladder | sql/core | new | I27 | Partition Column Type Inference: How a Directory Name Becomes a Typed Column |
 | Python Data Sources — a reader and writer written entirely in Python | sql/core | new | A35 | Python Data Sources: Writing a Connector Without the JVM |
 | Python UDTFs — three eval types, and a UDTF that decides its own schema | sql/core | new | I30 | Python UDTFs: Table Functions That Return Many Rows |
 | Recursive CTEs — UnionLoopExec | sql/core | new | A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator |
+| RocksDBStateStoreProvider — changelog checkpointing and the snapshot upload queue | sql/core | new | E27 | The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance |
 | Segment-tree window frames — the 4.2.0 sliding-frame algorithm, off by default | sql/core | new | A34 | Segment-Tree Window Frames: O(log W) Sliding Windows |
 | The codegen fast hash map — two levels, row-based or vectorized | sql/core | new | A33 | Two-Level Hash Aggregation and the Codegen Fast Hash Map |
 | The four AQE rule injection points | sql/core | new | E24 | Extending AQE: The Four Rule Injection Points |
@@ -803,7 +843,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — datasources | — | ✅ partial | 4.2.0 | 2026-08-04 |
 | sql/core — agg-window-exchange | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — python-arrow | — | ✅ complete | 4.2.0 | 2026-08-06 |
-| sql/core — streaming-exec | — | ⬜ pending | — | — |
+| sql/core — streaming-exec | — | ✅ partial | 4.2.0 | 2026-08-06 |
 | sql/core — classic-api | — | ⬜ pending | — | — |
 | sql/core — sql-scripting | — | ⬜ pending | — | — |
 | sql/pipelines — graph | — | ⬜ pending | — | — |
