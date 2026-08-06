@@ -57,6 +57,7 @@ nav = [
             { "sql/core — Adaptive query execution" = "reference/spark-source-map/sweeps/sql-core-adaptive.md" },
             { "sql/core — Data sources" = "reference/spark-source-map/sweeps/sql-core-datasources.md" },
             { "sql/core — Aggregation, windows, exchange" = "reference/spark-source-map/sweeps/sql-core-agg-window-exchange.md" },
+            { "sql/core — Python and Arrow" = "reference/spark-source-map/sweeps/sql-core-python-arrow.md" },
             { "sql/connect — Client & server" = "reference/spark-source-map/sweeps/sql-connect-client-server.md" },
             { "sql/connect — Declarative pipelines" = "reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md" },
             { "connector/profiler — async-profiler" = "reference/spark-source-map/sweeps/connector-profiler-async-profiler.md" },

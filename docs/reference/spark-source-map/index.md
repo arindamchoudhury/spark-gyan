@@ -48,6 +48,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I27 | Partition Column Type Inference: How a Directory Name Becomes a Typed Column | — | — | ⬜ |
 | I28 | Driver-Side File Listing: The Cost Before Any Task Runs | — | — | ⬜ |
 | I29 | Bucketed Tables: bucketBy, and the Two Rules That Undo Bucketing | — | — | ⬜ |
+| I30 | Python UDTFs: Table Functions That Return Many Rows | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -82,6 +83,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A32 | Runtime Empty-Relation Elimination and the All-Null Anti Join Short-Circuit | — | — | ⬜ |
 | A33 | Two-Level Hash Aggregation and the Codegen Fast Hash Map | — | — | ⬜ |
 | A34 | Segment-Tree Window Frames: O(log W) Sliding Windows | — | — | ⬜ |
+| A35 | Python Data Sources: Writing a Connector Without the JVM | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -107,6 +109,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E23 | Transactional Writes: DSv2 Catalog Transactions | — | — | ⬜ |
 | E24 | Extending AQE: The Four Rule Injection Points | — | — | ⬜ |
 | E25 | Column Matching Between File and Table Schema: by Name, by Position, by Field ID | — | — | ⬜ |
+| E26 | transformWithStateInPySpark: The Per-Task State Server | — | — | ⬜ |
 
 ## Source concept map
 
@@ -616,44 +619,73 @@ flowchart LR
     S21 --> S21c14["Skew markers on join operators"]
     S21 --> S21c15["Join-side buffering and spill"]
     S22["sql/core"]
-    S22 --> S22c0["QueryExecution — the lazy phase pipeline from logical plan to RDD"]
-    S22 --> S22c1["SQLExecution — execution ids, and what makes a query appear in the SQL tab"]
-    S22 --> S22c2["SparkPlan — the physical operator contract"]
-    S22 --> S22c3["SparkPlanner and SparkStrategies — where the physical operator is actually chosen"]
-    S22 --> S22c4["SparkOptimizer — the optimizer batches that only exist in sql/core"]
-    S22 --> S22c5["The preparations chain — the rules that run after planning"]
-    S22 --> S22c6["Whole-stage codegen — fusing operators into one generated loop"]
-    S22 --> S22c7["EXPLAIN — the five modes, operator ids, and extended explain providers"]
-    S22 --> S22c8["In-memory cache — CacheManager, InMemoryRelation and the CachedBatchSerializer API"]
-    S22 --> S22c9["SQL metrics — accumulators with a metric type, and the last-attempt problem"]
-    S22 --> S22c10["The SQL tab — SQLAppStatusListener, SparkPlanGraph, and event-log filtering"]
-    S22 --> S22c11["Commands — why DDL runs before you call an action"]
-    S22 --> S22c12["Physical subquery execution — the driver-side jobs that run before the main one"]
-    S22 --> S22c13["SortExec and the spill path"]
-    S22 --> S22c14["Typed object operators — where JVM objects cross into UnsafeRow"]
-    S22 --> S22c15["SQL cursors and session variables"]
-    S22 --> S22c16["sql/core's own analyzer rules — v1/v2 command routing, self-joins, metric views"]
-    S22 --> S22c17["Statistics and sketch helpers — ANALYZE TABLE, approxQuantile, freqItems"]
-    S22 --> S22c18["Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator"]
-    S22 --> S22c19["LIMIT and OFFSET — the incremental take loop"]
-    S22 --> S22c20["Recursive CTEs — UnionLoopExec"]
-    S22 --> S22c21["Columnar execution and the ColumnarRule plugin API"]
-    S22 --> S22c22["Transaction-scoped query execution"]
-    S23["sql/hive"]
-    S23 --> S23c0["Two Hive versions — the bundled client and the metastore it talks to"]
-    S23 --> S23c1["IsolatedClientLoader — barrier, hive and shared classes"]
-    S23 --> S23c2["The HiveClient shim ladder"]
-    S23 --> S23c3["HiveExternalCatalog — a Spark schema inside Hive table properties"]
-    S23 --> S23c4["Hive-compatible versus Spark-specific persistence"]
-    S23 --> S23c5["RelationConversions — reading a Hive table with Spark's own reader"]
-    S23 --> S23c6["Case-sensitive schema inference and INFER_AND_SAVE"]
-    S23 --> S23c7["HiveTableScanExec and metastore partition pruning"]
-    S23 --> S23c8["HadoopTableReader — the SerDe read path"]
-    S23 --> S23c9["InsertIntoHiveTable — staging directories and dynamic partitions"]
-    S23 --> S23c10["HiveInspectors — the ObjectInspector bridge"]
-    S23 --> S23c11["Hive UDFs, UDAFs and UDTFs"]
-    S23 --> S23c12["The legacy Hive ORC reader"]
-    S23 --> S23c13["Hive delegation tokens"]
+    S22 --> S22c0["ExtractPythonUDFs — a UDF is not an expression, it is an operator"]
+    S22 --> S22c1["Chaining rules — why two UDFs in one select can cost two Python round trips"]
+    S22 --> S22c2["correctEvalType — the Arrow-to-pickle downgrade on UDT, now off by default"]
+    S22 --> S22c3["The two aggregate extraction rules — Python UDFs before and after the aggregate"]
+    S22 --> S22c4["EvalPythonExec and the HybridRowQueue — every input row is buffered a second time"]
+    S22 --> S22c5["BatchEvalPythonExec — the pickle path, and what it still costs"]
+    S22 --> S22c6["ArrowEvalPythonExec — batching, and the columnar-input fast path"]
+    S22 --> S22c7["PythonArrowInput — how a batch is sized, and the 2 GB workaround"]
+    S22 --> S22c8["PythonArrowOutput — three output processors, and where the output batch size is set"]
+    S22 --> S22c9["The runner conf map — the settings shipped to the worker on every task"]
+    S22 --> S22c10["PythonSQLMetrics — the six numbers that say whether the UDF or the worker is slow"]
+    S22 --> S22c11["Python worker lifecycle — daemon vs fork, reuse, idle timeout, faulthandler"]
+    S22 --> S22c12["MapInBatchExec — one struct in, one struct out, optionally under a barrier"]
+    S22 --> S22c13["The grouped-map family and PandasGroupUtils — dedup, sort, and the whole-group requirement"]
+    S22 --> S22c14["Cogroup — two Arrow streams interleaved on one worker"]
+    S22 --> S22c15["ArrowWindowPythonExec — window bounds shipped as extra columns"]
+    S22 --> S22c16["ArrowAggregatePythonExec — the 4.2.0 grouped-aggregate operator"]
+    S22 --> S22c17["AttachDistributedSequenceExec — the distributed-sequence index of pandas API on Spark"]
+    S22 --> S22c18["ArrowConverters — the toPandas / createDataFrame path, and the local-relation threshold"]
+    S22 --> S22c19["Arrow IPC compression — a codec whose level is silently dropped if built the obvious way"]
+    S22 --> S22c20["EvaluatePython — pickling, and the types that need conversion at all"]
+    S22 --> S22c21["UserDefinedPythonFunction and PythonPlannerRunner — registration, and a Python call at analysis time"]
+    S22 --> S22c22["Python UDTFs — three eval types, and a UDTF that decides its own schema"]
+    S22 --> S22c23["Python Data Sources — a reader and writer written entirely in Python"]
+    S22 --> S22c24["transformWithStateInPySpark — Python drives the state store over a socket"]
+    S22 --> S22c25["applyInPandasWithState — state and data in one Arrow stream"]
+    S22 --> S22c26["PythonForeachWriter — a background writer thread and a spillable row buffer"]
+    S22 --> S22c27["PythonWorkerLogsExec — reading worker stdout back as a table"]
+    S23["sql/core"]
+    S23 --> S23c0["QueryExecution — the lazy phase pipeline from logical plan to RDD"]
+    S23 --> S23c1["SQLExecution — execution ids, and what makes a query appear in the SQL tab"]
+    S23 --> S23c2["SparkPlan — the physical operator contract"]
+    S23 --> S23c3["SparkPlanner and SparkStrategies — where the physical operator is actually chosen"]
+    S23 --> S23c4["SparkOptimizer — the optimizer batches that only exist in sql/core"]
+    S23 --> S23c5["The preparations chain — the rules that run after planning"]
+    S23 --> S23c6["Whole-stage codegen — fusing operators into one generated loop"]
+    S23 --> S23c7["EXPLAIN — the five modes, operator ids, and extended explain providers"]
+    S23 --> S23c8["In-memory cache — CacheManager, InMemoryRelation and the CachedBatchSerializer API"]
+    S23 --> S23c9["SQL metrics — accumulators with a metric type, and the last-attempt problem"]
+    S23 --> S23c10["The SQL tab — SQLAppStatusListener, SparkPlanGraph, and event-log filtering"]
+    S23 --> S23c11["Commands — why DDL runs before you call an action"]
+    S23 --> S23c12["Physical subquery execution — the driver-side jobs that run before the main one"]
+    S23 --> S23c13["SortExec and the spill path"]
+    S23 --> S23c14["Typed object operators — where JVM objects cross into UnsafeRow"]
+    S23 --> S23c15["SQL cursors and session variables"]
+    S23 --> S23c16["sql/core's own analyzer rules — v1/v2 command routing, self-joins, metric views"]
+    S23 --> S23c17["Statistics and sketch helpers — ANALYZE TABLE, approxQuantile, freqItems"]
+    S23 --> S23c18["Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator"]
+    S23 --> S23c19["LIMIT and OFFSET — the incremental take loop"]
+    S23 --> S23c20["Recursive CTEs — UnionLoopExec"]
+    S23 --> S23c21["Columnar execution and the ColumnarRule plugin API"]
+    S23 --> S23c22["Transaction-scoped query execution"]
+    S24["sql/hive"]
+    S24 --> S24c0["Two Hive versions — the bundled client and the metastore it talks to"]
+    S24 --> S24c1["IsolatedClientLoader — barrier, hive and shared classes"]
+    S24 --> S24c2["The HiveClient shim ladder"]
+    S24 --> S24c3["HiveExternalCatalog — a Spark schema inside Hive table properties"]
+    S24 --> S24c4["Hive-compatible versus Spark-specific persistence"]
+    S24 --> S24c5["RelationConversions — reading a Hive table with Spark's own reader"]
+    S24 --> S24c6["Case-sensitive schema inference and INFER_AND_SAVE"]
+    S24 --> S24c7["HiveTableScanExec and metastore partition pruning"]
+    S24 --> S24c8["HadoopTableReader — the SerDe read path"]
+    S24 --> S24c9["InsertIntoHiveTable — staging directories and dynamic partitions"]
+    S24 --> S24c10["HiveInspectors — the ObjectInspector bridge"]
+    S24 --> S24c11["Hive UDFs, UDAFs and UDTFs"]
+    S24 --> S24c12["The legacy Hive ORC reader"]
+    S24 --> S24c13["Hive delegation tokens"]
 ```
 
 ## Topics discovered from the source
@@ -719,12 +751,15 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | LIMIT and OFFSET — the incremental take loop | sql/core | new | A28 | LIMIT, OFFSET and the Incremental Take Loop |
 | Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator | sql/core | new | I26 | Observing Metrics Mid-Query: df.observe() and the Observation API |
 | Partition value type inference — the seven-step ladder | sql/core | new | I27 | Partition Column Type Inference: How a Directory Name Becomes a Typed Column |
+| Python Data Sources — a reader and writer written entirely in Python | sql/core | new | A35 | Python Data Sources: Writing a Connector Without the JVM |
+| Python UDTFs — three eval types, and a UDTF that decides its own schema | sql/core | new | I30 | Python UDTFs: Table Functions That Return Many Rows |
 | Recursive CTEs — UnionLoopExec | sql/core | new | A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator |
 | Segment-tree window frames — the 4.2.0 sliding-frame algorithm, off by default | sql/core | new | A34 | Segment-Tree Window Frames: O(log W) Sliding Windows |
 | The codegen fast hash map — two levels, row-based or vectorized | sql/core | new | A33 | Two-Level Hash Aggregation and the Codegen Fast Hash Map |
 | The four AQE rule injection points | sql/core | new | E24 | Extending AQE: The Four Rule Injection Points |
 | Transaction-scoped query execution | sql/core | new | E23 | Transactional Writes: DSv2 Catalog Transactions |
 | V1 bucketing at execution time — the two rules that coalesce or disable a bucketed scan | sql/core | new | I29 | Bucketed Tables: bucketBy, and the Two Rules That Undo Bucketing |
+| transformWithStateInPySpark — Python drives the state store over a socket | sql/core | new | E26 | transformWithStateInPySpark: The Per-Task State Server |
 | IsolatedClientLoader — barrier, hive and shared classes | sql/hive | new | — | — |
 | RelationConversions — reading a Hive table with Spark's own reader | sql/hive | new | A27 | Hive Table Conversion: When Spark Reads Hive Tables Natively |
 | The HiveClient shim ladder | sql/hive | new | — | — |
@@ -767,7 +802,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — adaptive | — | ✅ complete | 4.2.0 | 2026-08-02 |
 | sql/core — datasources | — | ✅ partial | 4.2.0 | 2026-08-04 |
 | sql/core — agg-window-exchange | — | ✅ complete | 4.2.0 | 2026-08-06 |
-| sql/core — python-arrow | — | ⬜ pending | — | — |
+| sql/core — python-arrow | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — streaming-exec | — | ⬜ pending | — | — |
 | sql/core — classic-api | — | ⬜ pending | — | — |
 | sql/core — sql-scripting | — | ⬜ pending | — | — |
