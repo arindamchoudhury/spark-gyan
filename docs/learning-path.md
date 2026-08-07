@@ -1900,7 +1900,8 @@ as well as range; and name the config that permits a negative scale and why it i
 2. **Spark 4.1 release notes** — feature scope and current limitations
 3. **Local stack** — run a pipeline against your Delta Lake + Unity Catalog setup; the `pyspark.pipelines` module is available in Spark 4.1.x and later
 4. **Source** — `sql/pipelines/src/main/scala/org/apache/spark/sql/pipelines/` (graph construction, `autocdc`); see the `sql/pipelines` sweep groups in the source map
-5. **Source sweep — [sql/connect — declarative pipelines in the source map](reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md)** — the **first source-derived material behind this topic**, covering the definition and control surface: a pipeline is a *sequence of protobuf commands* that build server-side graph state, not a plan. Three findings to carry: a dataflow graph lives on the Connect `SessionHolder` and **dies with the 60-minute idle session** (no persistence, no reattach); catalog and database defaults are frozen at `CreateDataflowGraph`, not at flow definition; and a `TABLE` is the *streaming* form while a `MATERIALIZED_VIEW` is the batch form — one boolean apart on a shared code path. Note the page's boundary: the graph engine is `sql/pipelines`, still unswept
+5. **Source sweep — [sql/pipelines — graph in the source map](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — **the engine**, and the largest body of source behind this topic: 32 files covering how a bag of definitions becomes an ordered, resolved graph and then a run. The five things it teaches that the programming guide does not. (i) Dependencies are never declared — they are *discovered* by calling each flow function and recording which datasets it read, which is why definition order does not matter. (ii) During analysis every table is replaced by an empty DataFrame carrying only its schema, so a schema change propagates through the whole graph before any DDL runs. (iii) A **materialized view is TRUNCATEd and rewritten on every run**, not just on full refresh; only a streaming table appends. (iv) A run whose flows were all skipped or excluded still reports `COMPLETED`, so the run outcome is not a data-movement signal — read the per-flow events. (v) `pipelines.incompatibleViewCheck.enabled` is an undeclared, unprefixed conf that turns off the batch-vs-streaming view-read checks; it appears in no config listing
+6. **Source sweep — [sql/connect — declarative pipelines in the source map](reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md)** — the **first source-derived material behind this topic**, covering the definition and control surface: a pipeline is a *sequence of protobuf commands* that build server-side graph state, not a plan. Three findings to carry: a dataflow graph lives on the Connect `SessionHolder` and **dies with the 60-minute idle session** (no persistence, no reattach); catalog and database defaults are frozen at `CreateDataflowGraph`, not at flow definition; and a `TABLE` is the *streaming* form while a `MATERIALIZED_VIEW` is the batch form — one boolean apart on a shared code path. Note the page's boundary: the graph engine is `sql/pipelines`, still unswept
 
 !!! info "No book covers this — docs and source only"
     Declarative Pipelines is new in Spark 4.1 and has no book treatment. The closest published material is Databricks DLT documentation, which describes the proprietary predecessor: concepts transfer, but API names do not. Prefer the Apache docs and the source.
@@ -2768,6 +2769,35 @@ and which frame class actually runs.
 
 ---
 
+
+### ⬜ A38 — Dataflow Graph Resolution: Parallel Fixed-Point Analysis
+
+> Discovered from source sweep (new topic): `sql/pipelines: DataflowGraphTransformer — parallel fixed-point resolution with retryable failures`
+
+**What it is:** How Spark Declarative Pipelines turns an unordered bag of dataset definitions into a topologically sorted, resolved graph — by resolving flows on a ten-thread pool, treating an unresolved dependency as a retryable exception, and re-queueing the dependents when the dependency lands.
+
+**Why you need it:** Every pipeline error you will actually see — a cycle, a typo'd source, a flow that resolves but whose target does not — is produced by this loop, and the way it classifies direct versus downstream failures is what makes a pipeline error log readable or useless.
+
+**Learn it with:**
+
+1. **Source sweep — [sql/pipelines — graph](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — the primary material for this topic; read the *DataflowGraphTransformer*, *VirtualTableInput* and *FlowAnalysis* sections together, in that order. The three ideas that make the algorithm click: an unresolved input is a **retryable exception**, not a lookup failure; every table is replaced by an empty DataFrame carrying only its schema, so analysis never touches storage; and the topological order is an *output* of the loop rather than an input to it
+2. **Spark-docs → Declarative Pipelines Programming Guide, `spark-pipelines dry-run`** ([declarative-pipelines-programming-guide.html](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html#spark-pipelines-dry-run)) — the user-facing surface of exactly this phase: a dry run *is* resolution plus validation, and nothing else
+3. **Source** — `sql/pipelines/.../graph/DataflowGraphTransformer.scala` (395 lines, and the whole algorithm is `transformDownNodes`), then `CoreDataflowNodeProcessor.scala` for the visitor it drives
+4. **Local stack** — build a deliberately broken pipeline against your Spark 4.2 + Delta setup: one flow reading a table that does not exist, one pair of flows reading each other, and one flow reading a dataset whose own flow fails. Compare the three error reports
+
+!!! info "No book covers this — source and docs only"
+    Declarative Pipelines postdates every published Spark book, and this is its least-documented
+    layer: the programming guide describes what a dry run *does for you*, never how resolution
+    works. The sweep page is the reference.
+
+!!! warning "Read A11 first"
+    This topic assumes you can already write and run a multi-dataset pipeline. Taken cold it is an
+    algorithm with no application.
+
+**Milestone:** You can explain why a pipeline definition file needs no dependency declarations and no ordering, and why resolution is nevertheless deterministic in its *result* while non-deterministic in its *sequence*. Given a pipeline whose error log lists six failed flows, you can say which one actually broke and which five are downstream of it — and point at the code that made that distinction. You can state what a `VirtualTableInput` is and why the plan produced by resolution cannot be executed.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -2902,6 +2932,7 @@ and which frame class actually runs.
 16. **Source sweep — [sql/core — Python and Arrow in the source map](reference/spark-source-map/sweeps/sql-core-python-arrow.md)** — the observability surface of the Python side: the `PythonSQLMetrics` set in the SQL tab, `PythonWorkerLogsExec` reading worker log blocks back out of the `BlockManager` as a queryable table, and the worker-diagnostic flags the SQL layer owns — `faulthandler.enabled`, `idleTimeoutSeconds` / `killOnIdleTimeout`, `tracebackDumpIntervalSeconds`, and the `hideTraceback` / `simplifiedTraceback` pair that decides how much Python traceback reaches the JVM exception
 17. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — what to monitor and where it comes from: `ProgressReporter`'s `durationMs` map separates `triggerExecution` from `walCommit` from `addBatch`, so a slow batch is decidable rather than guessable; `numRowsDroppedByWatermark` is the otherwise-silent count of late rows; and the state-store coordinator reports **snapshot upload lag** per instance, which is how you find the one partition that will take an hour to recover
 18. **Source sweep — [sql/core — the classic API in the source map](reference/spark-source-map/sweeps/sql-core-classic-api.md)** — two observability surfaces this topic can use: `ObservationManager` (metrics collected during the query rather than in a second pass) and the `InMemoryTableScanExec` accumulators `readPartitions` / `readBatches`, which make cache batch-skipping visible instead of theoretical
+19. **Source sweep — [sql/pipelines — graph in the source map](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — pipeline observability from the producing side, and it is thinner than it looks. `QueryOrigin` is the provenance channel — file, line and SQL text attached to exceptions as a **suppressed exception** so the original type survives, which is what lets a pipeline error point at a line of the user's Python or SQL. Against that, three gaps to know about before you build alerting on pipeline runs: the run outcome reports `COMPLETED` when every flow was skipped or excluded; a persisted view that failed to publish does **not** fail the run and appears only as a flow event; and `UnexpectedRunFailure` ("Run FAILED unexpectedly", no cause attached) is an ordinary reachable outcome, not the bug its scaladoc claims
 
 !!! warning "Group-based ACLs deny silently when group lookup fails"
 
@@ -3054,7 +3085,8 @@ and which frame class actually runs.
 2. **DLDG Ch 7** — streaming CDC in and out of Delta Lake; CDF for downstream propagation
 3. **DEB Module 1** — MERGE INTO patterns; incremental ingestion strategies
 4. **Delta-docs → Change Data Feed** ([delta-change-data-feed.html](https://docs.delta.io/latest/delta-change-data-feed.html)) — enabling CDF, what lands in `_change_data`, the `_change_type` / `_commit_version` / `_commit_timestamp` columns, and the retention caveats. Contrast with Spark 4.2.0's engine-level `CHANGES` clause (see the callout above) — two mechanisms, different scopes
-5. **Source sweep — [sql/connect — declarative pipelines in the source map](reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md)** — the **AutoCDC** declarative API added in 4.2.0: name a source stream, the key columns and a `sequence_by` expression, and the engine applies SCD Type 1 or Type 2 without you writing a `MERGE`. Read the warning before relying on it — `apply_as_truncates` and the two `ignore_null_updates_*` lists are accepted by the API and **silently ignored by the engine** at 4.2.0 (SPARK-57092, SPARK-57093), so a pipeline reports success while doing something other than what was declared
+5. **Source sweep — [sql/connect — declarative pipelines in the source map](reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md)** — the **AutoCDC** declarative API added in 4.2.0: name a source stream, the key columns and a `sequence_by` expression, and the engine applies the changes without you writing a `MERGE`. Read the warning before relying on it — `apply_as_truncates` and the two `ignore_null_updates_*` lists are accepted by the API and **silently ignored by the engine** at 4.2.0 (SPARK-57092, SPARK-57093), so a pipeline reports success while doing something other than what was declared
+6. **Source sweep — [sql/pipelines — graph in the source map](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — the engine side of AutoCDC, and it corrects the scope: **SCD Type 2 is modelled but not implemented at 4.2.0** — `ScdType.Type2` raises `AUTOCDC_SCD2_NOT_SUPPORTED` in both `FlowPlanner` and `AutoCdcMergeFlow.schema`, so only Type 1 runs. The mechanism is a hidden **auxiliary state table** per target (`<prefix>aux_state_<table>`, holding the key columns plus a per-key sequence watermark) created at flow execution, dropped on full refresh, and whose key set is written once as a JSON table property and treated as immutable. Two operational consequences: the target's connector must implement `SupportsRowLevelOperations` or the flow fails with `AUTOCDC_TARGET_DOES_NOT_SUPPORT_MERGE`, and **changing the key columns of an existing AutoCDC flow passes a dry run and fails partway through the next real run**, because drift validation happens in the write's constructor rather than during graph validation
 
 **Milestone:** You can implement a full SCD Type 2 merge that adds `effective_start`, `effective_end`, and `is_current` columns, process deletes via Delta CDF, and explain the difference between `UPDATE` and `MERGE INTO` from a transaction-log perspective.
 
@@ -3760,6 +3792,63 @@ application.
     the runtime loop. A correct rule in the wrong position is the common failure.
 
 **Milestone:** Write an extension class that injects one resolution rule which logs the plan it sees, register it two ways — via `spark.sql.extensions` on the builder and via `withExtensions` — and confirm from the log that it fires. Then demonstrate the trap: set the same config with `spark.conf.set` on an already-built session and show nothing happens. Finally, add an `injectPlannerStrategy` that matches a node the built-in strategies also handle, and say from the plan which one won and why.
+
+---
+
+
+### ⬜ E30 — Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping
+
+> Discovered from source sweep (new topic): `sql/pipelines: TriggeredGraphExecution — the topological state machine and flow retry`
+
+**What it is:** The eight states a flow moves through in a triggered pipeline run, the exponential-backoff retry budget that governs re-execution, the concurrency semaphore that bounds how many flows run at once, and the rule that skips every downstream flow once an upstream one is out of retries.
+
+**Why you need it:** A pipeline run reports one outcome for many flows, and whether that outcome is COMPLETED or FAILED is decided entirely by this state machine — including the counter-intuitive rule that a run whose flows were all SKIPPED still reports success.
+
+**Learn it with:**
+
+1. **Source sweep — [sql/pipelines — graph](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — the *TriggeredGraphExecution*, *Concurrency limiting* and *RunTerminationReason* sections. Four things to carry away: the trigger is always `AvailableNow`, so a triggered run drains and stops; downstream flows are skipped only once retries are **exhausted**, not on first failure; `determineFlowExecutionActionFromError` ignores the exception entirely and branches only on the retry count, so a permissions error and a network blip get identical treatment; and a run in which everything was `SKIPPED` or `EXCLUDED` reports **COMPLETED**
+2. **Spark-docs → Declarative Pipelines Programming Guide, Refresh Selection Behavior** ([declarative-pipelines-programming-guide.html](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html#refresh-selection-behavior)) — how a partial refresh is requested, which is what puts flows into `EXCLUDED` rather than `QUEUED`
+3. **Config reference** — the four run-shaping keys, all added in 4.1.0: `spark.sql.pipelines.execution.maxConcurrentFlows` (16), `spark.sql.pipelines.maxFlowRetryAttempts` (2, and **overridable per flow** via that flow's own SQL conf), and the `execution.watchdog.{min,max}RetryTime` pair (5 s / 3600 s) that parameterises the exponential backoff
+4. **Local stack** — run a four-dataset pipeline where the second dataset fails deterministically. Watch the retry backoff in the driver log, confirm the downstream two are `SKIPPED` only after attempt three, then set `maxFlowRetryAttempts=0` and observe the run fail immediately. Then request a partial refresh of the *last* dataset alone and check what the run reports
+
+!!! info "No book covers this — source and docs only"
+    Pipeline run semantics are documented from the user's side (how to ask for a refresh) but not
+    from the engine's (what the run then does). The sweep page is the reference.
+
+!!! warning "Do not trust the run outcome as a data-movement signal"
+    Because `SKIPPED` and `EXCLUDED` are both terminal *non-failure* states, a run that computed
+    nothing at all can report `COMPLETED`. Read the per-flow `FlowProgress` events. This is the
+    single most important operational fact in the topic.
+
+**Milestone:** You can name all eight flow states and say which four make a run report success. Given a pipeline run that reported `COMPLETED` you can prove from the event stream whether any data actually moved. You can predict the wall-clock gap between retry attempts from the two watchdog configs, and explain why raising `maxConcurrentFlows` on a deep, narrow graph changes nothing.
+
+---
+
+
+### ⬜ E31 — Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop
+
+> Discovered from source sweep (new topic): `sql/pipelines: Checkpoint layout, generations, and what full refresh actually resets`
+
+**What it is:** Where a declarative pipeline puts its streaming checkpoints (`<storage>/_checkpoints/<catalog>/<schema>/<table>/<flow>/<N>`), why a full refresh creates generation N+1 rather than deleting N, and the different reset treatment given to streaming tables, materialized views and the AutoCDC auxiliary table.
+
+**Why you need it:** Full refresh is the operation people reach for when a pipeline is wrong, and it does four different things to four different kinds of state — knowing which are reversible and which are not is the difference between a recoverable mistake and a lost table.
+
+**Learn it with:**
+
+1. **Source sweep — [sql/pipelines — graph](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — the *Checkpoint layout* section carries the four-row table this topic is built on, and the *DatasetManager* section explains the two surprises: a **materialized view is TRUNCATEd on every run**, not only on full refresh, and a full-refresh request against a non-resettable table is silently downgraded to an ordinary refresh when it came from an "all tables" request but **throws** `TABLE_NOT_RESETTABLE` when it came from an explicit selection
+2. **Spark-docs → Declarative Pipelines Programming Guide, Refresh Selection Behavior and `spark-pipelines run`** ([declarative-pipelines-programming-guide.html](https://spark.apache.org/docs/latest/declarative-pipelines-programming-guide.html#refresh-selection-behavior)) — the `--full-refresh` / `--full-refresh-all` flags, and the sink caveat: full refresh resets a sink's checkpoint but cannot clean what was already written downstream
+3. **A36 — The Streaming Checkpoint Protocol** — the contents of a checkpoint directory (offset log, commit log, state store). This topic is the layer above: which directory a pipeline flow uses and when a new one is minted. Read A36 first if the inside of a checkpoint is still opaque
+4. **Local stack** — build a streaming table plus a materialized view over it, run twice, and list `<storage>/_checkpoints/` to see the `.../<table>/<flow>/0` layout. Then full-refresh and confirm generation `1` appears **beside** `0` rather than replacing it. Set `pipelines.reset.allowed=false` as a table property and try both a targeted and an all-tables full refresh; the two behave differently
+
+!!! info "No book covers this — source and docs only"
+    The docs describe the CLI flags; the reset semantics behind them are only in the source.
+
+!!! warning "Two of the four resets are irreversible, and the CLI does not say so"
+    Data (`TRUNCATE`), schema (replaced, not merged) and the AutoCDC auxiliary table (`DROP`) do not
+    come back. Only the checkpoint is preserved, as generation N alongside the new N+1 — and nothing
+    in Spark ever prunes those, so they accumulate for as long as the pipeline is refreshed.
+
+**Milestone:** You can point at the exact directory holding a given flow's current checkpoint and say what its numeric suffix means. Given a pipeline containing a streaming table, a materialized view and an AutoCDC target, you can predict precisely what a full refresh destroys and what it keeps, and say which of those you could recover by hand. You can explain why `pipelines.reset.allowed=false` protects a table from one form of full-refresh request and not the other.
 
 ---
 

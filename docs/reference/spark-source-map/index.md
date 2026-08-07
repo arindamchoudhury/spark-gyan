@@ -88,6 +88,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A35 | Python Data Sources: Writing a Connector Without the JVM | — | — | ⬜ |
 | A36 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart | — | — | ⬜ |
 | A37 | Column Without an Engine: ColumnNode and the api/classic/connect Split | — | — | ⬜ |
+| A38 | Dataflow Graph Resolution: Parallel Fixed-Point Analysis | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -117,6 +118,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E27 | The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance | — | — | ⬜ |
 | E28 | Offline State Repartition: Changing shuffle.partitions on a Stateful Query | — | — | ⬜ |
 | E29 | SparkSessionExtensions: The Sixteen Injection Points | — | — | ⬜ |
+| E30 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping | — | — | ⬜ |
+| E31 | Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop | — | — | ⬜ |
 
 ## Source concept map
 
@@ -766,6 +769,31 @@ flowchart LR
     S27 --> S27c11["Hive UDFs, UDAFs and UDTFs"]
     S27 --> S27c12["The legacy Hive ORC reader"]
     S27 --> S27c13["Hive delegation tokens"]
+    S28["sql/pipelines"]
+    S28 --> S28c0["DataflowGraph — the immutable graph and its derived indexes"]
+    S28 --> S28c1["Graph elements — Table, View, Sink, and the flows that feed them"]
+    S28 --> S28c2["GraphRegistrationContext — the mutable builder behind every definition API"]
+    S28 --> S28c3["SqlGraphRegistrationContext — defining a whole pipeline in SQL"]
+    S28 --> S28c4["GraphIdentifierManager — qualification and the internal/external boundary"]
+    S28 --> S28c5["The flow taxonomy — two unresolved forms, four resolved ones"]
+    S28 --> S28c6["DataflowGraphTransformer — parallel fixed-point resolution with retryable failures"]
+    S28 --> S28c7["VirtualTableInput — resolving against declared schemas, not materialized data"]
+    S28 --> S28c8["FlowAnalysis — a LogicalPlan becomes a DataFrame, with per-flow SQLConf isolation"]
+    S28 --> S28c9["GraphValidations — the eight checks between a resolved graph and a run"]
+    S28 --> S28c10["Cycle detection and the two classes of resolution failure"]
+    S28 --> S28c11["GraphOperations — DFS, reachability, and the materialization-point stop rule"]
+    S28 --> S28c12["DatasetManager — materializing the graph into catalog tables"]
+    S28 --> S28c13["Persisted view publication and its dependency ordering"]
+    S28 --> S28c14["PipelineExecution — the four phases of a run"]
+    S28 --> S28c15["TriggeredGraphExecution — the topological state machine and flow retry"]
+    S28 --> S28c16["Concurrency limiting and the permit-leak assertion"]
+    S28 --> S28c17["FlowPlanner — from resolved flow to physical write"]
+    S28 --> S28c18["Checkpoint layout, generations, and what full refresh actually resets"]
+    S28 --> S28c19["Refresh selection — GraphFilter, TableFilter and FlowFilter"]
+    S28 --> S28c20["pipelines.reset.allowed and the non-resettable-dependency check"]
+    S28 --> S28c21["QueryOrigin — provenance carried in suppressed exceptions"]
+    S28 --> S28c22["The AutoCDC auxiliary state table and key-drift validation"]
+    S28 --> S28c23["RunTerminationReason — how a run reports why it stopped"]
 ```
 
 ## Topics discovered from the source
@@ -851,6 +879,9 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | RelationConversions — reading a Hive table with Spark's own reader | sql/hive | new | A27 | Hive Table Conversion: When Spark Reads Hive Tables Natively |
 | The HiveClient shim ladder | sql/hive | new | — | — |
 | Two Hive versions — the bundled client and the metastore it talks to | sql/hive | new | E21 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars |
+| Checkpoint layout, generations, and what full refresh actually resets | sql/pipelines | new | E31 | Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop |
+| DataflowGraphTransformer — parallel fixed-point resolution with retryable failures | sql/pipelines | new | A38 | Dataflow Graph Resolution: Parallel Fixed-Point Analysis |
+| TriggeredGraphExecution — the topological state machine and flow retry | sql/pipelines | new | E30 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping |
 
 
 ## Sweep status
@@ -893,7 +924,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — streaming-exec | — | ✅ partial | 4.2.0 | 2026-08-06 |
 | sql/core — classic-api | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — sql-scripting | — | ✅ complete | 4.2.0 | 2026-08-07 |
-| sql/pipelines — graph | — | ⬜ pending | — | — |
+| sql/pipelines — graph | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | sql/pipelines — autocdc | — | ⬜ pending | — | — |
 | sql/pipelines — pipeline-runtime | — | ⬜ pending | — | — |
 
