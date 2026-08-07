@@ -1952,6 +1952,7 @@ as well as range; and name the config that permits a negative scale and why it i
 5. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the other half: the three in-flight limits that throttle fetching, the single-retry corruption budget, and the Netty-OOM circuit breaker that halts fetching cluster-wide
 6. **Source sweep — [sql/core — adaptive in the source map](reference/spark-source-map/sweeps/sql-core-adaptive.md)** — the failure path AQE adds on top of this one. A stage failure does not propagate directly: it is recorded on the `QueryStageExec`, drained from the event queue, and then every *other* running exchange stage is cancelled before one exception is thrown. Several concurrent failures become a single `MULTI_FAILURES_IN_STAGE_MATERIALIZATION` with the rest attached via `addSuppressed` — which is why the same root cause can produce two very different-looking stack traces
 7. **Source sweep — [sql/core — datasources in the source map](reference/spark-source-map/sweeps/sql-core-datasources.md)** — the read-side failure switches that interact with retry: `ignoreMissingFiles` and `ignoreCorruptFiles` are evaluated per file inside `FileScanRDD`, and the corrupt-file path **succeeds with partial data** rather than failing the task — so a transient storage fault becomes a wrong answer instead of a retry. `FileNotFoundException` is still thrown under `ignoreCorruptFiles`, and `AccessControlException`/`BlockMissingException` always are
+8. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — the Kubernetes answer to "executor died, must I recompute its shuffle?". `KubernetesLocalDiskShuffleDataIO` lets a new executor **adopt a dead executor's PVC**: it disables local-file deletion on stop, then scans the reused volume for orphaned shuffle blocks and re-registers them with its own `BlockManager` — an alternative to the external shuffle service where there is no shuffle service to run. Two cautions: verification **passes when the checksum file is absent** (only the missing/empty/corrupt cases fail), and the executor-side enablement check reads `reusePersistentVolumeClaim` with a literal `false` default against a `ConfigEntry` default of `true`, so set it explicitly. Also relevant to the failure budget: on K8s a pod *deleted* (node drain, eviction) is `exitCausedByApp = false` and does not count toward `spark.executor.maxNumFailures`, while a pod *failed* does
 
 !!! warning "No book covers the retry state machine"
 
@@ -2901,6 +2902,7 @@ and which frame class actually runs.
 12. **Source sweep — [connector/profiler — async-profiler in the source map](reference/spark-source-map/sweeps/connector-profiler-async-profiler.md)** — a deployment-shaped gotcha worth knowing before someone asks for profiling in production: the module lives behind the `jvm-profiler` Maven profile and its `ap-loader-all` native dependency is `provided` scope, so **a standard Spark distribution ships neither**. On Kubernetes it additionally requires `spark.kubernetes.executor.deleteOnTermination=false`, because pods are otherwise reclaimed while the profiler's final flush is still running
 13. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — two deployment-shaped facts: the six metastore-interop configs are all **static**, so attaching Spark to an existing metastore is a submit-time decision that cannot be corrected on a running session; and on a Kerberised cluster `HiveDelegationTokenProvider` logs a **warning** and returns no token when acquisition fails, surfacing much later as an executor authentication error
 14. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — two operational surfaces: `CheckpointFileManager` is the atomic-rename abstraction the whole protocol assumes and is pluggable per scheme — which matters on object storage that does not provide it — and 4.1.0's `ChecksumCheckpointFileManager` decorates any implementation with a `CRC32C` sibling file, on by default, defending against the truncated-log-entry failure mode
+15. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — **the Kubernetes half of this topic**, and the first source-derived material behind it: 47 files, 89 configs, six of them new in 4.2.0. The frame first — Spark never asks Kubernetes for N executors, it maintains a target and reconciles against snapshots — then five operational facts. (i) **Only the `direct` allocator implements most of the config surface**: `statefulset` and `deployment` never subscribe to the snapshot store, so batch size, all three pending caps and PVC reuse simply do not apply to them. (ii) `spark.kubernetes.allocation.maximum` counts **executor ids ever issued**, not live pods, so a long dynamic-allocation job eventually dies on it. (iii) A single un-acknowledged pod blocks *all* further requests for its resource profile until a ≥600 s timeout, which is why K8s scale-up stalls in bursts. (iv) Exit code **137** is annotated `(SIGKILL, possible container OOM)` by a hand-written table — the fastest `memoryOverhead`-sizing diagnostic there is, and distinct from 52 (JVM heap OOM). (v) A pod *deleted* is `exitCausedByApp = false` and does not burn `spark.executor.maxNumFailures`, while a pod *failed* does. Reconciliation itself is topic **E33**; the 4.2.0 resize plugins are **E34**
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
@@ -2967,7 +2969,8 @@ and which frame class actually runs.
 17. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — what to monitor and where it comes from: `ProgressReporter`'s `durationMs` map separates `triggerExecution` from `walCommit` from `addBatch`, so a slow batch is decidable rather than guessable; `numRowsDroppedByWatermark` is the otherwise-silent count of late rows; and the state-store coordinator reports **snapshot upload lag** per instance, which is how you find the one partition that will take an hour to recover
 18. **Source sweep — [sql/core — the classic API in the source map](reference/spark-source-map/sweeps/sql-core-classic-api.md)** — two observability surfaces this topic can use: `ObservationManager` (metrics collected during the query rather than in a second pass) and the `InMemoryTableScanExec` accumulators `readPartitions` / `readBatches`, which make cache batch-skipping visible instead of theoretical
 19. **Source sweep — [sql/pipelines — graph in the source map](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — pipeline observability from the producing side, and it is thinner than it looks. `QueryOrigin` is the provenance channel — file, line and SQL text attached to exceptions as a **suppressed exception** so the original type survives, which is what lets a pipeline error point at a line of the user's Python or SQL. Against that, three gaps to know about before you build alerting on pipeline runs: the run outcome reports `COMPLETED` when every flow was skipped or excluded; a persisted view that failed to publish does **not** fail the run and appears only as a flow event; and `UnexpectedRunFailure` ("Run FAILED unexpectedly", no cause attached) is an ordinary reachable outcome, not the bug its scaladoc claims
-20. **Source sweep — [sql/pipelines — pipeline-runtime in the source map](reference/spark-source-map/sweeps/sql-pipelines-pipeline-runtime.md)** — the pipeline event model in full, and the page to read before building any alerting on it. **A crashed streaming flow emits `FlowProgress(COMPLETED)`**: the stream listener ignores `QueryTerminatedEvent.exception` and reports every termination as completion, so a failed flow produces both a COMPLETED and a FAILED event from two threads with no ordering guarantee — never treat COMPLETED alone as success. **There are no metrics on this channel at all** (`onQueryProgress` is empty); throughput and batch timings come from the Structured Streaming surfaces instead. And the drop policy the connect sweep documented is defined by a four-line `FlowStatus.isTerminal` whose terminal set is *narrower* than the executor's — `EXCLUDED` and `IDLE` are droppable, which are exactly the events that would tell you a run computed nothing while still reporting `COMPLETED`. Smaller: event ids are random UUIDs with no sequence number, so a gap is undetectable; `origin.datasetName` is never populated; and `RunState.RUNNING` is never emitted, so there is no run-started event
+20. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — two Kubernetes-specific observability surfaces. `SparkKubernetesDiagnosticsSetter` (opt-in via `spark.kubernetes.driver.annotateExitException`) patches the driver's fatal exception onto the driver **pod as an annotation**, truncated to 64 KiB, so `kubectl describe pod` explains a failure without log access. And `ExecutorRollPlugin` is an observability *consumer* rather than a producer: it reads `ExecutorSummary` from the status store and decommissions the worst executor by one of eleven policies — but its default `OUTLIER` policy falls back to `TOTAL_DURATION`, so once enabled it rolls an executor **every interval regardless of health**; use `OUTLIER_NO_FALLBACK` if you meant "only when something looks wrong"
+21. **Source sweep — [sql/pipelines — pipeline-runtime in the source map](reference/spark-source-map/sweeps/sql-pipelines-pipeline-runtime.md)** — the pipeline event model in full, and the page to read before building any alerting on it. **A crashed streaming flow emits `FlowProgress(COMPLETED)`**: the stream listener ignores `QueryTerminatedEvent.exception` and reports every termination as completion, so a failed flow produces both a COMPLETED and a FAILED event from two threads with no ordering guarantee — never treat COMPLETED alone as success. **There are no metrics on this channel at all** (`onQueryProgress` is empty); throughput and batch timings come from the Structured Streaming surfaces instead. And the drop policy the connect sweep documented is defined by a four-line `FlowStatus.isTerminal` whose terminal set is *narrower* than the executor's — `EXCLUDED` and `IDLE` are droppable, which are exactly the events that would tell you a run computed nothing while still reporting `COMPLETED`. Smaller: event ids are random UUIDs with no sequence number, so a gap is undetectable; `origin.datasetName` is never populated; and `RunState.RUNNING` is never emitted, so there is no run-started event
 
 !!! warning "Group-based ACLs deny silently when group lookup fails"
 
@@ -3920,6 +3923,71 @@ application.
     in the UI will name.
 
 **Milestone:** You can state, without looking, what the auxiliary table contains and why the target table alone cannot answer the same question. Given a stream of out-of-order inserts, updates and deletes for one key, you can predict the final target row and the final tombstone state, and say which merge clause produced each. You can explain why an upsert and a delete carrying the *same* sequence value leave the row alive, and why that makes a second-granularity timestamp a poor `sequence_by`.
+
+---
+
+
+### ⬜ E33 — Executor Pod Reconciliation: Watch, Poll, and the Events You Miss
+
+> Discovered from source sweep (new topic): `resource-managers/kubernetes: ExecutorPodsSnapshotsStore — a producer/consumer bus with per-subscriber batching`
+
+**What it is:** How the Spark driver keeps its idea of the executor set in sync with the Kubernetes API server — two independent snapshot sources (a streaming watch and a periodic full poll) feeding one snapshot store, and the three separate timeout-driven reconcilers that recover when an event is missed.
+
+**Why you need it:** Every "my executors vanished" or "Spark thinks it has executors it does not" incident on Kubernetes is this machinery failing or timing out, and the three timeouts that govern it are the ones you will actually need to tune.
+
+**Learn it with:**
+
+1. **Source sweep — [resource-managers/kubernetes — driver & executor](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — the primary material. Read *ExecutorPodsSnapshotsStore*, *ExecutorPodsSnapshot*, *Watch versus polling* and *ExecutorPodsLifecycleManager* in that order. The frame that makes it click: Spark never asks Kubernetes for N executors, it maintains a target and reconciles against snapshots — so every failure mode is a reconciliation that did not converge
+2. **Spark-docs → Running Spark on Kubernetes** ([running-on-kubernetes.html](https://spark.apache.org/docs/latest/running-on-kubernetes.html)) — the configuration reference for the keys below. It documents what each does; it does not explain how they interact, which is what the sweep is for
+3. **Kubernetes docs → Watches and resourceVersion** ([kubernetes.io/docs/reference/using-api/api-concepts](https://kubernetes.io/docs/reference/using-api/api-concepts/#efficient-detection-of-changes)) — why a watch can drop events, what `410 Gone` means, and why `resourceVersion=0` is a cache read that can go backwards. Spark's design is a direct response to all three
+4. **E2 — Production Deployment** — the prerequisite. This topic assumes you can already submit and run a job on Kubernetes
+5. **Local stack** — run a job on kind or minikube, then `kubectl delete pod` an executor mid-stage and watch the driver log: you should see the lifecycle manager attribute it as `exitCausedByApp = false`. Then set `spark.kubernetes.executor.enableApiWatcher=false` and repeat, timing how much longer detection takes — that difference is the poll interval, and it is the whole argument for having both sources
+
+!!! info "No book covers this — source and docs only"
+    Kubernetes-specific scheduler internals postdate every published Spark book. The programming
+    guide lists the configs; the reconciliation design is source-only.
+
+!!! warning "Disabling the poller is a correctness trade, not a load optimisation"
+    `fullSnapshotTs` is only ever set by the poller, and the missing-pod reconciler is gated on it
+    changing. Turning off `spark.kubernetes.executor.enableApiPolling` therefore leaves the driver
+    relying entirely on a watch connection that is known to drop events — with no reconciler behind
+    it. Learn this one before you tune anything.
+
+**Milestone:** You can name the two snapshot sources, say which one produces `fullSnapshotTs` and why that matters, and describe all three timeout-driven reconcilers (pod requested but never observed; registered executor absent from a full snapshot; excess pending pods past the idle timeout) including which config governs each. Given a driver that has stopped scaling up, you can say why a single un-acknowledged pod blocks its whole resource profile and how long that lasts by default. You can explain why `spark.kubernetes.allocation.maximum` eventually kills a long-running dynamic-allocation job.
+
+---
+
+
+### ⬜ E34 — Vertical Scaling on Kubernetes: In-Place Pod Resize and PVC Growth
+
+> Discovered from source sweep (new topic): `resource-managers/kubernetes: Vertical scaling — in-place memory resize and PVC growth`
+
+**What it is:** The two Spark 4.2.0 plugins that grow a running executor rather than adding another one — patching the pod's `resize` subresource to raise its memory limit, and patching the executor's PVC to grow local-disk storage, both driven by observed usage.
+
+**Why you need it:** Horizontal scaling cannot fix an executor that OOMs on one skewed partition or fills its shuffle disk; these are Spark's first answers to that, they are opt-in, undocumented, and each has a prerequisite that will silently disable it.
+
+**Learn it with:**
+
+1. **Source sweep — [resource-managers/kubernetes — driver & executor](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — the *Vertical scaling* section is the only description of these plugins that exists. Also read *Recovery mode* beside it: it is the third 4.2.0 answer to the same problem, arriving from the opposite direction (keep the executor's size, give it one task instead of many)
+2. **Kubernetes docs → Resize CPU and Memory Resources assigned to Containers** ([kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources](https://kubernetes.io/docs/tasks/configure-pod-container/resize-container-resources/)) — KEP-1287, the `resize` subresource the memory plugin patches. Check the feature-gate status for your cluster version before planning around it
+3. **Kubernetes docs → Expanding Persistent Volumes Claims** ([kubernetes.io/docs/concepts/storage/persistent-volumes/#expanding-persistent-volumes-claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#expanding-persistent-volumes-claims)) — the `allowVolumeExpansion: true` requirement on the StorageClass, without which the PVC plugin patches and nothing happens
+4. **A4 — Data Skew and Shuffle Optimisation** — the alternative. Growing the executor that got the skewed partition treats the symptom; AQE skew splitting treats the cause. Know which one you are reaching for
+5. **Local stack** — enable `ExecutorPVCResizePlugin` with on-demand PVCs, run a shuffle-heavy job that fills the volume past 50%, and watch the driver log for the resize patch. Then check `kubectl get pvc` for `spec` versus `status.capacity` — the gap is a resize in flight, and it is the condition the plugin uses to avoid double-patching
+
+!!! info "No book covers this — source only"
+    Both plugins are new in Spark 4.2.0 and neither is mentioned in the Kubernetes programming guide.
+    The config docs and the sweep page are the whole of the documentation.
+
+!!! warning "Three traps before you enable either"
+    (i) Both refuse to start unless `spark.kubernetes.allocation.pods.allocator` is `direct` — they
+    log a warning and return. (ii) `ExecutorResizePlugin` bypasses its own typed config: leaving
+    `spark.kubernetes.executor.resizeInterval` at its documented default of `0` gives a **60-second
+    poll**, not "disabled", and explicitly setting `0` throws `IllegalArgumentException`; the only
+    way to disable it is to remove it from `spark.plugins`. (iii) Neither plugin ever shrinks
+    anything and memory growth has no ceiling, so pair them with a namespace `LimitRange` or
+    `ResourceQuota`.
+
+**Milestone:** You can state each plugin's prerequisite (metrics-server for memory; `allowVolumeExpansion` for disk; the `direct` allocator for both) and predict the growth curve from `threshold` and `factor`. You can explain why the PVC plugin needs an executor-side component while the memory one does not, and why a failed PVC expansion is never retried. Given an executor that OOMs on one partition, you can argue for resize, recovery mode, or fixing the skew — and say what each costs.
 
 ---
 
