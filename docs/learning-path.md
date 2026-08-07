@@ -473,10 +473,10 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 **Estimated time to complete this level:** 38–54 hrs
 
-**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I11** (the storage-and-table-format run) → I12. The level then ends with its checkpoint. I13–I19 sit around that gate as source-derived depth — they are not required to pass it, and are read on demand rather than in sequence.
+**Reading order:** I1 → I2 → I3 → I4 → I5 → I6 → I7 → **I8 → I9 → I10 → I11** (the storage-and-table-format run) → I12. The level then ends with its checkpoint. I13–I32 sit around that gate as source-derived depth — they are not required to pass it, and are read on demand rather than in sequence. The one pairing worth keeping in order: **I12 → I31 → I32**, the SQL-scripting run, since cursors depend on condition handlers.
 
 !!! info "Why the numbering jumps"
-    I11 (Iceberg) closes the storage-and-table-format run; I13–I15 are optional-depth topics from a source sweep, numbered last because they sit outside the main line.
+    I11 (Iceberg) closes the storage-and-table-format run; everything from I13 up is optional-depth material from source sweeps, numbered last because it sits outside the main line.
 
 ---
 
@@ -963,14 +963,21 @@ You are ready to leave this level when you can build a complete end-to-end batch
 
 1. **Spark-docs → SQL Scripting** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — the canonical reference; covers all statement types with examples
 2. **Spark 4.0 release notes** — understand which constructs were added in 4.0 vs 4.1
-3. **Source** — `sql/catalyst/.../parser/SqlBaseParser.g4` for the grammar; the scripting execution lives under `sql/core/.../scripting/`
-4. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — where SQL scripting's state lives: `VariableManager` / `TempVariableManager` back `DECLARE` and `SET VARIABLE`, `SqlScriptingContextManager` pushes a scoped manager for a script's local variables, and `SQLFunction` stores a SQL UDF as **text** that is re-parsed on use. Cursors arrived in 4.2.0 behind `spark.sql.scripting.cursorEnabled` (default false)
-5. **Source sweep — [sql/core — query-execution in the source map](reference/spark-source-map/sweeps/sql-core-query-execution.md)** — the physical commands behind scripting's newest feature: `DECLARE`/`OPEN`/`FETCH`/`CLOSE CURSOR` ([SPARK-54759]), which store the cursor query as **unparsed SQL text** so parameter markers survive until `OPEN`, plus the session-variable commands they share a strategy with
+3. **Spark-docs → Compound statement** ([control-flow/compound-stmt.html](https://spark.apache.org/docs/latest/control-flow/compound-stmt.html)) and the per-statement pages beside it — [IF](https://spark.apache.org/docs/latest/control-flow/if-stmt.html), [CASE](https://spark.apache.org/docs/latest/control-flow/case-stmt.html), [WHILE](https://spark.apache.org/docs/latest/control-flow/while-stmt.html), [REPEAT](https://spark.apache.org/docs/latest/control-flow/repeat-stmt.html), [LOOP](https://spark.apache.org/docs/latest/control-flow/loop-stmt.html), [FOR](https://spark.apache.org/docs/latest/control-flow/for-stmt.html), [LEAVE](https://spark.apache.org/docs/latest/control-flow/leave-stmt.html), [ITERATE](https://spark.apache.org/docs/latest/control-flow/iterate-stmt.html). The compound-statement page carries the rule the others assume: declarations come first, in a fixed order
+4. **Source sweep — [sql/core — SQL scripting in the source map](reference/spark-source-map/sweeps/sql-core-sql-scripting.md)** — the interpreter itself: the `CompoundBody` that bypasses the analyzer entirely, the frame/scope stack, the in-order iterator that *is* the control flow, and the two behaviours nothing else documents — a script runs during analysis rather than on an action, and only its **last** result set is returned
+5. **Source sweep — [sql/catalyst — framework in the source map](reference/spark-source-map/sweeps/sql-catalyst-framework.md)** — where SQL scripting's state lives: `VariableManager` / `TempVariableManager` back `DECLARE` and `SET VARIABLE`, `SqlScriptingContextManager` pushes a scoped manager for a script's local variables, and `SQLFunction` stores a SQL UDF as **text** that is re-parsed on use. Cursors arrived in 4.2.0 behind `spark.sql.scripting.cursorEnabled` (default false)
+6. **Source sweep — [sql/core — query-execution in the source map](reference/spark-source-map/sweeps/sql-core-query-execution.md)** — the physical commands behind scripting's newest feature: `DECLARE`/`OPEN`/`FETCH`/`CLOSE CURSOR` ([SPARK-54759]), which store the cursor query as **unparsed SQL text** so parameter markers survive until `OPEN`, plus the session-variable commands they share a strategy with
 
 !!! info "No book covers this — docs and source only"
     SQL scripting landed in Spark 4.0, after every book in the resources table. Rioux (2022), LS2e (2020) and SDG (2018) have nothing on it. Treat the docs page as primary and verify behaviour against your own 4.2.0 stack rather than waiting for a book to catch up.
 
-**Milestone:** You can write a SQL script that declares a variable, iterates over a cursor with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline.
+!!! info "Error handling and cursors are their own topics"
+    This topic is the procedural core: blocks, variables, branches, loops. The two features that hang off it are large enough to study separately — [I31](#i31-sql-scripting-condition-handlers-exit-continue-and-sqlstate-matching) for `DECLARE ... HANDLER`, and [I32](#i32-sql-cursors-row-at-a-time-iteration-and-where-the-snapshot-is-taken) for cursors. Read them in that order after this one; the cursor loop depends on the handler mechanism.
+
+!!! warning "`spark-sql` cannot run a script"
+    The CLI splits input on semicolons before parsing and passes `enableSqlScripting = false` to the splitter, so a `BEGIN … END` block arrives as several broken fragments. There is a scripting-aware mode in `StringUtils.splitSemiColonWithIndex`, but nothing calls it with that flag set in 4.2.0. Use `spark.sql(...)`, JDBC/Thrift, or Connect — Connect works unchanged, because its SQL command calls the same classic `SparkSession.sql`.
+
+**Milestone:** You can write a SQL script that declares a variable, iterates over a query result with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline. Then two that come from the source rather than the docs: say at what moment a script's statements actually execute (hint: not when you call an action), and what happens to the output of a `SELECT` that is not the last statement in the script.
 
 ---
 
@@ -1542,6 +1549,59 @@ as well as range; and name the config that permits a negative scale and why it i
     group is".
 
 **Milestone:** Write a UDTF that takes a string and a delimiter and yields one row per token, call it from both the DataFrame API and a SQL `FROM` clause, and show `explain()` naming the eval operator. Then write a second UDTF with `analyze()` that derives its output schema from a `TABLE(...)` argument's columns, and demonstrate two things: that passing a table whose schema does not match raises at analysis time rather than at task time, and that requesting `partitionBy` in the `AnalyzeResult` adds an `Exchange` to the plan.
+
+---
+
+
+### ⬜ I31 — SQL Scripting Condition Handlers: EXIT, CONTINUE and SQLSTATE Matching
+
+> Discovered from source sweep (new topic): `sql/core: Condition handlers — EXIT, CONTINUE, and how a handler is chosen`
+
+**What it is:** The DECLARE ... HANDLER mechanism inside a SQL script: named conditions, SQLSTATE matching, the NOT FOUND and SQLEXCEPTION catch-alls, and the difference between an EXIT handler (which leaves the enclosing block) and a CONTINUE handler (which resumes after the failing statement).
+
+**Why you need it:** It is the only error handling a pure-SQL pipeline has, and its resolution order is not obvious — a handler on a SQLSTATE can silently outrank the one you thought you wrote, an unhandled `02` condition does not fail the script at all, and CONTINUE handlers change which statement runs next.
+
+**Learn it with:**
+
+1. **Spark-docs → SQL Scripting, "Condition handling"** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — the normative statement of the three handler classes (named condition, SQLSTATE, the `SQLEXCEPTION` and `NOT FOUND` catch-alls), the "most appropriate handler" rule, and what `EXIT` versus `CONTINUE` does afterwards. Read this section first and in full; it is short and every sentence is load-bearing
+2. **Spark-docs → Compound statement** ([control-flow/compound-stmt.html](https://spark.apache.org/docs/latest/control-flow/compound-stmt.html)) — the syntax and, more importantly, the *ordering* rule: conditions and handlers must be declared at the top of the block, in a fixed order, or the parse fails
+3. **Spark-docs → Error Conditions** ([sql-error-conditions.html](https://spark.apache.org/docs/latest/sql-error-conditions.html)) — the catalogue you actually write handlers against. Each entry lists its SQLSTATE, which is what decides whether your `SQLEXCEPTION` or `NOT FOUND` handler fires
+4. **Source sweep — [sql/core — SQL scripting in the source map](reference/spark-source-map/sweeps/sql-core-sql-scripting.md)** — the runtime: the five-step handler search in `SqlScriptingExecutionScope.findHandler`, the frame stack that makes a handler body a separate call context, and the two mechanisms that implement the aftermath (`injectLeaveStatement` for EXIT, `interruptConditionalStatements` for CONTINUE)
+
+!!! info "No book covers this — docs and source only"
+    Condition handlers arrived with SQL scripting in Spark 4.0, and `CONTINUE` handlers only in 4.1. Rioux (2022), LS2e (2020) and SDG (2018) predate all of it. Treat the docs page as primary, verify against your own 4.2.0 stack, and use the sweep for the behaviour the docs do not spell out.
+
+!!! warning "`CONTINUE HANDLER` is off by default"
+    `spark.sql.scripting.continueHandlerEnabled` defaults to **false** (internal, since 4.1.0). A `DECLARE CONTINUE HANDLER` raises `UNSUPPORTED_FEATURE.CONTINUE_EXCEPTION_HANDLER` until you turn it on. Set it before you start on this topic, or half the material is unreachable.
+
+**Milestone:** You can write a script whose inner block declares an `EXIT HANDLER FOR DIVIDE_BY_ZERO` and whose outer block declares an `EXIT HANDLER FOR SQLEXCEPTION`, provoke each, and predict from the source which one fires and where execution resumes. Then the two that catch people: explain why a `SQLEXCEPTION` handler does **not** catch an internal (`XX`-class) error, and why a script containing a failing statement whose SQLSTATE starts `02` completes successfully with no handler at all.
+
+---
+
+
+### ⬜ I32 — SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken
+
+> Discovered from source sweep (new topic): `sql/core: Cursors — DECLARE, OPEN, FETCH, CLOSE and the snapshot taken at OPEN`
+
+**What it is:** The 4.2.0 cursor statements — DECLARE CURSOR, OPEN (with USING parameters), FETCH ... INTO variables, CLOSE — their four-state lifecycle, and the fact that OPEN starts execution and locks in the files that will be read.
+
+**Why you need it:** A cursor is the one place in Spark where you consume a query row by row on the driver, and its semantics are surprising in both directions: the data snapshot is fixed at `OPEN` rather than at `FETCH`, and running off the end raises a condition that is silently ignored unless you declared a `NOT FOUND` handler.
+
+**Learn it with:**
+
+1. **Spark-docs → OPEN** ([control-flow/open-stmt.html](https://spark.apache.org/docs/latest/control-flow/open-stmt.html)), **FETCH** ([control-flow/fetch-stmt.html](https://spark.apache.org/docs/latest/control-flow/fetch-stmt.html)) and **CLOSE** ([control-flow/close-stmt.html](https://spark.apache.org/docs/latest/control-flow/close-stmt.html)) — the three statement pages; `DECLARE CURSOR` and the declaration-ordering rule are on the compound-statement page below
+2. **Spark-docs → SQL Scripting, "Variable and cursor scoping"** ([sql-ref-scripting.html](https://spark.apache.org/docs/latest/sql-ref-scripting.html)) — cursors are scoped to their compound statement and are implicitly closed when it exits, including on an `EXIT` handler; also the label-qualification rule for duplicate names in nested scopes
+3. **Spark-docs → Compound statement** ([control-flow/compound-stmt.html](https://spark.apache.org/docs/latest/control-flow/compound-stmt.html)) — where a cursor declaration is allowed: after variables and conditions, before handlers
+4. **Source sweep — [sql/core — SQL scripting in the source map](reference/spark-source-map/sweeps/sql-core-sql-scripting.md)** — the four-state machine in `CursorState.scala`, the `executeToIterator()` call in `OpenCursorExec` that is *why* the snapshot is taken at `OPEN`, and the ANSI store-assignment casts (plus the multi-column-into-one-struct special case) that `FETCH ... INTO` applies
+5. **Source sweep — [sql/core — query-execution in the source map](reference/spark-source-map/sweeps/sql-core-query-execution.md)** — the same four commands seen as DSv2 physical operators, sharing a strategy and a parameter binder with `EXECUTE IMMEDIATE`
+
+!!! info "No book covers this — docs and source only"
+    Cursors landed in Spark 4.2.0 ([SPARK-54759]), long after Rioux (2022), LS2e (2020) and SDG (2018). There is no book treatment and there will not be one for some time. Docs plus the sweep, verified against your own stack.
+
+!!! warning "Two internal flags, both off, and you need both"
+    `spark.sql.scripting.cursorEnabled` defaults to **false** — every cursor statement raises `UNSUPPORTED_FEATURE.SQL_CURSOR` until it is on. And the idiomatic fetch loop needs `spark.sql.scripting.continueHandlerEnabled` too, because end-of-data is signalled as `CURSOR_NO_MORE_ROWS` (SQLSTATE `02000`) and the only way to observe it is a `CONTINUE HANDLER FOR NOT FOUND` ([I31](#i31-sql-scripting-condition-handlers-exit-continue-and-sqlstate-matching)). Read that topic first.
+
+**Milestone:** You can write a script that declares a cursor over a query, opens it, loops `FETCH ... INTO` local variables until a `NOT FOUND` handler sets a done flag, and closes it. Then the parts that are not obvious: show that modifying the underlying table between `OPEN` and the last `FETCH` does not change the rows you get, and predict what a script does if you drop the `NOT FOUND` handler and fetch past the end.
 
 ---
 
@@ -3014,6 +3074,7 @@ and which frame class actually runs.
 4. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — how `--remote` enters submission as a mutually-exclusive alternative to `--master`, and why the Connect server may only run in cluster mode under YARN
 5. **Source sweep — [sql/connect — client-server in the source map](reference/spark-source-map/sweeps/sql-connect-client-server.md)** — the **first source-derived material behind this topic**, and the one sweep that covers it end to end: the twelve RPCs and 65 relation messages, `SparkConnectPlanner` (a second front end that builds an unresolved `LogicalPlan`, alongside the SQL parser), `SessionHolder` and its 60-minute idle timeout, the plan cache keyed on the serialized protobuf, reattachable execution, artifacts, retries and error enrichment. Note two things that shape day-to-day use: `df.show()` is a *relation type* so it is a network round trip, and built-in auth is a **single pre-shared token** with a client-supplied, untrusted `user_id`
 6. **Source sweep — [sql/core — the classic API in the source map](reference/spark-source-map/sweeps/sql-core-classic-api.md)** — the classic half of the split this topic is about: every class in `classic/` is `extends sql.<Name>`, with Connect supplying a second implementation of the same `sql/api` interfaces. The mechanism that makes it possible is `ColumnNode` (see **A37**) — a `Column` is no longer a Catalyst `Expression` wrapper. Also `ArtifactManager`'s isolation flag, which `enableHiveSupport` silently disables
+7. **Source sweep — [sql/core — SQL scripting in the source map](reference/spark-source-map/sweeps/sql-core-sql-scripting.md)** — one concrete case of "what does Connect *not* change": `SparkConnectPlanner`'s SQL command calls the classic `SparkSession.sql`, so a SQL script runs server-side exactly as it would in classic mode, named parameters and all. The one difference is inherited from the classic path, not from Connect — positional parameters are rejected for scripts
 
 !!! info "No book covers this — docs only"
     Spark Connect arrived in 3.4 and became the default `pyspark` REPL mode in 4.x, after all four books. LS2e and SDG describe classic mode exclusively and never flag the distinction, which makes them quietly wrong about what a UDF can reach. Docs and your own local server are the sources here.

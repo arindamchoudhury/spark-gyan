@@ -60,6 +60,7 @@ nav = [
             { "sql/core — Python and Arrow" = "reference/spark-source-map/sweeps/sql-core-python-arrow.md" },
             { "sql/core — Streaming execution" = "reference/spark-source-map/sweeps/sql-core-streaming-exec.md" },
             { "sql/core — The classic API" = "reference/spark-source-map/sweeps/sql-core-classic-api.md" },
+            { "sql/core — SQL scripting" = "reference/spark-source-map/sweeps/sql-core-sql-scripting.md" },
             { "sql/connect — Client & server" = "reference/spark-source-map/sweeps/sql-connect-client-server.md" },
             { "sql/connect — Declarative pipelines" = "reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md" },
             { "connector/profiler — async-profiler" = "reference/spark-source-map/sweeps/connector-profiler-async-profiler.md" },
