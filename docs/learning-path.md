@@ -977,6 +977,9 @@ You are ready to leave this level when you can build a complete end-to-end batch
 !!! warning "`spark-sql` cannot run a script"
     The CLI splits input on semicolons before parsing and passes `enableSqlScripting = false` to the splitter, so a `BEGIN … END` block arrives as several broken fragments. There is a scripting-aware mode in `StringUtils.splitSemiColonWithIndex`, but nothing calls it with that flag set in 4.2.0. Use `spark.sql(...)`, JDBC/Thrift, or Connect — Connect works unchanged, because its SQL command calls the same classic `SparkSession.sql`.
 
+!!! warning "`SET` inside a script assigns a variable — it cannot change a config"
+    The grammar rule behind `SET spark.sql.…` and `RESET` is reachable only from a top-level statement and from `EXPLAIN`, never from a script body. Inside `BEGIN … END`, `SET` always means variable assignment, so `SET spark.sql.shuffle.partitions = 200` parses as an assignment to a four-part *variable* name and fails as an unresolved variable. Set every config — including the scripting feature gates themselves — from the session before you invoke the script.
+
 **Milestone:** You can write a SQL script that declares a variable, iterates over a query result with `FOR`, applies a conditional with `IF...ELSIF`, and produces a result — and explain when you would choose SQL scripting over a Python pipeline. Then two that come from the source rather than the docs: say at what moment a script's statements actually execute (hint: not when you call an action), and what happens to the output of a `SELECT` that is not the last statement in the script.
 
 ---
@@ -1574,7 +1577,7 @@ as well as range; and name the config that permits a negative scale and why it i
 !!! warning "`CONTINUE HANDLER` is off by default"
     `spark.sql.scripting.continueHandlerEnabled` defaults to **false** (internal, since 4.1.0). A `DECLARE CONTINUE HANDLER` raises `UNSUPPORTED_FEATURE.CONTINUE_EXCEPTION_HANDLER` until you turn it on. Set it before you start on this topic, or half the material is unreachable.
 
-**Milestone:** You can write a script whose inner block declares an `EXIT HANDLER FOR DIVIDE_BY_ZERO` and whose outer block declares an `EXIT HANDLER FOR SQLEXCEPTION`, provoke each, and predict from the source which one fires and where execution resumes. Then the two that catch people: explain why a `SQLEXCEPTION` handler does **not** catch an internal (`XX`-class) error, and why a script containing a failing statement whose SQLSTATE starts `02` completes successfully with no handler at all.
+**Milestone:** You can write a script whose inner block declares an `EXIT HANDLER FOR DIVIDE_BY_ZERO` and whose outer block declares an `EXIT HANDLER FOR SQLEXCEPTION`, provoke each, and predict from the source which one fires and where execution resumes. Then the two that catch people: explain why a `SQLEXCEPTION` handler does **not** catch an internal (`XX`-class) error, and why a script containing a failing statement whose SQLSTATE starts `02` completes successfully with no handler at all. Finally, declare your own condition with `DECLARE ... CONDITION FOR SQLSTATE` and say which SQLSTATE values the parser refuses and why, and what a bare `DECLARE c CONDITION` defaults to.
 
 ---
 
@@ -1601,7 +1604,7 @@ as well as range; and name the config that permits a negative scale and why it i
 !!! warning "Two internal flags, both off, and you need both"
     `spark.sql.scripting.cursorEnabled` defaults to **false** — every cursor statement raises `UNSUPPORTED_FEATURE.SQL_CURSOR` until it is on. And the idiomatic fetch loop needs `spark.sql.scripting.continueHandlerEnabled` too, because end-of-data is signalled as `CURSOR_NO_MORE_ROWS` (SQLSTATE `02000`) and the only way to observe it is a `CONTINUE HANDLER FOR NOT FOUND` ([I31](#i31-sql-scripting-condition-handlers-exit-continue-and-sqlstate-matching)). Read that topic first.
 
-**Milestone:** You can write a script that declares a cursor over a query, opens it, loops `FETCH ... INTO` local variables until a `NOT FOUND` handler sets a done flag, and closes it. Then the parts that are not obvious: show that modifying the underlying table between `OPEN` and the last `FETCH` does not change the rows you get, and predict what a script does if you drop the `NOT FOUND` handler and fetch past the end.
+**Milestone:** You can write a script that declares a cursor over a query, opens it, loops `FETCH ... INTO` local variables until a `NOT FOUND` handler sets a done flag, and closes it. Then the parts that are not obvious: show that modifying the underlying table between `OPEN` and the last `FETCH` does not change the rows you get, and predict what a script does if you drop the `NOT FOUND` handler and fetch past the end. Finally, say which cursor errors surface during *analysis* and which only at execution — a misspelled cursor name and a `FETCH` from a cursor you never opened fail in different phases, and one of them will not fail at all if it sits in a branch that never runs.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 subsystem: sql/core
 spark_version: "4.2.0"
-swept_at: 2026-08-06
+swept_at: 2026-08-07
 group: sql-scripting
 all_groups: [query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec, classic-api, sql-scripting]
 status: complete
@@ -40,6 +40,8 @@ concepts:
       title: "SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken"
       what: "The 4.2.0 cursor statements — DECLARE CURSOR, OPEN (with USING parameters), FETCH ... INTO variables, CLOSE — their four-state lifecycle, and the fact that OPEN starts execution and locks in the files that will be read."
       why: "A cursor is the one place in Spark where you consume a query row by row on the driver, and its semantics are surprising in both directions: the data snapshot is fixed at OPEN rather than at FETCH, and running off the end raises a condition that is silently ignored unless you declared a NOT FOUND handler."
+  - name: Parameters and SET — what a statement inside a script may be
+    topics: [I12]
   - name: Errors, line numbers, and the three feature gates
     topics: [I12]
   - name: The edges — stored procedures, the spark-sql CLI, EXECUTE IMMEDIATE, Connect
@@ -57,6 +59,21 @@ concepts:
 > catalogue all live in `sql/catalyst`, and the four cursor commands live in
 > `sql/core/execution/command/v2/`. This page follows the concept, and says which module each
 > anchor is in.
+
+!!! note "Re-swept 2026-08-07 at an unchanged Spark 4.2.0"
+
+    The first pass (2026-08-06) was breadth-complete and stayed breadth-complete on the re-sweep:
+    7/7 files in `scripting/` cited, no nested sub-packages, all three `spark.sql.scripting.*`
+    configs attributed. **Neither breadth check found work** — the second pass was driven by depth,
+    specifically by the rule that a concept recorded as an entry point plus one class is a
+    placeholder. Four layers had been *cited but never opened*: `ResolveCursors`,
+    `ResolveFetchCursor`, `ParameterizedQueryExecutor`, and the parser's condition/SQLSTATE
+    validation.
+
+    Opening them **corrected one claim on this page** — cursor *existence* is resolved in the
+    analyzer, not at runtime as originally written (see [Cursors](#cursors-declare-open-fetch-close-and-the-snapshot-taken-at-open))
+    — and added the parameters-and-`SET` concept below. No concept mapped to a new topic; everything
+    landed on I12, I31 or I32, which is a normal re-sweep outcome rather than a failed one.
 
 !!! info "Prior coverage, and how this page differs"
 
@@ -265,6 +282,19 @@ declared, which is what makes handler bodies obey lexical scoping.
     cosmetic: the scope stack, `LEAVE`/`ITERATE` matching, qualified variable references
     (`label.var`) and qualified cursor references all key on them.
 
+!!! warning "Three label names are reserved: `builtin`, `session`, and anything starting `sys`"
+
+    `SqlScriptingLabelContext.forbiddenLabelNames`
+    ([ParserUtils.scala:477](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/ParserUtils.scala#L477))
+    is the regex set `builtin`, `session`, `sys.*` — so `sys`, `system` and `sysadmin` are all
+    banned, as a prefix match rather than an exact one. A block label or a `FOR` variable name from
+    that set raises `LABEL_OR_FOR_VARIABLE_NAME_FORBIDDEN`.
+
+    The reason is the two-part name space: a qualified local variable is written `label.var`, and
+    `session.x` / `system.session.x` must keep meaning *session variable*. The same predicate is what
+    `VariableResolution.lookupVariable` uses to route a two-part name past the local manager, so
+    allowing a block called `session` would make `session.x` ambiguous.
+
 !!! warning "`exitScope` pops *through* to the named label"
 
     [SqlScriptingExecutionContext.scala:397](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/scripting/SqlScriptingExecutionContext.scala#L397)
@@ -453,6 +483,42 @@ Scopes are searched innermost-first within the frame, then outward through frame
     cannot be silently absorbed by a script's error handling. Neither does it catch `02`, which
     would otherwise turn every end-of-cursor into an error path.
 
+!!! info "What may appear in a handler's trigger list, and when it is validated"
+
+    Three rules, all enforced in the parser
+    ([AstBuilder.scala:212](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala#L212)):
+
+    - **`SQLEXCEPTION` and `NOT FOUND` cannot be combined with anything else.** Either one in a
+      trigger list containing any named condition or SQLSTATE raises
+      `INVALID_HANDLER_DECLARATION.INVALID_CONDITION_COMBINATION`.
+    - **A user SQLSTATE must be exactly five alphanumerics and may not start `00`, `01` or `XX`**
+      ([:202](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala#L202)) — success, warning, and internal-error classes are reserved. A bare
+      `DECLARE c CONDITION` with no `FOR SQLSTATE` defaults to **`45000`**.
+    - **Condition names are `^[A-Za-z0-9_]+$` and upper-cased**
+      ([:271](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala#L271)), so a user condition can never contain a dot — which is
+      what makes the two-stage name check below unambiguous.
+
+    Name validation happens in **two** places. A *dotted* name is checked immediately against the
+    built-in error classes, since it cannot be user-declared. An *undotted* name is deferred to
+    compound-body assembly ([:358](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala#L358)), where it is accepted if it is either a
+    built-in class or a condition declared in scope; otherwise
+    `INVALID_HANDLER_DECLARATION.CONDITION_NOT_FOUND`. A misspelled condition name is therefore a
+    parse error, not a handler that silently never fires.
+
+!!! info "Declared conditions are scoped, and the declaration order is load-bearing"
+
+    `SqlScriptingConditionContext` ([ParserUtils.scala:485](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/ParserUtils.scala#L485))
+    is a parse-time map of condition name → SQLSTATE, added to as declarations are seen and
+    **removed** when the block finishes ([AstBuilder.scala:393](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala#L393)),
+    so a condition declared in an inner block is invisible outside it; a redeclaration in the same
+    scope raises `DUPLICATE_CONDITION_IN_SCOPE`.
+
+    This is why the declaration-ordering state machine matters: the comment at
+    [AstBuilder.scala:353](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala#L353)
+    — "All conditions are already visited when we encounter a handler" — is the invariant that lets
+    a handler's condition names be resolved against declarations in a single forward pass. Ordering
+    is a correctness requirement, not style.
+
 !!! info "A CONTINUE handler has to decide whether the *condition* failed or the body did"
 
     If a `WHILE` condition throws and a CONTINUE handler catches it, resuming the loop would
@@ -481,8 +547,11 @@ same way `DECLARE VARIABLE` is.
 - [CursorState.scala:28](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/scripting/CursorState.scala#L28) — the state machine: `CursorDeclared` → `CursorOpened(iterator, schema)` → `CursorFetching(…)` → `CursorClosed`
 - [SqlBaseParser.g4:357](https://github.com/apache/spark/blob/v4.2.0/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4#L357) — the four statements, including `OPEN … USING (…)` and `FETCH [NEXT] [FROM] c INTO v1, v2`
 - [AstBuilder.scala:7192](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/parser/AstBuilder.scala#L7192) — the cursor feature gate, repeated at each of the four visit methods
-- [CursorReference.scala:33](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/CursorReference.scala#L33) — `CursorDefinition` (name + **unparsed query text**), [:43](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/CursorReference.scala#L43) `UnresolvedCursor`, [:68](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/CursorReference.scala#L68) `CursorReference`
-- [ResolveCursors.scala:38](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveCursors.scala#L38) and [ResolveFetchCursor.scala:33](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveFetchCursor.scala#L33) — the two analyzer rules, wired in at [Analyzer.scala:582](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/Analyzer.scala#L582)
+- [CursorReference.scala:33](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/CursorReference.scala#L33) — `CursorDefinition` (name + **unparsed query text**), [:45](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/CursorReference.scala#L43) `UnresolvedCursor`, [:68](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/CursorReference.scala#L68) `CursorReference`
+- [ResolveCursors.scala:46](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveCursors.scala#L46) — `resolveCursor`: split a qualified `label.cursor`, normalise both halves by `spark.sql.caseSensitive`, then look up through the extension API. Wired in at [Analyzer.scala:582](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/Analyzer.scala#L582)
+- [ResolveFetchCursor.scala:59](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveFetchCursor.scala#L59) — `resolveAndValidateTargetVariables`, and [:45](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveFetchCursor.scala#L45) `checkForDuplicateVariables`
+- [ParameterizedQueryExecutor.scala:34](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/ParameterizedQueryExecutor.scala#L34) — the binding trait shared with `EXECUTE IMMEDIATE`
+- [v2ResolutionPlans.scala:317](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/v2ResolutionPlans.scala#L317) — `FakeLocalCatalog`, whose `name()` is `"local"` (`FakeSystemCatalog` at [:309](https://github.com/apache/spark/blob/v4.2.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/v2ResolutionPlans.scala#L309) is `"system"`) — the sentinel that tells every write path which variable manager owns the name
 - [OpenCursorExec.scala:55](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/OpenCursorExec.scala#L55) — parse the stored text, bind `USING` parameters, then `executedPlan.executeToIterator()`
 - [FetchCursorExec.scala:49](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/FetchCursorExec.scala#L49) — one row per call, ANSI store-assignment casts, and the multi-column-into-one-struct special case at [:222](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/FetchCursorExec.scala#L222)
 - [SqlScriptingExecutionContext.scala:223](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/scripting/SqlScriptingExecutionContext.scala#L223) — `updateCursorState`, which must find the *frame* owning the cursor before mutating it
@@ -504,13 +573,48 @@ same way `DECLARE VARIABLE` is.
     The iterator itself is still lazy, so `OPEN` does not materialise the result — but a cursor left
     open holds an in-flight execution.
 
-!!! warning "The whole cursor lifecycle is checked at runtime, not at analysis"
+!!! warning "Existence is checked in the analyzer; *state* is checked at runtime"
 
-    Every state error is thrown from the `…Exec.run()` method as an `AnalysisException` with a
-    cursor-specific condition: `CURSOR_ALREADY_EXISTS` (42723), `CURSOR_ALREADY_OPEN`,
-    `CURSOR_NOT_OPEN` (24501), `CURSOR_NOT_FOUND`, `CURSOR_OUTSIDE_SCRIPT` (0A000), and
+    The two halves fail in different phases, and conflating them is easy — an earlier version of
+    this page did.
+
+    **Analysis.** `ResolveCursors` rewrites `UnresolvedCursor` → `CursorReference` by looking the
+    cursor up in the scripting context, and raises `CURSOR_OUTSIDE_SCRIPT` (0A000) when there is no
+    context at all or `CURSOR_NOT_FOUND` when the name does not resolve. `ResolveFetchCursor`
+    resolves `FETCH`'s target variables in the same phase, raising `DUPLICATE_ASSIGNMENTS` for
+    `FETCH c INTO v, v`.
+
+    **Execution.** Everything about the *lifecycle* is thrown from a `…Exec.run()` method:
+    `CURSOR_ALREADY_EXISTS` (42723), `CURSOR_ALREADY_OPEN`, `CURSOR_NOT_OPEN` (24501), and
     `CURSOR_NO_MORE_ROWS` (**02000**). A script that opens a cursor twice fails on the second `OPEN`
     at that point in execution, not before the script starts.
+
+!!! warning "Cursor analysis is not pure — it reads a live, mutating stack"
+
+    `ResolveCursors` reaches the cursor table through `SqlScriptingContextManager.get()`, a
+    `LexicalThreadLocal` pointing at the *running* frame/scope stack. So whether a given `FETCH`
+    statement analyzes at all depends on which scopes happen to be open at the instant that
+    statement is reached — which is the only way it could work, since each script statement is
+    analyzed separately at execution time. The practical consequence: a cursor reference inside a
+    branch that never runs is never analyzed, so a typo in a cursor name in a dead `IF` branch does
+    not fail the script.
+
+!!! info "`FETCH … INTO` can target a session variable"
+
+    `ResolveFetchCursor` resolves targets through `VariableResolution.lookupVariable`, the same
+    lookup ordinary references use — script-locals first, session variables as a fallback. So
+    `FETCH c INTO session_var` is legal, and a fetch can write out of the script's own scope. Each
+    resolved reference is marked `canFold = false` so the assignment target cannot be
+    constant-folded away.
+
+!!! info "`OPEN … USING` re-enters `SparkSession.sql`"
+
+    `OpenCursorExec` mixes in `ParameterizedQueryExecutor`, whose `executeParameterizedQuery`
+    binds the `USING` arguments and then calls the public
+    [`SparkSession.sql`](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/ParameterizedQueryExecutor.scala#L63)
+    on the stored cursor text, taking `queryExecution.analyzed`. The same trait serves
+    `EXECUTE IMMEDIATE`, which is what makes parameter binding identical between the two — and it
+    means the cursor query is parsed under whatever configs are live at `OPEN`, not at `DECLARE`.
 
 !!! info "Cursor names, like variable names, are frozen by `spark.sql.caseSensitive` at declare time"
 
@@ -524,6 +628,45 @@ same way `DECLARE VARIABLE` is.
     A `FETCH`-driven loop needs the cursor flag, the continue-handler flag, and a `NOT FOUND`
     handler — because end-of-data is signalled as SQLSTATE `02000` and the only way to observe it is
     to catch it. Both flags default to false in 4.2.0, so cursors are not usable out of the box.
+
+## Parameters and SET — what a statement inside a script may be
+
+**What it is:** `compoundStatement` is a *restricted* grammar rule, not "any SQL". It admits ordinary
+`statement`s, the scripting constructs, and a scripting-only `SET` — and nothing else. Separately,
+named parameters supplied to `spark.sql(script, args)` are threaded down to every statement in the
+script rather than bound once at the top.
+
+**Anchor files:**
+
+- [SqlBaseParser.g4:102](https://github.com/apache/spark/blob/v4.2.0/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4#L102) — the `compoundStatement` alternatives
+- [SqlBaseParser.g4:118](https://github.com/apache/spark/blob/v4.2.0/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4#L118) — `setStatementInsideSqlScript`: `SET <assignments>` and `SET (a, b) = (SELECT …)`, both variable assignment
+- [SqlBaseParser.g4:185](https://github.com/apache/spark/blob/v4.2.0/sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4#L185) — `singleStatement`, the *only* rule besides `EXPLAIN` that reaches `setResetStatement`
+- [SqlScriptingExecutionNode.scala:174](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/scripting/SqlScriptingExecutionNode.scala#L174) — `preparedPlan`: every `SingleStatementExec` wraps its plan in `NameParameterizedQuery(parsedPlan, args)` when `args` is non-empty, so the same parameter map is re-applied per statement
+- [SqlScriptingInterpreter.scala:50](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/scripting/SqlScriptingInterpreter.scala#L50) — `args` is threaded through every `transformTreeIntoExecutable` case, including loop conditions and `FOR` queries
+
+**Maps to topics:** I12
+
+!!! warning "You cannot change a config inside a SQL script"
+
+    `setResetStatement` — the rule behind `SET spark.sql.…`, `SET -v` and `RESET` — is reachable only
+    from `singleStatement` and from `EXPLAIN`. It is **not** an alternative of `compoundStatement`.
+    Inside a `BEGIN … END`, `SET` therefore always means `setStatementInsideSqlScript`, i.e. variable
+    assignment, and `SET spark.sql.shuffle.partitions = 200` parses as an assignment to a four-part
+    *variable* name — which then fails as an unresolved variable rather than setting anything.
+
+    Set your configs before invoking the script, or from the session that calls it. This includes
+    the three scripting feature gates themselves, which is a small trap: you cannot turn cursors on
+    from inside the script that uses them.
+
+!!! info "Named parameters reach every statement; positional parameters reach none"
+
+    `spark.sql(script, Map("d" -> …))` passes the map to `SqlScriptingExecution`, and each
+    `SingleStatementExec` re-wraps its own plan in a `NameParameterizedQuery`. So `:d` is usable in
+    any statement of the script, including a `WHILE` condition or a `FOR` query — not just the first.
+    Positional (`?`) parameters are rejected outright for scripts at
+    [SparkSession.scala:547](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/classic/SparkSession.scala#L547)
+    with `UNSUPPORTED_FEATURE.SQL_SCRIPTING_WITH_POSITIONAL_PARAMETERS`, because there is no
+    sensible way to distribute one positional list across many statements.
 
 ## Errors, line numbers, and the three feature gates
 
@@ -606,6 +749,14 @@ Outside the scope but required for the feature, and cited here rather than left 
 
 **Config breadth.** Three configs in the group's namespace, all attributed. Three near-misses
 recorded as out of scope above.
+
+**Re-sweep delta (2026-08-07).** Both breadth checks were already green and stayed green; the second
+pass was a depth pass over four layers the first had cited without opening. It produced one
+correction (cursor existence resolves in the analyzer, not at runtime), one new concept (parameters
+and `SET`), and seven additional findings folded into existing concepts: session variables as `FETCH`
+targets, `DUPLICATE_ASSIGNMENTS`, the shared parameter binder with `EXECUTE IMMEDIATE`, the reserved
+label names, the user-SQLSTATE and condition-name rules, the `SQLEXCEPTION`/`NOT FOUND` combination
+ban, and the two-stage condition-name validation. No concept mapped to a new topic.
 
 **Not covered, deliberately:** the DSv2 command machinery the cursor operators sit on
 (`LeafV2CommandExec`, `V2CommandStrategy`, `ParameterizedQueryExecutor`) belongs to the

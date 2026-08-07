@@ -714,8 +714,9 @@ flowchart LR
     S25 --> S25c8["Declaration ordering — the compound-body state machine"]
     S25 --> S25c9["Condition handlers — EXIT, CONTINUE, and how a handler is chosen"]
     S25 --> S25c10["Cursors — DECLARE, OPEN, FETCH, CLOSE and the snapshot taken at OPEN"]
-    S25 --> S25c11["Errors, line numbers, and the three feature gates"]
-    S25 --> S25c12["The edges — stored procedures, the spark-sql CLI, EXECUTE IMMEDIATE, Connect"]
+    S25 --> S25c11["Parameters and SET — what a statement inside a script may be"]
+    S25 --> S25c12["Errors, line numbers, and the three feature gates"]
+    S25 --> S25c13["The edges — stored procedures, the spark-sql CLI, EXECUTE IMMEDIATE, Connect"]
     S26["sql/core"]
     S26 --> S26c0["StreamExecution — one thread, a state machine, and a stored death cause"]
     S26 --> S26c1["TriggerExecutor — four trigger shapes behind one interface"]
@@ -891,7 +892,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — python-arrow | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — streaming-exec | — | ✅ partial | 4.2.0 | 2026-08-06 |
 | sql/core — classic-api | — | ✅ complete | 4.2.0 | 2026-08-06 |
-| sql/core — sql-scripting | — | ✅ complete | 4.2.0 | 2026-08-06 |
+| sql/core — sql-scripting | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | sql/pipelines — graph | — | ⬜ pending | — | — |
 | sql/pipelines — autocdc | — | ⬜ pending | — | — |
 | sql/pipelines — pipeline-runtime | — | ⬜ pending | — | — |
