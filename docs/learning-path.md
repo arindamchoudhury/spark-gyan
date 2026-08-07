@@ -2903,6 +2903,7 @@ and which frame class actually runs.
 13. **Source sweep — [sql/hive — hive-metastore in the source map](reference/spark-source-map/sweeps/sql-hive-hive-metastore.md)** — two deployment-shaped facts: the six metastore-interop configs are all **static**, so attaching Spark to an existing metastore is a submit-time decision that cannot be corrected on a running session; and on a Kerberised cluster `HiveDelegationTokenProvider` logs a **warning** and returns no token when acquisition fails, surfacing much later as an executor authentication error
 14. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — two operational surfaces: `CheckpointFileManager` is the atomic-rename abstraction the whole protocol assumes and is pluggable per scheme — which matters on object storage that does not provide it — and 4.1.0's `ChecksumCheckpointFileManager` decorates any implementation with a `CRC32C` sibling file, on by default, defending against the truncated-log-entry failure mode
 15. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — **the Kubernetes half of this topic**, and the first source-derived material behind it: 47 files, 89 configs, six of them new in 4.2.0. The frame first — Spark never asks Kubernetes for N executors, it maintains a target and reconciles against snapshots — then five operational facts. (i) **Only the `direct` allocator implements most of the config surface**: `statefulset` and `deployment` never subscribe to the snapshot store, so batch size, all three pending caps and PVC reuse simply do not apply to them. (ii) `spark.kubernetes.allocation.maximum` counts **executor ids ever issued**, not live pods, so a long dynamic-allocation job eventually dies on it. (iii) A single un-acknowledged pod blocks *all* further requests for its resource profile until a ≥600 s timeout, which is why K8s scale-up stalls in bursts. (iv) Exit code **137** is annotated `(SIGKILL, possible container OOM)` by a hand-written table — the fastest `memoryOverhead`-sizing diagnostic there is, and distinct from 52 (JVM heap OOM). (v) A pod *deleted* is `exitCausedByApp = false` and does not burn `spark.executor.maxNumFailures`, while a pod *failed* does. Reconciliation itself is topic **E33**; the 4.2.0 resize plugins are **E34**
+16. **Source sweep — [resource-managers/kubernetes — auth & networking in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md)** — the other half, and it completes the subsystem. Deployment-shaped facts: `spark.driver.host` and `spark.driver.bindAddress` are **rejected outright** on Kubernetes because a headless Service manages both; that Service publishes four ports including the Spark Connect gRPC endpoint; and the driver's readiness wait in the allocator exists precisely because the Service is not DNS-resolvable until then. **Upgrade trap for 4.2.0:** the new `NetworkPolicyFeatureStep` has no config gating it, so a submission service account without `create networkpolicies` now fails *after* creating the driver pod — and the failure path deletes that pod. Identity and RBAC proper are topic **E35**
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
@@ -3067,6 +3068,7 @@ and which frame class actually runs.
 9. **Source sweep — [sql/core — query-execution in the source map](reference/spark-source-map/sweeps/sql-core-query-execution.md)** — `ResolveSessionCatalog`, the routing rule that decides V1 versus V2 for every DDL statement, and `spark.sql.catalogImplementation` / `spark.sql.globalTempDatabase` — the two static configs that fix catalog behaviour for the life of the JVM
 10. **Source sweep — [sql/core — datasources in the source map](reference/spark-source-map/sweeps/sql-core-datasources.md)** — the catalog plumbing under DSv2: `V2SessionCatalog` adapting Spark's own `SessionCatalog` to the `TableCatalog` API (and rejecting time travel), the `JDBCTableCatalog` that makes a database appear as a Spark catalog, and about forty `V2CommandExec` operators implementing DDL against whichever catalog resolved. Also the JDBC connection-provider SPI: `spark.sql.sources.disabledJdbcConnProviderList` filters providers by name, **two applicable providers is an error rather than a preference order**, and a provider that mutates the JVM security context runs under a global lock with the previous configuration restored in a `finally`
 11. **Source sweep — [sql/core — the classic API in the source map](reference/spark-source-map/sweeps/sql-core-classic-api.md)** — how `spark.catalog` relates to the three-level namespace: `classic.Catalog` mostly builds logical commands (`ShowNamespaces`, `ShowTables`, `UnresolvedTableOrView`) and runs them as Datasets, and several methods first inspect whether a one- or two-part name is a temp view or a session-catalog table before qualifying it — which is where `spark.catalog.getTable("x")` and `spark.sql("DESCRIBE x")` can disagree
+12. **Source sweep — [resource-managers/kubernetes — auth & networking in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md)** — how credentials and secrets physically reach a Spark pod, which is where this topic meets deployment. **The right way to give a Spark job a password on Kubernetes** is `spark.kubernetes.{driver,executor}.secrets.*` (mount as files) or `…secretKeyRef.*` (project as env), because both produce *references* the kubelet resolves — the value never enters the Spark conf, so it cannot leak through the Environment tab, the event log, or the pod's `spark-defaults.conf`. Prefer the file form: the env form lands in `/proc/<pid>/environ` and never picks up a rotated Secret. Kerberos has three modes in precedence order (keytab → existing delegation-token Secret → tokens minted from the submitter's TGT) with a trade-off worth knowing: only the keytab mode can **renew**, but it also puts a permanent credential in a namespace Secret, while the token mode bounds the application by the tokens' max lifetime. Both a missing `krb5.conf` and a delegation-token acquisition failure are **logged and ignored**, surfacing much later — the same shape as the `HiveDelegationTokenProvider` warning above. Identity and RBAC are topic **E35**
 
 **Milestone:** You can explain what a catalog is responsible for versus the table format, name the trade-off between Unity Catalog and a REST-catalog implementation, create a row filter restricting a table to the current user's region, set column-level masking on a PII field, and trace a lineage graph from a gold table back to its sources.
 
@@ -3988,6 +3990,45 @@ application.
     `ResourceQuota`.
 
 **Milestone:** You can state each plugin's prerequisite (metrics-server for memory; `allowVolumeExpansion` for disk; the `direct` allocator for both) and predict the growth curve from `threshold` and `factor`. You can explain why the PVC plugin needs an executor-side component while the memory one does not, and why a failed PVC expansion is never retried. Given an executor that OOMs on one partition, you can argue for resize, recovery mode, or fixing the skew — and say what each costs.
+
+---
+
+
+### ⬜ E35 — Spark on Kubernetes: Identity, RBAC, and Credential Propagation
+
+> Discovered from source sweep (new topic): `resource-managers/kubernetes: SparkKubernetesClientFactory — one prefix, five suffixes, three identities`
+
+**What it is:** Which identity Spark uses to talk to the Kubernetes API server at each of its three stages — submission, cluster-mode driver, client-mode driver — how credentials reach the driver pod when a service account is not enough, and what RBAC each path actually needs.
+
+**Why you need it:** Almost every "works from my laptop, fails in-cluster" failure on Kubernetes is one of these three identities lacking a verb, and the config family that controls it is invisible to every config listing Spark can generate.
+
+**Learn it with:**
+
+1. **Source sweep — [resource-managers/kubernetes — auth & networking](reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md)** — the primary material. Start with *SparkKubernetesClientFactory* for the three-identity table, then *The authenticate.\* family the config catalog cannot see* for the prefix × suffix matrix — it is **not** a full cross-product, and assuming it is causes most "that config does nothing" reports. Then *DriverKubernetesCredentialsFeatureStep* and *Service accounts and the executor fallback chain* for the two ways credentials actually reach a pod
+2. **Spark-docs → Running on Kubernetes, RBAC** ([running-on-kubernetes.html#rbac](https://spark.apache.org/docs/latest/running-on-kubernetes.html#rbac)) — the minimum Role the driver needs, and the worked `kubectl create clusterrolebinding` example. Note it predates the 4.2.0 NetworkPolicy step, so its verb list is now incomplete
+3. **Kubernetes docs → Using RBAC Authorization** ([kubernetes.io/docs/reference/access-authn-authz/rbac](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)) and **Configure Service Accounts for Pods** ([kubernetes.io/docs/tasks/configure-pod-container/configure-service-account](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/)) — what a service account actually projects into a pod, which is the mechanism the whole cluster-mode path rests on
+4. **E5 — Catalogs, Governance, and Data Security** — the sibling. E5 is about who may read which data; this is about who may create which pods. They meet at the Kerberos and Secret plumbing, which the same sweep covers
+5. **Local stack** — on kind or minikube, create a service account with **no** Role and submit; read the 403 and note which verb it names. Add `pods` verbs until submission succeeds, then add an executor and watch it need `pods/patch` for the exec-id label. Finally try it on 4.2.0 without `networkpolicies` in the Role: the submission creates the driver pod, fails on the post-pod resource block, and **deletes the pod it just created** — an instructive failure
+
+!!! info "No book covers this — source and docs only"
+    Kubernetes RBAC for Spark is documented as one worked example in the programming guide and
+    nowhere else. The failure modes are source-only.
+
+!!! warning "Two upgrade traps for 4.2.0"
+    `NetworkPolicyFeatureStep` is new, **has no config gating it**, and runs on every submission — so
+    a service account without `create networkpolicies` breaks submissions that worked on 4.1. Escape
+    hatch: `spark.kubernetes.driver.pod.excludedFeatureSteps=org.apache.spark.deploy.k8s.features.NetworkPolicyFeatureStep`.
+    And the executor service-account fallback checks the **deprecated `spec.serviceAccount`** field,
+    so a pod template setting only `serviceAccountName` is silently overridden.
+
+!!! warning "A shipped OAuth token is a namespace-readable pod-management credential"
+    `spark.kubernetes.authenticate.driver.oauthToken` is base64'd into a Secret — the Kubernetes wire
+    format, not encryption. Anyone with `get secrets` in that namespace obtains a credential that can
+    create and delete pods there. Prefer a service account with a scoped Role. And do not run a
+    Kubernetes driver at DEBUG where logs are shipped: the client config, resolved token included, is
+    serialised to JSON and logged, and `spark.redaction.regex` does not reach arbitrary log lines.
+
+**Milestone:** You can name the three client identities, say which config prefix each uses and where that prefix is chosen in the code, and write the minimum Role for a driver on 4.2.0 from memory — including the verb the NetworkPolicy step added. Given a 403 at submission you can say which identity was in play. You can explain why `spark.kubernetes.authenticate.driver.oauthTokenFile` does not exist while `…driver.mounted.oauthTokenFile` does, and why executors normally need no Kubernetes permissions at all.
 
 ---
 

@@ -69,6 +69,7 @@ nav = [
             { "connector/profiler — async-profiler" = "reference/spark-source-map/sweeps/connector-profiler-async-profiler.md" },
             { "sql/hive — Hive metastore" = "reference/spark-source-map/sweeps/sql-hive-hive-metastore.md" },
             { "k8s — Driver & executor" = "reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md" },
+            { "k8s — Auth & networking" = "reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md" },
         ]},
     ]},
     { "Spark Book" = [
