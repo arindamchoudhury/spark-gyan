@@ -64,6 +64,7 @@ nav = [
             { "sql/connect — Client & server" = "reference/spark-source-map/sweeps/sql-connect-client-server.md" },
             { "sql/connect — Declarative pipelines" = "reference/spark-source-map/sweeps/sql-connect-declarative-pipelines.md" },
             { "sql/pipelines — Dataflow graph" = "reference/spark-source-map/sweeps/sql-pipelines-graph.md" },
+            { "sql/pipelines — Auto CDC" = "reference/spark-source-map/sweeps/sql-pipelines-autocdc.md" },
             { "connector/profiler — async-profiler" = "reference/spark-source-map/sweeps/connector-profiler-async-profiler.md" },
             { "sql/hive — Hive metastore" = "reference/spark-source-map/sweeps/sql-hive-hive-metastore.md" },
         ]},

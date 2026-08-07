@@ -120,6 +120,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E29 | SparkSessionExtensions: The Sixteen Injection Points | — | — | ⬜ |
 | E30 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping | — | — | ⬜ |
 | E31 | Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop | — | — | ⬜ |
+| E32 | Out-of-Order CDC: Tombstones, Sequence Watermarks, and Deletes You Cannot See | — | — | ⬜ |
 
 ## Source concept map
 
@@ -770,30 +771,45 @@ flowchart LR
     S27 --> S27c12["The legacy Hive ORC reader"]
     S27 --> S27c13["Hive delegation tokens"]
     S28["sql/pipelines"]
-    S28 --> S28c0["DataflowGraph — the immutable graph and its derived indexes"]
-    S28 --> S28c1["Graph elements — Table, View, Sink, and the flows that feed them"]
-    S28 --> S28c2["GraphRegistrationContext — the mutable builder behind every definition API"]
-    S28 --> S28c3["SqlGraphRegistrationContext — defining a whole pipeline in SQL"]
-    S28 --> S28c4["GraphIdentifierManager — qualification and the internal/external boundary"]
-    S28 --> S28c5["The flow taxonomy — two unresolved forms, four resolved ones"]
-    S28 --> S28c6["DataflowGraphTransformer — parallel fixed-point resolution with retryable failures"]
-    S28 --> S28c7["VirtualTableInput — resolving against declared schemas, not materialized data"]
-    S28 --> S28c8["FlowAnalysis — a LogicalPlan becomes a DataFrame, with per-flow SQLConf isolation"]
-    S28 --> S28c9["GraphValidations — the eight checks between a resolved graph and a run"]
-    S28 --> S28c10["Cycle detection and the two classes of resolution failure"]
-    S28 --> S28c11["GraphOperations — DFS, reachability, and the materialization-point stop rule"]
-    S28 --> S28c12["DatasetManager — materializing the graph into catalog tables"]
-    S28 --> S28c13["Persisted view publication and its dependency ordering"]
-    S28 --> S28c14["PipelineExecution — the four phases of a run"]
-    S28 --> S28c15["TriggeredGraphExecution — the topological state machine and flow retry"]
-    S28 --> S28c16["Concurrency limiting and the permit-leak assertion"]
-    S28 --> S28c17["FlowPlanner — from resolved flow to physical write"]
-    S28 --> S28c18["Checkpoint layout, generations, and what full refresh actually resets"]
-    S28 --> S28c19["Refresh selection — GraphFilter, TableFilter and FlowFilter"]
-    S28 --> S28c20["pipelines.reset.allowed and the non-resettable-dependency check"]
-    S28 --> S28c21["QueryOrigin — provenance carried in suppressed exceptions"]
-    S28 --> S28c22["The AutoCDC auxiliary state table and key-drift validation"]
-    S28 --> S28c23["RunTerminationReason — how a run reports why it stopped"]
+    S28 --> S28c0["AutoCdcReservedNames — one prefix for everything AutoCDC owns"]
+    S28 --> S28c1["ChangeArgs — the five-field CDC contract"]
+    S28 --> S28c2["UnqualifiedColumnName — single-part identifiers with backticks consumed"]
+    S28 --> S28c3["ColumnSelection — include/exclude lists applied to a schema"]
+    S28 --> S28c4["ScdType — Type 2 is modelled and blocked at three separate layers"]
+    S28 --> S28c5["ScdBatchValidator — the per-microbatch contract check"]
+    S28 --> S28c6["The tombstone model — auxiliary state and delete high-water marks"]
+    S28 --> S28c7["reconcileMicrobatch — four steps whose order is load-bearing"]
+    S28 --> S28c8["Deduplication by max_by over a packed struct"]
+    S28 --> S28c9["The CDC metadata column — projected into the target, and not optional"]
+    S28 --> S28c10["mergeMicrobatchOntoAuxiliaryTable — advance, garbage-collect, insert"]
+    S28 --> S28c11["mergeMicrobatchOntoTarget — three clauses and a deliberate tie-break asymmetry"]
+    S28 --> S28c12["Scd1ForeachBatchHandler — two merges per batch and the idempotency argument"]
+    S28 --> S28c13["The DataFrame mergeInto API this group is built on"]
+    S29["sql/pipelines"]
+    S29 --> S29c0["DataflowGraph — the immutable graph and its derived indexes"]
+    S29 --> S29c1["Graph elements — Table, View, Sink, and the flows that feed them"]
+    S29 --> S29c2["GraphRegistrationContext — the mutable builder behind every definition API"]
+    S29 --> S29c3["SqlGraphRegistrationContext — defining a whole pipeline in SQL"]
+    S29 --> S29c4["GraphIdentifierManager — qualification and the internal/external boundary"]
+    S29 --> S29c5["The flow taxonomy — two unresolved forms, four resolved ones"]
+    S29 --> S29c6["DataflowGraphTransformer — parallel fixed-point resolution with retryable failures"]
+    S29 --> S29c7["VirtualTableInput — resolving against declared schemas, not materialized data"]
+    S29 --> S29c8["FlowAnalysis — a LogicalPlan becomes a DataFrame, with per-flow SQLConf isolation"]
+    S29 --> S29c9["GraphValidations — the eight checks between a resolved graph and a run"]
+    S29 --> S29c10["Cycle detection and the two classes of resolution failure"]
+    S29 --> S29c11["GraphOperations — DFS, reachability, and the materialization-point stop rule"]
+    S29 --> S29c12["DatasetManager — materializing the graph into catalog tables"]
+    S29 --> S29c13["Persisted view publication and its dependency ordering"]
+    S29 --> S29c14["PipelineExecution — the four phases of a run"]
+    S29 --> S29c15["TriggeredGraphExecution — the topological state machine and flow retry"]
+    S29 --> S29c16["Concurrency limiting and the permit-leak assertion"]
+    S29 --> S29c17["FlowPlanner — from resolved flow to physical write"]
+    S29 --> S29c18["Checkpoint layout, generations, and what full refresh actually resets"]
+    S29 --> S29c19["Refresh selection — GraphFilter, TableFilter and FlowFilter"]
+    S29 --> S29c20["pipelines.reset.allowed and the non-resettable-dependency check"]
+    S29 --> S29c21["QueryOrigin — provenance carried in suppressed exceptions"]
+    S29 --> S29c22["The AutoCDC auxiliary state table and key-drift validation"]
+    S29 --> S29c23["RunTerminationReason — how a run reports why it stopped"]
 ```
 
 ## Topics discovered from the source
@@ -881,6 +897,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Two Hive versions — the bundled client and the metastore it talks to | sql/hive | new | E21 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars |
 | Checkpoint layout, generations, and what full refresh actually resets | sql/pipelines | new | E31 | Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop |
 | DataflowGraphTransformer — parallel fixed-point resolution with retryable failures | sql/pipelines | new | A38 | Dataflow Graph Resolution: Parallel Fixed-Point Analysis |
+| The tombstone model — auxiliary state and delete high-water marks | sql/pipelines | new | E32 | Out-of-Order CDC: Tombstones, Sequence Watermarks, and Deletes You Cannot See |
 | TriggeredGraphExecution — the topological state machine and flow retry | sql/pipelines | new | E30 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping |
 
 
@@ -925,6 +942,6 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — classic-api | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — sql-scripting | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | sql/pipelines — graph | — | ✅ complete | 4.2.0 | 2026-08-07 |
-| sql/pipelines — autocdc | — | ⬜ pending | — | — |
+| sql/pipelines — autocdc | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | sql/pipelines — pipeline-runtime | — | ⬜ pending | — | — |
 

@@ -240,6 +240,11 @@ applies inserts, updates and deletes into the target — SCD Type 1 or Type 2 �
     success while doing something other than what was declared. Check these SPARK issues against
     your Spark version before relying on either.
 
+    **Refinement from the [autocdc sweep](sql-pipelines-autocdc.md) (2026-08-07):** none of the
+    three fields exists on PySpark's `AutoCdcFlow` dataclass (`python/pyspark/pipelines/flow.py`),
+    so a PySpark user cannot set them at all — they are unreachable rather than merely inert. The
+    hazard is real only for a client built directly against the protobuf schema.
+
 **Configs:** none at this layer
 
 **Maps to topics:** A11, E8
