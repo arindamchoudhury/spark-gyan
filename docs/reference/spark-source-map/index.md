@@ -89,6 +89,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A36 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart | — | — | ⬜ |
 | A37 | Column Without an Engine: ColumnNode and the api/classic/connect Split | — | — | ⬜ |
 | A38 | Dataflow Graph Resolution: Parallel Fixed-Point Analysis | — | — | ⬜ |
+| A39 | Pipeline Schema Inference and Evolution: Merge, Diff, and Alter | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -810,6 +811,21 @@ flowchart LR
     S29 --> S29c21["QueryOrigin — provenance carried in suppressed exceptions"]
     S29 --> S29c22["The AutoCDC auxiliary state table and key-drift validation"]
     S29 --> S29c23["RunTerminationReason — how a run reports why it stopped"]
+    S30["sql/pipelines"]
+    S30 --> S30c0["FlowStatus and RunState — the wire-visible state model"]
+    S30 --> S30c1["FlowStatus.isTerminal — four statuses, and it is the backpressure policy"]
+    S30 --> S30c2["PipelineEvent — the event record and messageWithError"]
+    S30 --> S30c3["ConstructPipelineEvent — the mandated factory"]
+    S30 --> S30c4["FlowProgressEventLogger — eleven recorders and two dead maps"]
+    S30 --> S30c5["StreamListener — streaming flow progress, and the two events it gets wrong"]
+    S30 --> S30c6["DatasetType — materialized view versus streaming table, decided from flows"]
+    S30 --> S30c7["SchemaInferenceUtils.inferSchemaFromFlows — merging every writer's schema"]
+    S30 --> S30c8["diffSchemas — a schema delta as TableChanges, matched case-sensitively"]
+    S30 --> S30c9["SchemaMergingUtils — one line over StructType.merge"]
+    S30 --> S30c10["SparkSessionUtils.withSqlConf — per-flow confs on a shared session"]
+    S30 --> S30c11["ExponentialBackoffStrategy — the retry curve behind the watchdog configs"]
+    S30 --> S30c12["PipelinesCatalogUtils — a v1 identifier against the v2 catalog API"]
+    S30 --> S30c13["Language — the two-value provenance tag"]
 ```
 
 ## Topics discovered from the source
@@ -897,6 +913,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Two Hive versions — the bundled client and the metastore it talks to | sql/hive | new | E21 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars |
 | Checkpoint layout, generations, and what full refresh actually resets | sql/pipelines | new | E31 | Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop |
 | DataflowGraphTransformer — parallel fixed-point resolution with retryable failures | sql/pipelines | new | A38 | Dataflow Graph Resolution: Parallel Fixed-Point Analysis |
+| SchemaInferenceUtils.inferSchemaFromFlows — merging every writer's schema | sql/pipelines | new | A39 | Pipeline Schema Inference and Evolution: Merge, Diff, and Alter |
 | The tombstone model — auxiliary state and delete high-water marks | sql/pipelines | new | E32 | Out-of-Order CDC: Tombstones, Sequence Watermarks, and Deletes You Cannot See |
 | TriggeredGraphExecution — the topological state machine and flow retry | sql/pipelines | new | E30 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping |
 
@@ -943,5 +960,5 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — sql-scripting | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | sql/pipelines — graph | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | sql/pipelines — autocdc | — | ✅ complete | 4.2.0 | 2026-08-07 |
-| sql/pipelines — pipeline-runtime | — | ⬜ pending | — | — |
+| sql/pipelines — pipeline-runtime | — | ✅ complete | 4.2.0 | 2026-08-07 |
 
