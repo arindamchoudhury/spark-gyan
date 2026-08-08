@@ -71,6 +71,7 @@ nav = [
             { "k8s — Driver & executor" = "reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md" },
             { "k8s — Auth & networking" = "reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md" },
             { "YARN — AM & executor allocation" = "reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md" },
+            { "connector/kafka-0-10 — Consumer & rate control" = "reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md" },
         ]},
     ]},
     { "Spark Book" = [

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from check_drift import (  # noqa: E402
     MIN_FAMILY,
+    SRC_FILE_RE,
     config_family,
     report_config_coverage,
 )
@@ -101,6 +102,30 @@ def test_report_gives_a_per_page_count_so_the_thin_page_is_visible(capsys):
     assert "2/2 keys cited" in out          # the subsystem is covered...
     assert "thick.md" in out and "cites    2" in out
     assert "thin.md" in out and "cites    0" in out   # ...but not evenly
+
+
+def test_src_file_re_matches_hyphenated_source_names():
+    """`package-info.java` and `coalesce-public.scala` are real files in the checkout.
+
+    The stem character class had no hyphen, so a page citing one could never be
+    credited and its package reported one fewer cited file forever. Found by the
+    connector/kafka-0-10 sweep, the first swept module with a hyphenated source file.
+    """
+    cited = set(SRC_FILE_RE.findall(
+        "opened package-info.java, coalesce-public.scala and KafkaRDD.scala"))
+    assert cited == {"package-info.java", "coalesce-public.scala", "KafkaRDD.scala"}
+
+
+def test_src_file_re_widening_changes_nothing_else():
+    """The hyphen must only add hyphenated stems, not loosen the pattern otherwise."""
+    # A bare extension is still not a filename.
+    assert SRC_FILE_RE.findall("a bare .scala suffix") == []
+    # A leading hyphen is a word boundary, not part of the stem.
+    assert SRC_FILE_RE.findall("-leading.scala") == ["leading.scala"]
+    # Pre-existing and unchanged: a dotted config key ending in .java still matches its
+    # last two segments. Harmless here — pages cite configs and files in the same blob,
+    # and a spurious `sql.java` matches no real file, so it is never counted as cited.
+    assert SRC_FILE_RE.findall("spark.sql.java") == ["sql.java"]
 
 
 if __name__ == "__main__":

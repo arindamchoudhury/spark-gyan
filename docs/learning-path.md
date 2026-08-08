@@ -1928,6 +1928,7 @@ as well as range; and name the config that permits a negative scale and why it i
 2. **Spark-docs → Structured Streaming + Kafka** ([structured-streaming-kafka-integration.html](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)) — the authoritative option list, offset handling, and the deployment note about the connector jar
 3. **Kafka docs → Design and Semantics** ([kafka.apache.org/documentation/#design](https://kafka.apache.org/documentation/#design)) — partitions, consumer groups, and the delivery-guarantee section; you cannot reason about Spark's guarantees without Kafka's
 4. **Local stack** — run a single-broker Kafka in Docker, produce a synthetic event stream, and consume it with a Structured Streaming job writing to a table
+5. **Source sweep — [connector/kafka-0-10 — consumer in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md)** — the **DStream** connector, read here as contrast rather than as the thing you will use. It is worth the detour because its offset model is explicit where Structured Streaming's is hidden: the driver fixes an `OffsetRange` per partition *before* the batch runs, so exactly-once follows from the range being fixed, not from anything Kafka does — the same reasoning the checkpoint gives you, with the mechanism visible. Three transferable facts. `fixKafkaParams` **rewrites four Kafka params on executors** — `enable.auto.commit → false`, `auto.offset.reset → none`, `group.id → spark-executor-<yours>`, `receive.buffer.bytes → 65536` — which is why a broker shows twice as many consumer groups as you have streams, and the SQL connector does the same thing. Committing offsets **back to Kafka** via `CanCommitOffsets` is at-least-once and lags a batch: `commitAsync` only queues, the flush happens at the start of the next batch, and only the most recently registered callback survives. And on a **compacted** topic you must set `spark.streaming.kafka.allowNonConsecutiveOffsets`, which silently turns `count()` from arithmetic over the offset ranges into a full Spark job per batch
 
 **Milestone:** You can read a Kafka topic into Structured Streaming with an explicit `startingOffsets` and a rate limit, write to a Delta or Iceberg table, kill the job mid-stream and restart it without losing or duplicating rows — and explain precisely which component provided that guarantee. You can say what happens when the checkpoint is deleted but the sink table is not.
 
@@ -2837,6 +2838,58 @@ and which frame class actually runs.
 
 ---
 
+
+### ⬜ A40 — Stream Rate Limiting and Backpressure: the PID Loop and Per-Partition Caps
+
+> Discovered from source sweep (new topic): `connector/kafka-0-10: Rate limiting and backpressure — the PID loop and the per-partition split`
+
+**What it is:** How Spark bounds how much a streaming batch reads — a PID controller that turns the previous batch's processing time and scheduling delay into a records-per-second estimate, and the per-partition caps and floors that estimate is then divided across in proportion to each partition's lag.
+
+**Why you need it:** An unbounded first batch after a restart is the classic way a streaming job dies, and every lever that prevents it — backpressure, the initial rate, per-partition maxima and minima — behaves differently from its documentation, including one config that the direct Kafka stream reads past its own declared fallback.
+
+**Learn it with:**
+
+1. **Spark-docs → Configuration, Spark Streaming** ([configuration.html#spark-streaming](https://spark.apache.org/docs/latest/configuration.html#spark-streaming)) — the `spark.streaming.backpressure.*` and `spark.streaming.receiver.maxRate` family, with the declared defaults you will then need to check against the source
+2. **Spark-docs → Structured Streaming + Kafka, `maxOffsetsPerTrigger`** ([structured-streaming-kafka-integration.html](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)) — the modern equivalent: a static per-trigger record cap with no controller behind it. Read both and know which one you are using
+3. **Source sweep — [connector/kafka-0-10 — consumer in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md)** — the DStream implementation end to end: `maxMessagesPerPartition`'s lag-proportional split, the per-partition ceiling and floor, the seconds→batch multiply, and the raw-string read of `initialRate`
+4. **Local stack** — run a direct Kafka stream against a topic with a deliberate backlog, restart it with and without `spark.streaming.kafka.maxRatePerPartition` set, and watch the first batch's input size in the Streaming UI
+
+!!! warning "No book covers this"
+
+    SDG (2018) and LS2e (2020) describe DStream backpressure only as "turn it on"; Rioux does not
+    cover streaming rate control at all. The PID terms, the per-partition split and the interaction
+    with the static ceiling are docs-and-source territory.
+
+!!! warning "`spark.streaming.backpressure.initialRate` does not fall back for the direct Kafka stream"
+
+    The config is declared as `fallbackConf(RECEIVER_MAX_RATE)`, so its documented effective default
+    is `spark.streaming.receiver.maxRate` — `Long.MaxValue`. But `DirectKafkaInputDStream` reads it
+    with `getLong("spark.streaming.backpressure.initialRate", 0)`, a **raw string key with its own
+    default of 0**, bypassing both the `ConfigEntry` and the fallback. Setting
+    `spark.streaming.receiver.maxRate` therefore has no effect on a direct Kafka stream, and the
+    unset default is 0, not `Long.MaxValue`.
+
+!!! warning "The default configuration has no limit at all"
+
+    `spark.streaming.backpressure.enabled` is **false** and `spark.streaming.kafka.maxRatePerPartition`
+    is **0**, which means unlimited. With both at their defaults, the first batch after any downtime
+    reads every record available in every partition — the standard way a restart turns into an OOM.
+    Note also that the `minRatePerPartition` floor (default 1) is applied *after* the rate is
+    converted to records-per-batch, so a caught-up stream with a non-zero ceiling still asks for one
+    record per partition per batch.
+
+!!! info "Backpressure is a controller, `maxOffsetsPerTrigger` is a constant"
+
+    The DStream mechanism observes the previous batch's processing time and scheduling delay and
+    adjusts; Structured Streaming's Kafka source instead takes a fixed per-trigger cap you set
+    yourself. The tuning problem is the same, the failure modes are not: a PID loop can oscillate
+    and has a `pid.minRate` floor (100) it will never go below, while a static cap cannot adapt to a
+    slow sink at all.
+
+**Milestone:** Given a batch interval, a per-partition ceiling and a set of per-partition lags, you can compute how many records each partition contributes to the next batch; explain what changes when backpressure is enabled and what the PID floor guarantees; and say what a direct Kafka stream will read in its first batch after a week of downtime under the default configuration, and which single config you would set to bound it.
+
+---
+
 ## Expert
 
 **Goal:** Architect production data platforms. Understand Spark internals deeply enough to reason about memory, serialisation, and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines.
@@ -2909,6 +2962,7 @@ and which frame class actually runs.
 15. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — **the Kubernetes half of this topic**, and the first source-derived material behind it: 47 files, 89 configs, six of them new in 4.2.0. The frame first — Spark never asks Kubernetes for N executors, it maintains a target and reconciles against snapshots — then five operational facts. (i) **Only the `direct` allocator implements most of the config surface**: `statefulset` and `deployment` never subscribe to the snapshot store, so batch size, all three pending caps and PVC reuse simply do not apply to them. (ii) `spark.kubernetes.allocation.maximum` counts **executor ids ever issued**, not live pods, so a long dynamic-allocation job eventually dies on it. (iii) A single un-acknowledged pod blocks *all* further requests for its resource profile until a ≥600 s timeout, which is why K8s scale-up stalls in bursts. (iv) Exit code **137** is annotated `(SIGKILL, possible container OOM)` by a hand-written table — the fastest `memoryOverhead`-sizing diagnostic there is, and distinct from 52 (JVM heap OOM). (v) A pod *deleted* is `exitCausedByApp = false` and does not burn `spark.executor.maxNumFailures`, while a pod *failed* does. Reconciliation itself is topic **E33**; the 4.2.0 resize plugins are **E34**
 16. **Source sweep — [resource-managers/kubernetes — auth & networking in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md)** — the other half, and it completes the subsystem. Deployment-shaped facts: `spark.driver.host` and `spark.driver.bindAddress` are **rejected outright** on Kubernetes because a headless Service manages both; that Service publishes four ports including the Spark Connect gRPC endpoint; and the driver's readiness wait in the allocator exists precisely because the Service is not DNS-resolvable until then. **Upgrade trap for 4.2.0:** the new `NetworkPolicyFeatureStep` has no config gating it, so a submission service account without `create networkpolicies` now fails *after* creating the driver pod — and the failure path deletes that pod. Identity and RBAC proper are topic **E35**
 17. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — **the YARN half of this topic**, and the subsystem's only group: 29 files, 61 configs, two new in 4.2.0. The frame first — unlike Kubernetes, YARN is a **request/response protocol, not a reconciliation loop**: one `Reporter` thread calls `allocate()` per round, and that call doubles as the liveness heartbeat. Then the operational facts. (i) `ApplicationMaster` is one class running two unrelated processes — in cluster mode it *is* the driver host and runs user `main` on a side thread, in client mode it is a bare allocator — and almost every branch in it is `isClusterMode`. (ii) The allocation loop polls **faster** when work is pending: `spark.yarn.scheduler.initial-allocation.interval` (200 ms) is the *shortest* sleep and doubles toward `spark.yarn.scheduler.heartbeat.interval-ms` (3 s), which is itself silently capped at half of YARN's AM expiry. (iii) Leaving `spark.yarn.jars` unset makes every submit zip and upload `$SPARK_HOME/jars` — one WARN line, several seconds, and the resources end up `PRIVATE` because the staging dir is `700`. (iv) YARN **decommissioning is disabled whenever the external shuffle service is enabled** (SPARK-39018), so the two features you would want together are mutually exclusive. (v) YARN alone overrides `minRegisteredRatio` to **0.8**, which is the unexplained pause between "application RUNNING" and the first task. Placement is topic **E36**, AM attempts **E37**, the web proxy **E38**, classpath order **E39**
+18. **Source sweep — [connector/kafka-0-10 — consumer in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md)** — one deployment-shaped detail this topic's Kerberos section needs: Kafka authentication for **both** connectors is injected at a single point, `KafkaConfigUpdater.setAuthenticationConfigIfNeeded`, which lives in the separate `connector/kafka-0-10-token-provider` module and is called once on the driver (module name `"source"`) and once per executor consumer (`"executor"`). Its entire configuration surface — `spark.kafka.clusters.<id>.{auth.bootstrap.servers, target.bootstrap.servers.regex, security.protocol, sasl.kerberos.service.name, sasl.token.mechanism, ssl.*}` — is read through `getAllWithPrefix` with **no `ConfigBuilder` anywhere**, so none of it appears in the generated configuration tables or in the source map's config catalog. The `target.bootstrap.servers.regex` key is the one that decides which cluster's token a given `bootstrap.servers` gets, and a regex that matches nothing produces no token and an authentication failure at first connect rather than at submit
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
@@ -4214,6 +4268,59 @@ application.
     is found *before* the cluster's copy of the same name.
 
 **Milestone:** You can write out the container classpath in order for a cluster-mode job with `--jars`, an `extraClassPath` and a `local:` Spark jar; predict what `spark.yarn.user.classpath.first=true` moves and what it does not; explain why the same `spark-submit` line resolves a different Hadoop version on a `no-hadoop` build; and use `spark.yarn.config.gatewayPath` to make a submitter-side install path valid inside a container.
+
+---
+
+
+### ⬜ E40 — The Kafka Executor Consumer Cache: Reuse, Eviction, and the Random-Access Cliff
+
+> Discovered from source sweep (new topic): `connector/kafka-0-10: KafkaDataConsumer — the per-JVM executor consumer cache`
+
+**What it is:** The per-JVM LRU cache of Kafka consumers each executor keeps, keyed by consumer group and topic-partition — how a task acquires and releases one, when a task retry invalidates it, why the cache can grow past its own maximum capacity, and why sequential offset access is cheap while random access is not.
+
+**Why you need it:** Kafka consumers prefetch, so reusing them across batches is most of the connector's throughput; the cache that provides it has an unbounded-growth path, a silent fall back to non-cached consumers, and a fetch loop whose cost depends entirely on whether your offsets are consecutive.
+
+**Learn it with:**
+
+1. **Spark-docs → Configuration, Spark Streaming** ([configuration.html#spark-streaming](https://spark.apache.org/docs/latest/configuration.html#spark-streaming)) — the four `spark.streaming.kafka.consumer.cache.*` keys and `consumer.poll.ms`; note that the docs describe `maxCapacity` as a maximum without the in-use caveat
+2. **Spark-docs → Structured Streaming + Kafka, "Consumer Caching"** ([structured-streaming-kafka-integration.html](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)) — the *other* Kafka consumer cache, which has a timeout and an evictor thread the DStream one lacks. Reading the two side by side is the fastest way to see what each design bought
+3. **Kafka docs → Consumer Configs, `fetch.min.bytes` / `max.partition.fetch.bytes`** ([kafka.apache.org/documentation/#consumerconfigs](https://kafka.apache.org/documentation/#consumerconfigs)) — what a single `poll` actually returns, which is what the buffer this cache preserves is holding
+4. **Source sweep — [connector/kafka-0-10 — consumer in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md)** — `KafkaDataConsumer.acquire`'s five branches, the `removeEldestEntry` growth bound, `InternalKafkaConsumer.get`'s seek/poll/`require` path, and the `floorMod` placement that decides whether the cache can hit at all
+
+!!! warning "No book covers this"
+
+    The Kafka connector's executor-side cache postdates SDG's Kafka chapter and is absent from LS2e
+    and Rioux, both of which stop at "Spark reads from Kafka in parallel". This is source-and-docs
+    territory, and the docs omit the two behaviours that actually bite.
+
+!!! warning "`maxCapacity` is not a cap, and the cache never shrinks"
+
+    Eviction fires only when the least-recently-used entry is **not in use**. If every entry is in
+    use the map grows past `spark.streaming.kafka.consumer.cache.maxCapacity` (default 64), and the
+    source comment states the bound plainly: it grows to the executor's task-slot count "after which
+    it will never reduce". Each entry is a live `KafkaConsumer` holding fetch buffers and a TCP
+    connection. There is no evictor thread and no TTL — the Structured Streaming connector's cache
+    has both, which is the design difference worth knowing.
+
+!!! warning "A cache miss is invisible above DEBUG"
+
+    Four of `acquire`'s five branches return a non-cached consumer that is closed on release: a task
+    **retry** (any `attemptNumber ≥ 1`) invalidates the cached entry, the cache being disabled, no
+    entry existing yet, and an entry already in use by another task. All four log at DEBUG. A job
+    whose partitions keep moving between executors therefore builds a fresh `KafkaConsumer` per
+    partition per batch — slower with no error, no warning and no metric. The one INFO-level tell is
+    "Initial fetch for &lt;group&gt; &lt;topic-partition&gt; &lt;offset&gt;" appearing every batch
+    instead of once.
+
+!!! info "Placement is `hash mod executorCount`, so scaling reshuffles almost everything"
+
+    `KafkaRDD.getPreferredLocations` picks `floorMod(topicPartition.hashCode, executors.length)` over
+    a sorted executor list — deliberately consistent so the cache can hit, but not consistent hashing
+    in the ring sense. Adding or losing a single executor changes the mapping for most partitions at
+    once, invalidating most of the cache. That is a real argument for a fixed executor count on a
+    DStream Kafka job.
+
+**Milestone:** You can say which of `acquire`'s branches a given situation takes and whether the resulting consumer is cached; explain why an executor consuming 200 partitions with 64 task slots can hold more than 64 open consumers and what bounds it; predict what `spark.streaming.kafka.consumer.cache.enabled=false` costs on a steady-state stream; and read "Initial fetch"/"Buffer miss" log lines as cache diagnostics rather than errors.
 
 ---
 

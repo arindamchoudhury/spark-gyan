@@ -277,7 +277,11 @@ def report_overlaps(subsystems: dict) -> None:
         print(line + "   (shared_scope: declared intentional)")
 
 
-SRC_FILE_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_$]*\.(?:scala|java))\b")
+# Hyphens are allowed in the stem because `package-info.java` is a real, JLS-defined
+# source file name (connector/kafka-0-10 is the first swept module to contain one).
+# Without the hyphen a page citing it could never be credited, and the package it
+# lives in reported one fewer cited file forever.
+SRC_FILE_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_$-]*\.(?:scala|java))\b")
 
 # A family of this size or larger, cited nowhere in a fully-swept subsystem, is a
 # mechanism nobody wrote about. Below it, silence is as likely to mean the configs
