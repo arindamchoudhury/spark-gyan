@@ -999,34 +999,85 @@ scheduling default YARN changes for everyone.
 
 ---
 
-## Breadth checks
+## Breadth check 1 — the config slice
 
-**Package breadth.** The group's scope names three packages; all were walked file by file.
+The whole subsystem is one group, so the slice needs no pattern filter: **every catalog key whose
+`subsystem` is `resource-managers/yarn`**, reproduced by the snippet at the top of this page. **61
+keys, all 61 tied to a concept above** — no key in the slice is left over, which for a
+single-group subsystem is the only acceptable outcome.
 
-| Package | Files (non-test) | Cited |
-|---|---|---|
-| `deploy/yarn/` (incl. the Java tree) | 20 | 20 |
-| `scheduler/cluster/` | 6 | 6 |
-| `executor/` | 1 | 1 |
-| `util/` *(recorded plumbing)* | 1 | 1 |
-| `launcher/` *(recorded plumbing)* | 1 | 0 |
+A handful of keys are deliberately cited under two concepts, because they genuinely drive both —
+`spark.yarn.preserve.staging.files` (localization and attempt cleanup),
+`spark.yarn.submit.waitAppCompletion` (submission and monitoring), and the two
+`spark.yarn.historyServer.*` keys (the tracking URL and the web proxy). The per-section
+`**Configs:**` lines are therefore a mapping, not a partition, and do not sum to 61.
 
-`AmIpPrincipal.java` and `AmIpServletRequestWrapper.java` are two- and three-method wrappers used
-only by `AmIpFilter`; they are named in the web-proxy section but carry no anchor of their own.
-`YarnCommandBuilderUtils.scala` (`launcher/`, recorded plumbing) supplies `findJarsDir` and Windows
-batch quoting and is the one file in scope with no concept behind it.
+**Eight of the 61 are `.internal()`** — `spark.yarn.user.jar`, `spark.yarn.secondary.jars`, and the
+six `spark.yarn.cache.*` keys (`filenames`, `sizes`, `timestamps`, `visibilities`, `types`,
+`confArchive`). All eight are the client→AM handoff described under *Resource localization*: the
+client writes them into the dist-cache properties file and the AM reads them back to build executor
+local resources. None is a user-facing knob, and setting one by hand does nothing useful.
 
-**Config breadth.** All **61** catalog keys tie to a concept above. Three uncatalogued families are
-flagged in the callout at the top of the page.
+**Three families the group reads that the catalog cannot see**, flagged in the callout at the top of
+the page and repeated here because `--sweeps` is blind to all three:
+`spark.yarn.appMasterEnv.<NAME>` (dynamic prefix), `spark.yarn.{am,driver,executor}.resource.<name>.amount`
+(dynamic prefix), and `spark.yarn.launchContainers` (bare `getBoolean(..., true)`, test-only, and
+it silently skips every container launch). None appears in `configuration.md` either.
+
+Keys owned elsewhere that this group's behaviour depends on, listed so they are not mistaken for
+gaps: `spark.decommission.enabled` and `spark.shuffle.service.{enabled,name}` (core — the
+decommission gate), `spark.{driver,executor}.limitActiveProcessorCount.enabled` (core, both new in
+4.2.0), `spark.executor.{memory,memoryOverhead,minMemoryOverhead,memoryOverheadFactor}` (core — the
+container sizing arithmetic), `spark.excludeOnFailure.maxFailedExecutorsPerNode` (core — the
+per-host budget), and `spark.shuffle.push.mergersMin*` (core — the merger threshold).
+
+## Breadth check 2 — the packages
+
+The scope names three packages, none of which has sub-packages; `util/` and `launcher/` are recorded
+plumbing for this subsystem in `groups.yaml` and were walked anyway. All **29** non-test files
+opened, **28** cited.
+
+**`deploy/yarn/` — 20 files, 20 cited** (15 Scala, 4 Java, plus `config/package.scala`):
+
+`ApplicationMaster` (976) · `Client` (1845) · `YarnAllocator` (1064) · `config/package` (525) ·
+`ExecutorRunnable` (236) · `LocalityPreferredContainerPlacementStrategy` (230) ·
+`YarnSparkHadoopUtil` (212) · `ClientDistributedCacheManager` (201) · `ResourceRequestHelper` (189) ·
+`YarnRMClient` (153) · `YarnAllocatorNodeHealthTracker` (152) · `SparkRackResolver` (113) ·
+`ApplicationMasterArguments` (104) · `ClientArguments` (99) · `YarnProxyRedirectFilter` (81) ·
+`ApplicationMasterSource` (50) · `AmIpFilter.java` (239) · `ProxyUtils.java` (126) ·
+`AmIpServletRequestWrapper.java` (54) · `AmIpPrincipal.java` (35)
+
+The last two are two- and three-method wrappers used only by `AmIpFilter`; they are named in the
+web-proxy section but carry no anchor of their own.
+
+**`scheduler/cluster/` — 6 files, 6 cited:**
+
+`YarnSchedulerBackend` (411) · `YarnClientSchedulerBackend` (199) · `YarnClusterManager` (56) ·
+`YarnClusterSchedulerBackend` (50) · `YarnScheduler` (39) · `YarnClusterScheduler` (37)
+
+**`executor/` — 1 file, 1 cited:** `YarnCoarseGrainedExecutorBackend` (88).
+
+**Plumbing, walked for completeness:** `util/YarnContainerInfoHelper` (132) is cited under the
+metrics concept. `launcher/YarnCommandBuilderUtils` (39) is the **one file in scope with no concept
+behind it** — `findJarsDir` plus Windows batch quoting.
 
 **Dead code noticed:** `YarnSparkHadoopUtil.RM_REQUEST_PRIORITY`
 ([:43](https://github.com/apache/spark/blob/v4.2.0/resource-managers/yarn/src/main/scala/org/apache/spark/deploy/yarn/YarnSparkHadoopUtil.scala#L43)) is referenced nowhere in `src/main` —
 priorities have come from the ResourceProfile id since Spark 3.0.
 
-**Deliberately not covered:** `common/network-yarn` (`YarnShuffleService`, the NodeManager
-auxiliary service) is a different module and outside this group's scope, even though
-`ExecutorRunnable` registers with it. The `spark.shuffle.push.*` mechanism itself is `core`'s and
-is covered by the [shuffle & memory sweep](core-shuffle-memory.md).
+**Named so it is not mistaken for covered:** `common/network-yarn` — `YarnShuffleService` and
+`YarnShuffleServiceMetrics`, the NodeManager auxiliary service — is a **different module**, outside
+this group's scope and unswept, even though `ExecutorRunnable` registers with it and
+`resource-managers/yarn/src/test/` holds its test suites. The `spark.shuffle.push.*` mechanism
+itself is `core`'s and is covered by the [shuffle & memory sweep](core-shuffle-memory.md).
+
+## Overlapping topic traces
+
+**None.** `check_drift.py --sweeps` reports no overlaps for this page, and that is structural rather
+than incidental: every topic code in the front matter is at the Advanced or Expert level (E2, E3,
+E12, A13, A15, A16) plus I18, and `topics/` currently holds traces for B1–B9, I1–I11 and I13 only.
+Nothing on this page can contradict an existing trace, and nothing here has been cross-checked
+against one either — the first `trace` of any E-code should read this page before starting.
 
 ---
 
