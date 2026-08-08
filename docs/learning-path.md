@@ -1152,6 +1152,7 @@ You are ready to leave this level when you can:
 1. **Spark-docs → Submitting Applications, Advanced Dependency Management** ([submitting-applications.html#advanced-dependency-management](https://spark.apache.org/docs/latest/submitting-applications.html#advanced-dependency-management)) — the canonical description of `--packages`, `--repositories`, `--jars` and how each is distributed
 2. **Spark-docs → Configuration, Runtime Environment** ([configuration.html#runtime-environment](https://spark.apache.org/docs/latest/configuration.html#runtime-environment)) — `spark.jars`, `spark.jars.packages`, `spark.jars.ivy`, `spark.jars.ivySettings` and their interactions
 3. **Source sweep — [core — submit & standalone in the source map](reference/spark-source-map/sweeps/core-submit-standalone.md)** — the resolver chain and its order, Spark's automatic exclusions, where resolution actually happens per cluster manager, and the three ways a dependency silently is not there
+4. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — where those resolved jars physically go on YARN, which Ivy resolution says nothing about. Everything is copied to a per-application HDFS staging directory (`.sparkStaging/<appId>`, created `700`) and registered as YARN `LocalResource`s; a `local:` URI is never copied at all. Three facts worth having: **leaving `spark.yarn.jars` unset re-uploads the whole Spark distribution on every submit** — `prepareLocalResources` zips `$SPARK_HOME/jars` into a temp archive with one WARN line — so pre-staging the jars once turns a multi-second submit into a sub-second one; resource **visibility is decided by HDFS permissions, not a config** (`PUBLIC` needs the file other-readable *and* every ancestor other-executable, which the `700` staging directory forecloses, so a shared `PUBLIC` jars location has to live outside it); and files are de-duplicated by URI **and by basename**, because two different paths with the same file name make YARN fail the container launch outright. `spark.jars.ivySettings` is itself localized in cluster mode and its config value rewritten to the localized name
 
 !!! warning "No book covers this"
 
@@ -1953,6 +1954,7 @@ as well as range; and name the config that permits a negative scale and why it i
 6. **Source sweep — [sql/core — adaptive in the source map](reference/spark-source-map/sweeps/sql-core-adaptive.md)** — the failure path AQE adds on top of this one. A stage failure does not propagate directly: it is recorded on the `QueryStageExec`, drained from the event queue, and then every *other* running exchange stage is cancelled before one exception is thrown. Several concurrent failures become a single `MULTI_FAILURES_IN_STAGE_MATERIALIZATION` with the rest attached via `addSuppressed` — which is why the same root cause can produce two very different-looking stack traces
 7. **Source sweep — [sql/core — datasources in the source map](reference/spark-source-map/sweeps/sql-core-datasources.md)** — the read-side failure switches that interact with retry: `ignoreMissingFiles` and `ignoreCorruptFiles` are evaluated per file inside `FileScanRDD`, and the corrupt-file path **succeeds with partial data** rather than failing the task — so a transient storage fault becomes a wrong answer instead of a retry. `FileNotFoundException` is still thrown under `ignoreCorruptFiles`, and `AccessControlException`/`BlockMissingException` always are
 8. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — the Kubernetes answer to "executor died, must I recompute its shuffle?". `KubernetesLocalDiskShuffleDataIO` lets a new executor **adopt a dead executor's PVC**: it disables local-file deletion on stop, then scans the reused volume for orphaned shuffle blocks and re-registers them with its own `BlockManager` — an alternative to the external shuffle service where there is no shuffle service to run. Two cautions: verification **passes when the checksum file is absent** (only the missing/empty/corrupt cases fail), and the executor-side enablement check reads `reusePersistentVolumeClaim` with a literal `false` default against a `ConfigEntry` default of `true`, so set it explicitly. Also relevant to the failure budget: on K8s a pod *deleted* (node drain, eviction) is `exitCausedByApp = false` and does not count toward `spark.executor.maxNumFailures`, while a pod *failed* does
+9. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — the YARN answer to "why did this executor die, and does it count?". `YarnAllocator.processCompletedContainers` is a single match on the container exit status that produces the `exitCausedByApp` flag the whole retry budget depends on: `PREEMPTED` is explicitly not your fault (SPARK-8167), `KILLED_EXCEEDED_PMEM`/`VMEM` are, and their messages name the exact configs to raise (`spark.executor.memoryOverhead`, `yarn.nodemanager.vmem-pmem-ratio`, `yarn.nodemanager.vmem-check-enabled`). Since 4.0 (SPARK-46920) Spark's own exit codes are also decoded via `ExecutorExitCode.explainExitCode`, because they overlap YARN's and YARN's diagnostics can therefore be **actively misleading**. The other half is the loss-reason RPC: `YarnDriverEndpoint` overrides `onDisconnected` to *ask the AM why* before removing an executor — on a preempted container that is what stops the running tasks from counting toward job failure — and falls back to `ExecutorProcessLost` if the AM does not answer in time
 
 !!! warning "No book covers the retry state machine"
 
@@ -2027,6 +2029,7 @@ as well as range; and name the config that permits a negative scale and why it i
 1. **Spark-docs → Configuration, Shuffle Behavior** ([configuration.html#shuffle-behavior](https://spark.apache.org/docs/latest/configuration.html#shuffle-behavior)) — the `spark.shuffle.push.*` family and the external shuffle service settings it depends on
 2. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — the external shuffle service and dynamic allocation, both prerequisites for the merger side
 3. **Source sweep — [core — shuffle & memory in the source map](reference/spark-source-map/sweeps/core-shuffle-memory.md)** — the four enablement preconditions, the merger-threshold negotiation that returns an empty list without logging, the pusher's batching and skip rules, and the three reduce-side fallback triggers
+4. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — the concrete reason it is YARN-only: `YarnSchedulerBackend.getShufflePushMergerLocations` is the **sole override** of that method in the whole codebase, so on any other cluster manager the base implementation returns nothing and the negotiation can never succeed. It is also where the merger arithmetic lives — `numMergersDesired = min(max(1, ceil(numPartitions / tasksPerExecutor)), maxExecutors)`, with `maxExecutors` taken from `spark.dynamicAllocation.maxExecutors` or `spark.executor.instances` — and the threshold comparison whose failure path returns an empty `Seq` with a DEBUG line only on the *success* branch. Excluded nodes are filtered out before the request, so an excluded host is never proposed as a merger. SPARK-33481 is still open in a `TODO`: the merger count is acknowledged in-source as a naive heuristic
 
 !!! warning "No book covers this"
 
@@ -2080,6 +2083,7 @@ You are ready to leave this level when you can:
 3. **Spark-docs → Job Scheduling** ([spark.apache.org/docs/latest/job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — where stage-level scheduling sits relative to dynamic allocation, which it depends on
 4. **Source sweep — [core — rpc & resources in the source map](reference/spark-source-map/sweeps/core-rpc-resources.md)** — the four classes that implement it end to end: `ResourceProfileBuilder`/`ResourceProfile` (author + validate), `ResourceProfileManager` (cluster-manager gating, dedup, merge conflicts), `ResourceUtils` (resourcesFile vs discovery-script/plugin), `ResourceAllocator` (fixed-point address assignment) — plus the `calculateTasksAndLimitingResource` fit arithmetic and every edge/failure path
 5. **Source sweep — [sql/core — Python and Arrow in the source map](reference/spark-source-map/sweeps/sql-core-python-arrow.md)** — the one place stage-level scheduling reaches Python: `MapInBatchExec` attaches an optional `ResourceProfile` with `rdd.withResources` and can run its child RDD under `.barrier()`, so `mapInPandas(..., barrier=True)` with a GPU profile is the supported shape for a distributed training loop inside PySpark
+6. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — how a ResourceProfile becomes an actual container request on YARN, which is the cluster manager most people run this on. YARN forbids different container sizes within one priority, so **Spark uses the ResourceProfile id as the YARN priority** — that is the whole multi-profile mechanism, and it is why the allocator keys every map by profile id. `ResourceRequestHelper` maps Spark's abstract `gpu`/`fpga` names to YARN's `yarn.io/gpu` / `yarn.io/fpga` (remappable via `spark.yarn.resourceGpuDeviceName` / `…FpgaDeviceName`) and rejects 22 spellings of memory and cores under `spark.yarn.*.resource.*` at submit time. Two sharp edges: `spark.yarn.executor.resource.*` applies **only to the default profile** — a custom profile propagates everything it declares instead, deliberately, because there would be no way to remove them — and an unknown resource type is a **warning logged at most twice per JVM**, after which containers are allocated without it and the failure resurfaces much later as a discovery script that finds no devices
 
 **Milestone:** You can build a `ResourceProfile` that requests 1 GPU per executor and a fractional (`0.5`) GPU per task, attach it to a stage with `rdd.withResources`, and predict from `spark.executor.cores` / `spark.task.cpus` / the per-resource amounts how many tasks that executor will run and which resource is *limiting*; explain why the feature needs dynamic allocation and which cluster managers support it; and describe what `spark.scheduler.resource.profileMergeConflicts` changes when two profiles collide on one stage.
 
@@ -2904,6 +2908,7 @@ and which frame class actually runs.
 14. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — two operational surfaces: `CheckpointFileManager` is the atomic-rename abstraction the whole protocol assumes and is pluggable per scheme — which matters on object storage that does not provide it — and 4.1.0's `ChecksumCheckpointFileManager` decorates any implementation with a `CRC32C` sibling file, on by default, defending against the truncated-log-entry failure mode
 15. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — **the Kubernetes half of this topic**, and the first source-derived material behind it: 47 files, 89 configs, six of them new in 4.2.0. The frame first — Spark never asks Kubernetes for N executors, it maintains a target and reconciles against snapshots — then five operational facts. (i) **Only the `direct` allocator implements most of the config surface**: `statefulset` and `deployment` never subscribe to the snapshot store, so batch size, all three pending caps and PVC reuse simply do not apply to them. (ii) `spark.kubernetes.allocation.maximum` counts **executor ids ever issued**, not live pods, so a long dynamic-allocation job eventually dies on it. (iii) A single un-acknowledged pod blocks *all* further requests for its resource profile until a ≥600 s timeout, which is why K8s scale-up stalls in bursts. (iv) Exit code **137** is annotated `(SIGKILL, possible container OOM)` by a hand-written table — the fastest `memoryOverhead`-sizing diagnostic there is, and distinct from 52 (JVM heap OOM). (v) A pod *deleted* is `exitCausedByApp = false` and does not burn `spark.executor.maxNumFailures`, while a pod *failed* does. Reconciliation itself is topic **E33**; the 4.2.0 resize plugins are **E34**
 16. **Source sweep — [resource-managers/kubernetes — auth & networking in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md)** — the other half, and it completes the subsystem. Deployment-shaped facts: `spark.driver.host` and `spark.driver.bindAddress` are **rejected outright** on Kubernetes because a headless Service manages both; that Service publishes four ports including the Spark Connect gRPC endpoint; and the driver's readiness wait in the allocator exists precisely because the Service is not DNS-resolvable until then. **Upgrade trap for 4.2.0:** the new `NetworkPolicyFeatureStep` has no config gating it, so a submission service account without `create networkpolicies` now fails *after* creating the driver pod — and the failure path deletes that pod. Identity and RBAC proper are topic **E35**
+17. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — **the YARN half of this topic**, and the subsystem's only group: 29 files, 61 configs, two new in 4.2.0. The frame first — unlike Kubernetes, YARN is a **request/response protocol, not a reconciliation loop**: one `Reporter` thread calls `allocate()` per round, and that call doubles as the liveness heartbeat. Then the operational facts. (i) `ApplicationMaster` is one class running two unrelated processes — in cluster mode it *is* the driver host and runs user `main` on a side thread, in client mode it is a bare allocator — and almost every branch in it is `isClusterMode`. (ii) The allocation loop polls **faster** when work is pending: `spark.yarn.scheduler.initial-allocation.interval` (200 ms) is the *shortest* sleep and doubles toward `spark.yarn.scheduler.heartbeat.interval-ms` (3 s), which is itself silently capped at half of YARN's AM expiry. (iii) Leaving `spark.yarn.jars` unset makes every submit zip and upload `$SPARK_HOME/jars` — one WARN line, several seconds, and the resources end up `PRIVATE` because the staging dir is `700`. (iv) YARN **decommissioning is disabled whenever the external shuffle service is enabled** (SPARK-39018), so the two features you would want together are mutually exclusive. (v) YARN alone overrides `minRegisteredRatio` to **0.8**, which is the unexplained pause between "application RUNNING" and the first task. Placement is topic **E36**, AM attempts **E37**, the web proxy **E38**, classpath order **E39**
 
 !!! warning "The auth secret is not optional on many cluster managers — and the UI is open by default"
 
@@ -2968,6 +2973,7 @@ and which frame class actually runs.
 15. **Source sweep — [sql/core — query-execution in the source map](reference/spark-source-map/sweeps/sql-core-query-execution.md)** — what a SQL execution actually emits: `SparkListenerSQLExecutionStart`/`End`, the root-execution id that ties nested executions together, the `spark.sql.event.truncate.length` truncation applied to the query text, and `SQLEventFilterBuilder` — the rule that decides which SQL events survive event-log compaction
 16. **Source sweep — [sql/core — Python and Arrow in the source map](reference/spark-source-map/sweeps/sql-core-python-arrow.md)** — the observability surface of the Python side: the `PythonSQLMetrics` set in the SQL tab, `PythonWorkerLogsExec` reading worker log blocks back out of the `BlockManager` as a queryable table, and the worker-diagnostic flags the SQL layer owns — `faulthandler.enabled`, `idleTimeoutSeconds` / `killOnIdleTimeout`, `tracebackDumpIntervalSeconds`, and the `hideTraceback` / `simplifiedTraceback` pair that decides how much Python traceback reaches the JVM exception
 17. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — what to monitor and where it comes from: `ProgressReporter`'s `durationMs` map separates `triggerExecution` from `walCommit` from `addBatch`, so a slow batch is decidable rather than guessable; `numRowsDroppedByWatermark` is the otherwise-silent count of late rows; and the state-store coordinator reports **snapshot upload lag** per instance, which is how you find the one partition that will take an hour to recover
+18. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — the YARN observability surface, which is smaller than you would expect and fails quietly. The AM registers exactly **five** gauges (`numExecutorsFailed`, `numExecutorsRunning`, `numReleasedContainers`, `numLocalityAwareTasks`, `numContainersPendingAllocate`) under its own `MetricsSystem` instance started with `start(false)` — deliberately **without** the static sources every other instance registers (SPARK-25277) — and namespaced by `spark.yarn.metrics.namespace`, defaulting to the application id. Container log URLs and the nine executor attributes behind `spark.ui.custom.executor.log.url` are built by `YarnContainerInfoHelper`, whose two entry points wrap everything in a `try` that logs at **INFO** and returns `None`: a missing `NM_HTTP_PORT` produces a UI with no log links and one line to explain it. Rolled-log aggregation patterns are set at submission and an unsupported YARN version downgrades them to a warning. Application-report polling is its own channel — `spark.yarn.report.loggingFrequency` (30) caps how often an unchanged state is logged, and `spark.yarn.includeDriverLogsLink` is opt-in because it costs two extra RM RPCs per poll
 18. **Source sweep — [sql/core — the classic API in the source map](reference/spark-source-map/sweeps/sql-core-classic-api.md)** — two observability surfaces this topic can use: `ObservationManager` (metrics collected during the query rather than in a second pass) and the `InMemoryTableScanExec` accumulators `readPartitions` / `readBatches`, which make cache batch-skipping visible instead of theoretical
 19. **Source sweep — [sql/pipelines — graph in the source map](reference/spark-source-map/sweeps/sql-pipelines-graph.md)** — pipeline observability from the producing side, and it is thinner than it looks. `QueryOrigin` is the provenance channel — file, line and SQL text attached to exceptions as a **suppressed exception** so the original type survives, which is what lets a pipeline error point at a line of the user's Python or SQL. Against that, three gaps to know about before you build alerting on pipeline runs: the run outcome reports `COMPLETED` when every flow was skipped or excluded; a persisted view that failed to publish does **not** fail the run and appears only as a flow event; and `UnexpectedRunFailure` ("Run FAILED unexpectedly", no cause attached) is an ordinary reachable outcome, not the bug its scaladoc claims
 20. **Source sweep — [resource-managers/kubernetes — driver & executor in the source map](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md)** — two Kubernetes-specific observability surfaces. `SparkKubernetesDiagnosticsSetter` (opt-in via `spark.kubernetes.driver.annotateExitException`) patches the driver's fatal exception onto the driver **pod as an annotation**, truncated to 64 KiB, so `kubectl describe pod` explains a failure without log access. And `ExecutorRollPlugin` is an observability *consumer* rather than a producer: it reads `ExecutorSummary` from the status store and decommissions the worst executor by one of eleven policies — but its default `OUTLIER` policy falls back to `TOTAL_DURATION`, so once enabled it rolls an executor **every interval regardless of health**; use `OUTLIER_NO_FALLBACK` if you meant "only when something looks wrong"
@@ -3235,6 +3241,7 @@ and which frame class actually runs.
 1. **Spark-docs → Configuration, Scheduling** ([configuration.html#scheduling](https://spark.apache.org/docs/latest/configuration.html#scheduling)) — the full `spark.excludeOnFailure.*` family, its scopes and timeouts
 2. **Spark-docs → Job Scheduling** ([job-scheduling.html](https://spark.apache.org/docs/latest/job-scheduling.html)) — how exclusion interacts with dynamic allocation, which is what supplies replacement executors
 3. **Source sweep — [core — execution engine in the source map](reference/spark-source-map/sweeps/core-execution-engine.md)** — the escalation ladder, the "blind until a TaskSet succeeds" constraint, the dry-run mode, and the starvation caveat that can stop the unschedulable-abort timer from ever firing
+4. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — a **third tier** the two above do not cover: `YarnAllocatorNodeHealthTracker` runs inside the ApplicationMaster, not the driver, precisely to avoid the delay between excluding a node and the next allocation. It merges three sources — the static `spark.yarn.exclude.nodes`, the scheduler's excluded nodes pushed down with every executor request, and its own per-host allocation-failure count — and pushes the union into YARN with `AMRMClient.updateBlacklist`. Two traps: `spark.yarn.executor.launch.excludeOnFailure.enabled` defaults to **false**, and with it off a failure still burns the application-wide `maxNumExecutorFailures` budget while the bad host is never excluded, so one broken NodeManager can kill the application by itself; and `ContainerExitStatus.DISKS_FAILED` is in the "not the node's fault" set (following Hadoop's `Apps#shouldCountTowardsNodeBlacklisting`), so a NodeManager with failed disks never reaches this tracker at all
 
 !!! warning "No book covers this"
 
@@ -4032,6 +4039,184 @@ application.
 
 ---
 
+
+### ⬜ E36 — YARN Container Placement: Locality Preferences and Rack Resolution
+
+> Discovered from source sweep (new topic): `resource-managers/yarn: Container placement — locality preferences, ratios, and rack resolution`
+
+**What it is:** How Spark turns the driver's per-host pending-task counts into YARN container requests — an expected-containers-per-host ratio that already discounts running and pending containers, a three-pass host → rack → any-host match of what YARN actually grants, and the rack resolver underneath both.
+
+**Why you need it:** Node-local task placement on YARN is decided here, one allocation round before the scheduler ever sees an offer; when executors land on the wrong nodes the cause is in this arithmetic or in a rack resolver that silently fell back to `/default-rack`, and neither is visible in the UI.
+
+**Learn it with:**
+
+1. **Spark-docs → Running on YARN, Configuration** ([running-on-yarn.html#configuration](https://spark.apache.org/docs/latest/running-on-yarn.html#configuration)) — the only user-facing levers that touch placement: `spark.yarn.am.nodeLabelExpression`, `spark.yarn.executor.nodeLabelExpression` and `spark.yarn.exclude.nodes`
+2. **Spark-docs → Configuration, Scheduling** ([configuration.html#scheduling](https://spark.apache.org/docs/latest/configuration.html#scheduling)) — the `spark.locality.wait*` family, which governs the *task*-side half once the containers exist; container placement decides which hosts you get, locality waits decide what runs on them
+3. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — the whole mechanism: `LocalityPreferredContainerPlacementStrategy`'s expected-containers-per-host ratio (including the fractional discount for pending requests), the host → rack → any-host match, the separate thread the rack pass runs on, and `SparkRackResolver`'s fallback
+
+!!! warning "No book, and no documentation, covers this"
+
+    SDG, LS2e and Rioux all stop at "Spark prefers to run tasks where the data is". Container
+    placement — the layer *below* that, where Spark decides which hosts to name on a YARN request —
+    is described nowhere in the Spark documentation either. The class comment in
+    `LocalityPreferredContainerPlacementStrategy` is the specification, and it is the only prose
+    that exists.
+
+!!! warning "A broken topology script degrades to a single rack, silently"
+
+    `SparkRackResolver.coreResolve` catches an empty or failed mapping and assigns every host
+    `/default-rack`, logging **one INFO line**. From then on every host is "rack-local" to every
+    other, rack-local scheduling is meaningless, and the placement strategy's rack list collapses to
+    one entry. Nothing in the UI says locality has been lost — the only symptom is a job that
+    suddenly reads far more data over the network than it used to.
+
+!!! info "Node labels are per application, not per ResourceProfile"
+
+    `spark.yarn.executor.nodeLabelExpression` is read once at allocator construction and applied to
+    every `ContainerRequest`, whatever its ResourceProfile. There is no way to send a GPU stage to a
+    labelled partition and leave the default profile on the general pool — the AM's own label
+    (`spark.yarn.am.nodeLabelExpression`) is the only separate one, and it is applied at submission
+    through a different code path.
+
+**Milestone:** Given a stage with pending tasks on four hosts in a 30/30/20/10 ratio and a request for 18 containers, you can say how many container requests name which hosts and how many carry no preference; explain why an already-running executor on one of those hosts reduces the requests aimed at it; and describe what changes in the driver log and in job runtime when the cluster's topology script starts failing.
+
+---
+
+
+### ⬜ E37 — Application Attempts on YARN: Retry, Final Status, and the Staging Directory
+
+> Discovered from source sweep (new topic): `resource-managers/yarn: Application attempts, final status, and the staging directory`
+
+**What it is:** What happens when a YARN ApplicationMaster dies — how many attempts you actually get (the minimum of a Spark and a YARN setting), what final status each deploy mode reports by default, which attempt is allowed to delete the staging directory, and how the failure-validity interval stops old failures from counting.
+
+**Why you need it:** An application that reports `SUCCEEDED` after failing, or `FAILED` after a clean user exit, is this logic; so is a staging directory left behind on HDFS, and the surprise that `spark.yarn.maxAppAttempts` cannot raise the cluster's ceiling.
+
+**Learn it with:**
+
+1. **Spark-docs → Running on YARN, Configuration** ([running-on-yarn.html#configuration](https://spark.apache.org/docs/latest/running-on-yarn.html#configuration)) — `spark.yarn.maxAppAttempts`, `spark.yarn.am.attemptFailuresValidityInterval`, `spark.yarn.preserve.staging.files`, `spark.yarn.stagingDir` and `spark.yarn.submit.waitAppCompletion`, with the documented note that the Spark attempt setting is bounded by YARN's
+2. **Spark-docs → Running on YARN, Debugging your Application** ([running-on-yarn.html#debugging-your-application](https://spark.apache.org/docs/latest/running-on-yarn.html#debugging-your-application)) — `yarn logs -applicationId`, per-attempt container logs, and why a failed *first* attempt's logs are the ones you actually want
+3. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — `YarnRMClient.getMaxRegAttempts`, the shutdown hook's unregister/cleanup ordering, `getDefaultFinalStatus`, the once-only `finish`, and the eight AM exit codes
+
+!!! warning "No book covers this"
+
+    SDG's YARN chapter predates most of these settings and neither LS2e nor Rioux discusses AM
+    restart at all. The docs list the configs but not their interaction — in particular not the fact
+    that the same minimum drives both the retry budget *and* the staging-directory cleanup decision.
+
+!!! warning "`spark.yarn.maxAppAttempts` can only lower the limit, never raise it"
+
+    The effective count is `min(spark.yarn.maxAppAttempts, yarn.resourcemanager.am.max-attempts)`,
+    taken silently. On a cluster capped at the YARN default of 2, setting the Spark key to 10 gives
+    you 2. The AM uses the same minimum to decide whether it is the *last* attempt, which is what
+    determines whether it may delete the staging directory and unregister — so raising the Spark
+    value alone changes nothing at all.
+
+!!! info "The default final status differs by deploy mode, on purpose"
+
+    A cluster-mode AM starts with `FinalApplicationStatus.FAILED` and a client-mode one with
+    `UNDEFINED`. The reason is `System.exit` from user code: in cluster mode, exiting without a
+    clean shutdown must not be reported as success, so the default is pessimistic. In client mode
+    the AM cannot know why the driver went away, so it declines to judge — unless
+    `spark.yarn.am.clientModeTreatDisconnectAsFailed` is set, which turns an unclean disconnect into
+    `FAILED`.
+
+!!! info "A long-running job wants the failure-validity interval"
+
+    Without `spark.yarn.am.attemptFailuresValidityInterval`, AM failures accumulate for the entire
+    lifetime of the application, so a streaming job that loses its AM twice in six months has
+    exhausted a two-attempt budget. Setting the interval to an hour makes old failures expire, so
+    only a genuine crash loop runs out of attempts.
+
+**Milestone:** You can state how many AM attempts a given application will actually get from the Spark and YARN settings together, explain why a killed application can leave `.sparkStaging/<appId>` behind on HDFS while a failed one does not, predict what final status YARN reports when user code calls `System.exit(0)` in each deploy mode, and read an AM exit code of 11, 13 or 17 without looking it up.
+
+---
+
+
+### ⬜ E38 — The YARN Web Proxy: Why the Spark UI Redirects and Who It Thinks You Are
+
+> Discovered from source sweep (new topic): `resource-managers/yarn: The YARN web proxy — AmIpFilter, redirects, and the proxy-user identity`
+
+**What it is:** Every Spark UI on YARN sits behind the ResourceManager's web proxy: a servlet filter installed into the driver's Jetty at startup rejects any request whose source IP is not a known proxy address by bouncing it back through /proxy/<appId>/redirect, and takes the user identity from a proxy-user cookie the proxy sets.
+
+**Why you need it:** This is why hitting the driver host directly bounces you, why the UI's links need `spark.ui.proxyBase` to be right, why a stale proxy address list produces redirect loops for up to five minutes, and why the History Server needs its own filter to escape the same trap.
+
+**Learn it with:**
+
+1. **Spark-docs → Security, Web UI** ([security.html#web-ui](https://spark.apache.org/docs/latest/security.html#web-ui)) — the ACL model (`spark.acls.enable`, view/modify ACLs and their group forms) that is the *actual* authorization layer; the proxy only supplies an identity
+2. **Spark-docs → Configuration, Spark UI** ([configuration.html#spark-ui](https://spark.apache.org/docs/latest/configuration.html#spark-ui)) — `spark.ui.proxyBase`, `spark.ui.proxyRedirectUri` and `spark.ui.filters`, the three knobs that decide whether links behind a proxy resolve
+3. **Spark-docs → Running on YARN, Using the Spark History Server to replace the Spark Web UI** ([running-on-yarn.html#using-the-spark-history-server-to-replace-the-spark-web-ui](https://spark.apache.org/docs/latest/running-on-yarn.html#using-the-spark-history-server-to-replace-the-spark-web-ui)) — `spark.yarn.historyServer.allowTracking`, and the case `YarnProxyRedirectFilter` exists for
+4. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — the two installation paths (system properties in cluster mode, an `AddWebUIFilter` RPC in client mode), the source-IP check and the `/proxy/…/redirect` insertion, the five-minute address cache, the `proxy-user` cookie, the RM-HA probe, and the History Server's client-side meta-refresh
+
+!!! warning "No book covers this, and the docs barely do"
+
+    The YARN web proxy appears in the Spark documentation only as a passing mention of
+    `spark.ui.proxyBase` in the configuration table. `AmIpFilter` itself is a fork of Hadoop's class
+    maintained inside Spark (migrated to `jakarta.servlet`), and nothing in the Spark docs says a
+    filter is installed into your driver's Jetty at all.
+
+!!! warning "The filter propagates an identity; it does not authenticate"
+
+    `AmIpFilter` trusts two things: that the request's source IP is one of the resolved proxy
+    addresses, and the value of a `proxy-user` cookie. A request from a proxy host with a forged
+    cookie is accepted as that user, and a request with *no* cookie passes down the filter chain
+    with no principal at all. The real access control is Spark's ACLs, which default to
+    `spark.acls.enable=false`, plus YARN's own `ApplicationAccessType` checks on RM-served pages.
+    Treat a reachable driver UI port as a reachable driver.
+
+!!! info "Two different things are called `proxy-user`"
+
+    `spark-submit --proxy-user` is Hadoop *impersonation* — running the application as another
+    Kerberos identity — and is described under Security → Proxy user. The `proxy-user` **cookie**
+    read by `AmIpFilter` and `YarnProxyRedirectFilter` is unrelated: it is how the RM web proxy tells
+    the UI which browser user is looking at the page. Neither implies the other.
+
+**Milestone:** You can explain what happens when you open `http://<driver-host>:4040` on a YARN cluster and why, say where the `proxy-user` identity came from and what it is and is not good for, configure the History Server as an application's tracking URL without landing in a redirect loop, and describe what changes when the ResourceManager's proxy hosts are re-resolved five minutes after a failover.
+
+---
+
+
+### ⬜ E39 — Container Classpath Construction on YARN: Ordering, User-First, and Path Rewriting
+
+> Discovered from source sweep (new topic): `resource-managers/yarn: Classpath construction and the gateway/cluster path rewrite`
+
+**What it is:** The exact order in which Spark assembles CLASSPATH for the AM and every executor container — working directory, localized conf, optionally the user jar first, the Spark libs directory, the distribution classpath, and the localized Hadoop conf last — plus the gateway-path rewrite that makes a submitter-side path valid on a cluster node.
+
+**Why you need it:** Class-conflict debugging on YARN is entirely a question of what came first in this list, and two of the levers (`spark.yarn.user.classpath.first` and `spark.yarn.populateHadoopClasspath`, whose default depends on how the distribution was built) change the answer without appearing anywhere in the plan or the UI.
+
+**Learn it with:**
+
+1. **Spark-docs → Running on YARN, Preparations + Configuration** ([running-on-yarn.html#preparations](https://spark.apache.org/docs/latest/running-on-yarn.html#preparations)) — the `with-hadoop` vs `no-hadoop` distinction that sets `spark.yarn.populateHadoopClasspath`'s default, and the `spark.yarn.config.gatewayPath` / `replacementPath` pair
+2. **Spark-docs → Configuration, Runtime Environment** ([configuration.html#runtime-environment](https://spark.apache.org/docs/latest/configuration.html#runtime-environment)) — `spark.{driver,executor}.extraClassPath` and `spark.{driver,executor}.userClassPathFirst`, the cluster-manager-independent half
+3. **Spark-docs → Running on YARN, Adding Other JARs** ([running-on-yarn.html#adding-other-jars](https://spark.apache.org/docs/latest/running-on-yarn.html#adding-other-jars)) — why `--jars` is needed in cluster mode and how a `local:` URI differs from an uploaded one
+4. **Source sweep — [resource-managers/yarn — AM & executor allocation in the source map](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)** — `Client.populateClasspath` entry by entry in order, the user-first branch, the build-time `config.properties` behind `isHadoopProvided()`, `getClusterPath`'s literal string replace, and the `$VAR` / `%VAR%` / `{{VAR}}` substitution rules
+
+!!! warning "No book covers this, and one of the configs is undocumented"
+
+    `spark.yarn.user.classpath.first` appears **nowhere** in the Spark documentation — not in
+    `running-on-yarn.md`, not in `configuration.md`. It exists only in the source, where it is the
+    single switch that puts user jars on the container's *system* classpath instead of behind a
+    child-first classloader. SDG and LS2e describe `--jars`; neither describes the resulting order.
+
+!!! warning "The same submission produces different classpaths on two builds of the same version"
+
+    `spark.yarn.populateHadoopClasspath` defaults to `isHadoopProvided()`, read from a
+    `config.properties` resource baked into the assembly at build time: `false` on a `with-hadoop`
+    distribution (Spark uses its own bundled Hadoop jars), `true` on a `no-hadoop` one (YARN's
+    `yarn.application.classpath` is prepended). If that resource cannot be read the code logs a
+    warning and assumes `false`. This is the usual root cause of "the same job works on cluster A
+    and throws `NoSuchMethodError` on cluster B".
+
+!!! info "The localized Hadoop conf is deliberately last"
+
+    `__spark_conf__/__hadoop_conf__` goes at the *end* of the classpath so the cluster's own
+    configuration — and any other service configs living in `HADOOP_CONF_DIR` — cannot shadow
+    something the application shipped. The corollary is that a config file you add with `--files`
+    is found *before* the cluster's copy of the same name.
+
+**Milestone:** You can write out the container classpath in order for a cluster-mode job with `--jars`, an `extraClassPath` and a `local:` Spark jar; predict what `spark.yarn.user.classpath.first=true` moves and what it does not; explain why the same `spark-submit` line resolves a different Hadoop version on a `no-hadoop` build; and use `spark.yarn.config.gatewayPath` to make a submitter-side install path valid inside a container.
+
+---
+
 ## Suggested Study Sequence
 
 ```
@@ -4044,11 +4229,11 @@ Advanced (A1–A12)             → 12 topics · 44–66 hrs   make it fast, mak
 Expert (E1–E9)                →  9 topics · 40–60+ hrs  run it in production
 
 Main line: 42 topics.
-Source-derived depth: 23 more — I13–I19, A13–A20, E10–E17. Off the main line, read on demand.
+Source-derived depth: 77 more — I13–I32, A13–A39, E10–E39. Off the main line, read on demand.
 Optional milestones: three Databricks certifications — see the section below
 ```
 
-**You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 65 topics in total, counting the 23 source-derived ones). Next: ⬜ I6 — Caching and Persistence.
+**You are currently here:** B1–B9 + I1–I5 done (**14 of 42** main-line topics; 119 topics in total, counting the 77 source-derived ones). Next: ⬜ I6 — Caching and Persistence.
 
 **Carrying 🔄:** B1–B9 and I1–I5 — every topic with a written chapter — completed against Spark 4.1.x, now partly stale under 4.2.0. B1–B4 each carry gaps from a source-trace completeness pass as well; those are additions, not corrections.
 
@@ -4056,8 +4241,8 @@ Three contain claims that are actually *wrong* and should be cleared first: **B3
 
 **If you only do three things next:** clear I3 (it teaches a now-false performance model), do I6–I7 (caching and the Spark UI — everything in Advanced depends on being able to read a plan), then I8 with both table formats rather than Delta alone.
 
-!!! info "About the source-derived topics (I13–I19, A13–A20, E10–E17)"
-    These twenty came from reading the Spark source rather than from books, courses, or exam guides — the [source map](reference/spark-source-map/index.md)'s sweeps scan a subsystem and report what is in it, independently of what this path already covers, so anything they surface that no topic named becomes a new topic here. That is the mechanism working, not the path drifting: roughly a third of the topics below exist because the code had something to teach that no book covers.
+!!! info "About the source-derived topics (I13–I32, A13–A39, E10–E39)"
+    These seventy-seven came from reading the Spark source rather than from books, courses, or exam guides — the [source map](reference/spark-source-map/index.md)'s sweeps scan a subsystem and report what is in it, independently of what this path already covers, so anything they surface that no topic named becomes a new topic here. That is the mechanism working, not the path drifting: nearly two thirds of the topics below exist because the code had something to teach that no book covers.
 
     They sit off the main study line and are each written to the same standard as the rest — real resources, a concrete milestone, and an explicit note where no book covers the subject at all. Read them on demand, when you hit the underlying problem in practice (a `Task not serializable` error, a `groupByKey` OOM, a join that never got reordered), rather than as sequential coursework.
 

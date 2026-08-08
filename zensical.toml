@@ -70,6 +70,7 @@ nav = [
             { "sql/hive — Hive metastore" = "reference/spark-source-map/sweeps/sql-hive-hive-metastore.md" },
             { "k8s — Driver & executor" = "reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md" },
             { "k8s — Auth & networking" = "reference/spark-source-map/sweeps/resource-managers-kubernetes-auth-networking.md" },
+            { "YARN — AM & executor allocation" = "reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md" },
         ]},
     ]},
     { "Spark Book" = [
