@@ -6,7 +6,7 @@
 # resolvable paths — verify them against the checkout when bumping the version.
 _meta:
   spark_version: "4.2.0"
-  verified_at: 2026-07-25
+  verified_at: 2026-08-08
   source_root: C:/opt/learn/spark/repos/spark
   # Packages deliberately left without a group, so --coverage stops re-raising
   # them every run. Only add an entry once you have looked and judged: these are
@@ -119,9 +119,27 @@ _meta:
     submit-standalone's deploy/client/ now names StandaloneAppClient, the class its sweep had
     declared as a concept but never written up.
 
+    Module-level blind spot closed (2026-08-08, from the two Kafka sweeps):
+    connector/kafka-0-10-token-provider had no entry here at all. Six files, 681
+    lines, holding KafkaConfigUpdater — the single point both Kafka connectors
+    route every consumer and producer through — plus the
+    HadoopDelegationTokenProvider service registration and the whole
+    spark.kafka.clusters.<id>.* surface. It declares zero ConfigBuilders, so it
+    is absent from the config catalog too, and --coverage could not flag it
+    because that check only walks packages inside subsystems this file already
+    names. A missing SUBSYSTEM is therefore invisible to every checker, which is
+    a different failure from the nested-package blind spot above: that one hides
+    a package inside a claimed one, this one hides a whole module. Added as
+    subsystem connector/kafka-0-10-token-provider with one group, auth.
+
+    Also 2026-08-08: the two Kafka groups' topics: lists were the pre-sweep
+    guesses (A7, and A7+A8). Both sweeps mapped their concepts elsewhere, so the
+    lists now match what the pages actually found — kafka-0-10 to A12/A40/E40,
+    kafka-0-10-sql to A12/A7/A8/A41/E41.
+
     State: every class and package named here resolves in v4.2.0; every package in every
     swept module is either claimed by a group or recorded as plumbing; every topics: code
-    resolves in learning-path.md (50 topics). Re-check with:
+    resolves in learning-path.md. Re-check with:
       python tools/spark_source_map/check_drift.py
       python tools/spark_source_map/check_drift.py --coverage
       python tools/spark_source_map/check_drift.py --sweeps
@@ -293,7 +311,7 @@ connector/kafka-0-10:
   - number: 1
     name: consumer
     title: "Kafka consumer & rate control"
-    topics: [A7]
+    topics: [A12, A40, E40]
     scope: "kafka010/ (KafkaRDD, consumer cache, rate limiting, offset management)"
     description: "RDD-based Kafka connector with consumer caching and per-partition rate control"
 
@@ -301,9 +319,21 @@ connector/kafka-0-10-sql:
   - number: 1
     name: source-sink
     title: "Kafka source & sink"
-    topics: [A7, A8]
+    topics: [A12, A7, A8, A41, E41]
     scope: "kafka010/ (KafkaSourceProvider, KafkaMicroBatchStream, KafkaSink), consumer/, producer/"
     description: "Structured Streaming Kafka source and sink with offset tracking and exactly-once semantics"
+
+# The auth module both Kafka connectors depend on and neither owns. Added
+# 2026-08-08 after two consecutive sweeps flagged it: it was claimed by no
+# group and declares no ConfigBuilder, so it appeared in neither the catalog
+# nor --coverage, and could never be swept. See _meta.note.
+connector/kafka-0-10-token-provider:
+  - number: 1
+    name: auth
+    title: "Kafka delegation tokens & auth"
+    topics: [E2, A12]
+    scope: "kafka010/ (KafkaConfigUpdater — the single auth injection point for both connectors, KafkaDelegationTokenProvider, KafkaTokenUtil, KafkaTokenSparkConf, KafkaRedactionUtil); configs: the spark.kafka.clusters.<id>.* dynamic prefix, declared nowhere"
+    description: "The HadoopDelegationTokenProvider for Kafka: multi-cluster SASL/SSL configuration, token acquisition and renewal, and the config updater both the DStream and Structured Streaming connectors route every consumer and producer through"
 
 connector/profiler:
   - number: 1

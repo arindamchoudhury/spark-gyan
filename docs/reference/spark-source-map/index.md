@@ -941,10 +941,8 @@ Source-first sweeps discover concepts independently of the learning path; these 
 
 | Concept | Subsystem | Kind | Proposed code | Proposed title |
 |---|---|---|---|---|
-| Executor placement — consistent hashing so the consumer cache can hit | connector/kafka-0-10 | new | — | — |
 | KafkaDataConsumer — the per-JVM executor consumer cache | connector/kafka-0-10 | new | E40 | The Kafka Executor Consumer Cache: Reuse, Eviction, and the Random-Access Cliff |
 | Rate limiting and backpressure — the PID loop and the per-partition split | connector/kafka-0-10 | new | A40 | Stream Rate Limiting and Backpressure: the PID Loop and Per-Partition Caps |
-| The buffered fetch — seek, poll, and the offset-mismatch require | connector/kafka-0-10 | new | — | — |
 | Data-loss detection — failOnDataLoss and the recovery walk | connector/kafka-0-10-sql | new | E41 | failOnDataLoss: What the Kafka Source Does When an Offset Is Gone |
 | Offset range calculation — minPartitions, maxRecordsPerPartition, and placement | connector/kafka-0-10-sql | new | A41 | Decoupling Spark Tasks from Kafka Partitions: minPartitions and maxRecordsPerPartition |
 | The async-profiler command strings and the default argument set | connector/profiler | new | E20 | JVM Profiling on a Cluster: async-profiler, Flame Graphs and JFR |
@@ -1069,6 +1067,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | connector/kafka-0-10 — consumer | 8 | ✅ complete | 4.2.0 | 2026-08-08 |
 | connector/kafka-0-10-sql — source-sink | 8 | ✅ complete | 4.2.0 | 2026-08-08 |
 | connector/profiler — async-profiler | 7 | ✅ complete | 4.2.0 | 2026-07-27 |
+| connector/kafka-0-10-token-provider — auth | — | ⬜ pending | — | — |
 | sql/core — query-execution | — | ✅ partial | 4.2.0 | 2026-08-01 |
 | sql/core — joins-exec | — | ✅ complete | 4.2.0 | 2026-08-01 |
 | sql/core — adaptive | — | ✅ complete | 4.2.0 | 2026-08-02 |

@@ -25,7 +25,7 @@ concepts:
   - name: fixKafkaParams — the four executor-side overrides
     topics: [A12]
   - name: Executor placement — consistent hashing so the consumer cache can hit
-    topics: []
+    topics: [E40]
   - name: KafkaDataConsumer — the per-JVM executor consumer cache
     topics: []
     propose:
@@ -35,7 +35,7 @@ concepts:
       what: "The per-JVM LRU cache of Kafka consumers each executor keeps, keyed by consumer group and topic-partition — how a task acquires and releases one, when a task retry invalidates it, why the cache can grow past its own maximum capacity, and why sequential offset access is cheap while random access is not."
       why: "Kafka consumers prefetch, so reusing them across batches is most of the connector's throughput; the cache that provides it has an unbounded-growth path, a silent fall back to non-cached consumers, and a fetch loop whose cost depends entirely on whether your offsets are consecutive."
   - name: The buffered fetch — seek, poll, and the offset-mismatch require
-    topics: []
+    topics: [E40]
   - name: Compacted topics — allowNonConsecutiveOffsets and the four action overrides
     topics: [A12]
   - name: OffsetRange, HasOffsetRanges, CanCommitOffsets — where offsets live
