@@ -47,7 +47,7 @@ _meta:
     - core:spark.testing.
     # DStream dynamic allocation: declared in core's internal/config/Streaming.scala,
     # but the mechanism is streaming/'s ExecutorAllocationManager. Belongs to the
-    # streaming — dstream group, which is not swept yet.
+    # streaming — dstream group, and is cited there as of the 2026-08-08 sweep.
     - core:spark.streaming.
   note: >
     Scopes re-walked against v4.2.0 on 2026-07-19, in two passes.
@@ -131,6 +131,13 @@ _meta:
     a different failure from the nested-package blind spot above: that one hides
     a package inside a claimed one, this one hides a whole module. Added as
     subsystem connector/kafka-0-10-token-provider with one group, auth.
+
+    Map fully swept (2026-08-08): streaming — dstream, the last unswept group, was
+    swept and its topics: list — empty until then, the only group with none — now
+    names E43, E44 and A40. All 38 groups across 13 subsystems have a sweep page.
+    Four pages remain status: partial (sql/catalyst analysis, sql/core
+    query-execution, datasources, streaming-exec); those are re-sweep candidates,
+    not unswept groups.
 
     Also 2026-08-08: the two Kafka groups' topics: lists were the pre-sweep
     guesses (A7, and A7+A8). Both sweeps mapped their concepts elsewhere, so the
@@ -278,7 +285,7 @@ streaming:
   - number: 1
     name: dstream
     title: "DStream (legacy)"
-    topics: []
+    topics: [E43, E44, A40]
     scope: "dstream/ (DStream, InputDStream), receiver/ (Receiver, ReceiverTracker), scheduler/ (JobGenerator), rdd/, api/, ui/, StreamingContext"
     description: "Legacy RDD-based streaming model; superseded by Structured Streaming"
 

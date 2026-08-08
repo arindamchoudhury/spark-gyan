@@ -74,6 +74,7 @@ nav = [
             { "connector/kafka-0-10 — Consumer & rate control" = "reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md" },
             { "connector/kafka-0-10-sql — Source & sink" = "reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md" },
             { "connector/kafka-0-10-token-provider — Auth" = "reference/spark-source-map/sweeps/connector-kafka-0-10-token-provider-auth.md" },
+            { "streaming — DStream (legacy)" = "reference/spark-source-map/sweeps/streaming-dstream.md" },
         ]},
     ]},
     { "Spark Book" = [

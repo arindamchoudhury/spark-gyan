@@ -134,6 +134,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E40 | The Kafka Executor Consumer Cache: Reuse, Eviction, and the Random-Access Cliff | — | — | ⬜ |
 | E41 | failOnDataLoss: What the Kafka Source Does When an Offset Is Gone | — | — | ⬜ |
 | E42 | Multi-Cluster Kafka Authentication: Delegation Tokens Across Several Secured Clusters | — | — | ⬜ |
+| E43 | The DStream Execution Model: What Structured Streaming Replaced | — | — | ⬜ |
+| E44 | Receivers and the Write-Ahead Log: Spark's First Answer to Exactly-Once Ingest | — | — | ⬜ |
 
 ## Source concept map
 
@@ -943,6 +945,22 @@ flowchart LR
     S36 --> S36c11["ExponentialBackoffStrategy — the retry curve behind the watchdog configs"]
     S36 --> S36c12["PipelinesCatalogUtils — a v1 identifier against the v2 catalog API"]
     S36 --> S36c13["Language — the two-value provenance tag"]
+    S37["streaming"]
+    S37 --> S37c0["StreamingContext — lifecycle, the one-active-context rule, and getOrCreate"]
+    S37 --> S37c1["JobGenerator — the recurring timer and the four-event loop"]
+    S37 --> S37c2["JobScheduler — job sets, the fixed thread pool, and concurrentJobs"]
+    S37 --> S37c3["DStream — getOrCompute, the generated-RDD map, and rememberDuration"]
+    S37 --> S37c4["Driver checkpointing — what is serialised and why restore is brittle"]
+    S37 --> S37c5["Receivers — a never-finishing Spark job per stream"]
+    S37 --> S37c6["BlockGenerator — the block interval, the bounded queue, and the five states"]
+    S37 --> S37c7["ReceiverTracker — scheduling, restart, and the dummy job"]
+    S37 --> S37c8["The write-ahead log — driver and receiver logs, batching, and the storage-level rewrite"]
+    S37 --> S37c9["Rate limiting and backpressure — the receiver half"]
+    S37 --> S37c10["Streaming dynamic allocation — a second, mutually exclusive policy"]
+    S37 --> S37c11["mapWithState and the delta-chain StateMap"]
+    S37 --> S37c12["FileInputDStream — the file source and its remember window"]
+    S37 --> S37c13["The streaming UI, metrics source, and listener bus"]
+    S37 --> S37c14["The Java and Python API surfaces"]
 ```
 
 ## Topics discovered from the source
@@ -1045,6 +1063,12 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | SchemaInferenceUtils.inferSchemaFromFlows — merging every writer's schema | sql/pipelines | new | A39 | Pipeline Schema Inference and Evolution: Merge, Diff, and Alter |
 | The tombstone model — auxiliary state and delete high-water marks | sql/pipelines | new | E32 | Out-of-Order CDC: Tombstones, Sequence Watermarks, and Deletes You Cannot See |
 | TriggeredGraphExecution — the topological state machine and flow retry | sql/pipelines | new | E30 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping |
+| BlockGenerator — the block interval, the bounded queue, and the five states | streaming | new | — | — |
+| JobGenerator — the recurring timer and the four-event loop | streaming | new | — | — |
+| JobScheduler — job sets, the fixed thread pool, and concurrentJobs | streaming | new | — | — |
+| ReceiverTracker — scheduling, restart, and the dummy job | streaming | new | — | — |
+| Receivers — a never-finishing Spark job per stream | streaming | new | E44 | Receivers and the Write-Ahead Log: Spark's First Answer to Exactly-Once Ingest |
+| StreamingContext — lifecycle, the one-active-context rule, and getOrCreate | streaming | new | E43 | The DStream Execution Model: What Structured Streaming Replaced |
 
 
 ## Sweep status
@@ -1073,7 +1097,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | resource-managers/yarn — am-executor | 61 | ✅ complete | 4.2.0 | 2026-08-08 |
 | sql/connect — client-server | 44 | ✅ complete | 4.2.0 | 2026-07-27 |
 | sql/connect — declarative-pipelines | — | ✅ complete | 4.2.0 | 2026-07-27 |
-| streaming — dstream | 28 | ⬜ pending | — | — |
+| streaming — dstream | 28 | ✅ complete | 4.2.0 | 2026-08-08 |
 | sql/hive — hive-metastore | 17 | ✅ complete | 4.2.0 | 2026-07-28 |
 | connector/kafka-0-10 — consumer | 8 | ✅ complete | 4.2.0 | 2026-08-08 |
 | connector/kafka-0-10-sql — source-sink | 8 | ✅ complete | 4.2.0 | 2026-08-08 |
