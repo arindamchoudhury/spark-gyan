@@ -1,10 +1,10 @@
 ---
 subsystem: sql/core
 spark_version: "4.2.0"
-swept_at: 2026-08-01
+swept_at: 2026-08-08
 group: query-execution
 all_groups: [query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec, classic-api, sql-scripting]
-status: partial
+status: complete
 concepts:
   - name: QueryExecution — the lazy phase pipeline from logical plan to RDD
     topics: [A1, I7]
@@ -42,6 +42,18 @@ concepts:
     topics: [B7, B8, E5]
   - name: Statistics and sketch helpers — ANALYZE TABLE, approxQuantile, freqItems
     topics: [A17, A22]
+  - name: The basic physical operators — Project, Filter, Sample, Range, Coalesce
+    topics: [A1, E1]
+  - name: Leaf and result operators — local scans, empty relations, multi-result
+    topics: [A1, I7]
+  - name: PartitionEvaluator factories — the serializable alternative to a closure
+    topics: [A1, I4]
+  - name: The cached columnar format — ColumnType, builders, accessors, encoders
+    topics: [I6, E1]
+  - name: The V1 DDL command catalogue
+    topics: [B8, E5]
+  - name: HiveResult — how the SQL CLI and thrift server render a row
+    topics: [B8]
   - name: Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator
     topics: []
     propose:
@@ -82,6 +94,38 @@ concepts:
       title: "Transactional Writes: DSv2 Catalog Transactions"
       what: "A per-query transaction that QueryExecution opens when the plan writes to a catalog implementing TransactionalCatalogPlugin, threads through a transaction-aware CatalogManager during analysis, and commits or aborts around execution."
       why: "It is how a multi-table write becomes atomic in Spark 4.2, and it changes analysis as well as execution — a nested QueryExecution that does not inherit the analyzer reads tables outside the transaction's scope."
+  - name: SQL UDFs — CREATE FUNCTION … RETURN and plan inlining
+    topics: []
+    propose:
+      code: I33
+      level: Intermediate
+      title: "SQL UDFs: CREATE FUNCTION … RETURN and Plan Inlining"
+      what: "User-defined functions whose body is SQL rather than Python or Scala: the parsed body is stored in the catalog as text and inlined into the calling plan at analysis time, as either a scalar expression or a table-valued relation."
+      why: "They are the only UDF kind with no serialization boundary and no interpreter — the optimizer sees straight through them — which makes them dramatically cheaper than a Python UDF for logic that can be expressed in SQL, and they are the mechanism behind reusable business rules in a catalog."
+  - name: Row-multiplying operators — GenerateExec and ExpandExec
+    topics: []
+    propose:
+      code: I34
+      level: Intermediate
+      title: "Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP"
+      what: "The two physical operators that turn one input row into many: GenerateExec (explode, posexplode, inline, LATERAL VIEW, and their OUTER variants) and ExpandExec (the operator behind GROUPING SETS, ROLLUP, CUBE and multi-distinct aggregation)."
+      why: "Both multiply the row count before any aggregation runs, so a ROLLUP over three columns quietly makes four copies of every row and a mis-sized explode is the most common cause of a stage that never finishes; and both have codegen rules that decide whether the multiplication happens inside a fused loop or across an operator boundary."
+  - name: UNION ALL — output partitioning and codegen fusion
+    topics: []
+    propose:
+      code: A42
+      level: Advanced
+      title: "UNION ALL: Partitioning-Aware Output and Codegen Fusion"
+      what: "How UnionExec decides whether the union's children keep their shared partitioning (avoiding a shuffle above the union) and whether the union can be fused into a single whole-stage codegen loop instead of ending the pipeline."
+      why: "A union in the middle of a plan used to force both an extra shuffle and a codegen break; Spark 4.x fixes each with its own config and a list of eight disqualifying conditions, so knowing which one your plan tripped is the difference between a fused pipeline and two extra stages."
+  - name: Script transformation — TRANSFORM … USING
+    topics: []
+    propose:
+      code: E45
+      level: Expert
+      title: "TRANSFORM … USING: Piping Rows Through an External Process"
+      what: "The Hive-compatible operator that forks a shell process per task, writes each row to its stdin as delimited text, and parses its stdout back into rows — with a writer thread, a circular stderr buffer, and an exit-code check."
+      why: "It is the only way to run an arbitrary non-JVM executable inside a Spark plan without a UDF, and every part of the boundary is lossy in a way that fails silently: unparseable fields become NULL, a schema-less transform keeps only two columns, and the process exit code is only checked after the reader hits EOF."
 ---
 
 The physical half of Spark SQL: everything between "the optimizer produced a `LogicalPlan`" and
@@ -329,6 +373,7 @@ comments say so.
 - [reuse/ReuseExchangeAndSubquery.scala:36](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/reuse/ReuseExchangeAndSubquery.scala#L36) — one bottom-up pass keyed on `canonicalized`, producing `ReusedExchangeExec` / `ReusedSubqueryExec`
 - [InsertSortForLimitAndOffset.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/InsertSortForLimitAndOffset.scala) — added for `spark.sql.orderingAwareLimitOffset` (true, 4.0.0): without it, `LIMIT` after a global sort could return rows out of order because the local sort's ordering is not preserved across the shuffle
 - [RemoveRedundantProjects.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/RemoveRedundantProjects.scala) / [RemoveRedundantSorts.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/RemoveRedundantSorts.scala) / [ReplaceHashWithSortAgg.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ReplaceHashWithSortAgg.scala) — each has its own on/off config, and all three must run **after** `EnsureRequirements` because they reason about the ordering it just guaranteed
+- [RemoveRedundantWindowGroupLimits.scala:27](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/RemoveRedundantWindowGroupLimits.scala#L27) — the fourth of the redundancy rules, and the only one with no config: it drops the **partial** `WindowGroupLimitExec` when the child already satisfies the final one's required distribution, i.e. when `EnsureRequirements` decided no exchange was needed between them
 - [AliasAwareOutputExpression.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/AliasAwareOutputExpression.scala) — how an operator's `outputPartitioning` and `outputOrdering` survive a rename; without it, `df.withColumnRenamed` would silently force an extra shuffle
 
 !!! warning "Under AQE the `executedPlan` you print is not the plan that runs"
@@ -385,8 +430,9 @@ generates `processNext` from them.
 
 **Configs:** `spark.sql.codegen.wholeStage` (true), `.hugeMethodLimit` (65535), `.maxFields` (100),
 `.fallback` (true), `.factoryMode`, `.useIdInClassName` (true), `.splitConsumeFuncByOperator`,
-`.methodSplitThreshold`, `.comments`, `.logLevel`, `.cache.maxEntries`,
-`.broadcastCleanedSourceThreshold`, `.wholeStage.union.enabled`, `.wholeStage.union.maxChildren`
+`.methodSplitThreshold`, `.comments`, `.logLevel`, `.logging.maxLines` (1000),
+`.cache.maxEntries`, `.broadcastCleanedSourceThreshold`,
+`.wholeStage.union.enabled`, `.wholeStage.union.maxChildren`
 
 **Maps to topics:** A1, I7, E1
 
@@ -483,6 +529,8 @@ path; driver-side updates must be posted explicitly.
 - [metric/SQLMetrics.scala:215](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/metric/SQLMetrics.scala#L215) — `postDriverMetricUpdates`, the explicit path for metrics computed on the driver (broadcast build time, subquery collect time)
 - [metric/SQLShuffleMetricsReporter.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/metric/SQLShuffleMetricsReporter.scala) — bridges task-level shuffle read/write metrics into per-operator SQL metrics, which is why the SQL tab and the Stages tab report shuffle bytes differently
 - [metric/CustomMetrics.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/metric/CustomMetrics.scala) — DSv2 `CustomMetric` / `CustomTaskMetric` plumbing, letting a connector publish its own numbers into the SQL tab
+- [metric/SQLMetricInfo.scala:27](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/metric/SQLMetricInfo.scala#L27) — the three fields that actually reach the event log: name, accumulator id, metric type. The `SQLMetric` object itself never leaves the driver; the UI joins accumulator updates to plan nodes by that id
+- [metric/SQLLastAttemptMetric.scala:22](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/metric/SQLLastAttemptMetric.scala#L22) — the concrete `SQLMetric` that implements the last-attempt protocol, and at :42 the declaration `accumulatorStoresUserData = false` — the reason it is safe to keep these values around when accumulators carrying user data are not
 - [metric/SQLLastAttemptAccumulator.scala:30](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/metric/SQLLastAttemptAccumulator.scala#L30) — new in 4.2.0 ([SPARK-56509]). A 75-line comment explaining why "the metric for this Dataset" is hard: the RDD that runs is often not the RDD the operator created, AQE discards and recreates plans mid-flight, and metrics inside a cached or checkpointed plan are **declared undefined behaviour** — use `lastAttemptValueForHighestRDDId()` there
 
 !!! warning "A metric inside a cached plan does not belong to the Dataset that reads it"
@@ -518,6 +566,12 @@ the page draws.
 - [ui/SQLHistoryServerPlugin.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/SQLHistoryServerPlugin.scala#L25) — how the History Server reconstructs the SQL tab by replaying the same listener
 - [history/SQLEventFilterBuilder.scala:37](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/history/SQLEventFilterBuilder.scala#L37) — event-log **compaction**: tracks which jobs/stages/tasks/RDDs belong to live SQL executions so that events for completed ones can be dropped from a rolled event log
 - [ui/StreamingQueryHistoryServerPlugin.scala:27](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/StreamingQueryHistoryServerPlugin.scala#L27) — the same trick for the Structured Streaming tab
+- [SparkPlanInfo.scala:70](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkPlanInfo.scala#L70) — `fromSparkPlan`, the plan → event conversion, with five special cases that change what the UI *shows as a child*: a `ReusedExchangeExec` reports the exchange it reuses, an `AdaptiveSparkPlanExec` reports its current `executedPlan`, a `QueryStageExec` reports the stage's plan, an `InMemoryTableScanExec` reports the **cached plan** (which is why the SQL tab draws the cached subtree under a scan of it), and an `EmptyRelationExec` reports the *logical* plan AQE eliminated
+- [SparkPlanInfo.scala:41](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkPlanInfo.scala#L41) — `equals`/`hashCode` are defined on `simpleString` alone, so two structurally identical nodes are indistinguishable to the graph builder; :85 attaches `FileSourceScanLike.metadata` (the file list) into the event log
+- [ui/SQLAppStatusStore.scala:37](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/SQLAppStatusStore.scala#L37) — the read side: a thin query layer over the same `KVStore` the listener writes, used identically by the live UI and the History Server
+- [ui/SQLAppStatusStore.scala:65](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/SQLAppStatusStore.scala#L65) — `executionMetrics` falls back to a **live** aggregation when the store has no persisted metric values yet, which is why a running query's numbers can change between two refreshes with no new events
+- [ui/SQLTab.scala:24](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/SQLTab.scala#L24) — the tab, `displayOrder = 0` (it sorts before Jobs), attaching [AllExecutionsPage.scala:27](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/AllExecutionsPage.scala#L27) (running / completed / failed tables) and [ExecutionPage.scala:34](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/ExecutionPage.scala#L34) (one execution: graph, metrics, plan text)
+- [ui/StreamingQueryStatusStore.scala:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ui/StreamingQueryStatusStore.scala#L31) — the streaming tab's equivalent read model, keyed by run id
 
 !!! warning "Compaction can delete the events your SQL tab needs"
 
@@ -678,6 +732,8 @@ A cursor stores its query as **SQL text**, unparsed, until `OPEN`.
 - [command/v2/OpenCursorExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/OpenCursorExec.scala) / [FetchCursorExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/FetchCursorExec.scala) / [CloseCursorExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/CloseCursorExec.scala) — the state machine; all cursors are effectively `INSENSITIVE` in 4.2.0 regardless of the `ASENSITIVE` keyword
 - [command/v2/CursorCommandUtils.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/CursorCommandUtils.scala) — cursors live in the **current scripting scope**, so a cursor declared in a `BEGIN…END` block dies with it
 - [command/v2/ParameterizedQueryExecutor.scala:34](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/ParameterizedQueryExecutor.scala#L34) — shared parameter binding between cursors and `EXECUTE IMMEDIATE`
+- [command/v2/ParameterBindingUtils.scala:58](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/ParameterBindingUtils.scala#L58) — `buildUnifiedParameters` merges positional (`?`) and named (`:name`) markers into one binding set, and at :102 every argument is **evaluated on the driver** before the query is parameterised — a parameter expression referencing a column is a compile error, not a per-row value
+- [command/v2/VariableAssignmentUtils.scala:46](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/VariableAssignmentUtils.scala#L46) — `assignVariable` routes by the variable's *catalog*: `FakeLocalCatalog` means a scripting-local variable held by `SqlScriptingContextManager`, `FakeSystemCatalog` means a session variable in `TempVariableManager`. The same `SET VAR` statement writes to two different stores depending on where it appears
 - [command/v2/CreateVariableExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/CreateVariableExec.scala) / [SetVariableExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/SetVariableExec.scala) / [DropVariableExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/v2/DropVariableExec.scala) — session variables, which are catalog-resolved (`ResolvedIdentifier`) rather than conf-based
 - [catalyst/analysis/ResolveExecuteImmediate.scala:39](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveExecuteImmediate.scala#L39) — `EXECUTE IMMEDIATE`, the dynamic-SQL sibling
 
@@ -748,6 +804,192 @@ threshold); `StatFunctions` implements `approxQuantile`, `corr`, `cov`, `crossta
 `.updatePartitionStatsInAnalyzeTable.enabled`, `.size.autoUpdate.enabled`
 
 **Maps to topics:** A17, A22
+
+---
+
+## The basic physical operators — Project, Filter, Sample, Range, Coalesce
+
+**What it is:** `basicPhysicalOperators.scala` (1420 lines) holds the operators that appear in almost
+every plan. They look trivial in `EXPLAIN` and are not: each one carries a decision about *when* an
+input column is materialised, and that decision is what makes a codegen pipeline fast or slow.
+
+**Anchor files:**
+
+- [basicPhysicalOperators.scala:45](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L45) — `ProjectExec`, and at :62 the rule that defines lazy column materialisation: `usedInputs` returns only attributes referenced **more than once**, so a column used by a single output expression is never evaluated into a variable — its computation is inlined at the point of use
+- [basicPhysicalOperators.scala:74](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L74) — projection codegen runs subexpression elimination first (`spark.sql.subexpressionElimination.enabled`), then evaluates **non-deterministic** expressions eagerly because their evaluation cannot be deferred to the consumer
+- [basicPhysicalOperators.scala:234](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L234) — `FilterExec` splits its condition into `IsNotNull` predicates and everything else at :238, and at :266 uses the former to **tighten its own output nullability** — this is why a filter can make a downstream operator cheaper even when it removes no rows
+- [basicPhysicalOperators.scala:264](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L264) — `usedInputs = empty`: the filter deliberately evaluates nothing up front so that a cheap predicate can reject a row before an expensive column is decoded. Short-circuiting is a *codegen ordering* property, not an expression property
+- [basicPhysicalOperators.scala:279](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L279) — the longest comment in the file (60 lines), documenting the 4.2.0 CSE-in-filter path and its three invariants: precompute a shared subexpression just before the first predicate that needs it, interleave `IsNotNull` checks with the predicates that depend on them, and never materialise a CSE variable before its null check has fired. Two of the three exist because getting them wrong produces an NPE or evaluates a throwing expression on a row that should have been rejected
+- [basicPhysicalOperators.scala:336](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L336) — the gate: the CSE path is taken only when a **non-cheap** common subexpression exists, because the CSE prologue evaluates every referenced column eagerly and would otherwise destroy the short-circuiting above
+- [basicPhysicalOperators.scala:129](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L129) — `GeneratePredicateHelper`, the non-CSE predicate generator, shared with the join operators; the two paths must stay in lockstep and the source says so
+- [basicPhysicalOperators.scala:493](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L493) — `SampleExec`: `withReplacement` picks a `PoissonSampler` (gap sampling **disabled**, because it buffers two rows and would force a copy), otherwise a `BernoulliCellSampler` over the range. At :500 an unseeded sample resolves a random seed **on the driver at plan construction**, so the seed is stable across the plan's partitions but changes between runs
+- [basicPhysicalOperators.scala:586](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L586) — the sampler is seeded per partition (`seed + partitionIndex` for Bernoulli, `nextLong()` advanced `partitionIndex` times for Poisson), which is what makes `df.sample()` reproducible only for a fixed partitioning
+- [basicPhysicalOperators.scala:606](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L606) — `RangeExec`; `numSlices` falls back to `spark.sql.leafNodeDefaultParallelism`, and at :620 the output is declared `RangePartitioning` (or `SinglePartition`) — a range is already sorted and partitioned, so `spark.range(n).orderBy("id")` needs no shuffle
+- [basicPhysicalOperators.scala:664](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L664) — the generated range loop emits in **batches of 1000** so that `numOutputRows` and `inputMetrics` are updated per batch rather than per row; :729 shows the `shouldStop()` check that lets a `LIMIT` above it break out mid-batch, and :737 the case where that check is eliminated entirely
+- [basicPhysicalOperators.scala:1233](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L1233) — `CoalesceExec`, a **narrow** dependency: no shuffle, and requesting more partitions than the child has is a no-op. At :1258 `EmptyRDDWithPartitions` exists solely so that coalescing an empty RDD to one partition does not produce a zero-partition RDD while claiming `SinglePartition`
+- [ExistingRDD.scala:97](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ExistingRDD.scala#L97) — `LogicalRDD`, the other end of the same story: a plan built from an RDD carries no statistics and no partitioning guarantees
+
+!!! warning "`coalesce(1)` moves the computation, not just the output"
+
+    Because the dependency is narrow, the operators *above* the coalesce run with one task —
+    a `df.filter(...).coalesce(1).write` does the filtering single-threaded. The source comment at
+    :1226 says exactly this and points at a shuffle (`repartition`) as the alternative when you want
+    the upstream work to stay parallel.
+
+**Configs:** `spark.sql.subexpressionElimination.enabled` (true),
+`spark.sql.subexpressionElimination.filterExec.enabled` (true, **4.2.0**),
+`spark.sql.leafNodeDefaultParallelism`, `spark.sql.execution.usePartitionEvaluator` (false)
+
+**Maps to topics:** A1, E1
+
+---
+
+## Leaf and result operators — local scans, empty relations, multi-result
+
+**What it is:** four small leaves that carry data rather than read it. They are worth knowing
+because each one changes what `collect` costs and what `EXPLAIN` means.
+
+**Anchor files:**
+
+- [LocalTableScanExec.scala:34](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/LocalTableScanExec.scala#L34) — the node behind `spark.createDataFrame(localSeq)` and any plan the optimizer folded to constants. The rows are `@transient`: they live on the driver, and :54 parallelises them into at most `leafNodeDefaultParallelism` slices only when the plan is actually executed
+- [LocalTableScanExec.scala:80](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/LocalTableScanExec.scala#L80) — `executeCollect` / `executeTake` / `executeTail` return the driver-side array directly and post the row-count metric through `postDriverMetricUpdates` — **no job is launched at all**, which is why a `LocalTableScan` query shows a SQL-tab entry with no jobs under it
+- [EmptyRelationExec.scala:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/EmptyRelationExec.scala#L31) — what AQE leaves behind when a query stage turns out to be empty; it keeps the **eliminated logical plan** as an inner child and prints it (`:55`) so `EXPLAIN` still shows the work that was skipped, including a partially executed `LogicalQueryStage`
+- [MultiResultExec.scala:24](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/MultiResultExec.scala#L24) — a plan whose children each produce a result but only the **last one's** output is returned; used by SQL scripting for a compound statement
+- [CommandResultExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/CommandResultExec.scala) and its logical twin [catalyst/plans/logical/CommandResult.scala:34](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/CommandResult.scala#L34) — the logical node keeps both the command's logical *and* physical plan purely so `EXPLAIN` can print the tree of something that has already run
+- [StreamSourceAwareSparkPlan.scala:29](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/StreamSourceAwareSparkPlan.scala#L29) — the mixin that lets a physical leaf report which `SparkDataStream` it came from, so the streaming UI can attribute input rows per source
+- [catalyst/plans/logical/UnresolvedDataSource.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/UnresolvedDataSource.scala#L25) — new in 4.x: `spark.read.load(path)` no longer resolves the source eagerly in `DataFrameReader`; it produces this unresolved leaf, which `ResolveDataSource` turns into a relation during analysis
+
+**Configs:** `spark.sql.leafNodeDefaultParallelism`
+
+**Maps to topics:** A1, I7
+
+---
+
+## PartitionEvaluator factories — the serializable alternative to a closure
+
+**What it is:** the concrete side of the `PartitionEvaluator` API described in the
+[core rdd-layer sweep](core-rdd-layer.md). Instead of `mapPartitions { closure }`, the operator
+ships a small serializable *factory*, and each executor calls `createEvaluator()` to build the
+per-partition state locally. `sql/core` has five of them, one per operator that offers both paths.
+
+**Anchor files:**
+
+- [ProjectEvaluatorFactory.scala:24](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ProjectEvaluatorFactory.scala#L24) — the shape of all five: the factory holds only the bound expressions, the inner `PartitionEvaluator` builds the `UnsafeProjection` on the executor
+- [FilterEvaluatorFactory.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/FilterEvaluatorFactory.scala#L25) — same, plus the metric, which is why the non-codegen filter still reports `numOutputRows`
+- [ColumnarEvaluatorFactory.scala:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ColumnarEvaluatorFactory.scala#L31) — `ColumnarToRowEvaluatorFactory` and at :56 `RowToColumnarEvaluatorFactory`, the two transition operators from the columnar concept below
+- [WholeStageCodegenEvaluatorFactory.scala:26](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/WholeStageCodegenEvaluatorFactory.scala#L26) — the interesting one: the *generated class* is what gets shipped, and the evaluator instantiates it per partition
+- [debug/DebugEvaluatorFactory.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/debug/DebugEvaluatorFactory.scala#L25) — the same treatment for `df.debug()`'s per-column type counters
+
+!!! info "Off by default, and the duplication is deliberate"
+
+    `spark.sql.execution.usePartitionEvaluator` is **false** in 4.2.0, so the closure path is what
+    normally runs; the factories exist so an engine that cannot serialise arbitrary closures (a
+    native or accelerated backend) has a supported alternative. This is why so many `doExecute`
+    bodies in this group appear to contain their logic twice.
+
+**Configs:** `spark.sql.execution.usePartitionEvaluator` (false)
+
+**Maps to topics:** A1, I4
+
+---
+
+## The cached columnar format — ColumnType, builders, accessors, encoders
+
+**What it is:** the byte-level format `DefaultCachedBatchSerializer` writes. Each column of a batch
+becomes one `ByteBuffer`: a null header, then values encoded by whichever compression scheme
+measured best for that column. The in-memory cache concept above covers *when* this runs; this is
+*what it produces*.
+
+**Code path:** `CachedRDDBuilder.buildBuffers` → one `ColumnBuilder` per column →
+`appendFrom` per row (also gathering compressibility stats) → `build()` picks an encoder →
+`DefaultCachedBatch` → on read, `GenerateColumnAccessor` generates an iterator back to `UnsafeRow`
+
+**Anchor files:**
+
+- [columnar/ColumnType.scala:111](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/ColumnType.scala#L111) — the `ColumnType` hierarchy: per-type `append` / `extract` / `actualSize` against a raw `ByteBuffer`. At :863 the `DataType` → `ColumnType` dispatch, including :584 `COMPACT_DECIMAL` (a decimal that fits in a long is stored as one) and :825 `VARIANT`
+- [columnar/ColumnBuilder.scala:158](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/ColumnBuilder.scala#L158) — two limits that are **not** `spark.sql.inMemoryColumnarStorage.batchSize`: a 128 KB initial buffer and a hard `MAX_BATCH_SIZE_IN_BYTE` of 4 MB. A batch is cut at whichever of rows-or-bytes comes first, so a wide row means far fewer than 10 000 rows per batch
+- [columnar/ColumnBuilder.scala:77](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/ColumnBuilder.scala#L77) — `build()` trims the buffer when it is over-allocated by more than 10%, i.e. cached data can be copied once more at batch close
+- [columnar/NullableColumnBuilder.scala:37](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/NullableColumnBuilder.scala#L37) — nulls are **not** stored inline: the header is a null count plus the ordinal positions, so a mostly-null column costs almost nothing
+- [columnar/compression/CompressibleColumnBuilder.scala:69](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/compression/CompressibleColumnBuilder.scala#L69) — `isWorthCompressing`: compression is applied only when the best scheme's measured ratio is **below 0.8**, and only when `Platform.unaligned()` is true. Otherwise the column falls back to `PassThrough`
+- [columnar/compression/CompressibleColumnBuilder.scala:84](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/compression/CompressibleColumnBuilder.scala#L84) — every candidate encoder gathers statistics over the *whole* batch during append, then `minBy(_.compressionRatio)` picks one at close — so the cost of compression is paid on all schemes even when none wins
+- [columnar/compression/CompressionScheme.scala:71](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/compression/CompressionScheme.scala#L71) — the registry and its type ids, and [CompressibleColumnAccessor.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/compression/CompressibleColumnAccessor.scala#L25) — the read side, which decodes lazily per value
+- [columnar/GenerateColumnAccessor.scala:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/GenerateColumnAccessor.scala#L31) — reading a cached batch is **code-generated**: a `ColumnarIterator` subclass is compiled per schema, writing straight into an `UnsafeRowWriter` through the `MutableUnsafeRow` adapter at :41 — whose setters must be called in **increasing ordinal order**
+- [columnar/ColumnAccessor.scala:141](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/ColumnAccessor.scala#L141) — the interpreted fallback accessor dispatch, used when codegen is off, and [NullableColumnAccessor.scala:24](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/columnar/NullableColumnAccessor.scala#L24) — the read side of the null header, which walks the ordinal list in order rather than testing a bitmap per value
+
+!!! warning "Only primitive columns are ever compressed"
+
+    Compression is mixed in by `NativeColumnBuilder`, which covers the fixed-width primitives and
+    strings. `ComplexColumnBuilder` — arrays, maps, structs, variant — has no compression schemes at
+    all, so `spark.sql.inMemoryColumnarStorage.compressed` does nothing for a nested column. A cached
+    DataFrame of structs is close to its uncompressed size no matter what that setting says.
+
+**Configs:** `spark.sql.inMemoryColumnarStorage.batchSize` (10000), `.compressed` (true),
+`.enableVectorizedReader` (true), `.hugeVectorThreshold`, `.hugeVectorReserveRatio`
+
+**Maps to topics:** I6, E1
+
+---
+
+## The V1 DDL command catalogue
+
+**What it is:** ~33 files under `execution/command/` implementing the V1 (session-catalog) side of
+every DDL statement. The [commands concept](#commands--why-ddl-runs-before-you-call-an-action) above
+covers the *mechanism*; this is the inventory, and the handful of behaviours in it that surprise
+people.
+
+**Anchor files:**
+
+- [command/ddl.scala:74](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ddl.scala#L74) — database and partition DDL: `CreateDatabaseCommand` … `AlterTableAddPartitionCommand` (:551), `AlterTableDropPartitionCommand` (:652), `AlterTableSetLocationCommand` (:946)
+- [command/ddl.scala:698](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ddl.scala#L698) — `RepairTableCommand` (`MSCK REPAIR TABLE`): it **lists the whole table directory** in parallel and adds partitions in batches of `spark.sql.addPartitionInBatch.size` (100), because a single `alterPartitions` call with a million partitions overwhelms the metastore
+- [command/ddl.scala:1038](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ddl.scala#L1038) — `DDLUtils`, the shared predicates (`isHiveTable`, `isDatasourceTable`, format verification) that decide which branch a DDL statement takes
+- [command/tables.scala:443](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/tables.scala#L443) — `TruncateTableCommand`; at :488 it re-applies the original permissions and ACLs to the recreated directories unless `spark.sql.truncateTable.ignorePermissionAcl.enabled` is set, and a failure there is logged, not raised
+- [command/tables.scala:303](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/tables.scala#L303) — `LoadDataCommand` (`LOAD DATA INPATH`), the only DDL that moves user files; :630 `DescribeTableCommand`, :1201 `ShowCreateTableCommand` and :1355 its `AS SERDE` variant, which is where a round-trippable DDL string comes from
+- [command/DescribeRelationJsonCommand.scala:45](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/DescribeRelationJsonCommand.scala#L45) — `DESCRIBE … AS JSON`, added so tools can parse table metadata instead of scraping the human-readable layout
+- [command/createDataSourceTables.scala:49](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/createDataSourceTables.scala#L49) — `CreateDataSourceTableCommand`, and at :144 `CreateDataSourceTableAsSelectCommand` (CTAS), which checks the target location is empty unless `spark.sql.legacy.allowNonEmptyLocationInCTAS` is set
+- [command/SetCommand.scala:41](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/SetCommand.scala#L41) — `SET`, which is nine special cases before it is a setter: `mapred.reduce.tasks` and `mapreduce.job.reduces` are silently rewritten to `spark.sql.shuffle.partitions` with a warning, `SET key` for a declared SQL variable raises `UNSUPPORTED_FEATURE.SET_VARIABLE_USING_SET` rather than shadowing it (:118), and bare `SET` returns **redacted** values (:140)
+- [command/SetCommand.scala:220](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/SetCommand.scala#L220) — `RESET` does not reset to the *documented* default: it restores the value the session started with, from `initialSessionOptions` then the shared `SparkConf`, and `RESET` with no key deliberately skips static configs
+- [command/functions.scala:54](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/functions.scala#L54) — `CreateFunctionCommand` (the Hive-style `USING JAR` form), :99 `DescribeFunctionCommand`, :287 `ShowFunctionsCommand`, :329 `RefreshFunctionCommand` — the last exists because a function's class can change under a running session
+- [command/resources.scala:30](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/resources.scala#L30) — `ADD JAR` / `ADD FILE` / `ADD ARCHIVE` and their `LIST` counterparts; at :42, `ADD FILE` on a directory recurses **unless** `spark.sql.legacy.addSingleFileInAddFile` is set
+- [command/cache.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/cache.scala#L25) — `ClearCacheCommand`, the whole file: `CACHE`/`UNCACHE TABLE` themselves are V2 commands now
+- [command/SetCatalogCommand.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/SetCatalogCommand.scala), [SetNamespaceCommand.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/SetNamespaceCommand.scala), [SetNamespaceCollation.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/SetNamespaceCollation.scala), [SetPathCommand.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/SetPathCommand.scala), [UnsetNamespacePropertiesCommand.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/UnsetNamespacePropertiesCommand.scala) — the catalog/namespace statements, plus the `Show*` family: [ShowCatalogsCommand](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCatalogsCommand.scala), [ShowNamespacesCommand](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowNamespacesCommand.scala), [ShowCurrentNamespaceCommand](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCurrentNamespaceCommand.scala), [ShowCollationsCommand](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCollationsCommand.scala), [ShowProceduresCommand](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowProceduresCommand.scala), [DescribeProcedureCommand](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/DescribeProcedureCommand.scala)
+- [command/AnalyzeTablesCommand.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/AnalyzeTablesCommand.scala) — `ANALYZE TABLES` (whole database), which logs and **skips** a table it fails on rather than aborting the statement
+- [command/InsertIntoDataSourceDirCommand.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/InsertIntoDataSourceDirCommand.scala) — `INSERT OVERWRITE DIRECTORY … USING`, a write with no table behind it
+- [catalyst/analysis/ResolveSetCatalogCommand.scala:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveSetCatalogCommand.scala#L31) — the one-rule reason `SET CATALOG foo` works without quoting: the unresolved attribute is rewritten to a back-quoted string literal, while `SET CATALOG identifier(...)` stays an expression evaluated at run time
+
+!!! warning "`RESET` restores the session's starting value, not the default"
+
+    If a config was set in `spark-defaults.conf` or passed to `SparkSession.builder`, `RESET key`
+    puts *that* value back, not the value in the documentation. The two only coincide for a session
+    that never overrode it. `SET -v` ([SetCommand.scala:149](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/SetCommand.scala#L149)) lists the defined configs with their documented defaults, which is the comparison worth making.
+
+**Configs:** `spark.sql.addPartitionInBatch.size` (100, 3.0.0),
+`spark.sql.truncateTable.ignorePermissionAcl.enabled` (false, 2.4.6),
+`spark.sql.legacy.addSingleFileInAddFile` (false, 3.0.0),
+`spark.sql.legacy.allowNonEmptyLocationInCTAS` (false, 3.2.0),
+`spark.sql.legacy.createHiveTableByDefault`, `spark.sql.sources.default` (parquet),
+`spark.sql.hive.manageFilesourcePartitions` (true), `spark.sql.hive.gatherFastStats` (true)
+
+**Maps to topics:** B8, E5
+
+---
+
+## HiveResult — how the SQL CLI and thrift server render a row
+
+**What it is:** the formatter that turns an executed plan's rows into the strings you see from
+`spark-sql`, the thrift server and `EXPLAIN`-adjacent tooling. It is *not* `Dataset.show`, and the
+two disagree — which is why the same query can print differently in a notebook and in the CLI.
+
+**Anchor files:**
+
+- [HiveResult.scala:71](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/HiveResult.scala#L71) — `hiveResultString`, which special-cases `DESCRIBE`, `SHOW TABLES` and `SHOW VIEWS` to Hive's column layout before falling through to generic row formatting
+- [HiveResult.scala:62](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/HiveResult.scala#L62) — `stripRootCommandResult` unwraps `CommandResultExec` first, because by this point the command has already run
+- [HiveResult.scala:110](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/HiveResult.scala#L110) — `toHiveString`, whose `nested` flag is the whole subtlety: a top-level `NULL` prints as `NULL` but a null *inside* an array prints as `null`, and a top-level string is bare while a nested one is quoted
+- [HiveResult.scala:54](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/HiveResult.scala#L54) — `getBinaryFormatter` **writes back** to the session conf: if `spark.sql.binaryOutputStyle` is unset it sets it to `UTF8` and keeps that, so the first CLI query fixes the binary rendering for the session
+- [HiveResult.scala:44](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/HiveResult.scala#L44) — date/time/timestamp formatters are resolved once per result set from `spark.sql.session.timeZone`, so a timezone change mid-session does not affect an in-flight result
+
+**Configs:** `spark.sql.binaryOutputStyle` (unset → `UTF8`, 4.0.0), `spark.sql.session.timeZone`
+
+**Maps to topics:** B8
 
 ---
 
@@ -921,34 +1163,172 @@ physical plan → `WriteToDataSourceV2Exec` → `TransactionUtils.commit`, or
 
 ---
 
-## Breadth checks
+## SQL UDFs — CREATE FUNCTION … RETURN and plan inlining
 
-### Package breadth
+**What it is:** a user-defined function whose body is SQL. The body is stored in the catalog as
+**text**, parsed and analysed at creation time only to validate it, and then inlined into every
+calling plan during analysis — as a `SQLScalarFunction` expression or, for `RETURNS TABLE`, as a
+relation. There is no closure, no serialization and no interpreter: after analysis the optimizer
+sees one plan with the function's body spliced in.
 
-`groups.yaml` gives this group `execution/` plus `catalyst/analysis/`. Sub-packages of `execution/`
-claimed by *other* groups (`adaptive/`, `aggregate/`, `arrow/`, `bucketing/`, `datasources/`,
-`dynamicpruning/`, `exchange/`, `joins/`, `python/`, `streaming/`, `window/`) were excluded. The
-remainder was walked by hand, since `check_drift.py --coverage` cannot see nested packages:
+**Code path:** `CREATE FUNCTION … RETURN` → `CreateSQLFunctionCommand.run` (parse, analyse, check,
+store `SQLFunction` in `SessionCatalog`) → later, a call site resolves to
+`SessionCatalog.makeSQLFunctionPlan` → `SQLFunctionNode` wrapping the body → normal analysis
 
-| Package | Files | Covered by |
-|---|---|---|
-| `execution/*.scala` (top level) | 58 | phase pipeline, SparkPlan, planner, codegen, EXPLAIN, subqueries, limit, sort, objects, cache manager |
-| `execution/analysis/` | 1 | `DetectAmbiguousSelfJoin` |
-| `execution/columnar/` (+ `compression/`) | 13 | in-memory cache concept |
-| `execution/command/` | 44 | command mechanism, cursors/variables, statistics — **DDL catalogue not covered per-command** |
-| `execution/debug/` | 2 | EXPLAIN concept |
-| `execution/history/` | 1 | SQL tab concept |
-| `execution/metric/` | 6 | SQL metrics concept |
-| `execution/r/` | 2 | typed object operators concept |
-| `execution/reuse/` | 1 | preparations concept |
-| `execution/stat/` | 2 | statistics concept |
-| `execution/ui/` | 10 | SQL tab concept |
-| `catalyst/analysis/` | 9 | analyzer-rules concept (all nine cited) |
+**Anchor files:**
 
-### Config breadth
+- [command/CreateSQLFunctionCommand.scala:53](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateSQLFunctionCommand.scala#L53) — the command, with the full grammar in its doc comment: `[NOT] DETERMINISTIC`, `COMMENT`, and the `CONTAINS SQL` / `READS SQL DATA` data-access characteristic
+- [command/CreateSQLFunctionCommand.scala:154](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateSQLFunctionCommand.scala#L154) — the scalar branch builds a plan of the form `Project(body, inputPlan)` so that parameters resolve as attributes; :191 is the table-function branch, which must produce a relation matching the declared `RETURNS TABLE` schema
+- [command/CreateSQLFunctionCommand.scala:305](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateSQLFunctionCommand.scala#L305) — the body is run through `analyzer.checkAnalysis` **at creation time**, so a SQL UDF referencing a missing column fails at `CREATE FUNCTION`, not at first call
+- [command/CreateSQLFunctionCommand.scala:399](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateSQLFunctionCommand.scala#L399) — `checkCyclicFunctionReference`: creation *expands* every SQL function the body calls, transitively, and raises `cyclicFunctionReference` with the full path if it comes back to itself. Recursive SQL UDFs are rejected, and the check is why a deep call chain makes `CREATE FUNCTION` slow
+- [command/CreateSQLFunctionCommand.scala:475](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateSQLFunctionCommand.scala#L475) — `deriveSQLDataAccess` infers whether the body actually reads data (any leaf that is not `OneRowRelation`/`LocalRelation`/`Range`, or a view, or a nested function that does), and rejects a `CONTAINS SQL` declaration that is contradicted by the body
+- [command/CreateSQLFunctionCommand.scala:313](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateSQLFunctionCommand.scala#L313) — `CREATE OR REPLACE` cannot turn a Java/Hive UDF into a SQL UDF: `USER_DEFINED_FUNCTIONS.CANNOT_REPLACE_NON_SQL_UDF_WITH_SQL_UDF`
+- [command/CreateSQLFunctionCommand.scala:333](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateSQLFunctionCommand.scala#L333) — a **temporary** SQL function records the temp views and temp functions its body referenced, so the catalog can reject a persistent function that depends on session-local objects
+- [command/CreateUserDefinedFunctionCommand.scala:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/command/CreateUserDefinedFunctionCommand.scala#L31) — the shared base, and at :94 `checkParameterNameDuplication`, plus the trailing-defaults rule that makes parameter defaults behave like a function signature
+- [catalyst/plans/logical/SQLFunctionNode.scala:32](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/SQLFunctionNode.scala#L32) — the wrapper that carries the function identity alongside its body through analysis, and the constructor-time rejection of `TABLE(...)` arguments — not yet implemented for SQL UDFs in 4.2.0
 
-Of the 105-key slice, 50 tie to a concept above. The remaining 55 belong to other `sql/core` groups
-or other subsystems and are recorded here so a future run does not re-derive them:
+!!! info "A SQL UDF is the only UDF the optimizer can see through"
+
+    A Python UDF is an opaque `PythonUDF` expression and a Scala UDF is an opaque `ScalaUDF`; neither
+    can be pushed down, folded or reordered. A SQL UDF's body is ordinary catalyst after inlining, so
+    predicate pushdown, constant folding and column pruning all apply *inside* it. The cost moves to
+    plan size: calling a SQL UDF ten times splices ten copies of its body into the plan.
+
+**Configs:** none of its own; body analysis honours the session's analyzer configs
+
+**Maps to topics:** none yet — proposed as **I33**
+
+---
+
+## Row-multiplying operators — GenerateExec and ExpandExec
+
+**What it is:** the two operators that turn one input row into several. `GenerateExec` runs a
+`Generator` (explode, posexplode, inline, `LATERAL VIEW`, a table-valued function) and optionally
+joins each produced row back to the input row. `ExpandExec` applies **N projections** to every input
+row and emits N rows — the mechanism behind `GROUPING SETS`, `ROLLUP`, `CUBE` and the rewrite of
+multiple `DISTINCT` aggregates.
+
+**Anchor files:**
+
+- [GenerateExec.scala:59](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/GenerateExec.scala#L59) — the operator; `requiredChildOutput` is what the analyzer decided the generator's row must be joined with, and the output is `requiredChildOutput ++ generatorOutput`
+- [GenerateExec.scala:105](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/GenerateExec.scala#L105) — the `outer` flag: when the generator produces nothing for a row, `explode` drops the row and `explode_outer` emits it once with a **null row** of the generator's schema
+- [GenerateExec.scala:110](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/GenerateExec.scala#L110) — `LazyIterator(() => boundGenerator.terminate())` appended to the partition's iterator; a generator with per-partition final output (Hive UDTFs) emits it here, keeping the left side of the last input row — "keep it the same as Hive does"
+- [GenerateExec.scala:34](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/GenerateExec.scala#L34) — that `LazyIterator` exists so `terminate()` is not called until the input is fully drained
+- [GenerateExec.scala:136](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/GenerateExec.scala#L136) — codegen is delegated to the generator: `supportCodegen = generator.supportCodegen`, which is false for anything implementing `terminate()`. :160 is the fast path for a `CollectionGenerator` (explode over an array/map), which generates a plain `for` loop with no intermediate rows
+- [GenerateExec.scala:146](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/GenerateExec.scala#L146) — `needCopyResult = true`: produced rows share a buffer, so any consumer that retains them must copy
+- [ExpandExec.scala:36](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ExpandExec.scala#L36) — the operator; `projections` is a `Seq[Seq[Expression]]`, one per grouping set. `ROLLUP(a, b, c)` is four projections, so the shuffle below the aggregate carries **four times** the rows
+- [ExpandExec.scala:47](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ExpandExec.scala#L47) — `outputPartitioning` is `UnknownPartitioning(0)`: expanding destroys any partitioning the child had, because the group columns are rewritten to null per projection. That is why an `Expand` almost always sits directly under an exchange
+- [ExpandExec.scala:56](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ExpandExec.scala#L56) — the non-codegen path builds one `UnsafeProjection` per grouping set and initialises each with the partition index, so a non-deterministic expression inside a grouping set is seeded consistently
+- [ExpandExec.scala:79](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/ExpandExec.scala#L79) — `needCopyResult = true` for the same buffer-sharing reason
+
+!!! warning "Row multiplication happens *below* the aggregate, and it is not visible in the row count you asked for"
+
+    `GROUP BY ROLLUP(a, b, c)` reads the table once but shuffles four expanded copies of every row.
+    The SQL tab shows this as an `Expand` operator whose `numOutputRows` is 4× the scan's — the
+    single most reliable way to spot that a grouping-set query is shuffle-bound. The same applies to
+    `COUNT(DISTINCT x), COUNT(DISTINCT y)`, which the optimizer rewrites into an `Expand` with one
+    projection per distinct column.
+
+**Configs:** none specific; the operators inherit `spark.sql.codegen.*`
+
+**Maps to topics:** none yet — proposed as **I34**
+
+---
+
+## UNION ALL — output partitioning and codegen fusion
+
+**What it is:** `UnionExec` looks like the simplest operator in the file and carries two of the more
+intricate decisions in `sql/core`: whether the union's children keep a shared partitioning (so no
+shuffle is needed above it), and whether the union can be **fused into a single whole-stage codegen
+loop** instead of ending the pipeline. Both are recent, both are config-gated, and both fail closed.
+
+**Anchor files:**
+
+- [basicPhysicalOperators.scala:877](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L877) — the operator; at :879 the output schema is the **per-position merge** of the children's, taking nullability if *any* child is nullable and merging nested struct types with `unionLikeMerge`
+- [basicPhysicalOperators.scala:932](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L932) — `outputPartitioning` under `spark.sql.unionOutputPartitioning` (true, 4.1.0): each child's partitioning is rewritten into the first child's attributes (:897) and, if they all compare equal (:922), the union reports it. Without this a union of two identically hash-partitioned inputs forced a re-shuffle for the aggregate above
+- [basicPhysicalOperators.scala:922](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L922) — the comparison is deliberately strict: two `RangePartitioning`s with the same ordering and partition count are **not** equal, because their partition bounds were sampled independently
+- [basicPhysicalOperators.scala:979](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L979) — `supportCodegenFailureReason`, the eight disqualifiers in evaluation order: `union-codegen-disabled`, `partitioning-aware` (the union reports a real partitioning, so fusion's flat `UnionRDD` would break it), `nested-union`, `multi-rdd-child`, `partition-index-dependent-child`, `max-children-exceeded`, `columnar`, `type-mismatch`. Each is logged at `DEBUG` with the plan tree — that log line is the only way to find out which one you hit
+- [basicPhysicalOperators.scala:1017](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L1017) — the metrics map is registered **only when fusion will run**, so a fallback union shows no row count at all rather than a misleading zero
+- [basicPhysicalOperators.scala:1029](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L1029) — fusion builds a plain `UnionRDD` rather than `SparkContext.union` so each partition keeps a 1:1 mapping back to its owning child (`UnionPartition.parentRddIndex`); a `require` guards against a multi-RDD codegen child slipping past the disqualifier list
+- [basicPhysicalOperators.scala:1072](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L1072) — `doProduce` builds two driver-side lookup arrays (partition → child, partition → child-local index) and emits a `switch` over the child index; each child's produced code goes in its **own helper method** because otherwise the fused method's bytecode grows linearly with the child count and blows the 64 KB limit
+- [basicPhysicalOperators.scala:1068](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L1068) — the per-pass codegen state is a `ThreadLocal`, with a 25-line comment explaining why: a reused exchange stage and a dynamic-pruning subquery can drive `doCodeGen` on the same `UnionExec` instance concurrently
+- [basicPhysicalOperators.scala:1191](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/basicPhysicalOperators.scala#L1191) — `isKnownMultiInputRDDCodegen` (sort-merge and shuffled-hash joins return two input RDDs) and at :1208 `hasPartitionIndexDependentCodegen`, which uses `Nondeterministic` as a proxy for "this expression embeds the raw partition index" — and explicitly exempts the three `InputFile*` expressions, which read a task-local holder instead
+
+!!! warning "Fusion is per-plan and silent when it does not happen"
+
+    Nothing in `EXPLAIN` distinguishes a fused union from a fallback one, and the reason is logged at
+    `DEBUG` only. If a union-heavy pipeline is slower than the sum of its branches, raise
+    `spark.sql.codegen.wholeStage.union.maxChildren` and check the driver log for
+    `UnionExec codegen skipped: reason=…` before assuming the union itself is the cost.
+
+**Configs:** `spark.sql.unionOutputPartitioning` (true, 4.1.0),
+`spark.sql.codegen.wholeStage.union.enabled`, `spark.sql.codegen.wholeStage.union.maxChildren`
+
+**Maps to topics:** none yet — proposed as **A42**
+
+---
+
+## Script transformation — TRANSFORM … USING
+
+**What it is:** `SELECT TRANSFORM(a, b) USING 'my_script.py' AS (x, y) FROM t` — the Hive-inherited
+operator that forks a process per task, writes rows to its stdin as delimited text, and parses its
+stdout back into rows. A writer thread feeds the process while the task thread reads its output, and
+a circular buffer drains stderr so the process cannot deadlock on a full pipe.
+
+**Code path:** `SparkScriptTransformationExec.processIterator` → `initProc` (fork `/bin/bash -c`) →
+`SparkScriptTransformationWriterThread` writes stdin → `createOutputIteratorWithoutSerde` parses
+stdout → `checkFailureAndPropagate` on EOF
+
+**Anchor files:**
+
+- [BaseScriptTransformationExec.scala:44](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L44) — the trait; input columns are cast to string with the session time zone (:55) before they ever reach the process
+- [BaseScriptTransformationExec.scala:80](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L80) — `initProc`: the script runs through `/bin/bash -c` from the `SparkFiles` root with that directory prepended to `PATH` (so `ADD FILE` then `USING 'script.py'` works), and `OMP_NUM_THREADS` is pinned to `spark.task.cpus` unless already set — a native library in the script would otherwise spawn one thread per core, per task
+- [BaseScriptTransformationExec.scala:97](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L97) — stderr is consumed by a `RedirectThread` into a 2048-byte `CircularBuffer`; the comment cites SPARK-7862, the hang that happens when nobody drains it
+- [BaseScriptTransformationExec.scala:113](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L113) — the output parser: split on the field delimiter, **pad missing trailing fields with null**. In `schemaLess` mode only the first two fields survive, padded to two — Hive's behaviour, reproduced deliberately
+- [BaseScriptTransformationExec.scala:255](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L255) — `wrapperConvertException`, whose comment is the whole risk in one line: "when there is a type case error, return null". A field the script emitted in the wrong format becomes `NULL` with no error, no warning and no metric
+- [BaseScriptTransformationExec.scala:172](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L172) — `checkFailureAndPropagate`: the writer thread's exception wins; otherwise wait up to `spark.sql.scriptTransformation.exitTimeoutInSeconds` for the process to exit, and only then check the exit code. A non-zero exit logs the stderr buffer and throws `subprocessExitedError`
+- [BaseScriptTransformationExec.scala:319](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L319) — the writer thread never rethrows (SPARK-25158: an uncaught exception on that thread would kill the whole executor); it records the exception, destroys the process, and lets the reader surface it
+- [BaseScriptTransformationExec.scala:360](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/BaseScriptTransformationExec.scala#L360) — `ScriptTransformationIOSchema`, and at :377 the Hive defaults: field separator `\u0001`, line separator `\n`, null string `\N`. On this no-SerDe path the parser records a `TOK_TABLEROWFORMATFIELD` entry only when you write `FIELDS TERMINATED BY`, so a script that emits tab-separated output with no `ROW FORMAT DELIMITED` clause produces **one** column. (The tab default the docs mention belongs to Hive's `LazySimpleSerDe`, on the `sql/hive` path)
+- [SparkScriptTransformationExec.scala:38](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/SparkScriptTransformationExec.scala#L38) — the non-Hive implementation (no SerDe); the Hive-serde variant lives in `sql/hive`
+
+!!! warning "Three failure modes here are silent"
+
+    A field that will not parse becomes `NULL`; a row with too few fields is null-padded; a
+    schema-less transform silently keeps two columns. None of the three raises, logs at `WARN`, or
+    increments a metric — the only signal is the data. Validate the script's output shape yourself,
+    and prefer an explicit `ROW FORMAT DELIMITED FIELDS TERMINATED BY` over the `\u0001` default.
+
+**Configs:** `spark.sql.scriptTransformation.exitTimeoutInSeconds` (10, 3.0.0),
+`spark.sql.session.timeZone`, `spark.task.cpus` (read as a string for `OMP_NUM_THREADS`)
+
+**Maps to topics:** none yet — proposed as **E45**
+
+---
+
+## Breadth check 1 — the config slice
+
+`sql/core` registers almost no configs of its own; the keys this group's code reads are declared in
+catalyst's `SQLConf.scala` and carry `subsystem: sql/catalyst` in the catalog. The slice is
+reproducible as:
+
+```bash
+PYTHONIOENCODING=utf-8 python -c "
+import yaml, re
+d = yaml.safe_load(open('docs/reference/spark-source-map/configs/catalog.yaml', encoding='utf-8'))
+cs = [c for c in d['configs'] if c['subsystem'] == 'sql/catalyst']
+pat = re.compile(r'\.codegen\.|\.execution\.|\.ui\.|\.inMemoryColumnarStorage\.|\.cache\.'
+                 r'|\.subquery\.|\.event\.|\.scriptTransformation\.|\.cte\.|\.limit\.'
+                 r'|\.command\.|\.analyze\.|\.subexpressionElimination\.')
+sel = sorted({c['key'] for c in cs if pat.search(c['key'])})
+print(len(sel)); [print(k) for k in sel]
+"
+```
+
+**109 keys** (the 2026-08-08 re-sweep widened the pattern by `\.subexpressionElimination\.`, which
+turned up `spark.sql.subexpressionElimination.filterExec.enabled`, new in 4.2.0 and read by
+`FilterExec` — a key the previous slice could not see). Of those, 54 tie to a concept above. The
+remaining 55 belong to other `sql/core` groups or other subsystems and are recorded here so a future
+run does not re-derive them:
 
 | Family | Count | Owner |
 |---|---|---|
@@ -959,43 +1339,92 @@ or other subsystems and are recorded here so a future run does not re-derive the
 | `spark.sql.streaming.ui.*` | 4 | `sql/core — streaming-exec` (listener lives in `sql/streaming/ui/`) |
 | `spark.sql.thriftserver.ui.*` | 2 | `sql/hive-thriftserver` |
 | `spark.sql.execution.datasources.*`, `.fastFailOnFileFormatOutput` | 2 | `sql/core — datasources` |
-| `spark.sql.subexpressionElimination.cache.maxEntries` | 1 | `sql/catalyst — expressions` (topic A21) |
+| `spark.sql.subexpressionElimination.cache.maxEntries`, `.enabled`, `.skipForShortcutExpr` | 3 | `sql/catalyst — expressions` (topic A21); the `.filterExec.` key is this group's |
 
-Two keys this group's code reads fall outside the slice pattern and are cited above anyway:
-`spark.sql.sources.bucketing.autoBucketedScan.enabled` (read by `CacheManager`) and
-`spark.sql.dataframeCache.logLevel` (internal).
+**Keys this group reads that the slice pattern does not match** — invisible to `check_drift.py
+--sweeps`, so they can only ever be found by eye. All are cited in a concept above:
 
----
+| Key | Read by |
+|---|---|
+| `spark.sql.sources.bucketing.autoBucketedScan.enabled` | `CacheManager` (cached-plan session clone) |
+| `spark.sql.dataframeCache.logLevel` | `CacheManager` (internal) |
+| `spark.sql.binaryOutputStyle` | `HiveResult` |
+| `spark.sql.addPartitionInBatch.size` | `RepairTableCommand`, `AlterTableAddPartitionCommand` |
+| `spark.sql.truncateTable.ignorePermissionAcl.enabled` | `TruncateTableCommand` |
+| `spark.sql.legacy.addSingleFileInAddFile` | `AddFilesCommand` |
+| `spark.sql.legacy.allowNonEmptyLocationInCTAS` | `CreateDataSourceTableAsSelectCommand` |
+| `spark.sql.leafNodeDefaultParallelism` | `RangeExec`, `LocalTableScanExec` |
+| `spark.sql.unionOutputPartitioning` | `UnionExec` |
+| `spark.sql.hive.manageFilesourcePartitions`, `spark.sql.hive.gatherFastStats` | `ddl.scala`, `CommandUtils` |
+| `spark.task.cpus` (read as a raw string) | `BaseScriptTransformationExec.initProc` |
 
-## What this sweep did not cover
+## Breadth check 2 — the packages
 
-Named so the next run starts here rather than re-deriving the gap:
+`groups.yaml` gives this group `execution/` plus `catalyst/analysis/`, and — added by this re-sweep —
+`catalyst/plans/logical/`. Sub-packages of `execution/` claimed by *other* groups (`adaptive/`,
+`aggregate/`, `arrow/`, `bucketing/`, `datasources/`, `dynamicpruning/`, `exchange/`, `joins/`,
+`python/`, `streaming/`, `window/`) are excluded. The remainder was walked file by file, since
+`check_drift.py --coverage` cannot see nested packages:
 
-- **The DDL command catalogue** in `execution/command/` — `ddl.scala`, `tables.scala`,
-  `functions.scala`, `resources.scala`, the `Show*` / `Set*` commands, and `CreateSQLFunctionCommand`.
-  The *mechanism* (how a command runs, when, and how it reports metrics) is covered; the individual
-  commands' semantics are not. `views.scala` is cited only for view config capture.
-- **`execution/columnar/compression/`** — the six schemes are named and their selection rule
-  described, but the encoders themselves were not read.
-- **`BaseScriptTransformationExec`** (`TRANSFORM … USING`) — noted only via
-  `spark.sql.scriptTransformation.exitTimeoutInSeconds`.
-- **`HiveResult`** — the `spark-sql` CLI / thrift output formatting path, including
-  `spark.sql.binaryOutputStyle` (4.0.0).
+| Package | Files | Cited | Not cited |
+|---|---|---|---|
+| `execution/*.scala` (top level) | 58 | 54 | `DataSourceScanExec`, `FileRelation`, `PartitionedFileUtil`, `ScanFileListing` — all four owned by `datasources` |
+| `execution/analysis/` | 1 | 1 | — |
+| `execution/columnar/` | 9 | 9 | — |
+| `execution/columnar/compression/` | 4 | 4 | — |
+| `execution/command/` | 32 | 32 | — |
+| `execution/command/v2/` | 12 | 12 | — |
+| `execution/debug/` | 2 | 2 | — |
+| `execution/history/` | 1 | 1 | — |
+| `execution/metric/` | 6 | 6 | — |
+| `execution/r/` | 2 | 2 | — |
+| `execution/reuse/` | 1 | 1 | — |
+| `execution/stat/` | 2 | 2 | — |
+| `execution/ui/` | 10 | 10 | — |
+| `catalyst/analysis/` | 9 | 9 | — |
+| `catalyst/plans/logical/` | 3 | 3 | — |
 
-Hence `status: partial`.
+### Depth deliberately not taken
+
+Every file in scope is now cited, but three areas are covered at catalogue depth rather than
+per-class depth. Named so the next run starts here rather than re-deriving the gap:
+
+- **Per-command semantics in `execution/command/`.** Each of the ~90 command case classes is
+  reachable from the catalogue concept, and the ones with surprising behaviour are called out
+  individually, but the exact catalog mutations of (say) `AlterTableChangeColumnCommand` are not
+  written down. That is reference-manual work, not sweep work.
+- **The six compression encoders** in `columnar/compression/compressionSchemes.scala`. The selection
+  rule, the 0.8 ratio threshold and the primitive-only restriction are covered; the bit-level
+  encoding of `IntDelta`/`BooleanBitSet` is not.
+- **The per-type `ColumnType` implementations.** The dispatch, the compact-decimal special case and
+  the null header are covered; the 20-odd `append`/`extract` bodies are mechanical.
+
+Two files remain owned elsewhere by design: `sql/hive` holds the Hive-SerDe script transformation
+(`HiveScriptTransformationExec`), and the five DSv2 write-commit sites live in the `datasources`
+group.
 
 ## Overlapping topic traces
 
-Five of this sweep's topic codes already have traces, **all recorded at 4.2.0** — no version
-mismatch, and `check_drift.py --sweeps` flags none. Read against each, no contradiction was found;
-what this sweep adds is listed below.
+Five of this sweep's topic codes have traces, **all recorded at 4.2.0** — no version mismatch, and
+`check_drift.py --sweeps` flags none. Each was read against the source; no contradiction was found.
 
 | Trace | This sweep adds |
 |---|---|
-| [I7](../topics/i7.md) — Spark UI | the SQL-specific half of the read model: `SQLAppStatusListener`'s throttled writes, AQE plan replacement via `onAdaptiveExecutionUpdate`, and `SQLLastAttemptAccumulator`'s explicit undefined-behaviour carve-out for metrics inside cached plans |
-| [I6](../topics/i6.md) — Caching | that cache lookup happens on the **normalized, pre-optimization** plan, that the cached plan is built in a cloned session with two configs forced off, and the `PartitionKeyedAccumulator` correctness fix for concurrent AQE cache builds |
-| [B8](../topics/b8.md) — Spark SQL | that DDL executes during `commandExecuted`, before any action, and that `ResolveSessionCatalog` is what decides V1-command versus V2-command for every DDL statement |
+| [I7](../topics/i7.md) — Spark UI | the SQL-specific half of the read model: `SQLAppStatusListener`'s throttled writes, AQE plan replacement via `onAdaptiveExecutionUpdate`, `SQLLastAttemptAccumulator`'s undefined-behaviour carve-out for metrics inside cached plans, and (new in this pass) `SparkPlanInfo`'s five child-substitution rules — the reason the SQL tab draws a cached subtree under a scan of it |
+| [I6](../topics/i6.md) — Caching | that cache lookup happens on the **normalized, pre-optimization** plan, the cloned-session build with two configs forced off, the `PartitionKeyedAccumulator` correctness fix for concurrent AQE cache builds, and (new) the on-disk shape: 4 MB byte cap alongside `batchSize`, the 0.8 compression threshold, and no compression at all for nested types |
+| [B8](../topics/b8.md) — Spark SQL | that DDL executes during `commandExecuted` before any action, that `ResolveSessionCatalog` decides V1-versus-V2 for every DDL statement, and (new) the V1 command catalogue itself — `RESET` restoring session-start values rather than documented defaults, and `HiveResult` as the reason CLI output differs from `df.show()` |
 | [B7](../topics/b7.md) — Joins | `DetectAmbiguousSelfJoin` as the source of `AMBIGUOUS_COLUMN_REFERENCE`, and that `JoinSelection` sits *below* `SpecialLimits` in the strategy order |
-| [I4](../topics/i4.md) — RDD fundamentals | the object-row boundary (`DeserializeToObjectExec` / `SerializeFromObjectExec`) and `LogicalRDD` / `RDDScanExec`, the bridge a plain RDD or a `checkpoint()` leaves in a plan |
+| [I4](../topics/i4.md) — RDD fundamentals | the object-row boundary (`DeserializeToObjectExec` / `SerializeFromObjectExec`), `LogicalRDD` / `RDDScanExec`, and (new) the five `sql/core` `PartitionEvaluator` factories — the serializable alternative to a closure, still off by default |
 
-`A1` — the topic this group most directly backs — has no trace.
+`A1` — the topic this group most directly backs — still has no trace. Nor do the other eleven codes in
+this page's front matter (`I12`, `A3`, `A4`, `A17`, `A18`, `A19`, `A22`, `A26`, `E1`, `E3`, `E5`), or
+the four codes this run proposes (I33, I34, A42, E45). The E5 material this sweep adds — the
+catalog/namespace command family (`SET CATALOG`, `SET NAMESPACE`, `SHOW CATALOGS`) and
+`ResolveSetCatalogCommand`'s literal rewrite — therefore has no trace to reconcile against.
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-08-01 | 4.2.0 | First pass. 23 concepts, 5 proposals (I26 observe, A28 limit, A29 recursive CTE, E22 columnar, E23 transactions). Covered the phase pipeline, planner, codegen, EXPLAIN, cache, metrics and the SQL tab. Left `status: partial` with four named gaps: the DDL catalogue, the compression encoders, script transformation and `HiveResult`. |
+| 2026-08-08 | 4.2.0 | **Re-sweep at an unchanged version.** Found by **breadth check 2 (packages)** — a mechanical cited-vs-actual file diff showed 19 of 58 top-level `execution/` files and 19 of 32 `execution/command/` files uncited, plus three packages the group's scope never claimed (`catalyst/plans/logical/`). Config breadth was green on the old slice and only turned red once the pattern was widened by `\.subexpressionElimination\.`. Added 10 concepts and 4 proposals (I33 SQL UDFs, I34 row-multiplying operators, A42 UNION ALL, E45 script transformation); extended the SQL-metrics and SQL-tab concepts with `SparkPlanInfo`, `SQLAppStatusStore` and the UI pages. Biggest finds: `basicPhysicalOperators.scala` was cited only for `SubqueryExec`, hiding every basic operator including the whole UNION-ALL codegen-fusion mechanism; and script transformation has three independent **silent** data-corruption paths. Rewrote the trailing sections to the four-section contract — the first pass had merged the breadth checks and written no sweep log. `status: partial` → `complete`; residual gaps are depth-only and named above. |

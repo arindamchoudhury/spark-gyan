@@ -135,9 +135,20 @@ _meta:
     Map fully swept (2026-08-08): streaming — dstream, the last unswept group, was
     swept and its topics: list — empty until then, the only group with none — now
     names E43, E44 and A40. All 38 groups across 13 subsystems have a sweep page.
-    Four pages remain status: partial (sql/catalyst analysis, sql/core
-    query-execution, datasources, streaming-exec); those are re-sweep candidates,
-    not unswept groups.
+    Four pages remained status: partial at that point (sql/catalyst analysis,
+    sql/core query-execution, datasources, streaming-exec); those are re-sweep
+    candidates, not unswept groups. query-execution has since been closed out
+    (below), leaving three.
+
+    Also 2026-08-08: re-sweep of sql/core query-execution closed it out
+    (partial -> complete) and grew its scope. catalyst/plans/logical/ —
+    CommandResult, SQLFunctionNode, UnresolvedDataSource, the only three logical
+    nodes sql/core defines outside catalyst — was claimed by no group at all, so
+    it could never be swept; it now belongs to query-execution. The group's
+    topics: list was also the pre-sweep guess (A1, I7) while the page had mapped
+    concepts onto B8, I6 and E5 since the first pass, so those three were added.
+    Note that --coverage could not have found the orphaned package: it walks only
+    top-level packages under each source root, and catalyst/ was already claimed.
 
     Also 2026-08-08: the two Kafka groups' topics: lists were the pre-sweep
     guesses (A7, and A7+A8). Both sweeps mapped their concepts elsewhere, so the
@@ -367,8 +378,8 @@ sql/core:
   - number: 1
     name: query-execution
     title: "Query execution & planning"
-    topics: [A1, I7]
-    scope: "execution/ (QueryExecution, SparkPlan, SQLExecution, SparkOptimizer, ExplainUtils, WholeStageCodegenExec), catalyst/analysis/ (ResolveSessionCatalog, ResolveDataSource — the analyzer rules that live in sql/core)"
+    topics: [A1, I7, B8, I6, E5]
+    scope: "execution/ (QueryExecution, SparkPlan, SQLExecution, SparkOptimizer, ExplainUtils, WholeStageCodegenExec), catalyst/analysis/ (ResolveSessionCatalog, ResolveDataSource — the analyzer rules that live in sql/core), catalyst/plans/logical/ (CommandResult, SQLFunctionNode, UnresolvedDataSource — the three logical nodes sql/core defines itself)"
     description: "Physical planning entry point, the plan lifecycle behind EXPLAIN, and whole-stage code generation"
   - number: 2
     name: joins-exec

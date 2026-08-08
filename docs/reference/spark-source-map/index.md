@@ -51,6 +51,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I30 | Python UDTFs: Table Functions That Return Many Rows | — | — | ⬜ |
 | I31 | SQL Scripting Condition Handlers: EXIT, CONTINUE and SQLSTATE Matching | — | — | ⬜ |
 | I32 | SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken | — | — | ⬜ |
+| I33 | SQL UDFs: CREATE FUNCTION … RETURN and Plan Inlining | — | — | ⬜ |
+| I34 | Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -92,6 +94,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A39 | Pipeline Schema Inference and Evolution: Merge, Diff, and Alter | — | — | ⬜ |
 | A40 | Stream Rate Limiting and Backpressure: the PID Loop and Per-Partition Caps | — | — | ⬜ |
 | A41 | Decoupling Spark Tasks from Kafka Partitions: minPartitions and maxRecordsPerPartition | — | — | ⬜ |
+| A42 | UNION ALL: Partitioning-Aware Output and Codegen Fusion | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -136,6 +139,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E42 | Multi-Cluster Kafka Authentication: Delegation Tokens Across Several Secured Clusters | — | — | ⬜ |
 | E43 | The DStream Execution Model: What Structured Streaming Replaced | — | — | ⬜ |
 | E44 | Receivers and the Write-Ahead Log: Spark's First Answer to Exactly-Once Ingest | — | — | ⬜ |
+| E45 | TRANSFORM … USING: Piping Rows Through an External Process | — | — | ⬜ |
 
 ## Source concept map
 
@@ -821,11 +825,21 @@ flowchart LR
     S30 --> S30c15["SQL cursors and session variables"]
     S30 --> S30c16["sql/core's own analyzer rules — v1/v2 command routing, self-joins, metric views"]
     S30 --> S30c17["Statistics and sketch helpers — ANALYZE TABLE, approxQuantile, freqItems"]
-    S30 --> S30c18["Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator"]
-    S30 --> S30c19["LIMIT and OFFSET — the incremental take loop"]
-    S30 --> S30c20["Recursive CTEs — UnionLoopExec"]
-    S30 --> S30c21["Columnar execution and the ColumnarRule plugin API"]
-    S30 --> S30c22["Transaction-scoped query execution"]
+    S30 --> S30c18["The basic physical operators — Project, Filter, Sample, Range, Coalesce"]
+    S30 --> S30c19["Leaf and result operators — local scans, empty relations, multi-result"]
+    S30 --> S30c20["PartitionEvaluator factories — the serializable alternative to a closure"]
+    S30 --> S30c21["The cached columnar format — ColumnType, builders, accessors, encoders"]
+    S30 --> S30c22["The V1 DDL command catalogue"]
+    S30 --> S30c23["HiveResult — how the SQL CLI and thrift server render a row"]
+    S30 --> S30c24["Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator"]
+    S30 --> S30c25["LIMIT and OFFSET — the incremental take loop"]
+    S30 --> S30c26["Recursive CTEs — UnionLoopExec"]
+    S30 --> S30c27["Columnar execution and the ColumnarRule plugin API"]
+    S30 --> S30c28["Transaction-scoped query execution"]
+    S30 --> S30c29["SQL UDFs — CREATE FUNCTION … RETURN and plan inlining"]
+    S30 --> S30c30["Row-multiplying operators — GenerateExec and ExpandExec"]
+    S30 --> S30c31["UNION ALL — output partitioning and codegen fusion"]
+    S30 --> S30c32["Script transformation — TRANSFORM … USING"]
     S31["sql/core"]
     S31 --> S31c0["Script entry — the CompoundBody that never reaches the analyzer"]
     S31 --> S31c1["Interpretation — turning the parse tree into an execution tree"]
@@ -1048,10 +1062,14 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Python UDTFs — three eval types, and a UDTF that decides its own schema | sql/core | new | I30 | Python UDTFs: Table Functions That Return Many Rows |
 | Recursive CTEs — UnionLoopExec | sql/core | new | A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator |
 | RocksDBStateStoreProvider — changelog checkpointing and the snapshot upload queue | sql/core | new | E27 | The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance |
+| Row-multiplying operators — GenerateExec and ExpandExec | sql/core | new | I34 | Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP |
+| SQL UDFs — CREATE FUNCTION … RETURN and plan inlining | sql/core | new | I33 | SQL UDFs: CREATE FUNCTION … RETURN and Plan Inlining |
+| Script transformation — TRANSFORM … USING | sql/core | new | E45 | TRANSFORM … USING: Piping Rows Through an External Process |
 | Segment-tree window frames — the 4.2.0 sliding-frame algorithm, off by default | sql/core | new | A34 | Segment-Tree Window Frames: O(log W) Sliding Windows |
 | The codegen fast hash map — two levels, row-based or vectorized | sql/core | new | A33 | Two-Level Hash Aggregation and the Codegen Fast Hash Map |
 | The four AQE rule injection points | sql/core | new | E24 | Extending AQE: The Four Rule Injection Points |
 | Transaction-scoped query execution | sql/core | new | E23 | Transactional Writes: DSv2 Catalog Transactions |
+| UNION ALL — output partitioning and codegen fusion | sql/core | new | A42 | UNION ALL: Partitioning-Aware Output and Codegen Fusion |
 | V1 bucketing at execution time — the two rules that coalesce or disable a bucketed scan | sql/core | new | I29 | Bucketed Tables: bucketBy, and the Two Rules That Undo Bucketing |
 | transformWithStateInPySpark — Python drives the state store over a socket | sql/core | new | E26 | transformWithStateInPySpark: The Per-Task State Server |
 | IsolatedClientLoader — barrier, hive and shared classes | sql/hive | new | — | — |
@@ -1103,7 +1121,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | connector/kafka-0-10-sql — source-sink | 8 | ✅ complete | 4.2.0 | 2026-08-08 |
 | connector/profiler — async-profiler | 7 | ✅ complete | 4.2.0 | 2026-07-27 |
 | connector/kafka-0-10-token-provider — auth | — | ✅ complete | 4.2.0 | 2026-08-08 |
-| sql/core — query-execution | — | ✅ partial | 4.2.0 | 2026-08-01 |
+| sql/core — query-execution | — | ✅ complete | 4.2.0 | 2026-08-08 |
 | sql/core — joins-exec | — | ✅ complete | 4.2.0 | 2026-08-01 |
 | sql/core — adaptive | — | ✅ complete | 4.2.0 | 2026-08-02 |
 | sql/core — datasources | — | ✅ partial | 4.2.0 | 2026-08-04 |
