@@ -230,6 +230,7 @@ Where they agree — the DataFrame API, SQL, joins, partitioning, streaming, and
 14. **Source sweep — [sql/core — datasources in the source map](reference/spark-source-map/sweeps/sql-core-datasources.md)** — the whole path as source, and the three defaults worth changing your mental model over. `spark.sql.sources.useV1SourceList` defaults to `avro,csv,json,kafka,orc,parquet,text`, so **every built-in format takes the V1 path** and the DSv2 file implementations that exist alongside them are never used. Read parallelism is `min(maxPartitionBytes, max(openCostInBytes, totalBytes / defaultParallelism))` packed Next-Fit-Decreasing, with `openCostInBytes` charged per file — that surcharge, not `maxPartitionBytes`, is the knob for small files. And `spark.sql.files.ignoreCorruptFiles` does not skip a bad file: it marks the partition **finished** at the point of failure, so the job succeeds with silently truncated data
 15. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — the two file-based streaming endpoints and their non-obvious semantics: `FileStreamSource`'s `SeenFilesMap` means a file older than `maxFileAge` relative to the newest seen file is **never** picked up, even if it appears later; and `FileStreamSink` writes a `_spark_metadata` manifest that Spark uses to distinguish committed files from strays — so any other engine reading the same directory sees the strays
 16. **Source sweep — [sql/core — the classic API in the source map](reference/spark-source-map/sweeps/sql-core-classic-api.md)** — the reader and writer as plan builders: `DataFrameReader.load` makes **one** `UnresolvedDataSource` node and defers the V1-vs-V2 decision, the format and schema inference entirely to analysis; `DataFrameWriter.saveCommand` is the branchiest method in the package and is where 'which write path did I take' is decided; and `insertInto` is a different operation from `save` — it matches columns by **position** and rejects `partitionBy`
+17. **Source sweep — [connector/kafka-0-10-sql — source & sink in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md)** — a batch read that goes through none of the machinery above. `spark.read.format("kafka")` resolves to `KafkaBatch`/`KafkaRelation`, not a `FileFormat`, so **no `spark.sql.files.*` config applies**: parallelism comes from `minPartitions`/`maxRecordsPerPartition` (topic **A41**) and offsets are bound *on the executor* at read time rather than during planning, because data can age out between the two. Batch mode also forbids what would make it unbounded — `latest` as a start, `earliest` as an end — and warns-and-ignores the three streaming trigger options. On the write side there is no commit protocol at all: `commit` and `abort` are empty, so a failed Kafka write leaves whatever it already sent
 
 **Milestone:** You can read multi-file datasets with glob patterns, declare a schema programmatically with `StructType`, write in append/overwrite mode, and explain why Parquet is preferred for analytical workloads. Then two the source makes checkable: predict how many tasks a read of N files will produce and say which config capped it, and explain what happens to already-written files when a write fails halfway.
 
@@ -1811,6 +1812,7 @@ as well as range; and name the config that permits a negative scale and why it i
 9. **Source sweep — [sql/core — Python and Arrow in the source map](reference/spark-source-map/sweeps/sql-core-python-arrow.md)** — the two Python operators in the streaming path this topic never names: `PythonForeachWriter`, which drains a spillable row buffer into the worker from a background thread rather than blocking `process()` per row, and `PythonStreamingSourceRunner`, the numbered-function-id protocol behind a Python streaming source (see **A35**)
 10. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — the engine under this topic, at source level: `StreamExecution` is one thread whose failure is *stored* in `streamDeathCause` rather than thrown, so a query that "silently stopped" has its exception waiting in `query.exception`; the trigger **is** the loop (`ProcessingTimeExecutor` never queues — an overrunning batch just starts the next one immediately); `Trigger.AvailableNow` works by wrapping the source to freeze its latest offset, which is why it respects `maxFilesPerTrigger` where `Trigger.Once` did not; and a batch with zero input rows is by design, not an anomaly. See **A36** for the two-log durability protocol
 11. **Source sweep — [sql/core — the classic API in the source map](reference/spark-source-map/sweeps/sql-core-classic-api.md)** — the classic implementations of the streaming façades — `StreamingQueryManager` (active queries and listener registration), `StreamingQuery`, and the 4.x `StreamingCheckpointManager` for inspecting a query's checkpoint — plus `DataStreamReader`/`DataStreamWriter`, which are the same builders as the batch pair with `isStreaming = true`
+12. **Source sweep — [connector/kafka-0-10-sql — source & sink in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md)** — two things this topic needs from the one source you will actually attach it to. **`Trigger.AvailableNow` is implemented by prefetching the end offsets once and verifying against them every batch** — four checks, five dedicated error classes, and a second `fetchLatestOffsets` per batch as the cost. And **Real-Time Mode is, in practice, a Kafka feature**: grepping `SupportsRealTimeMode` across the checkout returns `KafkaMicroBatchStream`, the interface, three sql/core execution classes, and one test source. Its restrictions throw rather than warn (no rate limits, no `minPartitions`, no `endingTimestamp`, no `maxTriggerDelay`), and its read path has no bounds check and none of the micro-batch path's data-loss recovery
 
 **Milestone:** You can write a streaming job that reads new Parquet files from a directory, applies a transformation, and appends results to a Delta table — and restart it from a checkpoint without data loss.
 
@@ -1842,6 +1844,7 @@ as well as range; and name the config that permits a negative scale and why it i
 10. **Source sweep — [sql/core — aggregation, windows and exchange in the source map](reference/spark-source-map/sweeps/sql-core-agg-window-exchange.md)** — the batch-side machinery under session windows: `UpdatingSessionsExec` and `MergingSessionsExec`, the sorted-run walk that assigns each row its session spec, the optional pre-shuffle local merge (`…merge.sessions.in.local.partition`), and the error raised when the *only* grouping key is the session window. Also `BaseAggregateExec`'s `numShufflePartitions` pin — why a stateful aggregate's shuffle cannot be re-partitioned by AQE
 11. **Source sweep — [sql/core — Python and Arrow in the source map](reference/spark-source-map/sweeps/sql-core-python-arrow.md)** — the two stateful-PySpark designs side by side: `applyInPandasWithState` encodes state into the Arrow stream as extra columns with a nested metadata schema, which works only when state is touched at group boundaries; `transformWithStateInPySpark` instead runs a per-task protobuf state server on its own socket, making every state operation a synchronous round trip (see **E26**). Both sit on the same state-store engine this topic covers
 12. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — the state layer beneath the semantics: `WatermarkTracker` reduces every operator's watermark to **one** global value, so under the default `min` policy a single idle source holds the whole query's watermark back; `WatermarkPropagator` then computes *two* values per operator (late-events and eviction) and needs a plan simulation once stateful operators are chained; a stream-stream join keeps **four** state stores and retains state forever without a time-bounded condition; and `transformWithState` puts each state variable, its TTL index and its timers in separate column families with range-scan encodings. See **E27** for the store itself
+13. **Source sweep — [connector/kafka-0-10-sql — source & sink in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md)** — the source-side half of what a checkpoint holds. Beyond the offset log this topic already covers, the Kafka source writes its **own** `HDFSMetadataLog` under the source's metadata path, containing exactly one entry — batch 0, the resolved starting offsets — with a `v1` header and a leading zero byte kept for Spark 2.1.0 compatibility. That file is why `startingOffsets` is a one-time decision, and it is a separate thing from the query's offset log: deleting the checkpoint resets both, editing one without the other does not do what you expect
 
 **Milestone:** You can implement a session-windowed aggregate with a watermark, explain what happens to a late event that arrives after the watermark threshold, and describe what is stored in the checkpoint directory.
 
@@ -1929,6 +1932,7 @@ as well as range; and name the config that permits a negative scale and why it i
 3. **Kafka docs → Design and Semantics** ([kafka.apache.org/documentation/#design](https://kafka.apache.org/documentation/#design)) — partitions, consumer groups, and the delivery-guarantee section; you cannot reason about Spark's guarantees without Kafka's
 4. **Local stack** — run a single-broker Kafka in Docker, produce a synthetic event stream, and consume it with a Structured Streaming job writing to a table
 5. **Source sweep — [connector/kafka-0-10 — consumer in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md)** — the **DStream** connector, read here as contrast rather than as the thing you will use. It is worth the detour because its offset model is explicit where Structured Streaming's is hidden: the driver fixes an `OffsetRange` per partition *before* the batch runs, so exactly-once follows from the range being fixed, not from anything Kafka does — the same reasoning the checkpoint gives you, with the mechanism visible. Three transferable facts. `fixKafkaParams` **rewrites four Kafka params on executors** — `enable.auto.commit → false`, `auto.offset.reset → none`, `group.id → spark-executor-<yours>`, `receive.buffer.bytes → 65536` — which is why a broker shows twice as many consumer groups as you have streams, and the SQL connector does the same thing. Committing offsets **back to Kafka** via `CanCommitOffsets` is at-least-once and lags a batch: `commitAsync` only queues, the flush happens at the start of the next batch, and only the most recently registered callback survives. And on a **compacted** topic you must set `spark.streaming.kafka.allowNonConsecutiveOffsets`, which silently turns `count()` from arithmetic over the offset ranges into a full Spark job per batch
+6. **Source sweep — [connector/kafka-0-10-sql — source & sink in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md)** — **the connector this topic is actually about**, swept end to end: 33 files, 7,137 lines. The structural fact to lead with is that **all eight `spark.kafka.*` configs govern the executor-side pools and nothing else** — offsets, limits, partitioning, retries, group ids and failure behaviour are all *reader options*, which is why searching Spark configs for a Kafka tuning knob finds nothing. Then the operational facts. (i) **`startingOffsets` applies only to a brand-new query**: it is resolved once into batch 0 of an `HDFSMetadataLog` inside the checkpoint, so every restart reads and ignores it — moving a running query means editing the checkpoint, and the connector says so only inside the `kafka.auto.offset.reset` rejection message. (ii) **Lag comes from the source, not from Kafka**: Spark never commits offsets, so broker-side consumer-lag tooling sees nothing; `min`/`max`/`avgOffsetsBehindLatest` in `StreamingQueryProgress` are the only numbers, and they measure the backlog *after* rate limiting. (iii) **Writes are at-least-once with empty `commit`/`abort`** — a retried task re-sends what it already sent — while the *schema* is validated at plan time, so a missing `value` column fails before any record is produced. (iv) Setting `kafka.group.id` yourself puts two queries in one consumer group and each silently sees part of the data; the code appends that warning to its own "partitions are gone" message when it sees a custom group id. (v) **Kafka is the only production source implementing 4.2.0 Real-Time Mode**, and its RTM planner *throws* on `maxOffsetsPerTrigger`, `minOffsetsPerTrigger`, `minPartitions`, `endingTimestamp` and `maxTriggerDelay`. Read partitioning is topic **A41**; `failOnDataLoss` is **E41**
 
 **Milestone:** You can read a Kafka topic into Structured Streaming with an explicit `startingOffsets` and a rate limit, write to a Delta or Iceberg table, kill the job mid-stream and restart it without losing or duplicating rows — and explain precisely which component provided that guarantee. You can say what happens when the checkpoint is deleted but the sink table is not.
 
@@ -2887,6 +2891,59 @@ and which frame class actually runs.
     slow sink at all.
 
 **Milestone:** Given a batch interval, a per-partition ceiling and a set of per-partition lags, you can compute how many records each partition contributes to the next batch; explain what changes when backpressure is enabled and what the PID floor guarantees; and say what a direct Kafka stream will read in its first batch after a week of downtime under the default configuration, and which single config you would set to bound it.
+
+---
+
+
+### ⬜ A41 — Decoupling Spark Tasks from Kafka Partitions: minPartitions and maxRecordsPerPartition
+
+> Discovered from source sweep (new topic): `connector/kafka-0-10-sql: Offset range calculation — minPartitions, maxRecordsPerPartition, and placement`
+
+**What it is:** How the Kafka source decides how many Spark tasks read a batch — a 1:1 mapping to topic-partitions by default, and two options that split a partition's offset range across several tasks, plus the executor-placement hash that decides which JVM each range lands on.
+
+**Why you need it:** Kafka partition count is a broker-side decision you often cannot change, and without these options it hard-caps your read parallelism; but splitting also breaks the consumer-cache affinity that makes reads fast, so the tuning has a cost that is invisible unless you know where it comes from.
+
+**Learn it with:**
+
+1. **Spark-docs → Structured Streaming + Kafka, "Configuration"** ([structured-streaming-kafka-integration.html](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)) — the `minPartitions` and `maxRecordsPerPartition` option rows, including the documented "approximately" caveat and the note that they apply to batch reads too
+2. **Kafka docs → Design, "Partitions"** ([kafka.apache.org/documentation/#design](https://kafka.apache.org/documentation/#design)) — why the partition count is a topic-level decision with ordering consequences, i.e. why you often cannot just raise it
+3. **Source sweep — [connector/kafka-0-10-sql — source & sink in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md)** — `KafkaOffsetRangeCalculator` in full: the ordering of the two options, the proportional split that excludes already-small ranges, the last-part-absorbs-the-remainder division, and the `floorMod` executor assignment that only the unsplit path gets
+4. **Local stack** — read one Kafka topic with 3 partitions, then re-run with `minPartitions=12`; compare the task count in the SQL tab and the "Creating Kafka reader" lines in the executor logs to see the ranges actually change
+
+!!! warning "No book covers this"
+
+    SDG (2018) predates the option; LS2e and Rioux describe the Kafka source at the level of
+    `subscribe` and `startingOffsets`. This is docs-and-source territory, and the docs give the
+    options without the consequence below.
+
+!!! warning "Splitting silently forfeits the consumer cache for that batch"
+
+    `KafkaOffsetRangeCalculator.getRanges` attaches a preferred executor location — a
+    `floorMod(topicPartition.hashCode, numExecutors)` chosen precisely "so cached KafkaConsumers in
+    the executors can be re-used" — **only on the path where no splitting happens**. As soon as
+    `minPartitions` or `maxRecordsPerPartition` causes any range to split, every range in that batch
+    comes back with `preferredLoc = None`, the scheduler places tasks freely, and the executor-side
+    consumer pool stops hitting. On a steady stream that is the difference between reusing a warm
+    consumer with its prefetch buffer and building a fresh `KafkaConsumer` per partition per batch.
+    Nothing logs it. Prefer raising the topic's own partition count when you can.
+
+!!! info "`size` is an offset difference, not a record count"
+
+    Both options divide `untilOffset − fromOffset`, and the source's own scaladoc warns that this
+    "may be different than the real number of messages due to log compaction or transaction
+    metadata". On a compacted topic or one with heavy transactional traffic, `maxRecordsPerPartition`
+    is an upper bound on offsets, not on rows — the resulting tasks can be far smaller than asked
+    for, and unevenly so.
+
+!!! info "The two options compose, in a fixed order"
+
+    `maxRecordsPerPartition` runs first and splits every range that exceeds it. `minPartitions` then
+    splits further *only if* the result still has fewer parts than requested — and it excludes ranges
+    that would get one part anyway from the proportional maths, so a single huge partition does not
+    drag every small one into being split. Empty and negative-size ranges are dropped both before
+    and after.
+
+**Milestone:** Given four topic-partitions with backlogs of 1,000 / 10 / 10 / 10 records and `minPartitions=8`, you can say roughly how many Spark tasks the batch produces and which partition supplies most of them; explain why the same read with `minPartitions` unset gets executor affinity and this one does not; and say what `maxRecordsPerPartition=1000` guarantees, and does not guarantee, on a compacted topic.
 
 ---
 
@@ -4286,6 +4343,7 @@ application.
 2. **Spark-docs → Structured Streaming + Kafka, "Consumer Caching"** ([structured-streaming-kafka-integration.html](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)) — the *other* Kafka consumer cache, which has a timeout and an evictor thread the DStream one lacks. Reading the two side by side is the fastest way to see what each design bought
 3. **Kafka docs → Consumer Configs, `fetch.min.bytes` / `max.partition.fetch.bytes`** ([kafka.apache.org/documentation/#consumerconfigs](https://kafka.apache.org/documentation/#consumerconfigs)) — what a single `poll` actually returns, which is what the buffer this cache preserves is holding
 4. **Source sweep — [connector/kafka-0-10 — consumer in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-consumer.md)** — `KafkaDataConsumer.acquire`'s five branches, the `removeEldestEntry` growth bound, `InternalKafkaConsumer.get`'s seek/poll/`require` path, and the `floorMod` placement that decides whether the cache can hit at all
+5. **Source sweep — [connector/kafka-0-10-sql — source & sink in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md)** — **the other implementation of this topic, and the one you are more likely to be running.** The Structured Streaming connector splits the job into *two* caches: an `InternalKafkaConsumerPool` (commons-pool2 `GenericKeyedObjectPool`, keyed by `(groupId, topicPartition)`) and a separate `FetchedDataPool` holding the pre-fetched records, keyed by the same key **plus the next offset** — so a task can be handed the records the last batch already fetched. Both have idle timeouts and evictor threads the DStream cache lacks. What is *the same* is the failure shape: `PoolConfig` sets and asserts `maxTotal = -1`, so the pool is unbounded by construction and `spark.kafka.consumer.cache.capacity` is checked only before borrowing — exceeding it logs a WARN and makes a best-effort `clearOldest()`, which does nothing when every consumer is active. Its own config doc admits this ("Please note it's a soft limit"). Two further details worth carrying: all consumers sharing a cache key must have **identical Kafka params** or borrowing throws, and a cached consumer holding an expired delegation token is detected on borrow and both pools invalidated for that key
 
 !!! warning "No book covers this"
 
@@ -4320,7 +4378,59 @@ application.
     once, invalidating most of the cache. That is a real argument for a fixed executor count on a
     DStream Kafka job.
 
-**Milestone:** You can say which of `acquire`'s branches a given situation takes and whether the resulting consumer is cached; explain why an executor consuming 200 partitions with 64 task slots can hold more than 64 open consumers and what bounds it; predict what `spark.streaming.kafka.consumer.cache.enabled=false` costs on a steady-state stream; and read "Initial fetch"/"Buffer miss" log lines as cache diagnostics rather than errors.
+**Milestone:** You can say which of `acquire`'s branches a given situation takes and whether the resulting consumer is cached; explain why an executor consuming 200 partitions with 64 task slots can hold more than 64 open consumers and what bounds it; predict what `spark.streaming.kafka.consumer.cache.enabled=false` costs on a steady-state stream; and read "Initial fetch"/"Buffer miss" log lines as cache diagnostics rather than errors. For the Structured Streaming connector — the one you are more likely to be running — you can additionally say what the *second* cache (`FetchedDataPool`) holds and why it is keyed by next offset, and name the one thing both designs get wrong in the same way.
+
+---
+
+
+### ⬜ E41 — failOnDataLoss: What the Kafka Source Does When an Offset Is Gone
+
+> Discovered from source sweep (new topic): `connector/kafka-0-10-sql: Data-loss detection — failOnDataLoss and the recovery walk`
+
+**What it is:** The detection and recovery path behind Structured Streaming's most-toggled Kafka option — what counts as data loss (aged-out offsets, deleted partitions, a recreated topic, a partition that does not start at zero), what the executor does when it hits one, and the two custom metrics that count it.
+
+**Why you need it:** Setting `failOnDataLoss=false` is the standard reaction to a query that will not restart, and it converts a loud failure into a silent skip whose only trace is a WARN and a metric almost nobody reads; knowing exactly which offsets get skipped is the difference between an informed decision and losing data on purpose.
+
+**Learn it with:**
+
+1. **Spark-docs → Structured Streaming + Kafka** ([structured-streaming-kafka-integration.html](https://spark.apache.org/docs/latest/structured-streaming-kafka-integration.html)) — the `failOnDataLoss` option row and the "Offset Fetching" section; note the docs describe the *option*, not what recovery actually does
+2. **Kafka docs → Configuration, Topic-level, `retention.ms` / `cleanup.policy`** ([kafka.apache.org/documentation/#topicconfigs](https://kafka.apache.org/documentation/#topicconfigs)) — the broker-side settings that create the condition in the first place; a data-loss incident is usually a retention decision meeting a slow consumer
+3. **Source sweep — [connector/kafka-0-10-sql — source & sink in the source map](reference/spark-source-map/sweeps/connector-kafka-0-10-sql-source-sink.md)** — the five detection sites, the executor's three-case recovery walk with its ASCII range diagrams, the invisible-offset path that is *not* loss, and the two custom metrics
+4. **Source sweep — [sql/core — streaming execution in the source map](reference/spark-source-map/sweeps/sql-core-streaming-exec.md)** — the checkpoint and offset-log machinery this sits on: what a restart actually replays, which is what makes an aged-out offset unreachable rather than merely old
+
+!!! warning "No book covers this"
+
+    SDG, LS2e and Rioux all describe the Kafka source's happy path. `failOnDataLoss` is the option
+    people set in production without a model of what it does, and the model exists only in the
+    source.
+
+!!! warning "`failOnDataLoss=false` skips forward silently, and the counter is not obvious"
+
+    With it set, an offset that no longer exists produces one WARN — "Some data may be lost.
+    Recovering from the earliest offset: N" — and the reader jumps to the next available offset, or
+    abandons the range entirely when the requested and available ranges do not overlap at all. The
+    only quantitative trace is the `offsetOutOfRange` custom metric, which counts **offsets skipped,
+    not incidents**, alongside a `dataLoss` metric counting incidents. Treat a non-zero
+    `offsetOutOfRange` as the number of records you agreed to lose.
+
+!!! info "Five different things count as data loss, and only one is about retention"
+
+    The driver reports four: it cannot find earliest offsets for a partition that appeared (deleted),
+    a **new partition that does not start at 0**, partitions that vanished between batches, and an
+    end offset below the start offset (a topic deleted and recreated). The executor reports the
+    fifth: the offset it was told to read is outside the partition's available range. Only the last
+    is ordinary retention. "Partitions are gone" is very often a **shared `kafka.group.id`**, and
+    the connector appends that warning to the message when a custom group id is set.
+
+!!! info "Not every skipped offset is loss"
+
+    Transaction markers, and aborted records under `isolation.level=read_committed`, occupy offsets
+    that can never be read. `fetchRecord` distinguishes these from real loss by checking whether the
+    requested offset is still at or above the partition's earliest available offset — if so the
+    offset is valid but invisible, and it rewinds the buffer one record so the next call returns what
+    it just saw. That path increments no counter and logs nothing.
+
+**Milestone:** You can name the five conditions that trigger data-loss reporting and say which are caused by retention, by a shared consumer group, and by a recreated topic; predict what a task does with `failOnDataLoss=false` when its whole `[from, until)` range has aged out versus when only the first half has; and find the `offsetOutOfRange` and `dataLoss` values for a query and say what each one counts.
 
 ---
 
