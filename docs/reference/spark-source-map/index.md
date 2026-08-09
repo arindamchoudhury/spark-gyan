@@ -100,6 +100,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A42 | UNION ALL: Partitioning-Aware Output and Codegen Fusion | — | — | ⬜ |
 | A43 | Attribute Identity: ExprId, DeduplicateRelations, and Ambiguous Self-Joins | — | — | ⬜ |
 | A44 | Type Conversion at the File Boundary: Widening, Unsigned Types, and Refused Reads | — | — | ⬜ |
+| A45 | Writing a Streaming Sink: the DSv2 StreamingWrite Path and Epoch-Id Idempotence | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -146,6 +147,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E44 | Receivers and the Write-Ahead Log: Spark's First Answer to Exactly-Once Ingest | — | — | ⬜ |
 | E45 | TRANSFORM … USING: Piping Rows Through an External Process | — | — | ⬜ |
 | E46 | Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels | — | — | ⬜ |
+| E47 | Avro State Encoding and State Schema Evolution | — | — | ⬜ |
+| E48 | Continuous Processing and the Epoch Coordinator | — | — | ⬜ |
 
 ## Source concept map
 
@@ -915,22 +918,30 @@ flowchart LR
     S32 --> S32c14["StateStoreRDD and the coordinator — placing a partition where its state already is"]
     S32 --> S32c15["HDFSBackedStateStoreProvider — deltas, snapshots, and the whole map in JVM memory"]
     S32 --> S32c16["RocksDBStateStoreProvider — changelog checkpointing and the snapshot upload queue"]
-    S32 --> S32c17["State checkpoint IDs — the V2 lineage that makes a state store verifiable"]
-    S32 --> S32c18["Row checksums and auto snapshot repair — two 4.1.0 corruption defences, one on by default"]
-    S32 --> S32c19["State schema evolution — StateSchemaCompatibilityChecker and the operator metadata log"]
-    S32 --> S32c20["Offline state repartition — changing a stateful query's partition count"]
-    S32 --> S32c21["The maintenance thread — snapshotting, cleanup, and unloading providers"]
-    S32 --> S32c22["statefulOperators — the base traits, the watermark predicates, and the metrics"]
-    S32 --> S32c23["Streaming aggregation and session windows — two state managers, two formats"]
-    S32 --> S32c24["Streaming deduplication and limits — the cheapest stateful operators, and their traps"]
-    S32 --> S32c25["flatMapGroupsWithState — the legacy arbitrary-state operator and GroupState"]
-    S32 --> S32c26["Stream-stream join — four state stores per side, and the eviction predicates"]
-    S32 --> S32c27["transformWithState — a handle, typed state variables, timers and TTL"]
-    S32 --> S32c28["FileStreamSource — the seen-files map, the trigger limits, and cleanSource"]
-    S32 --> S32c29["FileStreamSink and the _spark_metadata log — a sink whose output only Spark can read correctly"]
-    S32 --> S32c30["The built-in sources and sinks — rate, socket, memory, console, foreach"]
-    S32 --> S32c31["Continuous processing and the epoch coordinator"]
-    S32 --> S32c32["Real-Time Mode — an allowlist as the feature gate"]
+    S32 --> S32c17["The RocksDB tuning surface — a two-map lookup, and thirty keys no ConfigBuilder declares"]
+    S32 --> S32c18["Range-scan key encoding — why byte order is not number order"]
+    S32 --> S32c19["Timestamp key encoders — the physical layout behind timestamp-ordered eviction"]
+    S32 --> S32c20["Avro state encoding and state schema evolution — schema IDs, a broadcast, and two ceilings"]
+    S32 --> S32c21["State checkpoint IDs — the V2 lineage that makes a state store verifiable"]
+    S32 --> S32c22["Row checksums and auto snapshot repair — two 4.1.0 corruption defences, one on by default"]
+    S32 --> S32c23["State schema evolution — StateSchemaCompatibilityChecker and the operator metadata log"]
+    S32 --> S32c24["Offline state repartition — changing a stateful query's partition count"]
+    S32 --> S32c25["The maintenance thread — snapshotting, cleanup, and unloading providers"]
+    S32 --> S32c26["statefulOperators — the base traits, the watermark predicates, and the metrics"]
+    S32 --> S32c27["Streaming aggregation and session windows — two state managers, two formats"]
+    S32 --> S32c28["Streaming deduplication and limits — the cheapest stateful operators, and their traps"]
+    S32 --> S32c29["flatMapGroupsWithState — the legacy arbitrary-state operator and GroupState"]
+    S32 --> S32c30["Stream-stream join — four state stores per side, and the eviction predicates"]
+    S32 --> S32c31["transformWithState — a handle, typed state variables, timers and TTL"]
+    S32 --> S32c32["TTL indexes — one-to-one, one-to-many, and the work-queue trick"]
+    S32 --> S32c33["FileStreamSource — the seen-files map, the trigger limits, and cleanSource"]
+    S32 --> S32c34["FileStreamSink and the _spark_metadata log — a sink whose output only Spark can read correctly"]
+    S32 --> S32c35["The built-in sources and sinks — rate, socket, memory, console, foreach"]
+    S32 --> S32c36["How a source actually implements MicroBatchStream — the rate sources as the readable example"]
+    S32 --> S32c37["The DSv2 streaming write path — MicroBatchWrite, V2Writes, and the V1 marker that gets deleted"]
+    S32 --> S32c38["Continuous processing — the epoch protocol, and why it is a different engine"]
+    S32 --> S32c39["The continuous reader and writer tasks — two background threads, an epoch marker, and no retries"]
+    S32 --> S32c40["Real-Time Mode — an allowlist as the feature gate"]
     S33["sql/hive"]
     S33 --> S33c0["Two Hive versions — the bundled client and the metastore it talks to"]
     S33 --> S33c1["IsolatedClientLoader — barrier, hive and shared classes"]
@@ -1089,11 +1100,13 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Reattachable execution — surviving a broken response stream | sql/connect | new | E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection |
 | The JDBC driver — jdbc:sc:// and how far it goes | sql/connect | new | — | — |
 | AQEPropagateEmptyRelation — whole subtrees deleted at runtime | sql/core | new | A32 | Runtime Empty-Relation Elimination and the All-Null Anti Join Short-Circuit |
+| Avro state encoding and state schema evolution — schema IDs, a broadcast, and two ceilings | sql/core | new | E47 | Avro State Encoding and State Schema Evolution |
 | BaseSessionStateBuilder — the whole SparkSessionExtensions injection surface | sql/core | new | E29 | SparkSessionExtensions: The Sixteen Injection Points |
 | Column matching between file and table schema | sql/core | new | E25 | Column Matching Between File and Table Schema: by Name, by Position, by Field ID |
 | Column without an engine — ColumnNode and its converter | sql/core | new | A37 | Column Without an Engine: ColumnNode and the api/classic/connect Split |
 | Columnar execution and the ColumnarRule plugin API | sql/core | new | E22 | Columnar Execution and the ColumnarRule Plugin API |
 | Condition handlers — EXIT, CONTINUE, and how a handler is chosen | sql/core | new | I31 | SQL Scripting Condition Handlers: EXIT, CONTINUE and SQLSTATE Matching |
+| Continuous processing — the epoch protocol, and why it is a different engine | sql/core | new | E48 | Continuous Processing and the Epoch Coordinator |
 | Cost evaluation — a re-plan is adopted only if the cost does not rise | sql/core | new | A31 | AQE Cost Evaluation: When a Better Plan Is Thrown Away |
 | Cursors — DECLARE, OPEN, FETCH, CLOSE and the snapshot taken at OPEN | sql/core | new | I32 | SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken |
 | Definition and repetition levels — rebuilding nested values from flat columns | sql/core | new | E46 | Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels |
@@ -1101,20 +1114,18 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | JDBC record conversion, batching, and the transaction per partition | sql/core | new | I36 | JDBC as a Source and a Sink: Type Mapping, Batching, and the Transaction per Partition |
 | Join-side buffering and spill | sql/core | new | A30 | Join-Side Buffering and Spill: Why One Key Kills a Task |
 | LIMIT and OFFSET — the incremental take loop | sql/core | new | A28 | LIMIT, OFFSET and the Incremental Take Loop |
-| MicroBatchExecution — the batch loop, and the two-log write-ahead protocol | sql/core | new | A36 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart |
 | Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator | sql/core | new | I26 | Observing Metrics Mid-Query: df.observe() and the Observation API |
-| Offline state repartition — changing a stateful query's partition count | sql/core | new | E28 | Offline State Repartition: Changing shuffle.partitions on a Stateful Query |
 | Parquet encodings — RLE, plain, dictionary, and the delta family | sql/core | new | — | — |
 | Partition value type inference — the seven-step ladder | sql/core | new | I27 | Partition Column Type Inference: How a Directory Name Becomes a Typed Column |
 | Physical-to-Catalyst type conversion — widening, unsigned types, and the reads Spark refuses | sql/core | new | A44 | Type Conversion at the File Boundary: Widening, Unsigned Types, and Refused Reads |
 | Python Data Sources — a reader and writer written entirely in Python | sql/core | new | A35 | Python Data Sources: Writing a Connector Without the JVM |
 | Python UDTFs — three eval types, and a UDTF that decides its own schema | sql/core | new | I30 | Python UDTFs: Table Functions That Return Many Rows |
 | Recursive CTEs — UnionLoopExec | sql/core | new | A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator |
-| RocksDBStateStoreProvider — changelog checkpointing and the snapshot upload queue | sql/core | new | E27 | The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance |
 | Row-multiplying operators — GenerateExec and ExpandExec | sql/core | new | I34 | Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP |
 | SQL UDFs — CREATE FUNCTION … RETURN and plan inlining | sql/core | new | I33 | SQL UDFs: CREATE FUNCTION … RETURN and Plan Inlining |
 | Script transformation — TRANSFORM … USING | sql/core | new | E45 | TRANSFORM … USING: Piping Rows Through an External Process |
 | Segment-tree window frames — the 4.2.0 sliding-frame algorithm, off by default | sql/core | new | A34 | Segment-Tree Window Frames: O(log W) Sliding Windows |
+| The DSv2 streaming write path — MicroBatchWrite, V2Writes, and the V1 marker that gets deleted | sql/core | new | A45 | Writing a Streaming Sink: the DSv2 StreamingWrite Path and Epoch-Id Idempotence |
 | The codegen fast hash map — two levels, row-based or vectorized | sql/core | new | A33 | Two-Level Hash Aggregation and the Codegen Fast Hash Map |
 | The four AQE rule injection points | sql/core | new | E24 | Extending AQE: The Four Rule Injection Points |
 | Transaction-scoped query execution | sql/core | new | E23 | Transactional Writes: DSv2 Catalog Transactions |
@@ -1176,7 +1187,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — datasources | — | ✅ complete | 4.2.0 | 2026-08-09 |
 | sql/core — agg-window-exchange | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — python-arrow | — | ✅ complete | 4.2.0 | 2026-08-06 |
-| sql/core — streaming-exec | — | ✅ partial | 4.2.0 | 2026-08-06 |
+| sql/core — streaming-exec | — | ✅ complete | 4.2.0 | 2026-08-09 |
 | sql/core — classic-api | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — sql-scripting | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | sql/pipelines — graph | — | ✅ complete | 4.2.0 | 2026-08-07 |

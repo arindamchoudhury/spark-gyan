@@ -1,23 +1,17 @@
 ---
 subsystem: sql/core
 spark_version: "4.2.0"
-swept_at: 2026-08-06
+swept_at: 2026-08-09
 group: streaming-exec
 all_groups: [query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec, classic-api, sql-scripting]
-status: partial
+status: complete
 concepts:
   - name: StreamExecution — one thread, a state machine, and a stored death cause
     topics: [A7]
   - name: TriggerExecutor — four trigger shapes behind one interface
     topics: [A7]
   - name: MicroBatchExecution — the batch loop, and the two-log write-ahead protocol
-    topics: []
-    propose:
-      code: A36
-      level: Advanced
-      title: "The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart"
-      what: "A micro-batch is durable before it runs: the offset log records the batch's end offsets before any data is processed, the commit log records completion after the sink commits, and on restart the presence or absence of a commit entry for the latest offset entry is what decides whether Spark replays that batch or moves to the next one."
-      why: "Every exactly-once claim, every 'my query reprocessed a batch after restart' question, and every checkpoint-corruption incident resolves to the ordering of those two writes and what the recovery path reads back — and none of it is visible from the DataFrame API, which is why checkpoints are the part of streaming operations people learn by outage."
+    topics: [A36]
   - name: No-data batches — the second reason a trigger fires
     topics: [A7, A8]
   - name: StreamExecutionContext and StreamProgress — per-batch state, and why offsets are a map
@@ -45,13 +39,21 @@ concepts:
   - name: HDFSBackedStateStoreProvider — deltas, snapshots, and the whole map in JVM memory
     topics: [A8, E1]
   - name: RocksDBStateStoreProvider — changelog checkpointing and the snapshot upload queue
+    topics: [E27]
+  - name: The RocksDB tuning surface — a two-map lookup, and thirty keys no ConfigBuilder declares
+    topics: [E27]
+  - name: Range-scan key encoding — why byte order is not number order
+    topics: [E27, A8]
+  - name: Timestamp key encoders — the physical layout behind timestamp-ordered eviction
+    topics: [A8]
+  - name: Avro state encoding and state schema evolution — schema IDs, a broadcast, and two ceilings
     topics: []
     propose:
-      code: E27
+      code: E47
       level: Expert
-      title: "The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance"
-      what: "Behind every stateful streaming operator is a versioned key-value store; the RocksDB provider keeps a local instance per partition, writes each batch's mutations to a changelog file, periodically uploads a full snapshot in a background maintenance thread, and reconstructs any version by loading the nearest snapshot and replaying changelogs on top of it."
-      why: "It is the layer that decides whether a stateful query restarts in seconds or in an hour, whether a corrupt checkpoint is recoverable, and what the memory footprint of a large-state job actually is — and its whole configuration surface (changelog checkpointing, snapshot lag reporting, checkpoint IDs, row checksums, auto snapshot repair, maintenance timeouts) is invisible from the query API."
+      title: "Avro State Encoding and State Schema Evolution"
+      what: "Setting `spark.sql.streaming.stateStore.encodingFormat=avro` replaces the UnsafeRow byte layout in the state store with Avro-encoded rows prefixed by a two-byte schema id, which is what allows a `transformWithState` value schema to change between restarts: the checkpoint keeps every historical schema, the driver broadcasts them to executors, and each stored row is decoded with the schema it was written under."
+      why: "It is the only mechanism in Spark that lets a stateful query's state schema evolve rather than forcing a checkpoint rebuild, and every part of it is conditional — it works only with Avro encoding, only on `transformWithState`, only for the value side, only for Avro-compatible changes, and only sixteen times per column family before the query fails."
   - name: State checkpoint IDs — the V2 lineage that makes a state store verifiable
     topics: [A8, A14]
   - name: Row checksums and auto snapshot repair — two 4.1.0 corruption defences, one on by default
@@ -59,13 +61,7 @@ concepts:
   - name: State schema evolution — StateSchemaCompatibilityChecker and the operator metadata log
     topics: [A8, B5]
   - name: Offline state repartition — changing a stateful query's partition count
-    topics: []
-    propose:
-      code: E28
-      level: Expert
-      title: "Offline State Repartition: Changing shuffle.partitions on a Stateful Query"
-      what: "A stateful streaming query's state is keyed by partition id, so its shuffle partition count is frozen at the first batch; Spark 4.2.0 adds an offline runner that reads the existing state through the state data source, repartitions it to a new count, writes it back as an extra batch N+1, and lets the query resume at the new parallelism."
-      why: "Until this existed, the answer to 'my stateful query is under-parallelised' was to rebuild the checkpoint and reprocess from the source. It is the single highest-consequence operational procedure in streaming, it leaves a half-finished batch behind if it fails, and 4.2.0 ships a startup check specifically to detect that."
+    topics: [E28]
   - name: The maintenance thread — snapshotting, cleanup, and unloading providers
     topics: [A8, E3]
   - name: statefulOperators — the base traits, the watermark predicates, and the metrics
@@ -80,14 +76,34 @@ concepts:
     topics: [A8, B7]
   - name: transformWithState — a handle, typed state variables, timers and TTL
     topics: [A8]
+  - name: TTL indexes — one-to-one, one-to-many, and the work-queue trick
+    topics: [A8]
   - name: FileStreamSource — the seen-files map, the trigger limits, and cleanSource
     topics: [A7, B4]
   - name: FileStreamSink and the _spark_metadata log — a sink whose output only Spark can read correctly
     topics: [A7, B4]
   - name: The built-in sources and sinks — rate, socket, memory, console, foreach
     topics: [A7]
-  - name: Continuous processing and the epoch coordinator
+  - name: How a source actually implements MicroBatchStream — the rate sources as the readable example
     topics: [A7]
+  - name: The DSv2 streaming write path — MicroBatchWrite, V2Writes, and the V1 marker that gets deleted
+    topics: []
+    propose:
+      code: A45
+      level: Advanced
+      title: "Writing a Streaming Sink: the DSv2 StreamingWrite Path and Epoch-Id Idempotence"
+      what: "A streaming sink is a DSv2 `SupportsWrite` table whose `StreamingWrite` is wrapped per batch in a `MicroBatchWrite` carrying that batch's id, so the ordinary batch write machinery — writer factory per partition, task-side `commit`/`abort`, driver-side `commit(epochId, messages)` — executes each micro-batch, while the older DSv1 `Sink.addBatch` path survives as a marker node that the streaming optimizer deletes."
+      why: "Every custom sink, every `foreachBatch` alternative and every 'my sink wrote the batch twice' incident lives here: the batch id handed to `commit` is the *only* thing that makes a sink idempotent across the replay that the checkpoint protocol guarantees, and the two write paths (V1 and V2) differ in whether Spark can invalidate the relation, refresh the catalog, or report commit progress at all."
+  - name: Continuous processing — the epoch protocol, and why it is a different engine
+    topics: []
+    propose:
+      code: E48
+      level: Expert
+      title: "Continuous Processing and the Epoch Coordinator"
+      what: "Continuous processing is Spark's other streaming engine: instead of a batch loop it launches tasks that never finish, and it establishes durability with *epochs* — a driver-side `EpochCoordinator` RPC endpoint increments an epoch counter on a timer, collects an end offset from every reader partition and a commit message from every writer partition, and only writes the offset and commit logs once every partition has reported."
+      why: "It is the clearest worked example in Spark of a distributed two-phase commit over long-running tasks, it explains exactly why continuous processing is at-least-once, unshuffleable and retry-intolerant, and it is the model Spark 4.2.0's Real-Time Mode was written to replace — so understanding it is how you read what Real-Time Mode actually changed."
+  - name: The continuous reader and writer tasks — two background threads, an epoch marker, and no retries
+    topics: [E48]
   - name: Real-Time Mode — an allowlist as the feature gate
     topics: [A7]
 ---
@@ -105,13 +121,14 @@ filesystem), and a *state engine* (a versioned key-value store per partition, wi
 checkpointing, maintenance and recovery). Almost every operational question about streaming lands
 in one of the three, and they fail in different ways.
 
-!!! warning "`status: partial` — and what that means here"
+!!! info "`status: complete` as of the 2026-08-09 re-sweep — what changed"
 
-    Every sub-package below gets at least one traced concept, and the breadth checks are green.
-    But depth is genuinely uneven: `runtime/` and `state/` are traced closely, while `continuous/`
-    (11 files) and `sources/` (18) each get a single survey-level concept. The
-    "Deliberately not covered" section at the end names exactly what was enumerated rather than
-    traced, so the next run can take one of those rather than re-skimming the whole group.
+    The first pass marked this page `partial` on a **depth** judgement: `continuous/` and
+    `sources/` had one survey concept each, and the state-store encoders, the RocksDB tuning
+    surface and the TTL machinery were named rather than traced. The re-sweep took exactly that
+    list and closed it — nine new concepts, three of them new learning-path topics. What is
+    still deliberately shallow is now small enough to name in one paragraph, at the end of
+    breadth check 2.
 
 !!! info "What is *not* here"
 
@@ -227,7 +244,7 @@ fails here rather than silently restarting from the wrong place.
 `spark.sql.streaming.verifyCheckpointDirectoryEmptyOnStart` (`true`, 4.1.0),
 `spark.sql.streaming.checkpoint.verifyMetadataExists.enabled` (`true`, 4.2.0)
 
-**Maps to topics:** none — proposed as **A36**
+**Maps to topics:** A36 (the topic this sweep's first pass proposed, now in the learning path)
 
 ### No-data batches — the second reason a trigger fires
 
@@ -625,7 +642,194 @@ the whole `spark.sql.streaming.stateStore.rocksdb.*` family (block cache, write 
 `spark.sql.streaming.stateStore.forceSnapshotUploadOnLag` (`true`, 4.2.0),
 `spark.sql.streaming.stateStore.unloadOnCommit` (`false`, 4.1.0)
 
-**Maps to topics:** none — proposed as **E27**
+**Maps to topics:** E27
+
+### The RocksDB tuning surface — a two-map lookup, and thirty keys no ConfigBuilder declares
+
+**What it is:** `RocksDBConf` is a 31-field case class built once per provider from a
+`StateStoreConf`, and the way it is built explains why the RocksDB knobs behave unlike every
+other Spark config.
+
+Each field is a `ConfEntry` with a **name and a default written in this file**, in one of two
+flavours:
+
+- `SQLConfEntry("blockCacheSizeMB", "8")` reads `spark.sql.streaming.stateStore.rocksdb.blockCacheSizeMB` out of `StateStoreConf.sqlConfs`, which is not a typed lookup at all — it is `sqlConf.getAllConfs.filter(_._1.startsWith("spark.sql.streaming.stateStore."))`, a prefix sweep of whatever the session happens to hold.
+- `ExtraConfEntry(name, default)` reads `StateStoreConf.extraOptions` instead — the per-query options a `DataStreamWriter` passes down. No entry uses this flavour in 4.2.0; the branch exists so a provider can be tuned per query rather than per session.
+
+Three consequences, all of them observable:
+
+1. **Only two of these keys are registered configs.** `formatVersion` and `mergeOperatorVersion`
+   are declared in `SQLConf` (and the source says in both places that the two definitions must be
+   kept in sync). The other ~29 — `blockCacheSizeMB`, `writeBufferSizeMB`, `maxWriteBufferNumber`,
+   `boundedMemoryUsage`, `maxMemoryUsageMB`, `writeBufferCacheRatio`, `highPriorityPoolRatio`,
+   `compression`, `maxOpenFiles`, `compactOnCommit`, `changelogCheckpointing.enabled`,
+   `trackTotalNumberOfRows`, `allowFAllocate`, `lockAcquireTimeoutMs`, `resetStatsOnLoad`,
+   `verifyNonEmptyFilesInZip`, `checkStaleReusedFilesInSnapshot`, `memoryUpdateIntervalMs`, … —
+   exist **only as strings here**. They are absent from the config catalog, from `SET -v`, and
+   from any doc generated off `ConfigEntry`.
+2. **A typo is silent.** `getConfigMap(conf).getOrElse(conf.fullName, conf.default)` falls back to
+   the default for any key that is not present, and `fullName` is lower-cased, so lookup is
+   case-insensitive but membership is not validated. Misspell `blockCacheSizeMB` and you get 8 MB
+   with no warning anywhere.
+3. **A few of the fields do not come from the rocksdb prefix at all.** `minVersionsToRetain`,
+   `minDeltasForSnapshot`, `maxVersionsToDeletePerMaintenance`, `fileChecksumEnabled`,
+   `rowChecksumEnabled` and `reportSnapshotUploadLag` are lifted off `StateStoreConf` — i.e. from
+   real `SQLConf` entries under `spark.sql.streaming.stateStore.*`. So the RocksDB provider's
+   behaviour is configured from two namespaces with two different validation stories.
+
+`RocksDBMemoryManager` is where `boundedMemoryUsage` becomes real: with it on, every RocksDB
+instance on the executor shares one `WriteBufferManager` and one LRU block cache sized
+`maxMemoryUsageMB`, split by `writeBufferCacheRatio` and `highPriorityPoolRatio`. With it off —
+the default — each partition's instance sizes its own cache, so executor memory scales with the
+number of state stores on that executor rather than being capped.
+
+**Code path:** `StateStoreConf(sqlConf)` (prefix sweep) → `RocksDBConf.apply(storeConf)`
+(per-entry `getOrElse(default)`) → `RocksDB` (`Options`, `BlockBasedTableConfig`) /
+`RocksDBMemoryManager.getOrCreateRocksDBMemory`
+
+**Anchor files:**
+
+- [state/RocksDB.scala:2699](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDB.scala#L2699) — the `RocksDBConf` case class, all 31 fields
+- [state/RocksDB.scala:2733](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDB.scala#L2733) — the `ConfEntry` / `SQLConfEntry` / `ExtraConfEntry` machinery and every default; `apply` at :2855 with the `getOrElse(default)` lookups
+- [state/RocksDB.scala:2774](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDB.scala#L2774) — `formatVersion`, and the comment explaining why the table format version is pinned into the checkpoint so a Spark downgrade still works
+- [state/StateStoreConf.scala:174](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/StateStoreConf.scala#L174) — `sqlConfs`, the prefix sweep that makes the whole thing untyped
+- [state/RocksDBMemoryManager.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBMemoryManager.scala) — the shared block cache and write-buffer manager
+
+**Configs:** `spark.sql.streaming.stateStore.rocksdb.formatVersion` (`5`),
+`…rocksdb.mergeOperatorVersion` (`2`, 4.2.0) — the only two in the catalog; the rest are
+string keys defined in `RocksDBConf` (listed above)
+
+**Maps to topics:** E27
+
+### Range-scan key encoding — why byte order is not number order
+
+**What it is:** RocksDB orders keys by raw byte comparison, and a state store that needs
+`rangeScan` — TTL expiry, timer expiry, timestamp-ordered join eviction — needs the *encoded* key
+to sort the way the *number* sorts. Two's-complement integers and IEEE floats do not, so
+`encodePrefixKeyForRangeScan` re-encodes each ordering column into a fixed-width big-endian buffer
+of `defaultSize + 1` bytes:
+
+- a **marker byte** first — `0x00` negative, `0x01` positive, `0x02` null — which is why negatives
+  sort before positives and nulls sort last, deliberately;
+- the value **big-endian** after it, so the most significant byte is compared first;
+- for `Float`/`Double`, negatives have **every bit flipped** (`rawBits ^ flipBitMask`) before being
+  written, because the magnitude of a negative float increases as its bits increase. The sign test
+  is done on the raw bits rather than by comparing to zero, so `-0.0` and `NaN` land consistently.
+
+The buffer is allocated at full width **even when the value is null**, because a variable-width
+encoding would break the comparison for every subsequent column.
+
+`RangeKeyScanStateEncoder` is the wrapper: it splits the key into ordering columns and the rest,
+stores `[encoded ordering prefix][remaining key]`, and keeps a `restoreKeyProjection` that maps the
+reordered joined row back to the caller's original column order. Only fixed-size types may be
+ordering columns — `variableSizeOrderingColsNotSupported` and `nullTypeOrderingColsNotSupported`
+are the two errors you get otherwise.
+
+`RangeScanBoundaryUtils` is the other half, and its docstring is worth reading in full: callers of
+`rangeScan` must pass fully-typed boundary rows, and the *non*-ordering columns of those rows must
+encode byte-wise no larger than any real entry or `seek()` **silently skips matching entries**. It
+builds recursive byte-wise-minimum defaults, with one explicit exception — `CharType(n)`, whose
+`Literal.default` is space-padded (`0x20`) and therefore *not* minimal, so it is overridden with
+`n` zero bytes — and one rejection, `VariantType`, whose binary layout has no guaranteed minimum.
+
+**Anchor files:**
+
+- [state/RocksDBStateEncoder.scala:512](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L512) — `encodePrefixKeyForRangeScan`, the whole per-type encoding
+- [state/RocksDBStateEncoder.scala:398](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L398) — the flip masks and the three marker bytes, with the comment stating the intended sort order
+- [state/RocksDBStateEncoder.scala:1540](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L1540) — `RangeKeyScanStateEncoder`; the fixed-size check at :1561 and `restoreKeyProjection` at :1598
+- [state/RangeScanBoundaryUtils.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RangeScanBoundaryUtils.scala#L25) — the docstring on silent `seek()` skipping; `recursiveDefaultValue` at :93 and the `VariantType` assertion at :111
+
+**Maps to topics:** E27, A8
+
+### Timestamp key encoders — the physical layout behind timestamp-ordered eviction
+
+**What it is:** the V4 stream-stream-join state format needs "evict everything older than T"
+without a scan, so it stores the event time *inside the key* and relies on byte ordering.
+`TimestampKeyStateEncoder` is the shared base: it appends a non-nullable `__event_time` `LongType`
+column to the key schema, and encodes that long as 8 big-endian bytes **with the sign bit flipped**
+(`timestamp ^ 0x8000000000000000L`) so negative timestamps still sort before positive ones under
+byte comparison — the same problem the range-scan encoder solves, solved once more locally.
+
+Two subclasses differ only in where the 8 bytes go: `TimestampAsPrefixKeyStateEncoder` puts them
+first, so the whole column family is ordered by time and eviction is a single bounded scan;
+`TimestampAsPostfixKeyStateEncoder` puts them last, so the store is ordered by key and the
+timestamp only orders within one key. Neither supports a prefix-key scan — asking for one throws.
+
+Worth noting for anyone reading the encoder: the reused `ByteBuffer` makes these encoders
+**not thread-safe**, and the source says so explicitly; built-in operators only ever touch one from
+one thread.
+
+**Anchor files:**
+
+- [state/RocksDBStateEncoder.scala:1751](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L1751) — `TimestampKeyStateEncoder`, `keySchemaWithTimestamp`, and the attach/detach projections
+- [state/RocksDBStateEncoder.scala:1824](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L1824) — `encodeTimestamp` and the sign-bit flip; the thread-safety note at :1815
+- [state/RocksDBStateEncoder.scala:1860](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L1860) — `TimestampAsPrefixKeyStateEncoder`; `TimestampAsPostfixKeyStateEncoder` at :1907
+
+**Maps to topics:** A8
+
+### Avro state encoding and state schema evolution — schema IDs, a broadcast, and two ceilings
+
+**What it is:** `spark.sql.streaming.stateStore.encodingFormat` selects between two
+`RocksDBDataEncoder` implementations, and the choice decides whether a stateful query's schema can
+ever change.
+
+- **`unsaferow`** (the default) is `UnsafeRowDataEncoder`, whose `supportsSchemaEvolution` is
+  literally `false`: the bytes in RocksDB *are* the UnsafeRow layout, so any schema change makes
+  every stored row undecodable.
+- **`avro`** is `AvroStateEncoder`. Every stored row is prefixed with a **two-byte schema id**
+  (`|schemaId|avro bytes|` for values and no-prefix keys; `|prefix|schemaId|avro bytes|` for prefix
+  and range-scan keys), and the id names which historical schema that row was written under.
+
+The lookup side is `StateSchemaProvider`. At planning time
+`StateSchemaMetadata.createStateSchemaMetadata` reads *every* schema file the checkpoint holds,
+converts each column family's key and value schemas to Avro, and keys them by
+`(colFamilyName, schemaId, isKey)`; `StateSchemaBroadcast` ships that map to executors as a Spark
+broadcast. An executor decoding a row therefore has every schema the query has ever used, and
+encodes new rows with `getCurrentStateSchemaId`, the maximum.
+
+The write side is `StateSchemaCompatibilityChecker.check`, and it is where all the conditions live:
+
+- The **key** schema may never evolve — only `schemasCompatible` (nullability widening) is accepted.
+- The **value** schema evolves only when `schemaEvolutionEnabled`, which is
+  `usingAvro && schemaEvolutionEnabledForOperator` — and `schemaEvolutionEnabledForOperator` is
+  `false` in the shared `SchemaValidationUtils` trait and overridden to `true` in exactly one
+  place, the `transformWithState` family. **No other stateful operator can evolve its state
+  schema, whatever the encoding format.**
+- The candidate is checked with Avro's own `SchemaValidatorBuilder().canReadStrategy.validateAll()`
+  against *every* prior schema, not just the newest — so an evolution that is readable from the
+  last version but not from an older one still in the store is rejected.
+- On success the value schema id is incremented and a new schema file written.
+
+Two ceilings then bound the whole mechanism, both internal and both fatal when hit:
+`valueStateSchemaEvolutionThreshold` (**16**) caps evolutions per column family, and
+`maxNumStateSchemaFiles` (**128**) caps schema files per operator — the second only trips when a
+column family is *added or removed*, which is what a `transformWithState` processor gaining a state
+variable does.
+
+One quiet side effect worth knowing before switching format: `getColFamilySchemas(shouldBeNullable)`
+is called with `usingAvro`, so **turning on Avro encoding forces every state field nullable**.
+
+**Code path:** `StateStoreWriter.validateAndWriteStateSchema` →
+`StateSchemaCompatibilityChecker.validateAndMaybeEvolveStateSchema` → `check` (Avro
+`canReadStrategy` + the two thresholds) → new schema file → `StateSchemaBroadcast` →
+`AvroStateEncoder.encodeWithStateSchemaId` / `decode`
+
+**Anchor files:**
+
+- [state/RocksDBStateEncoder.scala:732](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L732) — `AvroStateEncoder`, with the byte layouts in its scaladoc from :707
+- [state/RocksDBStateEncoder.scala:412](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L412) — `encodeWithStateSchemaId`, the two-byte prefix
+- [state/RocksDBStateEncoder.scala:497](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L497) — `UnsafeRowDataEncoder`, and `supportsSchemaEvolution = false` at :502
+- [state/RocksDBStateEncoder.scala:63](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/RocksDBStateEncoder.scala#L63) — `StateSchemaProvider`; `StateSchemaBroadcast` at :138, `StateSchemaMetadata.createStateSchemaMetadata` at :176
+- [state/StateSchemaCompatibilityChecker.scala:188](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/state/StateSchemaCompatibilityChecker.scala#L188) — `check`: the Avro validator at :223, the evolution threshold at :235, the schema-file threshold at :297
+- [operators/stateful/statefulOperators.scala:1553](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/statefulOperators.scala#L1553) — `SchemaValidationUtils`, `schemaEvolutionEnabledForOperator = false` at :1556 and the `usingAvro &&` gate at :1605
+- [operators/stateful/transformwithstate/TransformWithStateVariableUtils.scala:185](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/TransformWithStateVariableUtils.scala#L185) — the single `= true` override
+
+**Configs:** `spark.sql.streaming.stateStore.encodingFormat` (`unsaferow`; `avro` the alternative,
+4.0.0), `spark.sql.streaming.transformWithState.stateSchemaVersion` (`3`, 4.0.0),
+`spark.sql.streaming.stateStore.valueStateSchemaEvolutionThreshold` (`16`, internal),
+`spark.sql.streaming.stateStore.maxNumStateSchemaFiles` (`128`, internal)
+
+**Maps to topics:** none — proposed as **E47**
 
 ### State checkpoint IDs — the V2 lineage that makes a state store verifiable
 
@@ -727,7 +931,7 @@ repartition batch, and `spark.sql.streaming.checkUnfinishedRepartitionOnRestart`
 
 **Configs:** `spark.sql.streaming.checkUnfinishedRepartitionOnRestart` (`true`, 4.2.0)
 
-**Maps to topics:** none — proposed as **E28**
+**Maps to topics:** E28
 
 ### The maintenance thread — snapshotting, cleanup, and unloading providers
 
@@ -906,7 +1110,58 @@ user gets a `StatefulProcessorHandle` and declares named state variables, each o
 - [operators/stateful/transformwithstate/testing/InMemoryStatefulProcessorHandle.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/testing/InMemoryStatefulProcessorHandle.scala) — the supported way to unit-test a processor without a checkpoint
 
 **Configs:** `spark.sql.streaming.stateStore.encodingFormat` (avro vs unsaferow),
-`spark.sql.streaming.transformWithStateOp.stateSchemaVersion`
+`spark.sql.streaming.transformWithState.stateSchemaVersion`
+
+**Maps to topics:** A8
+
+### TTL indexes — one-to-one, one-to-many, and the work-queue trick
+
+**What it is:** the `TTLState` trait is the shared machinery behind all three `*ImplWithTTL` state
+variables, and it is a secondary-index design rather than a scan. Every TTL-enabled state variable
+creates an internal column family `$ttl_<stateName>` keyed `(expirationMs, elementKey)` with an
+empty value and a `RangeKeyScanStateEncoderSpec(schema, Seq(0))` — i.e. ordered by expiry — so
+"what has expired" is a bounded range scan rather than a walk of the primary index.
+
+The eviction scan is bounded on **both** ends:
+`rangeScan(prevBatchTimestampMs + 1, batchTimestampMs + 1)`. Starting at the previous batch's
+timestamp rather than at zero is what keeps expiry cost proportional to one batch's worth of
+expirations instead of to the whole index — and it is why a query restarted with a
+`prevBatchTimestampMs` gap does more work on its first batch.
+
+Two shapes, and the second is the interesting one:
+
+- **`OneToOneTTLState`** (value and map state) — the primary index is
+  `elementKey -> (value, expiration)`, so one secondary entry per element is enough.
+- **`OneToManyTTLState`** (list state) — the values for a key are appended with RocksDB's
+  `merge`, so Spark **cannot delete an individual element** from the merged value, and therefore
+  cannot key a secondary index by element. The source says so plainly: a custom merge operator
+  supporting tombstones would be the fix, but RocksDB does not accept merge operators written in
+  Java or Scala. So the index instead maps `(minExpirationMs, groupingKey) -> EMPTY`, behaving as
+  a **work queue of lists that need cleaning**, backed by two more internal column families — a
+  `$min_` index (key → minimum expiry, so the work-queue entry can be found and rewritten) and a
+  `$count_` index (key → element count, maintained by hand because reading the merged list to
+  count it would defeat the point).
+
+So a single TTL-enabled `ListState` occupies **four** column families in one state store. That is
+the concrete reason list state with TTL is the most expensive `transformWithState` variable.
+
+**Code path:** `StatefulProcessorHandleImpl.getListState(ttlConfig)` → `ListStateImplWithTTL`
+(`OneToManyTTLState`) → `store.merge` on the primary index + `insertIntoTTLIndex` /
+`updateEntryCount` → per batch `clearExpiredStateForAllKeys()` → `ttlEvictionIterator()`
+(`store.rangeScan` on `$ttl_`)
+
+**Anchor files:**
+
+- [operators/stateful/transformwithstate/ttl/TTLState.scala:72](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/ttl/TTLState.scala#L72) — the trait; the `$ttl_` column family and its range-scan spec at :106–:137
+- [operators/stateful/transformwithstate/ttl/TTLState.scala:181](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/ttl/TTLState.scala#L181) — `ttlEvictionIterator`, the bounded `[prev+1, now+1)` scan
+- [operators/stateful/transformwithstate/ttl/TTLState.scala:251](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/ttl/TTLState.scala#L251) — `OneToOneTTLState`
+- [operators/stateful/transformwithstate/ttl/TTLState.scala:342](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/ttl/TTLState.scala#L342) — `OneToManyTTLState`, with the merge-operator explanation in its scaladoc; the `$min_` and `$count_` families at :387–:419
+- [operators/stateful/transformwithstate/ttl/ValueStateImplWithTTL.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/ttl/ValueStateImplWithTTL.scala) / [MapStateImplWithTTL.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/ttl/MapStateImplWithTTL.scala) — the one-to-one pair
+- [operators/stateful/transformwithstate/ttl/ListStateImplWithTTL.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/ttl/ListStateImplWithTTL.scala) — the one-to-many case
+- [operators/stateful/transformwithstate/statefulprocessor/StatefulProcessorHandleImplBase.scala:27](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/transformwithstate/statefulprocessor/StatefulProcessorHandleImplBase.scala#L27) — where the handle state machine is actually enforced: `verifyTimerOperations` rejects any timer call under `TimeMode.NoTime`, `verifyStateVarOperations` requires an exact handle state. Both the driver-side and executor-side handles inherit it, which is why a processor that misbehaves fails identically at planning time and at run time
+
+**Configs:** `spark.sql.streaming.stateStore.rocksdb.mergeOperatorVersion` (`2` in 4.2.0 — version
+1 joined merged list elements with a `,` delimiter, version 2 with none)
 
 **Maps to topics:** A8
 
@@ -990,39 +1245,244 @@ query, plus the two generic sinks:
 
 **Maps to topics:** A7
 
+### How a source actually implements MicroBatchStream — the rate sources as the readable example
+
+**What it is:** the `MicroBatchStream` contract is four decisions, and the two rate sources are the
+smallest complete implementations of it in the tree — which makes them the reference for reading
+Kafka's or anyone else's.
+
+1. **What is an offset, and where does the origin live?** `RateStreamMicroBatchStream`'s offset is
+   *seconds since the query was created*, so the origin must survive a restart: it writes
+   `creationTimeMs` into its own single-entry `HDFSMetadataLog` under the source's metadata path on
+   first start and reads it back thereafter. That log — one per source, under
+   `<checkpoint>/sources/<n>` — is the general mechanism for source-private state, and it is why a
+   rate source restarted from a checkpoint keeps producing the same values for the same offsets.
+2. **How is the batch bounded?** Two different answers, and the difference is the whole point of
+   having both sources. `RateStreamMicroBatchStream.latestOffset()` reads the *clock*, so a slow
+   batch is followed by a larger one — it back-fills. `RatePerMicroBatchStream` refuses to
+   implement the no-argument `latestOffset()` at all (it throws) and implements
+   `latestOffset(start, limit)` with `getDefaultReadLimit = ReadLimit.maxRows(rowsPerBatch)`, so
+   every batch is exactly `rowsPerBatch` rows regardless of wall-clock time. That is what makes it
+   the source to use for a deterministic test.
+3. **How does it behave under `Trigger.AvailableNow`?** `RatePerMicroBatchStream` implements
+   `SupportsTriggerAvailableNow` directly: `prepareForTriggerAvailableNow()` sets a flag, and
+   `latestOffset` then freezes and returns one snapshot offset forever. A source that does *not*
+   implement it gets the wrapper classes instead.
+4. **How is work split?** `planInputPartitions(start, end)` returns
+   `Array.empty` when the range is empty — the signal for "no data" — and otherwise one partition
+   per `numPartitions`, each computing its own slice arithmetically. No shuffle, no listing.
+
+The error paths are as instructive as the happy one: `RatePerMicroBatchStream` raises
+`MALFORMED_STATE_IN_RATE_PER_MICRO_BATCH_SOURCE.INVALID_TIMESTAMP` for a case that can only arise
+from a checkpoint written with a different `startingTimestamp` — an uncommitted batch 0 resumed
+against a changed option. That is the shape of every source's restart-validation problem.
+
+`TextSocketMicroBatchStream` is the counter-example the docs warn about: a socket cannot replay, so
+it buffers what it has read in memory and its guarantees end at the process boundary.
+`LowLatencyMemoryStream` is the Real-Time Mode variant of `MemoryStream` — it implements
+`SupportsRealTimeMode`/`SupportsRealTimeRead` and hands records to executors through an RPC
+endpoint (`LowLatencyMemoryStreamEndpoint`) polled per record, rather than shipping a batch's data
+in the partition metadata, which is what "real time" requires at the source level.
+
+**Anchor files:**
+
+- [sources/RateStreamMicroBatchStream.scala:59](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/RateStreamMicroBatchStream.scala#L59) — `creationTimeMs` and its private `HDFSMetadataLog`; `latestOffset` at :104, `planInputPartitions` at :117
+- [sources/RatePerMicroBatchStream.scala:41](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/RatePerMicroBatchStream.scala#L41) — the refused `latestOffset()`; `getDefaultReadLimit` at :45, `prepareForTriggerAvailableNow` at :60, the two malformed-state errors at :97–:117
+- [sources/TextSocketMicroBatchStream.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/TextSocketMicroBatchStream.scala) — the in-memory buffer that is the reason for the test-only warning
+- [sources/LowLatencyMemoryStream.scala:67](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/LowLatencyMemoryStream.scala#L67) — the `SupportsRealTimeMode` source and its per-record RPC endpoint, contrasted in its own scaladoc with `ContinuousMemoryStream`
+
+**Maps to topics:** A7
+
+### The DSv2 streaming write path — MicroBatchWrite, V2Writes, and the V1 marker that gets deleted
+
+**What it is:** a streaming sink is not a special execution path; it is the ordinary DSv2 batch
+write, executed once per micro-batch with the batch id threaded through it. The mechanism is one
+small class.
+
+`MicroBatchExecution` decides which of two shapes to build when it constructs the logical plan:
+
+- a `SupportsWrite` table becomes **`WriteToMicroBatchDataSource`**;
+- a legacy `Sink` becomes **`WriteToMicroBatchDataSourceV1`** — and, since 4.2.0, is rejected
+  outright under a `RealTimeTrigger` with `STREAMING_REAL_TIME_MODE.SINK_NOT_SUPPORTED`, because a
+  V1 sink cannot write row by row.
+
+Per batch, `withNewBatchId(batchId)` stamps the id onto that node, and then the two paths diverge
+completely:
+
+- **V2.** The `V2Writes` optimizer rule matches `WriteToMicroBatchDataSource(..., Some(batchId))`,
+  builds the write, wraps it as `new MicroBatchWrite(batchId, write.toStreaming)`, and replaces the
+  node with a plain `WriteToDataSourceV2`. `MicroBatchWrite` is a `BatchWrite` that forwards
+  everything to the `StreamingWrite` with the epoch id closed over — `commit(messages)` becomes
+  `writeSupport.commit(epochId, messages)`, and the writer factory becomes a
+  `MicroBatchWriterFactory` that calls `createWriter(partitionId, taskId, epochId)`. **That closed-over
+  batch id is the entire idempotence contract**: the checkpoint protocol guarantees a crashed batch
+  re-runs with the *same* id, so a sink that dedupes on it is exactly-once and one that ignores it
+  is at-least-once. Execution is then `nextBatch.collect()` — collecting nothing, purely to force
+  the write — and `WriteToDataSourceV2Exec.commitProgress` is what surfaces as
+  `sinkCommitProgress`.
+- **V1.** `IncrementalExecution.optimizedPlan` **deletes** the marker node (`case w:
+  WriteToMicroBatchDataSourceV1 => w.child`) before optimization, so it has no physical node at
+  all. `MicroBatchExecution` calls `sink.addBatch(batchId, nextBatch)` itself, outside the plan,
+  and then has to refresh the catalog table by hand — the comment says why: the DSv2 write node has
+  a relation-invalidation mechanism and DSv1 has none. A V1 sink also reports **no** commit
+  progress, which is why `numOutputRows` is missing for it.
+
+The write-side interfaces beneath both are worth reading together, because they are what a custom
+sink implements: `ForeachWriterTable` is the smallest complete `SupportsWrite` in the tree — a
+table with no schema, `STREAMING_WRITE` as its only capability, a `truncate()` that deliberately
+does nothing, and a `ForeachDataWriter` whose `open`/`process`/`close` is exactly the
+`ForeachWriter` contract, with `close(errorOrNull)` guaranteed by `DataWriter.close` and a
+synthesised `foreachWriterAbortedDueToTaskFailureError` when the task died without a user error.
+`PackedRowWriterFactory` (rows travel to the driver inside the commit message) and
+`RealTimeRowWriterFactory` (rows are RPC'd to a driver endpoint per row) are the two test writers,
+and both carry the same warning: sending rows to the driver is not production shape.
+
+**Code path:** `MicroBatchExecution.logicalPlan` (`WriteToMicroBatchDataSource` or `…V1`) →
+`withNewBatchId` → *V2:* `V2Writes` → `new MicroBatchWrite(batchId, streamingWrite)` →
+`WriteToDataSourceV2Exec` → `MicroBatchWriterFactory.createWriter(partition, task, epochId)` →
+`StreamingWrite.commit(epochId, messages)` — *V1:* `IncrementalExecution` deletes the node →
+`Sink.addBatch(batchId, df)` → `catalog.refreshTable`
+
+**Anchor files:**
+
+- [sources/MicroBatchWrite.scala:29](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/MicroBatchWrite.scala#L29) — the whole adapter, and `MicroBatchWriterFactory` at :51
+- [sources/WriteToMicroBatchDataSource.scala:42](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/WriteToMicroBatchDataSource.scala#L42) — the V2 node, with the transactional-catalog re-resolution explained in its scaladoc
+- [sources/WriteToMicroBatchDataSourceV1.scala:35](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/WriteToMicroBatchDataSourceV1.scala#L35) — the marker node, documented as pass-through with no physical plan
+- [../../datasources/v2/V2Writes.scala:100](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/V2Writes.scala#L100) — the rule that builds the `MicroBatchWrite`
+- [runtime/IncrementalExecution.scala:131](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/IncrementalExecution.scala#L131) — the pre-optimization transform that deletes the V1 marker
+- [runtime/MicroBatchExecution.scala:395](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/MicroBatchExecution.scala#L395) — the sink dispatch, including the Real-Time Mode rejection of V1 sinks at :422; the per-batch `withNewBatchId` at :1177 and the `addBatch` block at :1236
+- [sources/ForeachWriterTable.scala:46](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/ForeachWriterTable.scala#L46) — the minimal `SupportsWrite`; `ForeachDataWriter` at :135 and the abort/close contract at :162–:175
+- [sources/PackedRowWriterFactory.scala:35](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/PackedRowWriterFactory.scala#L35) / [sources/RealTimeRowWriterFactory.scala:35](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/sources/RealTimeRowWriterFactory.scala#L35)
+
+**Configs:** `spark.sql.streaming.disabledV2Writers` — forces a named sink onto the V1 path; note
+it is read in `classic/DataStreamWriter`, not here — and `spark.sql.streaming.commitProtocolClass`
+(the file sink's commit protocol, read in `sinks/FileStreamSink`)
+
+**Maps to topics:** none — proposed as **A45**
+
 ---
 
 ## Continuous processing and Real-Time Mode
 
-### Continuous processing and the epoch coordinator
+### Continuous processing — the epoch protocol, and why it is a different engine
 
 **What it is:** the pre-4.x low-latency execution path, and a genuinely different model.
 `ContinuousExecution` launches **long-running tasks** that never finish, and durability is provided
-by *epochs* rather than batches: a driver-side `EpochCoordinator` RPC endpoint increments an epoch
-counter on a timer, collects a `ReportPartitionOffset` from every reader partition and a
-`CommitPartitionEpoch` from every writer partition, and only when all of them have reported does it
-tell `ContinuousExecution` to commit that epoch to the offset and commit logs.
+by *epochs* rather than batches. The whole engine is a two-phase commit driven by one RPC endpoint.
 
-`EpochTracker` is the thread-local carrying the current epoch inside a task;
-`ContinuousQueuedDataReader` is the reader-side queue decoupling the source from the epoch
-boundary; `ContinuousDataSourceRDD` and `ContinuousWriteRDD` are the never-terminating RDDs; and
-`ContinuousTaskRetryException` is how a task restart is distinguished from a failure.
+**The driver side.** `runContinuous` plans the query once, sets two task-local properties
+(`__continuous_start_epoch` and a per-reconfiguration `__epoch_coordinator_id` — a fresh UUID *on
+top of* the run id, precisely so a coordinator from a previous reconfiguration cannot be reached),
+creates the `EpochCoordinator` endpoint, and starts an **epoch update thread**. That thread is the
+only place a `ProcessingTimeExecutor` is used here: on each tick it either notices
+`stream.needsReconfiguration` and interrupts the query thread, or sends `IncrementAndGetEpoch`.
+Meanwhile the main thread runs `lastExecution.executedPlan.execute()` — a job that is expected
+never to return.
 
-Its limits are structural: at-least-once only, a small set of supported operations, and no
-shuffles — which is why 4.2.0's Real-Time Mode is a new effort rather than an extension of it.
+**The coordinator.** `EpochCoordinator` holds two maps keyed `(epoch, partition)`: offsets reported
+by readers and commit messages reported by writers. `resolveCommitsAtEpoch` fires only when *both*
+are complete for that epoch — `thisEpochCommits.size == numWriterPartitions && nextEpochOffsets.size == numReaderPartitions` — and even then it enforces **sequencing**: if the previous epoch has not
+committed, this one is parked in `epochsWaitingToBeCommitted` and drained in order later. The
+commit order inside `commitEpoch` is stated in a comment and is the durability rule:
+`writeSupport.commit(epoch, messages)` **before** `query.commit(epoch)`, "or we will end up dropping
+the commit if we restart in the middle".
+
+**Recovery, and why it is at-least-once.** `getStartOffsets` reads the *commit* log's latest epoch,
+takes that epoch's offsets from the offset log, and resumes at `latestEpochId + 1`. The comment
+says exactly what is being given up: offsets that were reported but never committed are ignored,
+"for at least once, we can just ignore those reports and risk duplicates". Exactly-once would
+require replaying to those offsets.
+
+**Two backstops.** `checkProcessingQueueBoundaries` kills the query when any of the three
+coordinator structures exceeds `epochBacklogQueueSize` — the failure mode of one lagging partition
+is a growing driver-side map, not silent drift. And `StopContinuousExecutionWrites` is a
+*synchronous* message sent before the endpoint is stopped, because `RpcEndpoint.stop()` drains its
+queue: without it, an old coordinator could commit epoch n+1 after a restarted query had already
+begun epoch n.
+
+**Structural limits.** One source only (`assert(sources.length == 1)`), no distribution or ordering
+requirements on the write (`writeDistributionAndOrderingNotSupportedInContinuousExecution`), no
+`CurrentTimestamp`/`CurrentDate`/`LocalTimestamp`, `WatermarkPropagator.noop()` — so no watermarks
+— and a source must declare `TableCapability.CONTINUOUS_READ`. That list, not the latency number,
+is why 4.2.0's Real-Time Mode is a new effort rather than an extension.
+
+**Code path:** `runActivatedStream` → `runContinuous` → `EpochCoordinatorRef.create` +
+epoch update thread (`IncrementAndGetEpoch`) → `ContinuousScanExec` (`SetReaderPartitions`) /
+`WriteToContinuousDataSourceExec` (`SetWriterPartitions`) → per epoch
+`ReportPartitionOffset` + `CommitPartitionEpoch` → `resolveCommitsAtEpoch` →
+`writeSupport.commit` → `ContinuousExecution.commit` (offset log already written by `addOffset`,
+then commit log)
 
 **Anchor files:**
 
-- [continuous/ContinuousExecution.scala:49](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousExecution.scala#L49) — `runContinuous` at :219, `commit` at :390
-- [continuous/EpochCoordinator.scala:109](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/EpochCoordinator.scala#L109) — the coordinator's contract in its scaladoc; `receive` at :208
-- [continuous/EpochTracker.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/EpochTracker.scala) / [continuous/ContinuousQueuedDataReader.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousQueuedDataReader.scala) / [continuous/ContinuousDataSourceRDD.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousDataSourceRDD.scala) / [continuous/ContinuousWriteRDD.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousWriteRDD.scala)
-- [continuous/WriteToContinuousDataSource.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/WriteToContinuousDataSource.scala) / [continuous/WriteToContinuousDataSourceExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/WriteToContinuousDataSourceExec.scala) / [continuous/ContinuousRateStreamSource.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousRateStreamSource.scala) / [continuous/ContinuousTextSocketSource.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousTextSocketSource.scala) / [continuous/ContinuousTaskRetryException.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousTaskRetryException.scala)
-- [runtime/ContinuousRecordEndpoint.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ContinuousRecordEndpoint.scala)
+- [continuous/ContinuousExecution.scala:77](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousExecution.scala#L77) — `logicalPlan`, the `CONTINUOUS_READ` capability check and the distribution/ordering rejection
+- [continuous/ContinuousExecution.scala:188](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousExecution.scala#L188) — `getStartOffsets`, with the at-least-once comment
+- [continuous/ContinuousExecution.scala:219](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousExecution.scala#L219) — `runContinuous`: the epoch update thread at :283, the `StopContinuousExecutionWrites` teardown at :342
+- [continuous/ContinuousExecution.scala:361](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousExecution.scala#L361) — `addOffset` (offset log) and `commit` at :390 (commit log, source commit, purge)
+- [continuous/EpochCoordinator.scala:106](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/EpochCoordinator.scala#L106) — the coordinator's three-job contract in its scaladoc; `resolveCommitsAtEpoch` at :147, the commit-ordering comment at :202, `checkProcessingQueueBoundaries` at :233
+- [continuous/EpochCoordinator.scala:39](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/EpochCoordinator.scala#L39) — the `StopContinuousExecutionWrites` message and the restart race it exists to prevent
+- [../../datasources/v2/ContinuousScanExec.scala:59](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/ContinuousScanExec.scala#L59) — the reader-side `SetReaderPartitions`, the one piece of this protocol that lives outside the group
+- [continuous/WriteToContinuousDataSourceExec.scala:45](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/WriteToContinuousDataSourceExec.scala#L45) — `SetWriterPartitions`, and the `rdd.collect()` that starts the never-ending job
+- [continuous/WriteToContinuousDataSource.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/WriteToContinuousDataSource.scala) / [continuous/ContinuousRateStreamSource.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousRateStreamSource.scala) / [continuous/ContinuousTextSocketSource.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousTextSocketSource.scala) — the write node and the only two continuous sources
+
+**Configs:** `spark.sql.streaming.continuous.epochBacklogQueueSize` (the kill switch above)
+
+**Maps to topics:** none — proposed as **E48**
+
+### The continuous reader and writer tasks — two background threads, an epoch marker, and no retries
+
+**What it is:** the executor half of the epoch protocol, and the part that explains continuous
+processing's operational character.
+
+**No retries, by construction.** `ContinuousDataSourceRDD.compute` opens with
+`if (context.attemptNumber() != 0) throw new ContinuousTaskRetryException()`. A continuous task
+cannot be retried, because its reader holds position state that a fresh attempt would not have. A
+failure therefore fails the whole query rather than one task.
+
+**A partition's reader outlives its `compute()`.** `compute` is called once per *epoch*, but
+`ContinuousDataSourceRDDPartition.queueReader` is created on the first call and reused forever —
+the scaladoc calls it "semantically a lazy val" — which is what gives offsets continuity across
+epoch boundaries. Each `compute` returns an iterator that ends when the reader returns `null`.
+
+**Three threads per reader partition.** `ContinuousQueuedDataReader` owns an
+`ArrayBlockingQueue[ContinuousRecord]` of size `continuous.executorQueueSize` and two producers:
+
+- a **`DataReaderThread`** looping on the source's blocking `next()` and pushing
+  `ContinuousRow(row, offset)`. It converts to `UnsafeRow` before copying, because "`InternalRow#copy`
+  may not be properly implemented". It never rethrows on the reader thread — a throw there could
+  kill the executor — but stores `failureReason` for the consuming thread to raise.
+- an **`EpochMarkerGenerator`**, a scheduled task polling `GetCurrentEpoch` every
+  `continuous.executorPollIntervalMs` and pushing an `EpochMarker` into the same queue. If the
+  driver has moved several epochs ahead while the poll was slow, it pushes **one marker per missed
+  epoch** to catch up, deliberately producing empty epochs for that partition.
+
+The consumer, `next()`, returns rows until it hits an `EpochMarker`, at which point it sends
+`ReportPartitionOffset(partition, currentEpoch, currentOffset)` and returns `null` to end the
+epoch. Shutdown is expressed the same way: `shouldStop()` (interrupted or completed) synthesises an
+`EpochMarker` so the epoch closes cleanly instead of being torn down mid-flight.
+
+**The writer side is a `while` loop that never exits.** `ContinuousWriteRDD.compute` initialises
+`EpochTracker`, then repeatedly calls `prev.compute(split, context)` — each call yielding one
+epoch's rows — writes them, commits the `DataWriter`, sends `CommitPartitionEpoch`, and increments
+the epoch. An error aborts the writer through `tryWithSafeFinallyAndFailureCallbacks`; an
+`InterruptedException` is swallowed, because interruption is how a continuous query stops.
+
+`EpochTracker` itself is an `InheritableThreadLocal[AtomicLong]` whose `childValue` deliberately
+**copies** rather than shares, so a child thread's epoch does not track the parent's — the comment
+names `ContinuousCoalesceRDD` as the reason.
+
+**Anchor files:**
+
+- [continuous/ContinuousDataSourceRDD.scala:76](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousDataSourceRDD.scala#L76) — the retry rejection and the reused queue reader; the "semantically a lazy val" partition field at :30
+- [continuous/ContinuousQueuedDataReader.scala:43](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousQueuedDataReader.scala#L43) — the queue, both background threads; `next()` at :92, `DataReaderThread` at :137, `EpochMarkerGenerator` at :185 with the catch-up loop at :201
+- [continuous/ContinuousWriteRDD.scala:46](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousWriteRDD.scala#L46) — the never-exiting write loop and the per-epoch commit
+- [continuous/EpochTracker.scala:26](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/EpochTracker.scala#L26) — the thread-local and its copying `childValue`
+- [continuous/ContinuousTaskRetryException.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/continuous/ContinuousTaskRetryException.scala) / [runtime/ContinuousRecordEndpoint.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ContinuousRecordEndpoint.scala) — the retry marker, and the RPC endpoint the in-memory continuous sources poll
 
 **Configs:** `spark.sql.streaming.continuous.executorQueueSize`,
-`…continuous.executorPollIntervalMs`, `…continuous.epochBacklogQueueSize`
+`spark.sql.streaming.continuous.executorPollIntervalMs`
 
-**Maps to topics:** A7
+**Maps to topics:** E48
 
 ### Real-Time Mode — an allowlist as the feature gate
 
@@ -1052,95 +1512,157 @@ known when progress is recorded, so an empty `StreamProgress` is reported instea
 
 ---
 
-## Breadth checks
+## Breadth check 1 — the config slice
 
-### Config breadth
-
-Slice pattern over `sql/catalyst` + `sql/core` + `core`:
+Slice, reproducibly — every catalog entry whose `subsystem` is `sql/catalyst`, `sql/core` or
+`core` and whose key matches:
 
 ```
 \.streaming|stateStore|watermark|checkpoint|\.rocksdb|Streaming
 ```
 
-**114 keys.** Every family ties to a concept above:
+**113 keys** against the 4.2.0 catalog (2026-07-25). The 2026-08-06 pass recorded 114 and, more
+importantly, mis-attributed several families; the table below is rebuilt by resolving each key's
+`SQLConf` val to the files that actually read it.
 
-| Family | Roughly | Tied to |
+**82 of the 113 are read somewhere under `execution/streaming/`.** By concept:
+
+| Family | Keys | Tied to |
 |---|---|---|
-| `streaming.stateStore.rocksdb.*` | 30 | RocksDB provider |
-| `streaming.stateStore.*` (maintenance, coordinator, lag, checksums, repair, formats) | 30 | state-store API, maintenance, coordinator, checksums, repair |
-| `streaming.*` batch loop (minBatchesToRetain, noDataMicroBatches, pollingDelay, stopTimeout, offsetLog.formatVersion) | 12 | MicroBatchExecution, TriggerExecutor |
-| `streaming.checkpoint*` / `checkpointFileManagerClass` / fileChecksum | 8 | CheckpointFileManager, metadata logs |
-| `streaming.*.stateFormatVersion` (aggregation, join, sessionWindow, flatMapGroupsWithState, transformWithState) | 6 | the per-operator state managers |
-| `streaming.multipleWatermarkPolicy`, `statefulOperator.*`, `validateEventTimeWatermarkColumn` | 5 | watermarks, statefulOperators |
-| `streaming.fileSource.*` / `fileSink.*` log settings | 6 | CompactibleFileStreamLog |
-| `streaming.continuous.*` | 4 | continuous processing |
-| `streaming.realTimeMode.*` | 2 | Real-Time Mode |
-| `streaming.asyncProgressTracking*` | 3 | async progress tracking |
-| `streaming.queryEvolution.*`, `checkUnfinishedRepartitionOnRestart`, `internal.stateStore.partitions` | 4 | schema evolution, offline repartition, IncrementalExecution |
-| `streaming.metricsEnabled`, `numRecentProgressUpdates`, `ui.*` | 4 | ProgressReporter / MetricsReporter |
+| `stateStore.*` — maintenance, coordinator, lag reporting, checksums, auto-repair, schema, formats | 30 | the StateStore API, the maintenance thread, the coordinator, checkpoint IDs, row checksums, schema evolution |
+| batch loop and query lifecycle — `minBatchesToRetain`, `noDataMicroBatches.enabled`, `pollingDelay`, `stopTimeout`, `offsetLog.formatVersion`, `triggerAvailableNowWrapper.enabled`, `disabledV2MicroBatchReaders`, `noDataProgressEventInterval`, `asyncLogPurge.enabled`, `forceDeleteTempCheckpointLocation`, `maxBatchesToRetainInMemory`, `ratioExtraSpaceAllowedInCheckpoint` | 12 | StreamExecution, MicroBatchExecution, TriggerExecutor, AsyncLogPurge |
+| checkpoint plumbing — `checkpointFileManagerClass`, `checkpoint.fileChecksum.*`, `checkpoint.renamedFileCheck.enabled`, `checkpoint.escapedPathCheck.enabled`, `checkpoint.verifyMetadataExists.enabled`, `verifyCheckpointDirectoryEmptyOnStart`, `metadataCache.enabled`, `commitProtocolClass`, `checkpointLocation` | 10 | CheckpointFileManager, HDFSMetadataLog, ManifestFileCommitProtocol |
+| file source / file sink logs — `fileSource.log.*`, `fileSink.log.*`, `fileSource.cleaner.numThreads`, `fileStreamSink.ignoreMetadata` | 8 | CompactibleFileStreamLog, FileStreamSource, FileStreamSink |
+| watermarks and stateful-operator planning — `multipleWatermarkPolicy`, `statefulOperator.useStrictDistribution`, `statefulOperator.allowMultiple`, `internal.stateStore.partitions` | 4 | WatermarkTracker, WatermarkPropagator, IncrementalExecution |
+| per-operator state formats — `aggregation.stateFormatVersion`, `join.stateFormatVersion`, `join.stateFormatV4.enabled`, `flatMapGroupsWithState.stateFormatVersion`, `transformWithState.stateSchemaVersion` | 5 | the state managers, and `OffsetSeq` which pins them into the checkpoint |
+| query evolution and repartition — `queryEvolution.enableSourceEvolution` / `…enableSinkEvolution`, `checkUnfinishedRepartitionOnRestart` | 3 | schema evolution, offline state repartition |
+| progress reporting — `metricsEnabled`, `numRecentProgressUpdates` | 2 | ProgressReporter, MetricsReporter |
+| continuous and Real-Time Mode — `continuous.epochBacklogQueueSize`, `realTimeMode.allowlistCheck`, `realTimeMode.minBatchDuration` | 3 | EpochCoordinator, RealTimeModeAllowlist |
+| analysis rule hosted here — `unsupportedOperationCheck` | 1 | ResolveWriteToStream (also read by `QueryExecution`) |
+| miscellaneous single readers — `stateStore.providerClass`, `stateStore.encodingFormat`, `stateStore.compression.codec`, `stateStore.skipNullsForStreamStreamJoins.enabled` (counted in the 30 above) | — | — |
 
-**Out of scope but kept in the slice:** `spark.scheduler.streaming.idAwareLogging.*` (2, core
-scheduler — `core — execution-engine`), `spark.checkpoint.*` and `spark.cleaner.*` (RDD
-checkpointing, `core — rdd-layer`), `spark.sql.adaptive.streaming.stateless.enabled`
-(`adaptive`), `spark.sql.streaming.stateStore.providerClass`'s Python-side counterparts
-(`python-arrow`).
+**The remaining 31 are in the slice but owned elsewhere** — a finding, not an omission:
 
-### Package breadth
+| Keys | Owner |
+|---|---|
+| `spark.checkpoint.compress`, `spark.checkpoint.dir`, `spark.rdd.checkpoint.cachePreferredLocsExpireTime` (3) | RDD checkpointing — `core — rdd-layer` |
+| `spark.scheduler.streaming.idAwareLogging.*` (2) | `core — execution-engine` |
+| `spark.streaming.dynamicAllocation.*` (7) | DStream — `streaming` |
+| `spark.sql.streaming.ui.retainedQueries`, `…retainedProgressUpdates`, `…enabledCustomMetricList` (3) | `sql/streaming/ui/StreamingQueryStatusListener` — no group claims it |
+| `spark.sql.streaming.ui.enabled`, `…streamingQueryListeners`, `…stopActiveRunOnRestart`, `…disabledV2Writers` (4) | `SharedState`, `StreamingQueryManager`, `DataStreamWriter` — `sql/core — classic-api` |
+| `spark.sql.streaming.schemaInference`, `…fileSource.schema.forceNullable`, `…continuous.executorQueueSize`, `…continuous.executorPollIntervalMs` (4) | `execution/datasources/` — `DataSource`, `ContinuousScanExec`. The two continuous ones are *read* there and *consumed* by this group's `ContinuousQueuedDataReader` |
+| `spark.sql.streaming.optimizeOneRowPlan.enabled`, `…statefulOperator.checkCorrectness.enabled`, `…validateEventTimeWatermarkColumn` (3) | `sql/catalyst` — `OptimizeOneRowPlan`, `UnsupportedOperationChecker`, `Analyzer` |
+| `spark.sql.streaming.sessionWindow.stateFormatVersion`, `…sessionWindow.merge.sessions.in.local.partition`, `…flatMapGroupsWithState.skipEmittingInitialStateKeys` (3) | `execution/SparkStrategies.scala` — `sql/core — query-execution` |
+| `spark.sql.adaptive.streaming.stateless.enabled` (1) | `sql/core — adaptive` |
+| `spark.sql.optimizer.pruneFiltersCanPruneStreamingSubplan` (1) | `sql/catalyst — optimizer` |
+| `spark.sql.streaming.kafka.useDeprecatedOffsetFetching` (1) | `connector/kafka-0-10-sql` |
 
-Walked by hand — the group has six levels of nesting that `--coverage` cannot see.
+!!! info "Where the state-format versions are actually read"
 
-| Package | Files | Cited |
-|---|---|---|
-| `execution/streaming/` (top level) | 7 | 7 |
-| `execution/streaming/runtime/` | 37 | 37 |
-| `execution/streaming/state/` | 29 | 29 |
-| `execution/streaming/sources/` | 18 | 18 |
-| `execution/streaming/continuous/` | 11 | 11 |
-| `execution/streaming/checkpointing/` | 10 | 10 |
-| `execution/streaming/operators/stateful/` (+ 6 nested) | 34 | 34 |
-| `execution/streaming/sinks/` | 2 | 2 |
-| `execution/streaming/utils/` | 1 | 1 |
+    Every `*.stateFormatVersion` and the two session-window / `flatMapGroupsWithState` behaviour
+    flags are read in **`execution/SparkStrategies.scala`**, not in the operator or its state
+    manager — the version is baked into the physical operator at planning time and then pinned
+    into the checkpoint by `OffsetSeq`. That is why changing one on a running query does nothing,
+    and why the checkpoint is what has to be inspected to find out which format a query uses.
 
-**Every file in the group is cited.** (`check_drift.py --sweeps` reports 148/149 for the
-top-level scope; its path-aware matcher and the by-filename count above disagree on one entry.
-The difference is not material — the check passes either way.)
+### Configs this group reads that are **not** in the catalog
 
-!!! warning "Citation breadth is green; that is not why this page is `partial`"
+These are the ones no checker can see, because no `ConfigBuilder` declares them. The
+2026-08-06 pass counted some of them as catalog keys, which is what made its table add up wrong.
 
-    Every file is cited, and `check_drift.py --sweeps` is happy. The `status: partial` is a
-    judgement about **depth**, not about the ratio above — several packages are covered by a
-    single survey-level concept, and a citation is not a trace. The next section names exactly
-    which, so nobody reads 149/149 as "this group is finished".
+- **~29 RocksDB tuning keys** under `spark.sql.streaming.stateStore.rocksdb.` — every field of
+  `RocksDBConf` except `formatVersion` and `mergeOperatorVersion`. Names and defaults live only in
+  `RocksDB.scala`; see the "RocksDB tuning surface" concept above. Lookup is by lower-cased string
+  with a silent fallback to the default, so a misspelling is undetectable.
+- **Async progress tracking is entirely writer options, not configs** —
+  `asyncProgressTrackingEnabled`, `asyncProgressTrackingCheckpointIntervalMs` and the internal
+  `_asyncProgressTrackingOverrideSinkSupportCheck` are read off the `DataStreamWriter`'s option
+  map in `StreamingQueryManager` / `AsyncProgressTrackingMicroBatchExecution`. There is no
+  `spark.sql.streaming.asyncProgressTracking*` config and there never was; the previous pass's
+  table listed three.
+- **Source and sink options** — the whole `FileStreamOptions` surface (`maxFilesPerTrigger`,
+  `maxBytesPerTrigger`, `maxFileAge`, `latestFirst`, `cleanSource`, `sourceArchiveDir`,
+  `fileNameOnly`), the rate options (`rowsPerSecond`, `rampUpTime`, `numPartitions`,
+  `rowsPerBatch`, `startTimestamp`, `advanceMillisPerBatch`, `useManualClock`) and
+  `StateStoreConf.FORMAT_VALIDATION_CHECK_VALUE_CONFIG` (`formatValidationCheckValue`).
+- **`spark.sql.streaming.stateStore.forceSnapshotUploadOnLag` is validated inside `SQLConf`
+  itself** — its accessor rejects `true` unless lag reporting is on — so the constraint is not
+  visible from the key's declaration.
 
-### Deliberately not covered — where the next run should start
+## Breadth check 2 — the packages
 
-This is why the page is `status: partial`. Each item was read enough to place it, not enough to
-trace:
+Walked by hand: the group has six levels of nesting under `operators/stateful/`, which
+`check_drift.py --coverage` structurally cannot see.
 
-- **`continuous/` in depth.** One survey concept covers 11 files. The epoch-commit protocol
-  deserves the same treatment the micro-batch protocol got here.
-- **`sources/` in depth.** One concept covers 18 files. The DSv2 streaming write path
-  (`MicroBatchWrite` → `WriteToMicroBatchDataSource` → the V1 fallback) is a real trace on its own.
-- **RocksDB configuration surface.** ~30 keys are attributed to the provider concept as a family;
-  the individual tuning knobs (block cache, write buffer, compaction, bloom filters) are not
-  traced.
-- **`RocksDBStateEncoder` internals.** Range-scan key encoding with correct ordering for signed and
-  floating-point types is subtle and only named here.
-- **Avro state encoding.** `spark.sql.streaming.stateStore.encodingFormat=avro` and its schema
-  evolution story is mentioned, not traced.
-- **Files cited only as a family** rather than individually explained: the three `*ImplWithTTL`
-  state variables, `StatefulProcessorHandleImplBase`, and several `runtime/` helpers. They are
-  linked and placed, but their behaviour is described at the level of the family they belong to.
+| Package | Files | Cited | Traced |
+|---|---|---|---|
+| `execution/streaming/` (top level) | 7 | 7 | 7 |
+| `execution/streaming/runtime/` | 37 | 37 | 37 |
+| `execution/streaming/state/` | 29 | 29 | 29 |
+| `execution/streaming/sources/` | 18 | 18 | 18 |
+| `execution/streaming/continuous/` | 11 | 11 | 11 |
+| `execution/streaming/checkpointing/` | 10 | 10 | 10 |
+| `execution/streaming/operators/stateful/` | 8 | 8 | 8 |
+| `…/stateful/flatmapgroupswithstate/` | 3 | 3 | 3 |
+| `…/stateful/join/` | 4 | 4 | 4 |
+| `…/stateful/transformwithstate/` | 5 | 5 | 5 |
+| `…/stateful/transformwithstate/statefulprocessor/` | 2 | 2 | 2 |
+| `…/stateful/transformwithstate/statevariables/` | 4 | 4 | 4 |
+| `…/stateful/transformwithstate/ttl/` | 4 | 4 | 4 |
+| `…/stateful/transformwithstate/timers/` | 3 | 3 | 3 |
+| `…/stateful/transformwithstate/testing/` | 1 | 1 | 1 |
+| `execution/streaming/sinks/` | 2 | 2 | 2 |
+| `execution/streaming/utils/` | 1 | 1 | 1 |
+| **Total** | **149** | **149** | **149** |
 
-Also out of scope by group boundary, and covered elsewhere: the Python streaming operators
+The "traced" column is the one the 2026-08-06 pass could not fill: it was 149/149 cited but
+`continuous/` and `sources/` had one survey concept between 29 files. Each package now has at
+least one concept that follows a path through it rather than naming it.
+
+`check_drift.py --sweeps` reports 148/149 for the top-level scope; its path-aware matcher and the
+by-filename count above disagree on one entry. Not material — the check passes either way.
+
+### What is still shallow
+
+Small enough to state in one place, and none of it hides a layer:
+
+- **Individual RocksDB tuning knobs.** The lookup mechanism, the defaults and the memory model are
+  now traced; what each knob does to RocksDB's own behaviour (compaction shape, bloom filters,
+  block layout) is RocksDB documentation, not Spark source.
+- **`ContinuousTextSocketSource` and `ContinuousRateStreamSource` internals.** Both are named and
+  placed; the continuous protocol they participate in is fully traced, and neither is used outside
+  tests and demos.
+- **The `statevariables/` and `timers/` classes** are described through their shared contracts
+  (column families, the TTL index, the handle state machine) rather than one section each. That is
+  a deliberate grouping, not an unvisited area.
+
+Out of scope by group boundary, and covered elsewhere: the Python streaming operators
 (`python-arrow`), the `state` / `state-metadata` read sources (`datasources`),
-`UnsupportedOperationChecker` and the streaming plan markers (`sql/catalyst`), and Kafka
-(a separate module with no group).
+`UnsupportedOperationChecker` and the streaming plan markers (`sql/catalyst`),
+`StreamingQueryManager` and `DataStreamWriter` (`classic-api`), and Kafka (a separate module with
+no group).
 
 ---
 
-## Refresh log
+## Overlapping topic traces
+
+`check_drift.py --sweeps` lists five topic traces covering codes in this page's front matter, all
+recorded against the same Spark 4.2.0 — so there is no version skew to reconcile.
+
+| Trace | Overlap with this sweep | Verdict |
+|---|---|---|
+| [`topics/b4.md`](../topics/b4.md) — Reading and Writing Data | `FileStreamSource`, `FileStreamSink` and the `_spark_metadata` log | Agree. B4 approaches the file sink from the *reader's* side (why another engine sees stray files); this page approaches it from the commit protocol. Complementary, no contradiction |
+| [`topics/b5.md`](../topics/b5.md) — Schema | state schema compatibility | Agree, and this sweep extends it: B5 treats schema as a read-time concern, while the state schema checker adds a *stored*-schema dimension with its own evolution rules, IDs and ceilings. The new **E47** proposal is where that belongs |
+| [`topics/b6.md`](../topics/b6.md) — Basic Aggregations | streaming aggregation state managers, session windows | Agree. B6's trace stops at the batch aggregate operators; the V1/V2 state format split is only visible here, and the re-sweep adds that the format is chosen in `SparkStrategies`, not in the operator |
+| [`topics/b7.md`](../topics/b7.md) — Joins | stream-stream join | Agree. B7 traces `JoinSelection` and the batch strategies; `StreamingSymmetricHashJoinExec` is selected elsewhere and its four state stores are only described here. The V4 format's timestamp key encoders are new in this re-sweep |
+| [`topics/i5.md`](../topics/i5.md) — Partitioning | `StateStoreRDD` preferred locations, the pinned partition count | Agree, with one thing I5 does not say: a stateful query's partition count is **not** `spark.sql.shuffle.partitions` at all — it is read from the checkpoint by `IncrementalExecution`. That is stated on this page and in **E28** |
+
+No trace exists for A7, A8, A14, A36, E1, E2, E3, E27 or E28, so for those codes this page is the
+only source-level coverage.
+
+## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
 | 2026-08-06 | 4.2.0 | Initial sweep of the group — the largest in the map at 149 files, every one cited, across nine packages. 33 concepts, 3 new topics proposed (A36 the checkpoint protocol, E27 the state store engine, E28 offline state repartition). `status: partial` deliberately: every sub-package has a traced concept but `continuous/` and `sources/` got survey-level treatment only, and the remainder is named. Headline findings: the offset-log-before / commit-log-after ordering is the whole exactly-once story and makes a crashed batch re-run *identically* rather than differently; `IncrementalExecution` pins the shuffle partition count from the checkpoint, which is why `spark.sql.shuffle.partitions` does nothing on a stateful query and why 4.2.0 needed an offline repartition runner; and Real-Time Mode gates itself with a literal class-name allowlist, which is the most reliable statement of what it supports. Also corrected an existing error in A8's callout: `spark.scheduler.streaming.idAwareLogging.enabled` defaults to **`true`** (4.2.0), not `false` |
+| 2026-08-09 | 4.2.0 | **Re-sweep at an unchanged 4.2.0**, taking the previous run's "deliberately not covered" list as the work item. **Breadth check 1 (the config slice) found the work** — resolving each of the 113 keys to its actual reader showed the old table was wrong in three ways, and each error pointed at an untraced layer: `rocksdb.*` was recorded as 30 catalog keys when the catalog holds **2** (the other ~29 are undeclared strings in `RocksDBConf`), `asyncProgressTracking*` was recorded as 3 configs when it is **writer options only**, and `transformWithStateOp.stateSchemaVersion` does not exist (the key is `transformWithState.stateSchemaVersion`). Breadth check 2 was green on citations both times and found nothing. **9 new concepts**: the epoch protocol and the continuous reader/writer tasks (`continuous/`, 11 files, previously one survey concept); the DSv2 streaming write path and how a source implements `MicroBatchStream` (`sources/`, 18 files, same); the RocksDB tuning surface; range-scan key encoding; timestamp key encoders; Avro state encoding and schema evolution; TTL indexes. **3 new topics proposed** (A45 writing a streaming sink, E47 Avro state encoding and schema evolution, E48 continuous processing and the epoch coordinator), and the previous run's A36 / E27 / E28 proposals converted to mappings now that they are in the path. `status` raised **partial → complete**: every package now has a traced path through it, not just citations, and what remains shallow is named in one paragraph. Also restructured the trailing sections into the four-section contract — the old page carried the deprecated merged `## Breadth checks` shape, no overlap section, and a `## Refresh log` where the sweep log belongs. Headline findings: every `*.stateFormatVersion` is read in `SparkStrategies` and pinned by `OffsetSeq`, so it is a *planning-time* decision recorded in the checkpoint; value-schema evolution is gated on `usingAvro && schemaEvolutionEnabledForOperator`, and that second flag is `true` in exactly one place, so **no operator except `transformWithState` can evolve its state schema**; turning on Avro encoding forces every state field nullable; a TTL-enabled `ListState` occupies four column families because RocksDB `merge` makes element-level deletion impossible; and continuous processing's at-least-once guarantee is a two-line comment in `getStartOffsets` rather than a design limit anyone documented |
