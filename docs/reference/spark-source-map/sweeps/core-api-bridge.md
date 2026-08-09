@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-25
+swept_at: 2026-08-09
 group: api-bridge
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer, submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
 status: complete
@@ -30,6 +30,36 @@ concepts:
     topics: [I3, I4, A5]
   - name: StreamingPythonRunner — the streaming worker
     topics: [A7, A8, I3]
+  - name: Command shipping and the broadcast threshold
+    topics: [I3, I4, I14]
+  - name: PythonWorkerUtils — the wire codec and the broadcast delta protocol
+    topics: [I3, I4]
+  - name: The barrier back-channel — barrier() and allGather() from Python
+    topics: [E13, I3]
+  - name: Python-side timing, metrics and spill accounting
+    topics: [E3, I7, I3]
+  - name: PythonErrorUtils — the structured-error bridge
+    topics: [I3]
+  - name: PythonPartitioner — partitioning by a Python function's id()
+    topics: [I5, I4]
+  - name: Python-side memory and profiling — the knobs the JVM never sees
+    topics: [I13, I3]
+  - name: Serving results to the Python driver — collect, toLocalIterator, parallelize
+    topics: []
+    propose:
+      code: I38
+      level: Intermediate
+      title: "Getting Data Back to the Python Driver: collect, toLocalIterator, and the Serving Socket"
+      what: "The JVM never hands results to Python in-process — it binds an authenticated socket, serves the rows over it, and PySpark drains it; `toLocalIterator` runs one job per partition over a request/response protocol with optional prefetch."
+      why: "It explains why `collect()` and `toLocalIterator()` fail in different ways at scale, what `prefetchPartitions=True` actually buys, and why a driver-side OOM on a PySpark job has two separate places to happen."
+  - name: The Hadoop InputFormat bridge and the Converter plugin point
+    topics: []
+    propose:
+      code: I37
+      level: Intermediate
+      title: "Hadoop InputFormats from PySpark: sequenceFile, Writables, and Custom Converters"
+      what: "`sc.sequenceFile` / `newAPIHadoopRDD` / `saveAsHadoopFile` read and write arbitrary Hadoop InputFormats from Python, converting `Writable` keys and values through a pluggable `Converter` class on the JVM side."
+      why: "It is the only route from PySpark to formats no DataFrame source covers (legacy sequence files, custom InputFormats, HBase-style connectors), and its conversion rules — including the array types it silently refuses — decide whether the data arrives usable."
 ---
 
 This group is the cross-language substrate under `core/src/main/scala/org/apache/spark/api/`. It answers a single question that both I3 (User-Defined Functions) and I4 (RDD Fundamentals) keep bumping into: **when you write a Python `lambda`, a `@udf`, or a pandas UDF, what actually runs it?** The answer is never "the JVM." The JVM forks (or reuses) an external Python process, streams the command and the rows to it over a socket, and reads results back. Everything else here — worker pooling, the socket handshake, traceback propagation, memory caps, the Py4J driver gateway, the R equivalent — is machinery around that one pipe.
@@ -341,42 +371,298 @@ The **ReaderIterator.read** loop switches on a framing length: `>=0` → that ma
 
 ---
 
-## Breadth check — all 30 slice configs
+## Command shipping and the broadcast threshold
+
+**What it is:** how the pickled Python function reaches the executor at all. `_prepare_for_python_RDD` cloudpickles the command, and — this is the part nobody expects — **if the pickled bytes exceed `spark.broadcast.UDFCompressionThreshold` (default 1 MiB), the command is not shipped with the task at all**. It is broadcast, and what travels in the task is a pickled reference to the broadcast. Below the threshold the command bytes ride inside every task description.
+
+**Code path:** `_prepare_for_python_RDD(sc, command)` → `CloudPickleSerializer().dumps(command)` → `len(pickled) > PythonUtils.getBroadcastThreshold(jsc)`? → `sc.broadcast(pickled_command)` and re-pickle the broadcast handle : keep the raw bytes → `SimplePythonFunction(command = …)` → `PythonWorkerUtils.writePythonFunction` writes it into the worker's command section.
+
+**Anchor files:**
+
+- [rdd.py:5104](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/core/rdd.py#L5104) — `_prepare_for_python_RDD`
+- [rdd.py:5109](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/core/rdd.py#L5109) — the threshold test, with the comment `# Default 1M`
+- [PythonUtils.scala:92](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonUtils.scala#L92) — `getBroadcastThreshold`, the Py4J accessor Python calls
+- [package.scala:2271](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/config/package.scala#L2271) — `spark.broadcast.UDFCompressionThreshold` (`1L * 1024 * 1024`, since 3.0.0)
+- [PythonWorkerUtils.scala:191](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L191) — `writePythonFunction`
+
+!!! info "Why a fat closure changes shape rather than just getting slower"
+
+    A UDF that captures a large object (a model, a lookup dict, a DataFrame's worth of constants) crosses the threshold and silently becomes a broadcast. That is usually the behaviour you wanted — one copy per executor instead of one per task — but it also means the object's lifetime is now tied to the `PythonRDD`, it is fetched through the block manager, and IO encryption pulls in the decryption-server path below. The switch is invisible: no warning, no plan change, only the different failure mode when it goes wrong.
+
+**Configs:** `spark.broadcast.UDFCompressionThreshold`.
+
+**Maps to topics:** I3, I4, I14
+
+---
+
+## PythonWorkerUtils — the wire codec and the broadcast delta protocol
+
+**What it is:** the codec every frame in this group is written with, plus the one genuinely stateful piece of the protocol. Every string is length-prefixed UTF-8 (`writeUTF` → `writeBytes` → `writeInt(len); write(bytes)`), matching `FramedSerializer._read_with_length` on the Python side. `writeTaskContext` serializes the task context to **JSON** — barrier flag, connection info, secret, stage/partition/attempt ids, cpus, resources, and the full local-properties map — for `worker_util.setup_task_context`.
+
+**The broadcast delta:** broadcasts are *not* re-sent per task. `PythonRDD.getWorkerBroadcasts(worker)` keeps a per-worker set of broadcast ids, and `writeBroadcasts` sends only the difference: removals are encoded as **`-bid - 1`** (a negative long, so ids stay non-negative) and additions as the id plus the file path. A reused worker that already holds a broadcast pays nothing for it on the next task — which is a second, less-known reason `spark.python.worker.reuse` matters.
+
+**Encryption fork:** when `spark.io.encryption.enabled` is on *and* there are new broadcasts, the JVM writes a boolean, stands up an `EncryptedPythonBroadcastServer`, and sends either a port plus secret or (UDS) `-1` plus a socket path; the worker then pulls decrypted bytes from that server instead of reading the files directly.
+
+**Anchor files:**
+
+- [PythonWorkerUtils.scala:43](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L43) — `writeUTF` / `writeBytes`, the framing every other call is built on
+- [PythonWorkerUtils.scala:73](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L73) — `writeTaskContext` (JSON, including `localProperties`)
+- [PythonWorkerUtils.scala:103](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L103) — `writeSparkFiles` (root dir scoped by `jobArtifactUUID`, then the `.zip`/`.egg` includes)
+- [PythonWorkerUtils.scala:125](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L125) — `writeBroadcasts`, the add/remove diff
+- [PythonWorkerUtils.scala:143](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L143) — `dataOut.writeLong(-bid - 1)`, the removal encoding
+- [PythonWorkerUtils.scala:147](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L147) — the `needsDecryptionServer` branch
+- [PythonWorkerUtils.scala:245](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerUtils.scala#L245) — `receiveAccumulatorUpdates`, the return leg
+
+**Configs:** `spark.io.encryption.enabled` (read via `env.serializerManager.encryptionEnabled`; the key itself is owned by the [config & security sweep](core-config-security.md)).
+
+**Maps to topics:** I3, I4
+
+---
+
+## The barrier back-channel — `barrier()` and `allGather()` from Python
+
+**What it is:** the reverse-direction control channel that only exists for barrier stages. A Python worker cannot call into the JVM's `BarrierTaskContext` over the data pipe — that pipe is busy streaming rows — so `Writer.open` binds a *second* server socket, spawns an `accept-connections` daemon thread, and passes the address (or UDS path) plus the auth secret to the worker inside the `TaskContextInfo`. Every `BarrierTaskContext.barrier()` or `.allGather()` call in Python opens a fresh connection to that socket.
+
+**Code path:** `Writer.open` → `isBarrier`? → bind `ServerSocketChannel` (UDS or loopback with `soTimeout = 0`) → start `accept-connections` thread → `writeTaskContext(connInfo, secret)` → register a task-completion listener that closes the socket (and unlinks the UDS file). Per call: `accept()` → `setSoTimeout(10000)` for the handshake → `authHelper.authClient` → `readInt()` → `BARRIER_FUNCTION (1)` or `ALL_GATHER_FUNCTION (2)` → **`setSoTimeout(0)` before running the function, because a barrier may wait indefinitely** → `barrierAndServe` calls the real `BarrierTaskContext` method and writes back a count-prefixed list of UTF strings.
+
+**Anchor files:**
+
+- [PythonRunner.scala:432](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L432) — the barrier-only socket bind (UDS vs loopback)
+- [PythonRunner.scala:445](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L445) — the `accept-connections` daemon thread
+- [PythonRunner.scala:454](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L454) — 10 s handshake timeout, then `setSoTimeout(0)` at L460 for the call itself
+- [PythonRunner.scala:489](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L489) — task-completion listener closes the socket and deletes the UDS file
+- [PythonRunner.scala:553](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L553) — `barrierAndServe`, and the `SparkException` → plain-message reply at L570
+- [PythonRunner.scala:1090](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L1090) — `BarrierTaskContextMessageProtocol` (the two function ids, the success string, the unrecognized-function error)
+
+!!! warning "A barrier failure reaches Python as a message, not an exception type"
+
+    `barrierAndServe` catches `SparkException` and writes `e.getMessage` down the same socket the success strings use. The Python side therefore sees a string where it expected a result — so a barrier timeout (`spark.barrier.sync.timeout`, enforced by the scheduler's `BarrierCoordinator`) surfaces in PySpark with far less structure than an ordinary task failure. An unrecognized function id is handled the same way.
+
+**Configs:** `spark.barrier.sync.timeout` and `spark.scheduler.barrier.maxConcurrentTasksCheck.*` are read by the scheduler, not here — but this is the path by which a *Python* barrier call reaches them. (The 2026-07-25 pass listed all three as out-of-scope noise; that was right about ownership and wrong about relevance.)
+
+**Maps to topics:** E13, I3
+
+---
+
+## Python-side timing, metrics and spill accounting
+
+**What it is:** the telemetry frame. Before the data section ends, the worker sends a `TIMING_DATA (-3)` frame carrying four timestamps and two spill counters; `handleTimingData` turns them into four accumulators and folds the spill numbers into the task's own metrics. This is why the Spark UI can attribute Python cost at all, and why *Python* spill appears in a JVM task's metrics.
+
+**Code path:** `ReaderIterator.read()` sees `TIMING_DATA` → `handleTimingData()` → read `bootTime`, `initTime`, `finishTime`, `processingTimeMs` → derive `boot = bootTime - startTime`, `init`, `finish`, `total` → log one line per task including batch count and bytes received → add to the `pythonBootTime` / `pythonInitTime` / `pythonTotalTime` / `pythonProcessingTime` accumulators → read `memoryBytesSpilled` and `diskBytesSpilled` → `context.taskMetrics().incMemoryBytesSpilled/incDiskBytesSpilled`.
+
+**Anchor files:**
+
+- [PythonRunner.scala:626](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L626) — `handleTimingData`
+- [PythonRunner.scala:651](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L651) — the four `metrics.get("python…")` adds
+- [PythonRunner.scala:657](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L657) — Python spill folded into `taskMetrics`
+- [PythonRunner.scala:194](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala#L194) — `metrics: Map[String, AccumulatorV2[Long, Long]]`, supplied by the caller
+- [shuffle.py:382](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/shuffle.py#L382) — where those spill bytes are counted, on the Python side
+
+!!! info "`metrics` is empty for RDD-path UDFs"
+
+    The core `PythonRunner` passes `Map.empty`, so the four timing accumulators exist only when a SQL runner supplies them (`PythonSQLMetrics`, covered by the [sql/core — python-arrow sweep](sql-core-python-arrow.md)). On the pure RDD path the timings are logged and dropped. The spill counters are the exception — they go into `taskMetrics` unconditionally, which is how a PySpark `groupByKey` spilling in Python shows up as spill on a JVM stage that never spilled anything itself.
+
+**Maps to topics:** E3, I7, I3
+
+---
+
+## PythonErrorUtils — the structured-error bridge
+
+**What it is:** eight one-line accessors, and a real constraint behind them. PySpark's `pyspark.errors` classes are built from a JVM `SparkThrowable`'s structured metadata — condition, SQLSTATE, message parameters, query context, breaking-change info — but **Py4J cannot call Java interface default methods**, and `SparkThrowable` declares those as defaults. `PythonErrorUtils` re-exposes each one as a static-style method Py4J can reach.
+
+**Anchor files:**
+
+- [PythonErrorUtils.scala:32](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonErrorUtils.scala#L32) — the object and its stated reason for existing
+- [PythonErrorUtils.scala:33](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonErrorUtils.scala#L33) — `getCondition`, with `getErrorClass` kept as an alias of the same method
+- [PythonErrorUtils.scala:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonErrorUtils.scala#L37) — `getBreakingChangeInfo`, the 4.x migration-hint channel
+
+**Maps to topics:** I3
+
+---
+
+## PythonPartitioner — partitioning by a Python function's `id()`
+
+**What it is:** the partitioner PySpark installs for `partitionBy`-style operations on a pair RDD. Two details are load-bearing. Its **equality** is `(numPartitions, pyPartitionFunctionId)`, where the id is the CPython `id()` of the Python partitioning function — so Spark's "already partitioned this way, skip the shuffle" reasoning depends on an address-derived integer, and correctness requires PySpark to keep a reference alive so the id is never recycled onto a different function. And `getPartition` **never trusts the Python return value**: it applies `Utils.nonNegativeMod(_, numPartitions)` to whatever comes back, mapping `null` to partition 0.
+
+**Anchor files:**
+
+- [PythonPartitioner.scala:34](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonPartitioner.scala#L34) — the class, with the id-reuse caveat in its doc comment
+- [PythonPartitioner.scala:39](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonPartitioner.scala#L39) — `getPartition`: null → 0, `Long` key → `toInt` then modulo
+- [PythonPartitioner.scala:47](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonPartitioner.scala#L47) — `equals` on `(numPartitions, pyPartitionFunctionId)`
+- [PythonRDD.scala:163](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L163) — `PairwiseRDD`, which produces the `(Long, Array[Byte])` pairs it partitions
+
+**Maps to topics:** I5, I4
+
+---
+
+## Python-side memory and profiling — the knobs the JVM never sees
+
+**What it is:** two configs that shape PySpark behaviour and appear in **no** config catalog, because nothing on the JVM ever reads them. `spark.python.worker.memory` (default `512m`) is the budget PySpark's own `ExternalMerger` / `ExternalSorter` use to decide when to spill during `groupByKey`, `combineByKey` and sorts — an entirely separate mechanism from the JVM's unified memory manager and from `spark.executor.pyspark.memory`. `spark.python.profile` enables the cProfile-based UDF profiler that wraps each function before it is shipped.
+
+**Code path:** `RDD._memory_limit()` → `ctx._conf.get("spark.python.worker.memory", "512m")` → `_parse_memory` → passed to `ExternalMerger(..., memory_limit)` → per-batch `get_used_memory()` check → `spill()` writes partition files under the local dirs and increments the module-global `MemoryBytesSpilled` / `DiskBytesSpilled`, which the worker later reports in its `TIMING_DATA` frame.
+
+**Anchor files:**
+
+- [rdd.py:3971](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/core/rdd.py#L3971) — `_memory_limit`, reading `spark.python.worker.memory`
+- [shuffle.py:175](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/shuffle.py#L175) — `ExternalMerger`
+- [shuffle.py:471](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/shuffle.py#L471) — `ExternalSorter`
+- [rdd.py:5320](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/core/rdd.py#L5320) — `spark.python.profile` gating `profiler_collector.new_profiler`
+
+!!! warning "Three different Python memory limits, and only one of them is in the catalog"
+
+    `spark.executor.pyspark.memory` caps the worker **process** via `setrlimit` (Linux only). `spark.python.worker.memory` is a *soft* budget PySpark polls to decide when to spill — exceeding it spills, it does not fail. `spark.executor.memory` covers neither. Tuning the wrong one is the usual reason a PySpark job keeps getting its container killed after someone "increased the memory".
+
+**Configs:** `spark.python.worker.memory`, `spark.python.profile` — **neither is in `catalog.yaml`**; both are Python-side string lookups.
+
+**Maps to topics:** I13, I3
+
+---
+
+## Serving results to the Python driver — collect, toLocalIterator, parallelize
+
+**What it is:** the driver-side data plane, and the counterpart to the executor pipe. Python never receives rows through Py4J — Py4J carries only the *call*. Every result-returning action ends at `serveIterator`, which binds an authenticated local socket, returns `(connInfo, secret, server)` to Python as a three-element array, and streams the bytes once PySpark connects. `parallelize` runs the same trick in reverse through `PythonParallelizeServer`.
+
+`toLocalIteratorAndServe` is the interesting one: it is a **request/response protocol**, not a stream. Each partition is a *separate job* (`submitJob`), the client writes a non-zero int to ask for the next one, and the server answers `1` (partition follows), `0` (exhausted) or `-1` (collection failed, exception re-thrown on the JVM). `prefetchPartitions` only changes one line — `prefetchIter.headOption` — which submits the *next* partition's job before the current one is drained.
+
+**Code path:** `rdd.collect()` (Python) → `PythonRDD.collectAndServe` → `serveIterator` → `SocketAuthServer` → PySpark connects, authenticates, drains. `rdd.toLocalIterator(prefetchPartitions)` → `toLocalIteratorAndServe` → `SocketFuncServer` → per-partition `submitJob` loop. `sc.parallelize(...)` → data written to a temp file or stream → `readRDDFromFile` / `readRDDFromInputStream`, or `PythonParallelizeServer` for the socket route.
+
+**Anchor files:**
+
+- [PythonRDD.scala:231](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L231) — `collectAndServe`, and `collectAndServeWithJobGroup` at L240 (the job-group/`interruptOnCancel` variant behind PySpark's job cancellation)
+- [PythonRDD.scala:211](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L211) — `runJob`, the partition-subset collect
+- [PythonRDD.scala:262](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L262) — `toLocalIteratorAndServe`, one job per partition
+- [PythonRDD.scala:284](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L284) — the request int; `0` from the client stops iteration
+- [PythonRDD.scala:311](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L311) — `out.writeInt(-1)` on failure, before the exception is re-thrown
+- [PythonRDD.scala:559](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L559) — `serveIterator`, the common exit
+- [PythonRDD.scala:1029](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L1029) — `PythonRDDServer`, and `PythonParallelizeServer` at L1042
+- [PythonRDD.scala:926](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L926) — `DechunkedInputStream`, which unwraps the length-chunked framing used for encrypted broadcast/parallelize payloads
+
+!!! warning "`collect()` materializes twice; `toLocalIterator` submits N jobs"
+
+    `collectAndServe` calls `rdd.collect()` first — the whole result is an array in the driver JVM **before** a single byte reaches Python, which then builds its own list. Two full copies, in two heaps that are sized independently. `toLocalIterator` avoids that but pays a separate job submission per partition, so on a many-partition RDD it is scheduler-bound; `prefetchPartitions=True` overlaps exactly one partition's job with the client's consumption of the previous one, and no more.
+
+**Maps to topics:** [] — proposed as **I38**. The mechanism is specific enough (two heaps, per-partition jobs, a socket protocol with its own error code) that it explains a class of driver-side failures no existing topic addresses; I4 covers what the actions *do*, not how the bytes arrive.
+
+---
+
+## The Hadoop InputFormat bridge and the Converter plugin point
+
+**What it is:** the whole `sc.sequenceFile` / `sc.newAPIHadoopRDD` / `rdd.saveAsHadoopFile` family, which is how PySpark reaches formats the DataFrame sources do not cover. Because a Python process cannot hold a `Writable`, every key and value passes through a `Converter[T, U]` on the JVM before pickling — `WritableToJavaConverter` by default, or a user class named by string and loaded reflectively.
+
+**Code path (read):** `PythonRDD.sequenceFile` / `hadoopRDD` / `newAPIHadoopRDD` → `getKeyValueTypes` (class names → classes) → `Converter.getInstance(converterClass, defaultConverter)` → `sc.hadoopRDD` → `PythonHadoopUtil.convertRDD` → `SerDeUtil.pairRDDToPython`. **(write):** `saveAsHadoopFile` / `saveAsNewAPIHadoopFile` / `saveAsHadoopDataset` → `SerDeUtil.pythonToPairRDD` → `JavaToWritableConverter` → `rdd.saveAsHadoopFile`.
+
+**Anchor files:**
+
+- [PythonHadoopUtil.scala:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonHadoopUtil.scala#L37) — the `Converter` trait users implement
+- [PythonHadoopUtil.scala:43](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonHadoopUtil.scala#L43) — `getInstance`: reflective load, and a load failure is re-thrown, not defaulted
+- [PythonHadoopUtil.scala:64](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonHadoopUtil.scala#L64) — `WritableToJavaConverter`, the per-`Writable` unwrap table
+- [PythonHadoopUtil.scala:86](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonHadoopUtil.scala#L86) — the erasure caveat: `ArrayWritable` always becomes a Python tuple, never a typed array
+- [PythonHadoopUtil.scala:118](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonHadoopUtil.scala#L118) — `JavaToWritableConverter`, whose `convertToWritable` **throws** on any type it does not know
+- [PythonRDD.scala:382](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L382) — `sequenceFile`; `newAPIHadoopFile` L408, `newAPIHadoopRDD` L435, `hadoopFile` L477, `hadoopRDD` L504
+- [PythonRDD.scala:642](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L642) — `saveAsSequenceFile`; `saveAsHadoopFile` L661, `saveAsNewAPIHadoopFile` L692, `saveAsHadoopDataset` L720
+- [PythonRDD.scala:593](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonRDD.scala#L593) — `inferKeyValueTypes`, used when the caller names no classes
+
+**Maps to topics:** [] — proposed as **I37**. `saveAsHadoopDataset` also makes this the only place in the group that touches the output-commit machinery the [execution-engine sweep](core-execution-engine.md) covers.
+
+---
+
+## Breadth check 1 — the config slice
+
+The slice, reproducibly (widened this run — the 2026-07 pattern matched only `python|pyspark|r|barrier`-ish keys and so **missed `spark.broadcast.UDFCompressionThreshold` entirely**):
+
+```bash
+PYTHONIOENCODING=utf-8 python -c "
+import yaml, re
+d = yaml.safe_load(open('docs/reference/spark-source-map/configs/catalog.yaml', encoding='utf-8'))
+cs = [c for c in d['configs'] if c['subsystem'] == 'core']
+pat = re.compile(r'python|pyspark|\.r\.|sparkr|api\.mode|buffer\.size|isPython|barrier|UDFCompression', re.I)
+sel = sorted({c['key'] for c in cs if pat.search(c['key'])})
+print(len(sel)); [print(k) for k in sel]
+"
+```
+
+**31 keys.**
 
 | # | Config | Verdict | Concept / real owner |
 |---|--------|---------|----------------------|
 | 1 | `spark.api.mode` | in-scope | spark.api.mode — Classic vs Connect |
-| 2 | `spark.barrier.sync.timeout` | **out-of-scope noise** | `BarrierTaskContext` / scheduler → **execution-engine**. (Barrier *does* touch PySpark via the `Writer.open` accept-socket for `BarrierTaskContext`, but this timeout config is scheduler-owned.) |
-| 3 | `spark.buffer.size` | in-scope (shared) | BasePythonRunner (JVM↔worker transfer buffer); confirmed read by `BasePythonRunner`, `PythonAccumulatorV2`, `BaseRRunner`. Home is generic IO config. |
-| 4 | `spark.executor.pyspark.memory` | in-scope | Error/edge paths (Python-side `setrlimit`) |
-| 5 | `spark.executor.python.worker.log.details` | in-scope | Worker lifecycle (`PythonUtils.logPythonInfo`) |
-| 6 | `spark.pyspark.driver.python` | in-scope | Py4J driver gateway / app entry |
-| 7 | `spark.pyspark.python` | in-scope | Py4J driver gateway / app entry |
-| 8 | `spark.python.authenticate.socketTimeout` | in-scope | BasePythonRunner protocol (auth handshake) |
-| 9 | `spark.python.daemon.killWorkerOnFlushFailure` | in-scope | Error/edge paths |
-| 10 | `spark.python.daemon.module` | in-scope | Worker lifecycle |
-| 11 | `spark.python.factory.idleWorkerMaxPoolSize` | in-scope | Worker lifecycle (idle pool, LRU eviction) |
-| 12 | `spark.python.task.killTimeout` | in-scope | Error/edge paths (MonitorThread) |
-| 13 | `spark.python.unix.domain.socket.dir` | in-scope | Worker lifecycle (UDS transport) |
-| 14 | `spark.python.unix.domain.socket.enabled` | in-scope | Worker lifecycle (UDS transport) |
-| 15 | `spark.python.use.daemon` | in-scope | Worker lifecycle |
-| 16 | `spark.python.worker.faulthandler.enabled` | in-scope | Error/edge paths |
-| 17 | `spark.python.worker.idleTimeoutSeconds` | in-scope | Worker lifecycle (per-task idle timeout) |
-| 18 | `spark.python.worker.killOnIdleTimeout` | in-scope | Worker lifecycle |
-| 19 | `spark.python.worker.module` | in-scope | Worker lifecycle |
-| 20 | `spark.python.worker.reuse` | in-scope | Worker lifecycle / runner |
-| 21 | `spark.python.worker.tracebackDumpIntervalSeconds` | in-scope | Error/edge paths |
-| 22 | `spark.r.backendConnectionTimeout` | in-scope | R bridge |
-| 23 | `spark.r.command` | in-scope | R bridge |
-| 24 | `spark.r.heartBeatInterval` | in-scope | R bridge |
-| 25 | `spark.r.numRBackendThreads` | in-scope | R bridge (Netty event loop) |
-| 26 | `spark.scheduler.barrier.maxConcurrentTasksCheck.interval` | **out-of-scope noise** | barrier scheduler check → **execution-engine** |
-| 27 | `spark.scheduler.barrier.maxConcurrentTasksCheck.maxFailures` | **out-of-scope noise** | barrier scheduler check → **execution-engine** |
-| 28 | `spark.sparkr.r.command` | in-scope | R bridge (deprecated; superseded by `spark.r.command`) |
-| 29 | `spark.unsafe.sorter.spill.reader.buffer.size` | **out-of-scope noise** | unsafe sorter spill reader → **shuffle-memory** |
-| 30 | `spark.yarn.isPython` | in-scope | Py4J driver gateway / app entry (set by `SparkSubmit`) |
+| 2 | `spark.barrier.sync.timeout` | **out of scope, in play** | enforced by the scheduler's `BarrierCoordinator` (→ **execution-engine**), but it is what a Python `barrier()` waits on through this group's back-channel. Reclassified from "noise" this run. |
+| 3 | `spark.broadcast.UDFCompressionThreshold` | **in-scope — missed by the previous slice** | Command shipping and the broadcast threshold |
+| 4 | `spark.buffer.size` | in-scope (shared) | BasePythonRunner (JVM↔worker transfer buffer); confirmed read by `BasePythonRunner`, `PythonAccumulatorV2`, `BaseRRunner`. Home is generic IO config. |
+| 5 | `spark.executor.pyspark.memory` | in-scope | Error/edge paths (Python-side `setrlimit`) |
+| 6 | `spark.executor.python.worker.log.details` | in-scope | Worker lifecycle (`PythonUtils.logPythonInfo`) |
+| 7 | `spark.pyspark.driver.python` | in-scope | Py4J driver gateway / app entry |
+| 8 | `spark.pyspark.python` | in-scope | Py4J driver gateway / app entry |
+| 9 | `spark.python.authenticate.socketTimeout` | in-scope | BasePythonRunner protocol (auth handshake) |
+| 10 | `spark.python.daemon.killWorkerOnFlushFailure` | in-scope | Error/edge paths |
+| 11 | `spark.python.daemon.module` | in-scope | Worker lifecycle |
+| 12 | `spark.python.factory.idleWorkerMaxPoolSize` | in-scope | Worker lifecycle (idle pool, LRU eviction) |
+| 13 | `spark.python.task.killTimeout` | in-scope | Error/edge paths (MonitorThread) |
+| 14 | `spark.python.unix.domain.socket.dir` | in-scope | Worker lifecycle (UDS transport) |
+| 15 | `spark.python.unix.domain.socket.enabled` | in-scope | Worker lifecycle (UDS transport) |
+| 16 | `spark.python.use.daemon` | in-scope | Worker lifecycle |
+| 17 | `spark.python.worker.faulthandler.enabled` | in-scope | Error/edge paths |
+| 18 | `spark.python.worker.idleTimeoutSeconds` | in-scope | Worker lifecycle (per-task idle timeout) |
+| 19 | `spark.python.worker.killOnIdleTimeout` | in-scope | Worker lifecycle |
+| 20 | `spark.python.worker.module` | in-scope | Worker lifecycle |
+| 21 | `spark.python.worker.reuse` | in-scope | Worker lifecycle / runner; also what makes the broadcast delta in `writeBroadcasts` pay off |
+| 22 | `spark.python.worker.tracebackDumpIntervalSeconds` | in-scope | Error/edge paths |
+| 23 | `spark.r.backendConnectionTimeout` | in-scope | R bridge |
+| 24 | `spark.r.command` | in-scope | R bridge |
+| 25 | `spark.r.heartBeatInterval` | in-scope | R bridge |
+| 26 | `spark.r.numRBackendThreads` | in-scope | R bridge (Netty event loop) |
+| 27 | `spark.scheduler.barrier.maxConcurrentTasksCheck.interval` | out of scope | barrier scheduler check → **execution-engine** |
+| 28 | `spark.scheduler.barrier.maxConcurrentTasksCheck.maxFailures` | out of scope | barrier scheduler check → **execution-engine** |
+| 29 | `spark.sparkr.r.command` | in-scope | R bridge (deprecated; superseded by `spark.r.command`) |
+| 30 | `spark.unsafe.sorter.spill.reader.buffer.size` | out of scope | unsafe sorter spill reader → **shuffle-memory** |
+| 31 | `spark.yarn.isPython` | in-scope | Py4J driver gateway / app entry (set by `SparkSubmit`) |
 
-**In-scope: 26 · Out-of-scope noise: 4** (`spark.barrier.sync.timeout`, both `spark.scheduler.barrier.maxConcurrentTasksCheck.*`, `spark.unsafe.sorter.spill.reader.buffer.size`).
+**In-scope: 27 · Out of scope: 4**, one of which (`spark.barrier.sync.timeout`) is reachable only through this group on the Python path.
+
+### Configs this group reads that are *not* in the catalog
+
+`--sweeps` cannot see these, so they can only ever be caught by eye:
+
+| Config | Where it is read | Why it is invisible |
+|---|---|---|
+| `spark.python.worker.memory` (default `512m`) | [rdd.py:3971](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/core/rdd.py#L3971) → `ExternalMerger` spill budget | a bare `_conf.get(...)` string lookup on the Python side; no `ConfigEntry` exists |
+| `spark.python.profile` | [rdd.py:5320](https://github.com/apache/spark/blob/v4.2.0/python/pyspark/core/rdd.py#L5320) | same — Python-only, gates the cProfile UDF profiler |
+| `spark.io.encryption.enabled` | `PythonWorkerUtils.writeBroadcasts` via `serializerManager.encryptionEnabled` | in the catalog, but under the security prefix; owned by [config-security](core-config-security.md) |
+
+Env-var-only switches with no config key at all, worth knowing because they change behaviour silently: `PYSPARK_SPARK_SESSION_UUID` (gates worker log capture), `PYSPARK_UDS_MODE` (the UDS default), `SPARK_CONNECT_MODE`, `SPARK_HIDE_TRACEBACK` / `SPARK_SIMPLIFIED_TRACEBACK`, `SPARK_PREFER_IPV6`.
+
+---
+
+## Breadth check 2 — the packages
+
+Scope: `api/python/`, `api/java/`, `api/r/`. The three Scala directories are flat — no sub-packages — so the `--coverage` blind spot does not apply. One wrinkle: `api/java/` spans **two source roots**, `core/src/main/scala/…/api/java/` (11 files) and `core/src/main/java/…/api/java/function/` (the SAM interfaces), which is why the checker counts 14. Ratios below are `check_drift.py --sweeps` output, walked by hand against `ls`:
+
+| Package | Files | Cited | Not cited |
+|---|---|---|---|
+| `api/python/` | 13 | **13 (100%)** | — |
+| `api/java/` | 14 | 5 (35%) | `JavaRDDLike`, `JavaHadoopRDD`, `JavaNewHadoopRDD`, `JavaDoubleRDD`, `JavaSparkStatusTracker`, `JavaUtils`, `package.scala`, `package-info.java`, and the `function/` SAM interfaces |
+| `api/r/` | 10 | 3 (30%) | `RBackendHandler`, `RBackendAuthHandler`, `RAuthHelper`, `SerDe`, `RUtils`, `JVMObjectTracker`, `RRunner` (all named in prose, none anchored) |
+
+The Python half is now complete at file granularity. The 2026-07-25 pass cited 8 of 13; the five it never opened — `PythonWorkerUtils`, `PythonUtils`, `PythonErrorUtils`, `PythonHadoopUtil`, `PythonPartitioner` — are exactly where this run's new concepts came from, and one of them (`PythonUtils.getBroadcastThreshold`) led to the missing config.
+
+**Deliberately not covered:**
+
+- **The Java bridge beyond the three entry types.** `JavaRDDLike` is a ~700-line mechanical delegation surface; `JavaHadoopRDD`/`JavaNewHadoopRDD` exist only to expose `mapPartitionsWithInputSplit`. Wrappers with no behaviour of their own, and no learning content that the Scala RDD API does not already carry.
+- **R internals below `RBackend`/`BaseRRunner`.** `SerDe`, `JVMObjectTracker` and the two Netty handlers are the R analogues of things already traced in detail on the Python side; SparkR is deprecated upstream and the marginal value is low. Named here so a later reader knows it was a choice.
+- **The Python worker itself** (`python/pyspark/worker.py`, `daemon.py`, `serializers.py`). Referenced wherever it closes a protocol loop, but it is the other end of the wire, not this group's scope. `pyspark/shuffle.py` is cited only for the spill counters that reach `taskMetrics`.
+- **`SocketAuthHelper` / `SocketAuthServer`.** Owned by [config-security](core-config-security.md); referenced, not re-derived.
+
+---
+
+## Overlapping topic traces
+
+`check_drift.py --sweeps` lists five: `topics/i3.md`, `topics/i4.md`, `topics/i5.md`, `topics/i7.md`, `topics/i13.md`. **All were traced at 4.2.0, the same version as this sweep — no version drift, and nothing in this run contradicts them.**
+
+- **[I3](../topics/i3.md)** — traces the UDF path from the SQL side (eval types, Arrow runners, nullability). This page is the layer below it; the two agree, and the new concepts here (command shipping, the wire codec, the error bridge) sit underneath what I3 already documents rather than restating it.
+- **[I4](../topics/i4.md)** — RDD fundamentals from the JVM side. It does not cover the Python serving path, which is why that concept is proposed as its own topic rather than folded into I4.
+- **[I5](../topics/i5.md)** — partitioning. `PythonPartitioner`'s `id()`-based equality is a Python-only wrinkle in I5's "does Spark know the data is already partitioned" story; new here, not a contradiction.
+- **[I7](../topics/i7.md)** — the Spark UI. It documents the metrics the UI shows; this page adds where the Python numbers in them come from, and the caveat that the four timing accumulators are absent on the RDD path.
+- **[I13](../topics/i13.md)** — pair-RDD aggregations. It covers the JVM `combineByKey` machinery; the Python `ExternalMerger` with its own `spark.python.worker.memory` budget is a parallel mechanism it does not mention.
 
 ---
 
@@ -386,3 +672,4 @@ The **ReaderIterator.read** loop switches on a framing length: `>=0` → that ma
 |---|---|---|
 | 2026-07-22 | 4.2.0 | Initial sweep. 9 concepts, all 30 slice configs attributed in the breadth table above. |
 | 2026-07-25 | 4.2.0 | Re-sweep, the last of the nine core groups. The config slice was already exhaustive, so this run was driven by package breadth. Three concepts added: **Python worker log capture** — the executor-side producer for the block log writers the [storage sweep](core-storage-serializer.md) covers, which turns out to be a marker-string protocol over the worker's *stdout only*, active only when `PYSPARK_SPARK_SESSION_UUID` is set, so an unmarked `print()` is still lost; **`SerDeUtil` and the pickle boundary**, whose `AutoBatchedPickler` adapts its batch size from a cold start of 1 to keep pickled batches between 1 MB and 10 MB, and which is the path that makes `df.rdd.map(...)` slow next to the Arrow route; and **`StreamingPythonRunner`**, which hands its worker a Spark Connect URL pointing back at the local JVM — the reason a Python `foreachBatch` body receives a real DataFrame rather than pickled rows. |
+| 2026-08-09 | 4.2.0 | **Re-sweep at an unchanged version, scoped to the Python bridge.** Both breadth checks found work, and the page's own trailing sections were non-conforming (one merged breadth check, no package check, no overlap section) — rewritten to the four-section contract. *Package breadth* found five of thirteen `api/python/` files never opened by either prior pass: `PythonWorkerUtils`, `PythonUtils`, `PythonErrorUtils`, `PythonHadoopUtil`, `PythonPartitioner`. *Config breadth* found that the July slice pattern never matched `spark.broadcast.UDFCompressionThreshold`, so the rule that **a pickled command over 1 MiB is broadcast instead of shipped with the task** was undocumented; the widened pattern is recorded above. Nine concepts added, two proposed as topics (**I37** Hadoop InputFormats from PySpark, **I38** getting data back to the Python driver). Findings worth carrying: the broadcast set is a **per-worker delta**, with removals encoded as `-bid - 1`, so worker reuse saves broadcast re-sends as well as process starts; barrier `barrier()`/`allGather()` reach the JVM over a *second* socket whose failures arrive in Python as a bare message string, which makes `spark.barrier.sync.timeout` relevant here after July classified it as noise; Python-side spill from `ExternalMerger` is folded into the JVM's `taskMetrics`, so a stage can report spill no JVM operator produced; and there are **three** distinct Python memory limits, only one of which (`spark.executor.pyspark.memory`) is in the catalog. Java and R were left at their existing depth by choice — named in breadth check 2. |

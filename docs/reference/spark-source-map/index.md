@@ -56,6 +56,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I34 | Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP | — | — | ⬜ |
 | I35 | Column DEFAULT Values: DDL, INSERT, and the Provider Allowlist | — | — | ⬜ |
 | I36 | JDBC as a Source and a Sink: Type Mapping, Batching, and the Transaction per Partition | — | — | ⬜ |
+| I37 | Hadoop InputFormats from PySpark: sequenceFile, Writables, and Custom Converters | — | — | ⬜ |
+| I38 | Getting Data Back to the Python Driver: collect, toLocalIterator, and the Serving Socket | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -215,6 +217,15 @@ flowchart LR
     S4 --> S4c9["Python worker log capture — the executor side"]
     S4 --> S4c10["SerDeUtil and the pickle boundary"]
     S4 --> S4c11["StreamingPythonRunner — the streaming worker"]
+    S4 --> S4c12["Command shipping and the broadcast threshold"]
+    S4 --> S4c13["PythonWorkerUtils — the wire codec and the broadcast delta protocol"]
+    S4 --> S4c14["The barrier back-channel — barrier() and allGather() from Python"]
+    S4 --> S4c15["Python-side timing, metrics and spill accounting"]
+    S4 --> S4c16["PythonErrorUtils — the structured-error bridge"]
+    S4 --> S4c17["PythonPartitioner — partitioning by a Python function's id()"]
+    S4 --> S4c18["Python-side memory and profiling — the knobs the JVM never sees"]
+    S4 --> S4c19["Serving results to the Python driver — collect, toLocalIterator, parallelize"]
+    S4 --> S4c20["The Hadoop InputFormat bridge and the Converter plugin point"]
     S5["core"]
     S5 --> S5c0["Config declaration & typed builders (ConfigBuilder / TypedConfigBuilder)"]
     S5 --> S5c1["ConfigEntry hierarchy & readFrom resolution"]
@@ -1046,8 +1057,10 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | ConfigEntry hierarchy & readFrom resolution | core | new | — | — |
 | ConfigReader variable substitution & config providers | core | new | — | — |
 | Proxy-user custom classpath control (slice keyword artifact) | core | new | — | — |
+| Serving results to the Python driver — collect, toLocalIterator, parallelize | core | new | I38 | Getting Data Back to the Python Driver: collect, toLocalIterator, and the Serving Socket |
 | SparkConf deprecation & alternate-key handling | core | new | — | — |
 | Stage-level scheduling and accelerator-aware resources (GPU/FPGA) | core | new | A16 | Stage-Level Scheduling and Accelerator-Aware Resources (GPU/FPGA) |
+| The Hadoop InputFormat bridge and the Converter plugin point | core | new | I37 | Hadoop InputFormats from PySpark: sequenceFile, Writables, and Custom Converters |
 | accumulator-v2 | core | refinement | E10 | AccumulatorV2: Distributed Side-Effect Counters |
 | approximate-actions | core | new | I16 | Approximate Actions and Partial Results |
 | async-rdd-actions | core | refinement | I15 | AsyncRDDActions: Non-Blocking Job Submission |
@@ -1169,7 +1182,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — config-security | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — rpc-resources | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — api-bridge | — | ✅ complete | 4.2.0 | 2026-07-25 |
+| core — api-bridge | — | ✅ complete | 4.2.0 | 2026-08-09 |
 | resource-managers/kubernetes — driver-executor | 89 | ✅ complete | 4.2.0 | 2026-08-07 |
 | resource-managers/kubernetes — auth-networking | — | ✅ complete | 4.2.0 | 2026-08-07 |
 | resource-managers/yarn — am-executor | 61 | ✅ complete | 4.2.0 | 2026-08-08 |
