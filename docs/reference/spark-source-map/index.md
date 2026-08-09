@@ -55,6 +55,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I33 | SQL UDFs: CREATE FUNCTION … RETURN and Plan Inlining | — | — | ⬜ |
 | I34 | Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP | — | — | ⬜ |
 | I35 | Column DEFAULT Values: DDL, INSERT, and the Provider Allowlist | — | — | ⬜ |
+| I36 | JDBC as a Source and a Sink: Type Mapping, Batching, and the Transaction per Partition | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -98,6 +99,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A41 | Decoupling Spark Tasks from Kafka Partitions: minPartitions and maxRecordsPerPartition | — | — | ⬜ |
 | A42 | UNION ALL: Partitioning-Aware Output and Codegen Fusion | — | — | ⬜ |
 | A43 | Attribute Identity: ExprId, DeduplicateRelations, and Ambiguous Self-Joins | — | — | ⬜ |
+| A44 | Type Conversion at the File Boundary: Widening, Unsigned Types, and Refused Reads | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -143,6 +145,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E43 | The DStream Execution Model: What Structured Streaming Replaced | — | — | ⬜ |
 | E44 | Receivers and the Write-Ahead Log: Spark's First Answer to Exactly-Once Ingest | — | — | ⬜ |
 | E45 | TRANSFORM … USING: Piping Rows Through an External Process | — | — | ⬜ |
+| E46 | Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels | — | — | ⬜ |
 
 ## Source concept map
 
@@ -784,6 +787,21 @@ flowchart LR
     S27 --> S27c41["JDBC connection providers — selection, disabling, and the security lock"]
     S27 --> S27c42["Python data sources — the runner architecture"]
     S27 --> S27c43["The state store data source — reading a checkpoint as a table"]
+    S27 --> S27c44["Schema clipping — how the requested Parquet schema is built"]
+    S27 --> S27c45["ParquetRowConverter — the converter tree behind the non-vectorized read"]
+    S27 --> S27c46["ParquetSchemaConverter — the type map in both directions"]
+    S27 --> S27c47["ParquetWriteSupport — the row writer, and the metadata Spark stamps into the file"]
+    S27 --> S27c48["The vectorized Parquet reader — batches, missing columns, and column defaults"]
+    S27 --> S27c49["Definition and repetition levels — rebuilding nested values from flat columns"]
+    S27 --> S27c50["Parquet encodings — RLE, plain, dictionary, and the delta family"]
+    S27 --> S27c51["Physical-to-Catalyst type conversion — widening, unsigned types, and the reads Spark refuses"]
+    S27 --> S27c52["The Parquet footer — one open, two reads, and SKIP_ROW_GROUPS"]
+    S27 --> S27c53["ORC's zero-copy column vectors"]
+    S27 --> S27c54["Avro record conversion — union naming, positional matching, and the incompatible-read guard"]
+    S27 --> S27c55["XML — splitting on a tag, and why rowTag is a Hadoop config"]
+    S27 --> S27c56["JDBC record conversion, batching, and the transaction per partition"]
+    S27 --> S27c57["The V2 file-source triples — one Table/Scan/Write set per format"]
+    S27 --> S27c58["The V2 JDBC table — a V1 scan wearing a V2 API, and the index SPI"]
     S28["sql/core"]
     S28 --> S28c0["JoinSelection — the decision ladder, and what a hint actually overrides"]
     S28 --> S28c1["Build-side selection — the three size tests and the statistic they lack"]
@@ -1078,13 +1096,17 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | Condition handlers — EXIT, CONTINUE, and how a handler is chosen | sql/core | new | I31 | SQL Scripting Condition Handlers: EXIT, CONTINUE and SQLSTATE Matching |
 | Cost evaluation — a re-plan is adopted only if the cost does not rise | sql/core | new | A31 | AQE Cost Evaluation: When a Better Plan Is Thrown Away |
 | Cursors — DECLARE, OPEN, FETCH, CLOSE and the snapshot taken at OPEN | sql/core | new | I32 | SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken |
+| Definition and repetition levels — rebuilding nested values from flat columns | sql/core | new | E46 | Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels |
 | File listing — parallel discovery, the status cache, and basePath | sql/core | new | I28 | Driver-Side File Listing: The Cost Before Any Task Runs |
+| JDBC record conversion, batching, and the transaction per partition | sql/core | new | I36 | JDBC as a Source and a Sink: Type Mapping, Batching, and the Transaction per Partition |
 | Join-side buffering and spill | sql/core | new | A30 | Join-Side Buffering and Spill: Why One Key Kills a Task |
 | LIMIT and OFFSET — the incremental take loop | sql/core | new | A28 | LIMIT, OFFSET and the Incremental Take Loop |
 | MicroBatchExecution — the batch loop, and the two-log write-ahead protocol | sql/core | new | A36 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart |
 | Observing metrics mid-query — CollectMetricsExec and AggregatingAccumulator | sql/core | new | I26 | Observing Metrics Mid-Query: df.observe() and the Observation API |
 | Offline state repartition — changing a stateful query's partition count | sql/core | new | E28 | Offline State Repartition: Changing shuffle.partitions on a Stateful Query |
+| Parquet encodings — RLE, plain, dictionary, and the delta family | sql/core | new | — | — |
 | Partition value type inference — the seven-step ladder | sql/core | new | I27 | Partition Column Type Inference: How a Directory Name Becomes a Typed Column |
+| Physical-to-Catalyst type conversion — widening, unsigned types, and the reads Spark refuses | sql/core | new | A44 | Type Conversion at the File Boundary: Widening, Unsigned Types, and Refused Reads |
 | Python Data Sources — a reader and writer written entirely in Python | sql/core | new | A35 | Python Data Sources: Writing a Connector Without the JVM |
 | Python UDTFs — three eval types, and a UDTF that decides its own schema | sql/core | new | I30 | Python UDTFs: Table Functions That Return Many Rows |
 | Recursive CTEs — UnionLoopExec | sql/core | new | A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator |
@@ -1151,7 +1173,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/core — query-execution | — | ✅ complete | 4.2.0 | 2026-08-08 |
 | sql/core — joins-exec | — | ✅ complete | 4.2.0 | 2026-08-01 |
 | sql/core — adaptive | — | ✅ complete | 4.2.0 | 2026-08-02 |
-| sql/core — datasources | — | ✅ partial | 4.2.0 | 2026-08-04 |
+| sql/core — datasources | — | ✅ complete | 4.2.0 | 2026-08-09 |
 | sql/core — agg-window-exchange | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — python-arrow | — | ✅ complete | 4.2.0 | 2026-08-06 |
 | sql/core — streaming-exec | — | ✅ partial | 4.2.0 | 2026-08-06 |

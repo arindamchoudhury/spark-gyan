@@ -1,10 +1,10 @@
 ---
 subsystem: sql/core
 spark_version: "4.2.0"
-swept_at: 2026-08-04
+swept_at: 2026-08-09
 group: datasources
 all_groups: [query-execution, joins-exec, adaptive, datasources, agg-window-exchange, python-arrow, streaming-exec, classic-api, sql-scripting]
-status: partial
+status: complete
 concepts:
   - name: DataSource — provider lookup, and why every built-in format is still V1
     topics: [B4, I10]
@@ -112,26 +112,72 @@ concepts:
     topics: [B4, I3]
   - name: The state store data source — reading a checkpoint as a table
     topics: [A8]
+  - name: Schema clipping — how the requested Parquet schema is built
+    topics: [I10, B5, E25]
+  - name: ParquetRowConverter — the converter tree behind the non-vectorized read
+    topics: [I10]
+  - name: ParquetSchemaConverter — the type map in both directions
+    topics: [I10, B5]
+  - name: ParquetWriteSupport — the row writer, and the metadata Spark stamps into the file
+    topics: [I10, B4]
+  - name: The vectorized Parquet reader — batches, missing columns, and column defaults
+    topics: [E22, I10, I35]
+  - name: Definition and repetition levels — rebuilding nested values from flat columns
+    topics: []
+    propose:
+      code: E46
+      level: Expert
+      title: "Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels"
+      what: "Below the row-group and pushdown layer, a Parquet column chunk is a sequence of pages, each declaring its own encoding — RLE/bit-packed, plain, dictionary, or one of the delta encodings — plus two integer level streams that record where nulls and list boundaries were, and Spark ships a hand-written vectorized decoder per encoding that writes straight into a column vector before a second pass reassembles nested values from the levels."
+      why: "It explains the performance cliffs no plan or metric shows: a column that stops being fast because its writer's dictionary filled up mid-chunk and Spark had to decode the whole batch eagerly, a rebased or upcast column that is barred from lazy dictionary decoding entirely, and the two extra integer vectors per nesting level that make a deeply nested column cost far more than its data suggests."
+  - name: Parquet encodings — RLE, plain, dictionary, and the delta family
+    topics: []
+  - name: Physical-to-Catalyst type conversion — widening, unsigned types, and the reads Spark refuses
+    topics: []
+    propose:
+      code: A44
+      level: Advanced
+      title: "Type Conversion at the File Boundary: Widening, Unsigned Types, and Refused Reads"
+      what: "Each format decides independently which physical type may be read into which Catalyst type — Parquet's vectorized updater factory, its non-vectorized converter tree, Avro's deserializer and JDBC's getters all carry separate tables covering integer widening, unsigned types that do not fit a signed Java type, INT96 timestamps, decimal encodings and calendar rebasing, and each has its own way of refusing."
+      why: "The refusals surface as runtime errors on specific files rather than analysis failures, the two Parquet readers do not accept the same conversions (so an unrelated column in the projection can decide whether the query works), and the conversions that succeed can change values — an unsigned int64 arrives as a decimal, a legacy-calendar date fails on the row that contains it, and an Avro int-into-long read is only allowed if a legacy flag is on."
+  - name: The Parquet footer — one open, two reads, and SKIP_ROW_GROUPS
+    topics: [I10]
+  - name: ORC's zero-copy column vectors
+    topics: [I10, E22]
+  - name: Avro record conversion — union naming, positional matching, and the incompatible-read guard
+    topics: [I10]
+  - name: XML — splitting on a tag, and why rowTag is a Hadoop config
+    topics: [I23, I10]
+  - name: JDBC record conversion, batching, and the transaction per partition
+    topics: []
+    propose:
+      code: I36
+      level: Intermediate
+      title: "JDBC as a Source and a Sink: Type Mapping, Batching, and the Transaction per Partition"
+      what: "Spark's JDBC connector maps SQL types to Catalyst through the dialect and the driver's ResultSetMetaData, reads in parallel by generating range predicates over a numeric column, and writes by opening one connection per partition that batches every batchsize rows and commits its own transaction."
+      why: "It is the most common non-file source in real pipelines and the one with the least forgiving failure modes: a write that fails halfway leaves the already-committed partitions in the table, numPartitions can only ever reduce write parallelism, a requested isolation level the driver does not support is silently downgraded with a WARN, and truncate-vs-drop on overwrite is a dialect decision rather than a Spark one."
+  - name: The V2 file-source triples — one Table/Scan/Write set per format
+    topics: [I10, B4]
+  - name: The V2 JDBC table — a V1 scan wearing a V2 API, and the index SPI
+    topics: [B4, E5]
 ---
 
-The largest group in the map: **272 files, ~54,000 lines** across the root `execution/datasources/`
+The largest group in the map: **303 files, ~62,000 lines** across the root `execution/datasources/`
 package, eleven format sub-packages, the whole DataSource V2 machinery, JDBC and its dialects, and
 `sql/avro`. It is where `spark.read` becomes tasks and `df.write` becomes files, and almost every
 "why did my data change" question bottoms out somewhere in here.
 
-!!! warning "This page is `status: partial` — one layer is deliberately not covered"
+!!! info "Re-swept 2026-08-09 at an unchanged 4.2.0 — `partial` → `complete`"
 
-    Breadth is complete: every package in the group's scope is visited and cited, and the config
-    slice is fully accounted for. **Depth stops short of the record-level type-conversion layer** —
-    `ParquetRowConverter` (1142 lines), `ParquetReadSupport` (649), `ParquetWriteSupport` (589),
-    `ParquetSchemaConverter` (947), `SparkShreddingUtils` (893), `OrcSerializer`/`OrcDeserializer`,
-    `AvroSerializer`/`AvroDeserializer`, `XmlDataSource`/`XSDToSchema` and `JdbcUtils`'s type-mapping
-    tables. That is roughly 6,000 lines of "how one physical value becomes one Catalyst value",
-    which is a coherent sweep of its own and is the obvious next run for this group. The ~40
-    `v2/*Exec.scala` DDL command executors are covered as one concept rather than individually,
+    The first pass stopped at the physical scan and named the record-level layer as the obvious next
+    run. This one covers it: schema clipping, both Parquet converter trees, the write support and the
+    metadata it stamps, the whole **Java** vectorized stack (29 files, ~7,700 lines — encodings,
+    dictionaries, definition/repetition levels, the updater factory, ORC's zero-copy vectors), Avro
+    and XML record conversion, the JDBC write loop, and the five V2 file-source triples. The ~40
+    `v2/*Exec.scala` DDL command executors are still covered as one concept rather than individually,
     which is proportionate — they are thin wrappers over `TableCatalog` calls.
 
-Three findings to carry into everything below, because they contradict the usual mental model:
+Five findings to carry into everything below, because they contradict the usual mental model:
 
 - **Every built-in file format runs the V1 code path.** `spark.sql.sources.useV1SourceList`
   defaults to `avro,csv,json,kafka,orc,parquet,text`. The V2 implementations
@@ -143,6 +189,12 @@ Three findings to carry into everything below, because they contradict the usual
 - **The read is more forgiving than you want.** `spark.sql.files.ignoreCorruptFiles` does not skip
   a bad file; it marks the partition **finished** at the point of failure and returns the rows read
   so far. The job succeeds with silently truncated data.
+- **Spark still writes INT96 timestamps by default.** `spark.sql.parquet.outputTimestampType`
+  defaults to `INT96` — deprecated by the Parquet spec, no logical annotation, its own rebase mode.
+  Every reader downstream has to special-case it.
+- **A JDBC write is one transaction per partition, whatever the scaladoc says.** `saveTable` claims
+  "a single transaction" and then calls `foreachPartition`. A half-failed write leaves the committed
+  partitions behind.
 
 **Config slice.** `sql/core` registers no configs of its own. The slice was taken over
 `sql/catalyst` + `sql/core` as:
@@ -154,7 +206,9 @@ maxMetadataStringLength|\.binaryFile|filesourceTableRelationCache|charAsVarchar|
 \.variant\.|columnNameOfCorruptRecord|\.text\.
 ```
 
-120 keys — the largest slice of any group. Full accounting in the breadth table at the end.
+**118 keys** at 4.2.0 — the largest slice of any group. (The first pass recorded 120 against the
+same catalog; re-running the pattern gives 118, so that figure was a miscount, not drift.) Full
+accounting in the breadth section at the end.
 
 ```mermaid
 flowchart TD
@@ -1200,88 +1254,544 @@ inspect stateful streaming state.
 
 ---
 
-## Breadth checks
+---
 
-### Package breadth
+## Schema clipping — how the requested Parquet schema is built
 
-Every package the group's scope claims is visited and cited. Sub-packages were walked by hand
-(`--coverage` cannot see them). The counts below are **Scala files directly in each package**;
-`check_drift.py --sweeps` reports larger, recursive totals that also include the Java sources
-(the vectorized Parquet reader is 19 `.java` files) and roll child packages into their parents, so
-its percentages and this table are counting different things:
+**What it is:** the read schema Spark hands parquet-mr is not the file's schema and not the table's
+schema; it is the file schema *clipped* to the requested columns, with any column the file does not
+have **synthesised into the request anyway**. That synthesis is what makes a missing column read as
+nulls instead of failing.
+
+**Code path:** `ParquetFileFormat.buildReaderWithPartitionValues` → `ParquetReadSupport.init` →
+`getRequestedSchema` → `clipParquetSchema` → `ParquetRecordMaterializer`
+
+**Anchor files:**
+
+- [ParquetReadSupport.scala:122](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L122) — `getRequestedSchema`, which reads five configs before it looks at a single column
+- [ParquetReadSupport.scala:139](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L139) — a read schema carrying field IDs against a file carrying none is a hard `RuntimeException` unless `spark.sql.parquet.fieldId.read.ignoreMissing` is set
+- [ParquetReadSupport.scala:162](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L162) — the two readers get **different** requested schemas: parquet-mr gets the clipped schema *intersected* with the file schema (it refuses fields the file lacks), the vectorized reader gets the clipped schema as-is and skips what is missing
+- [ParquetReadSupport.scala:416](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L416) — `clipParquetGroupFields`, the three matching modes; :441 the `getOrElse` that **converts the requested Catalyst field into a Parquet field the file does not contain**
+- [ParquetReadSupport.scala:449](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L449) — case-insensitive mode with two file fields differing only in case is an error, not a pick; :467 the same for two fields sharing a field ID
+- [ParquetReadSupport.scala:478](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L478) — an unmatched *ID* is requested under `generateFakeColumnName` (a UUID), specifically so it cannot accidentally match by name
+- [ParquetReadSupport.scala:495](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L495) — a nested struct whose requested fields are *all* missing gets one extra column appended, chosen by [:512](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetReadSupport.scala#L512) `findCheapestGroupField`, purely so the reader can tell a null struct from a struct of nulls
+- [ParquetRecordMaterializer.scala:41](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRecordMaterializer.scala#L41) — the parquet-mr hook that owns the root `ParquetRowConverter`
+- [ParquetColumn.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetColumn.scala) — the resolved (Catalyst type, Parquet descriptor, repetition/definition level) triple the vectorized path plans against
+
+!!! info "`spark.sql.legacy.parquet.returnNullStructIfAllFieldsMissing` (4.1.0) picks which wrong answer you prefer"
+
+    Before 4.1.0, a struct whose every requested field was absent from the file came back as
+    `null` — indistinguishable from a genuinely null struct. The default now reads one cheap extra
+    column to tell those apart, at the cost of touching a column you did not ask for. Set the
+    legacy flag to get the old behaviour and the old ambiguity.
+
+**Configs:** `spark.sql.caseSensitive`, `spark.sql.parquet.fieldId.read.enabled` (false),
+`.fieldId.read.ignoreMissing` (false), `spark.sql.optimizer.nestedSchemaPruning.enabled` (true),
+`spark.sql.legacy.parquet.returnNullStructIfAllFieldsMissing` (false)
+
+**Maps to topics:** I10, B5, E25
+
+---
+
+## ParquetRowConverter — the converter tree behind the non-vectorized read
+
+**What it is:** parquet-mr's callback API turned into Catalyst rows. One converter object per field
+per nesting level, wired to a `ParentContainerUpdater` that writes into the parent's row, array
+buffer or map builder. This is the path taken whenever the vectorized reader declines the schema.
+
+**Anchor files:**
+
+- [ParquetRowConverter.scala:140](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L140) — the class, and at :150 the assertion that the Parquet schema has **no more** fields than the Catalyst schema — the clipping above is what guarantees it
+- [ParquetRowConverter.scala:305](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L305) — `newConverter`, the single `match` that decides every physical→logical conversion in the file
+- [ParquetRowConverter.scala:593](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L593) — `ParquetStringConverter`, which keeps the page's dictionary and decodes each distinct string once; the decimal converters at :696 do the same
+- [ParquetRowConverter.scala:624](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L624) / [:660](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L660) — **new in 4.2.0**: `ParquetGeometryConverter` / `ParquetGeographyConverter`, which run the file's WKB bytes through `STUtils` with the column's SRID
+- [ParquetRowConverter.scala:535](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L535) — SPARK-30338: a nested struct is deep-copied **only** when its parent is an array or a map, because that converter is re-entered once per element
+- [ParquetRowConverter.scala:790](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L790) — `ParquetArrayConverter` and the 2-level/3-level `LIST` ambiguity: Spark converts the repeated field, compares it against the Catalyst element type, and falls back to the legacy-layout test at :843 when they disagree
+- [ParquetRowConverter.scala:514](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L514) — a bare `repeated` field with no `LIST` annotation is read as a required list of required elements
+- [ParquetRowConverter.scala:571](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L571) — `spark.sql.variant.allowReadingShredded` chooses between the shredded and unshredded VARIANT converters
+
+!!! warning "The 3-level list rule is a guess, and schema evolution can flip it"
+
+    `ParquetArrayConverter` decides whether `repeated group list` is the element or the syntactic
+    wrapper by *converting it and comparing to the Catalyst type*. When the requested element type
+    no longer matches what the file holds — exactly the schema-evolution case — the comparison
+    fails and the decision falls through to the legacy-layout heuristic. A file written by an older
+    non-Spark writer can therefore be read one nesting level deeper than intended.
+
+**Maps to topics:** I10
+
+---
+
+## ParquetSchemaConverter — the type map in both directions
+
+**What it is:** the two converters (`ParquetToSparkSchemaConverter`,
+`SparkToParquetSchemaConverter`) that every other Parquet class calls. Read-side they define what a
+Parquet logical annotation *means*; write-side they define the physical layout Spark emits, and
+`writeLegacyFormat` switches most of it.
+
+**Anchor files:**
+
+- [ParquetSchemaConverter.scala:57](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaConverter.scala#L57) — the read-side converter; :233 `convertPrimitiveField`, the annotation-to-type table, and :320 the rule that an `isAdjustedToUTC` timestamp is always `TIMESTAMP_LTZ` while a local one becomes `TIMESTAMP_NTZ` only if `spark.sql.parquet.inferTimestampNTZ.enabled`
+- [ParquetSchemaConverter.scala:352](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaConverter.scala#L352) — **new in 4.2.0**: `GeometryLogicalTypeAnnotation` / `GeographyLogicalTypeAnnotation` → `GeometryType(crs)` / `GeographyType(crs, algorithm)`
+- [ParquetSchemaConverter.scala:130](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaConverter.scala#L130) — when `useFieldId` and the file carries IDs, the *column name* Spark reports comes from the ID lookup, not from the file's field name
+- [ParquetSchemaConverter.scala:539](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaConverter.scala#L539) — `isElementType`, the parquet-format backwards-compatibility rules for legacy 2-level lists
+- [ParquetSchemaConverter.scala:599](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaConverter.scala#L599) — the write-side converter; :749–:790 decimals (`FIXED_LEN_BYTE_ARRAY` under legacy format, `INT32`/`INT64` for small precisions otherwise), :792–:870 the legacy vs standard `LIST`/`MAP` layouts
+- [ParquetSchemaConverter.scala:923](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetSchemaConverter.scala#L923) — `spark_schema`, the message name every Spark-written Parquet file carries, and `EMPTY_MESSAGE` for a fully pruned read
+
+**Configs:** `spark.sql.parquet.writeLegacyFormat` (false),
+`spark.sql.parquet.inferTimestampNTZ.enabled` (true),
+`spark.sql.parquet.fieldId.write.enabled` (true)
+
+**Maps to topics:** I10, B5
+
+---
+
+## ParquetWriteSupport — the row writer, and the metadata Spark stamps into the file
+
+**What it is:** the write-side mirror of the converter tree: a `ValueWriter` per field that pushes
+into parquet-mr's `RecordConsumer`. It also writes the key/value metadata that a *later reader* uses
+to decide rebasing — which is why the rebase decision is a property of the file, not of the reading
+session.
+
+**Anchor files:**
+
+- [ParquetWriteSupport.scala:99](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetWriteSupport.scala#L99) — `init`; :127 the metadata map: `org.apache.spark.version`, the Spark schema JSON, and — only when the write rebase mode is `LEGACY` — the two `SPARK_LEGACY_*` marker keys plus the session time zone
+- [ParquetWriteSupport.scala:193](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetWriteSupport.scala#L193) — `makeWriter`; :244 the timestamp branch, where `spark.sql.parquet.outputTimestampType` decides INT96 vs `TIMESTAMP_MICROS` vs `TIMESTAMP_MILLIS` (millis **truncates**)
+- [ParquetWriteSupport.scala:338](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetWriteSupport.scala#L338) — `makeDecimalWriter`, and :396 the legacy-format split
+- [ParquetWriteSupport.scala:411](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetWriteSupport.scala#L411) — `makeArrayWriter`: three-level vs two-level, chosen at :456 by `(writeLegacyParquetFormat, containsNull)` — the legacy two-level layout **cannot represent a null element**
+- [ParquetOutputWriter.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetOutputWriter.scala) — the 42-line `OutputWriter` that wires the above into `FileFormatWriter`; [ParquetOutputWriterWithVariantShredding.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetOutputWriterWithVariantShredding.scala) — the shredding variant, driven by [InferVariantShreddingSchema.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/InferVariantShreddingSchema.scala)
+
+!!! warning "Spark still writes INT96 timestamps by default"
+
+    `spark.sql.parquet.outputTimestampType` defaults to **`INT96`** in 4.2.0 — a type the Parquet
+    spec deprecated, with no logical annotation, nanosecond precision and its own separate rebase
+    mode. Every engine that reads your files has to special-case it, and `TIMESTAMP_MICROS` is a
+    one-line change. Check this before blaming a downstream reader for mangling your timestamps.
+
+**Configs:** `spark.sql.parquet.outputTimestampType` (`INT96`),
+`spark.sql.parquet.int96RebaseModeInWrite` (`CORRECTED`),
+`spark.sql.parquet.datetimeRebaseModeInWrite` (`CORRECTED`),
+`spark.sql.parquet.writeLegacyFormat` (false)
+
+**Maps to topics:** I10, B4
+
+---
+
+## The vectorized Parquet reader — batches, missing columns, and column defaults
+
+**What it is:** the reader that produces `ColumnarBatch`es instead of rows. It owns the batch memory,
+decides per column whether that column exists in the file at all, and fills the ones that do not.
+
+**Anchor files:**
+
+- [VectorizedParquetRecordReader.java:67](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedParquetRecordReader.java#L67) — the class; :165 `MEMORY_MODE` from `spark.sql.columnVector.offheap.enabled`, :69 `capacity` from `spark.sql.parquet.columnarReaderBatchSize` (4096)
+- [VectorizedParquetRecordReader.java:393](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedParquetRecordReader.java#L393) — `nextBatch`: reset vectors, read at most `capacity` rows from the current row group, then populate `row_index` if anything asked for it
+- [VectorizedParquetRecordReader.java:435](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedParquetRecordReader.java#L435) — `checkColumn`: a column absent from the file joins `missingColumns`; a **required** (non-nullable) column that is absent is an `IOException` — "Required column is missing in data file"
+- [VectorizedParquetRecordReader.java:525](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedParquetRecordReader.java#L525) — `allocateColumns`: `OffHeapColumnVector` or `OnHeapColumnVector` per top-level field, with a constant-length reservation for partition columns
+- [ParquetColumnVector.java:70](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetColumnVector.java#L70) — the missing-column branch: the `row_index` column is generated, a column with an **existence default** is filled with it and marked constant, and everything else is `setMissing()` → all nulls
+- [ParquetRowIndexUtil.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowIndexUtil.scala) — the row-index generator, initialised per row group from the `PageReadStore`
+- [SpecificParquetRecordReaderBase.java:71](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/SpecificParquetRecordReaderBase.java#L71) — the shared base holding the `ParquetFileReader`, the requested schema and the total row count
+- [orc/OrcColumnarBatchReader.java:198](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcColumnarBatchReader.java#L198) — the same default-value logic on the ORC side, via `ResolveDefaultColumns.existenceDefaultValues`
+
+!!! info "This is where a column `DEFAULT` actually takes effect"
+
+    A `DEFAULT` declared in DDL is stored as an *existence default* in the field metadata and applied
+    **at read time, per file, by the reader** — not by rewriting old files. Both vectorized readers
+    implement it, both throw `IllegalArgumentException` for a default whose type the vector cannot
+    append, and the non-vectorized paths do not implement it at all. See **I35**.
+
+**Configs:** `spark.sql.parquet.columnarReaderBatchSize` (4096),
+`spark.sql.orc.columnarReaderBatchSize` (4096), `spark.sql.columnVector.offheap.enabled` (false)
+
+**Maps to topics:** E22, I10, I35
+
+---
+
+## Definition and repetition levels — rebuilding nested values from flat columns
+
+**What it is:** Parquet stores a nested column as a flat sequence of leaf values plus two integer
+streams — a definition level (how deep the non-null path went) and a repetition level (where a new
+list starts). Reconstructing rows from these is the vectorized reader's hardest job, and it is done
+in a second pass *after* the leaves are decoded.
+
+**Anchor files:**
+
+- [ParquetColumnVector.java:185](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetColumnVector.java#L185) — `assemble`, called once per batch per column, bottom-up
+- [ParquetColumnVector.java:283](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetColumnVector.java#L283) — `assembleCollection`: walks the definition levels to emit array offsets and lengths, distinguishing a **null list** from an **empty list** by whether the level reached `maxDefinitionLevel - 1`
+- [ParquetColumnVector.java:346](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetColumnVector.java#L346) — `assembleStruct`, which needs the levels of exactly one child to decide the struct's own nullity — the reason for the "cheapest field" hack in the clipping concept above
+- [ParquetColumnVector.java:114](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetColumnVector.java#L114) — the level vectors are themselves `WritableColumnVector`s reserved alongside the data, so a deeply nested column costs two extra int vectors per level
+- [ParquetReadState.java:30](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetReadState.java#L30) — the per-chunk cursor: max repetition/definition level, value offset, level offset, values left in page, rows left in batch
+- [ParquetReadState.java:102](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetReadState.java#L102) — `constructRanges`: when the file has a **column index**, the reader is given only the surviving row ranges and skips the rest without decoding them; with no index it uses one range covering everything
+- [VectorizedRleValuesReader.java:374](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedRleValuesReader.java#L374) — `readBatchRepeated`, the level-aware read loop, and :552 `DefLevelProcessor`, which turns runs of definition levels into null runs
+
+!!! info "Column-index page skipping is what `recordLevelFilter` buys you"
+
+    `ParquetReadState`'s row ranges come from parquet-mr's column index. That is the mechanism
+    behind `spark.sql.parquet.columnIndex.filterPushdown` — skipping *pages* rather than row groups.
+    It is orthogonal to the row-group filter and, unlike `recordLevelFilter.enabled`, it does not
+    cost you the vectorized reader.
+
+**Configs:** `spark.sql.parquet.columnIndex.filterPushdown.enabled` (true)
+
+**Maps to topics:** none — proposed as **E46**
+
+---
+
+## Parquet encodings — RLE, plain, dictionary, and the delta family
+
+**What it is:** the bottom of the read stack. Each page declares an encoding; Spark ships a
+hand-written vectorized decoder per encoding that writes straight into a `WritableColumnVector`,
+never materialising a boxed value.
+
+**Anchor files:**
+
+- [VectorizedColumnReader.java:127](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedColumnReader.java#L127) — the dictionary page is read once per column chunk; a chunk with one is *presumed* dictionary-encoded until a page says otherwise
+- [VectorizedColumnReader.java:218](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedColumnReader.java#L218) — SPARK-16334: **one dictionary per batch**. If a chunk mixes dictionary-encoded and plain pages, hitting the plain page forces the whole batch's dictionary IDs to be decoded eagerly (:285) and the vector loses its dictionary
+- [VectorizedColumnReader.java:154](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedColumnReader.java#L154) — lazy dictionary decoding is **disabled** for any column that needs extra processing — upcasting or date/timestamp rebasing — so those columns pay full decode cost even when highly repetitive
+- [VectorizedColumnReader.java:302](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedColumnReader.java#L302) — `readPage`, dispatching on `DataPageV1` vs `DataPageV2`
+- [VectorizedRleValuesReader.java:46](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedRleValuesReader.java#L46) — the hybrid RLE / bit-packed decoder used for levels *and* for dictionary IDs; :266 and :685 document deliberate method splits that keep the RLE fast path small enough for the JIT to inline
+- [VectorizedPlainValuesReader.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedPlainValuesReader.java) — the `PLAIN` decoder, which for fixed-width types is a bulk `Platform.copyMemory`
+- [VectorizedDeltaBinaryPackedReader.java:35](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedDeltaBinaryPackedReader.java#L35) — `DELTA_BINARY_PACKED`, **the default integer encoding in Parquet V2**; [VectorizedDeltaByteArrayReader.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedDeltaByteArrayReader.java) and [VectorizedDeltaLengthByteArrayReader.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedDeltaLengthByteArrayReader.java) — the string counterparts
+- [ParquetDictionary.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetDictionary.java) — the `Dictionary` a column vector holds when it defers decoding, carrying the `needTransform` flag for unsigned/decimal cases
+- the three interfaces the decoders share: [VectorizedValuesReader.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedValuesReader.java) (the bulk-read contract), [VectorizedReaderBase.java:28](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/VectorizedReaderBase.java#L28) (every method throwing `SparkUnsupportedOperationException` until a subclass overrides it), and [ParquetVectorUpdater.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetVectorUpdater.java) (`readValues` / `skipValues` / `decodeSingleDictionaryId`)
+- [ParquetCompressionCodec.java:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetCompressionCodec.java#L31) — the nine accepted codec names; [orc/OrcCompressionCodec.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcCompressionCodec.java) — ORC's six
+
+!!! warning "Dictionary encoding is a property of the page, not of the column"
+
+    A writer that exceeds its dictionary size budget silently falls back to plain encoding **for the
+    rest of the chunk**. Spark handles it, but the cost lands on the reader: the batch's already-read
+    dictionary IDs are decoded eagerly and every subsequent value is materialised. A column that
+    "used to be fast" after a data-volume change is usually this, and nothing in the plan or the
+    metrics shows it.
+
+**Maps to topics:** none — proposed as **E46**
+
+---
+
+## Physical-to-Catalyst type conversion — widening, unsigned types, and the reads Spark refuses
+
+**What it is:** the vectorized reader's own type table, separate from the converter tree. Given a
+requested Catalyst type and a physical Parquet type, it returns an *updater* — or refuses. It is the
+one place that decides whether reading an `INT32` column as `BIGINT` works.
+
+**Anchor files:**
+
+- [ParquetVectorUpdaterFactory.java:73](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetVectorUpdaterFactory.java#L73) — `getUpdater`, the full matrix; :684 `DowncastLongUpdater`, :721 `UnsignedLongUpdater` (an unsigned `INT64` is read as a *decimal*, because it does not fit a signed long)
+- [ParquetVectorUpdaterFactory.java:109](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetVectorUpdaterFactory.java#L109) — the rebase-aware updaters: `"EXCEPTION"` becomes a `failIfRebase` flag checked *per value*, so a legacy-calendar date fails on the row that contains it, not at planning time
+- [ParquetVectorUpdaterFactory.java:1053](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetVectorUpdaterFactory.java#L1053) — `GeometryUpdater`, which routes each WKB value through [WKBConverterStrategy.java:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/WKBConverterStrategy.java#L25) (`WKBToGeometryConverter` / `WKBToGeographyConverter` over `STUtils`)
+- [ParquetVectorUpdaterFactory.java:1756](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetVectorUpdaterFactory.java#L1756) — the refusal: `SchemaColumnConvertNotSupportedException`, carrying the column, the physical type and the logical type
+- [SchemaColumnConvertNotSupportedException.java:26](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/SchemaColumnConvertNotSupportedException.java#L26) — the exception, and [v2/FileDataSourceV2.scala:136](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/FileDataSourceV2.scala#L136) — where it becomes `PARQUET_COLUMN_DATA_TYPE_MISMATCH` with the file path attached
+- [ParquetRowConverter.scala:325](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/parquet/ParquetRowConverter.scala#L325) — the non-vectorized path's version of the same widening rules, which is **not** identical: it also accepts `INT32 → DOUBLE` and `FLOAT → DOUBLE`
+- [avro/AvroDeserializer.scala:115](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/AvroDeserializer.scala#L115) — Avro's equivalent guard, `spark.sql.legacy.avro.allowIncompatibleSchema`, off by default since 3.5.1
+- [jdbc/JdbcUtils.scala:189](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L189) — the JDBC version: `getCatalystType`, ending in `unrecognizedSqlTypeError`
+
+!!! warning "The two Parquet readers do not accept the same set of conversions"
+
+    `INT32 → DOUBLE` is handled by `ParquetRowConverter` and rejected by the vectorized updater
+    factory. Because the vectorized reader is used only when every result column is atomic, the
+    *same query* against the *same file* can succeed or throw `PARQUET_COLUMN_DATA_TYPE_MISMATCH`
+    depending on whether an unrelated nested column is in the projection. If you hit this, the fix is
+    to fix the schema, not to toggle `enableVectorizedReader`.
+
+**Configs:** `spark.sql.parquet.datetimeRebaseModeInRead` (`CORRECTED`),
+`spark.sql.parquet.int96RebaseModeInRead` (`CORRECTED`),
+`spark.sql.legacy.avro.allowIncompatibleSchema` (false)
+
+**Maps to topics:** none — proposed as **A44**
+
+---
+
+## The Parquet footer — one open, two reads, and SKIP_ROW_GROUPS
+
+**What it is:** every Parquet read starts by reading the footer, and the footer is read *twice* by
+the naive path — once for planning, once for scanning. 4.x avoids the second open for the vectorized
+reader by handing the open stream forward.
+
+**Anchor files:**
+
+- [ParquetFooterReader.java:48](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetFooterReader.java#L48) — `buildFilter`: `SKIP_ROW_GROUPS` when only the schema is wanted, otherwise a range filter limited to this split's byte range, so a split reads only the row-group metadata it can own
+- [ParquetFooterReader.java:87](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/ParquetFooterReader.java#L87) — `openFileAndReadFooter`, whose comment states the two-step problem plainly; with `keepInputStreamOpen` the stream is detached and passed on, and **the caller owns closing it**
+- [OpenedParquetFooter.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/parquet/OpenedParquetFooter.java) — the record carrying (footer, input file, optional stream)
+- [v2/parquet/ParquetPartitionReaderFactory.scala:91](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetPartitionReaderFactory.scala#L91) — the caller, keeping the stream open only when the vectorized reader will use it; :230 the ownership transfer
+- [v2/parquet/ParquetPartitionReaderFactory.scala:264](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetPartitionReaderFactory.scala#L264) — `isCreatedByParquetMr`, read from the footer's `createdBy`: it decides the rebase mode for a file with no Spark version metadata
+- [orc/OrcFooterReader.java:41](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcFooterReader.java#L41) and [orc/OrcColumnStatistics.java:56](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcColumnStatistics.java#L56) — the ORC equivalent: flat statistics re-nested into a tree so aggregate pushdown can address a nested column
+
+**Maps to topics:** I10
+
+---
+
+## ORC's zero-copy column vectors
+
+**What it is:** ORC's vectorized path differs from Parquet's in one structural way — Spark does not
+decode into its own vectors, it *wraps* Hive's `ColumnVector` objects in adapters. There is no copy
+and no Spark-side decoder.
+
+**Anchor files:**
+
+- [orc/OrcColumnarBatchReader.java:156](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcColumnarBatchReader.java#L156) — `initBatch`; :166 a requested column that is also a partition column is filled from the partition value and never read from the file; :177 the comment "Just wrap the ORC column vector instead of copying it"
+- [orc/OrcColumnVector.java:31](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcColumnVector.java#L31) — the base adapter; [OrcAtomicColumnVector.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcAtomicColumnVector.java), [OrcArrayColumnVector.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcArrayColumnVector.java), [OrcMapColumnVector.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcMapColumnVector.java), [OrcStructColumnVector.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcStructColumnVector.java) — one per shape, built by [OrcColumnVectorUtils.java](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcColumnVectorUtils.java)
+- [orc/OrcColumnarBatchReader.java:226](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/orc/OrcColumnarBatchReader.java#L226) — the batch size comes from ORC's own `VectorizedRowBatch`, not from Spark: `spark.sql.orc.columnarReaderBatchSize` sizes the batch Spark *asks* for
+
+!!! info "ORC nested types are supported by the vectorized reader; Parquet's are not"
+
+    Because the adapters wrap whatever ORC produced, `OrcArrayColumnVector` and friends give the ORC
+    vectorized reader working nested-type support. Parquet's vectorized reader still requires every
+    *result* column to be atomic. Two formats, opposite constraints, same config name
+    (`enableVectorizedReader`) — do not carry an assumption from one to the other.
+
+**Configs:** `spark.sql.orc.enableVectorizedReader` (true), `spark.sql.orc.columnarReaderBatchSize` (4096)
+
+**Maps to topics:** I10, E22
+
+---
+
+## Avro record conversion — union naming, positional matching, and the incompatible-read guard
+
+**What it is:** Avro has no vectorized path at all; every record goes through
+`AvroDeserializer`/`AvroSerializer`. Avro's union types have no Catalyst equivalent, so the mapping
+is lossy in a way that is configurable — and the configuration changes column *names*.
+
+**Anchor files:**
+
+- [avro/AvroDeserializer.scala:48](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/AvroDeserializer.scala#L48) — the class: `positionalFieldMatch`, `useStableIdForUnionType`, `stableIdPrefixForUnionType`
+- [avro/AvroDeserializer.scala:115](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/AvroDeserializer.scala#L115) — `preventReadingIncorrectType`, and :157/:171 `avroIncompatibleReadError`, which names both types and points at the legacy flag
+- [avro/SchemaConverters.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/SchemaConverters.scala) — the type map both ways, including the union-to-struct rule: `member0`, `member1`, … unless `useStableIdForUnionType` names them after the branch types
+- [avro/AvroSerializer.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/AvroSerializer.scala) — the write side, sharing the positional-match option
+- [avro/AvroUtils.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/AvroUtils.scala) — `AvroMatchedField` / the field-matcher that implements name vs position; [avro/CustomDecimal.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/CustomDecimal.scala) — the `logicalType` extension Spark recognises for decimals in `avroSchema`
+- [avro/AvroOptions.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/avro/AvroOptions.scala) — `avroSchema`, `avroSchemaUrl`, `recordName`, `recordNamespace`, `positionalFieldMatching`, `datetimeRebaseMode`
+
+!!! warning "Turning on stable union IDs renames your columns"
+
+    `useStableIdForUnionType` replaces `member0`/`member1` with type-derived names. It is the better
+    schema, and it is a **breaking change to every downstream reference** to those fields — including
+    saved views and code that reads `union_col.member0`. Change it at the same time as the consumers,
+    not before.
+
+**Configs:** `spark.sql.legacy.avro.allowIncompatibleSchema` (false),
+`spark.sql.avro.datetimeRebaseModeInRead` / `InWrite` (`CORRECTED`),
+`spark.sql.avro.compression.codec` (`snappy`)
+
+**Maps to topics:** I10
+
+---
+
+## XML — splitting on a tag, and why `rowTag` is a Hadoop config
+
+**What it is:** XML is the only built-in format whose split boundaries are defined by *content*.
+Spark ships a custom `TextInputFormat` that scans for the row tag, so a split boundary in the middle
+of a record is repaired by reading past it.
+
+**Anchor files:**
+
+- [xml/XmlInputFormat.scala:35](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XmlInputFormat.scala#L35) — the `TextInputFormat` subclass; :44 the three Hadoop keys (`xmlinput.start`, `xmlinput.end`, `xmlinput.encoding`) through which `rowTag` reaches the reader
+- [xml/XmlInputFormat.scala:198](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XmlInputFormat.scala#L198) — `readUntilStartElement`, and at :185 the deliberate choice to return a truncated record rather than fail, "which will invariably cause a parse error later" — i.e. as a malformed record, handled by the usual `mode`
+- [xml/XmlInputFormat.scala:109](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XmlInputFormat.scala#L109) — the compressed-split case, where the reader cannot trust `filePosition` and counts bytes by hand
+- [xml/XmlDataSource.scala:86](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XmlDataSource.scala#L86) — the same `multiLine` split as CSV/JSON: `TextInputXmlDataSource` (:96, splittable) vs `MultiLineXmlDataSource` (:169, whole file per task)
+- [xml/XmlDataSource.scala:229](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XmlDataSource.scala#L229) — `inferOptimized`, the sampling-based inference path
+- [xml/XSDToSchema.scala:47](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XSDToSchema.scala#L47) — an **XSD file can be used as the schema** (`rowValidationXSDPath` validates; `XSDToSchema.read` converts), the only format with a schema language of its own
+- [xml/XmlOutputWriter.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XmlOutputWriter.scala), [xml/XmlUtils.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/xml/XmlUtils.scala) — the write side and the shared helpers
+- [csv/CsvOutputWriter.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/csv/CsvOutputWriter.scala), [json/JsonOutputWriter.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/json/JsonOutputWriter.scala), [json/JsonUtils.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/json/JsonUtils.scala) — the sibling text writers, all built on `CodecStreams`
+- [HadoopLineRecordReader.java:54](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/java/org/apache/spark/sql/execution/datasources/HadoopLineRecordReader.java#L54) — Hadoop's `LineRecordReader`, **inlined into Spark** so a compression option can be passed and codecs Hadoop's own reader does not handle (ZSTD) can be used; this is what `spark.sql.execution.datasources.hadoopLineRecordReader.enabled` switches back off
+
+**Configs:** `spark.sql.xml.filterPushdown.enabled` (true), `spark.sql.xml.variant.respectInferSchema` (true)
+
+**Maps to topics:** I23, I10
+
+---
+
+## JDBC record conversion, batching, and the transaction per partition
+
+**What it is:** the JDBC write loop. Not a file format at all: every partition opens its own
+connection, sets its own isolation level, and commits its own transaction.
+
+**Anchor files:**
+
+- [jdbc/JdbcUtils.scala:189](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L189) — `getCatalystType` (JDBC type → Catalyst) and :279 `getSchema`, which asks the dialect first and falls back to the driver's `ResultSetMetaData`
+- [jdbc/JdbcUtils.scala:428](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L428) — `makeGetter`, one closure per column, and :660 `makeSetter`, its write-side mirror
+- [jdbc/JdbcUtils.scala:784](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L784) — `savePartition`; :823 the isolation negotiation — a level the driver does not support is **silently downgraded to the driver default with a `WARN`**, and a driver without transaction support drops to `TRANSACTION_NONE`
+- [jdbc/JdbcUtils.scala:881](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L881) — `executeBatch` every `batchSize` rows (1000), with a comment noting that a mid-batch task kill may drop the in-flight batch
+- [jdbc/JdbcUtils.scala:920](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L920) — the `finally`: rollback is **best-effort** and only meaningful when transactions are supported
+- [jdbc/JdbcUtils.scala:1047](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L1047) — `saveTable`; :1059 `numPartitions` **only ever coalesces** — it caps concurrent connections and can never increase write parallelism
+- [jdbc/JdbcUtils.scala:1074](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JdbcUtils.scala#L1074) — `createTable`, `truncateTable` and the `cascadeTruncate` dialect hook behind `SaveMode.Overwrite` + `truncate`
+- [jdbc/JDBCOptions.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/JDBCOptions.scala) — `batchsize`, `isolationLevel`, `truncate`, `createTableOptions`, `createTableColumnTypes`, `queryTimeout`, `pushDownPredicate`
+
+!!! warning "\"Saves the RDD to the database in a single transaction\" is not what the code does"
+
+    That is `saveTable`'s own scaladoc, and the loop below it calls `foreachPartition(savePartition)`
+    — **one transaction per partition**. A write that fails halfway leaves every already-committed
+    partition in the table. There is no cross-partition atomicity available through this path at any
+    isolation level; if you need all-or-nothing, stage into a temporary table and swap.
+
+**Configs:** none in `SQLConf` — every JDBC knob is a read/write **option**, plus
+`spark.sql.sources.disabledJdbcConnProviderList`
+
+**Maps to topics:** none — proposed as **I36**
+
+---
+
+## The V2 file-source triples — one Table/Scan/Write set per format
+
+**What it is:** the five parallel DSv2 implementations of the built-in file formats. Each is the same
+five classes, and each is unreachable in a default session because its short name is in
+`useV1SourceList`.
+
+**Anchor files:**
+
+- [v2/parquet/ParquetDataSourceV2.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetDataSourceV2.scala) → [ParquetTable.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetTable.scala) → [ParquetScanBuilder.scala:35](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetScanBuilder.scala#L35) → [ParquetScan.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetScan.scala) → [ParquetPartitionReaderFactory.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetPartitionReaderFactory.scala), plus [ParquetWrite.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetWrite.scala)
+- [v2/parquet/ParquetScanBuilder.scala:56](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetScanBuilder.scala#L56) — what the V2 path can do that V1 cannot: nested schema pruning declared as a capability (:56), **aggregate pushdown** from footer statistics (:86), and `pushVariantExtractions` (:106)
+- [v2/parquet/ParquetPartitionReaderFactory.scala:116](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/parquet/ParquetPartitionReaderFactory.scala#L116) — `supportColumnarReads` per *partition*, and the two builders (:120 row, :168 columnar) that make columnar-vs-row a runtime decision rather than a plan-time one
+- the other four are structurally identical, six files each: [OrcDataSourceV2.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/orc/OrcDataSourceV2.scala) / `OrcTable.scala` / `OrcScanBuilder.scala` / `OrcScan.scala` / `OrcPartitionReaderFactory.scala` / `OrcWrite.scala`; [CSVDataSourceV2.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/csv/CSVDataSourceV2.scala) / `CSVTable.scala` / `CSVScanBuilder.scala` / `CSVScan.scala` / `CSVPartitionReaderFactory.scala` / `CSVWrite.scala`; [JsonDataSourceV2.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/json/JsonDataSourceV2.scala) / `JsonTable.scala` / `JsonScanBuilder.scala` / `JsonScan.scala` / `JsonPartitionReaderFactory.scala` / `JsonWrite.scala`; [TextDataSourceV2.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/text/TextDataSourceV2.scala) / `TextTable.scala` / `TextScanBuilder.scala` / `TextScan.scala` / `TextPartitionReaderFactory.scala` / `TextWrite.scala`
+- only `ParquetScanBuilder` and `OrcScanBuilder` implement `pushAggregation`; the three text formats have no statistics to answer from, so their scan builders push filters and column pruning only
+
+!!! info "Read these when writing a connector, not when debugging a query"
+
+    These 30 files are the reference implementation of the DSv2 read/write API against a file system.
+    They are also, in a default session, dead code — `spark.sql.sources.useV1SourceList` routes every
+    one of these formats to V1. Use them as the worked example; do not expect a stack trace to pass
+    through them.
+
+**Maps to topics:** I10, B4
+
+---
+
+## The V2 JDBC table — a V1 scan wearing a V2 API, and the index SPI
+
+**What it is:** the one built-in DSv2 table that is not a file source. It implements the V2 catalog
+and index interfaces, but its `Scan` is a `V1Scan` that converts itself back into a `BaseRelation` —
+so pushdown is planned the V2 way and executed the V1 way.
+
+**Anchor files:**
+
+- [v2/jdbc/JDBCTable.scala:36](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/jdbc/JDBCTable.scala#L36) — `with SupportsIndex` (:44), implementing `createIndex` (:73), `dropIndex`, `indexExists`, `listIndexes` against the dialect's SQL
+- [v2/jdbc/JDBCScan.scala:27](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/jdbc/JDBCScan.scala#L27) — the pushdown record (predicates, aggregate columns, group-by length, limit, offset, sample) and :40 `toV1TableScan`, the bridge to [JDBCV1RelationFromV2Scan.scala:30](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/jdbc/JDBCV1RelationFromV2Scan.scala#L30)
+- [v2/jdbc/JDBCScan.scala:54](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/jdbc/JDBCScan.scala#L54) — `description`, which is what puts `PushedAggregates`, `PushedGroupByExpressions`, `PushedFilters`, `PushedLimit`, `PushedOffset` into your `EXPLAIN`
+- [v2/jdbc/JDBCWriteBuilder.scala:32](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/jdbc/JDBCWriteBuilder.scala#L32) — `truncate()`, and :37 a `V1Write` that hands the `DataFrame` to `JdbcUtils.saveTable`
+- [ExternalEngineDatasourceRDD.scala:24](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/ExternalEngineDatasourceRDD.scala#L24) — the one-method trait (`getExternalEngineQuery`) by which a relation exposes the SQL it will send to the remote engine
+- [v2/CreateIndexExec.scala:34](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/CreateIndexExec.scala#L34) and [v2/DropIndexExec.scala](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/v2/DropIndexExec.scala) — `CREATE INDEX` / `DROP INDEX`, which reach `SupportsIndex` and therefore work **only** against a JDBC catalog among built-ins
+- [LogicalRelation.scala:39](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/LogicalRelation.scala#L39) — the plan node every V1 relation (file or JDBC) sits in, carrying the optional `CatalogTable` and, for streaming, the `SparkDataStream`; [SourceOptions.scala:25](https://github.com/apache/spark/blob/v4.2.0/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/SourceOptions.scala#L25) — the two metastore-interop options (`skipHiveMetadata`, `respectSparkSchema`)
+
+**Maps to topics:** B4, E5
+
+---
+
+## Breadth check 1 — the config slice
+
+`sql/core` registers no configs of its own, so the slice is taken over **`sql/catalyst` + `sql/core`**
+with the pattern printed near the top of this page. Reproduce it with:
+
+```bash
+PYTHONIOENCODING=utf-8 python -c "
+import yaml, re
+d = yaml.safe_load(open('docs/reference/spark-source-map/configs/catalog.yaml', encoding='utf-8'))
+cs = [c for c in d['configs'] if c['subsystem'] in ('sql/catalyst','sql/core')]
+pat = re.compile(r'\.sources\.|\.files\.|\.parquet\.|\.orc\.|\.csv\.|\.json\.|\.xml\.|\.avro\.|jdbc|\.datasource|partitionColumnTypeInference|partitionOverwriteMode|schemaPruning|maxMetadataStringLength|\.binaryFile|filesourceTableRelationCache|charAsVarchar|\.variant\.|columnNameOfCorruptRecord|\.text\.')
+sel = sorted({c['key'] for c in cs if pat.search(c['key'])})
+print(len(sel)); [print(k) for k in sel]
+"
+```
+
+**118 keys at 4.2.0**, all tied to a concept above. (The first pass reported 120 against this same
+catalog; re-running the pattern gives 118. A miscount, not drift — the catalog has not been
+regenerated since 2026-07-25.)
+
+| Family | Count | Concept that owns them |
+|---|---|---|
+| `spark.sql.parquet.*` (incl. `legacy.parquet.*`) | 35 | inference, schema clipping, the vectorized reader, encodings, filters, rebasing, field IDs, write support |
+| `spark.sql.sources.*` (non-v2) | 18 | provider lookup, file listing, bucketing, commit protocol, partition overwrite, `binaryFile` |
+| `spark.sql.sources.v2.bucketing.*` | 11 | storage-partitioned joins |
+| `spark.sql.orc.*` | 9 | ORC schema resolution, filters, the zero-copy vectors |
+| `spark.sql.avro.*` + `legacy.avro.*` | 9 | Avro, Avro record conversion |
+| `spark.sql.files.*` | 9 | splitting, listing, the corrupt-file skip, `maxRecordsPerFile` |
+| `spark.sql.variant.*` | 9 | VARIANT, shredding, the shredded read converter |
+| `spark.sql.json.*` + `legacy.*ParsingFallback` | 6 | the text formats, malformed-record handling |
+| `spark.sql.csv.*` | 4 | the text formats |
+| `spark.sql.xml.*` | 1 | XML |
+| remainder | 7 | `charAsVarchar`, `columnNameOfCorruptRecord`, `execution.datasources.hadoopLineRecordReader.enabled`, `filesourceTableRelationCacheSize`, `maxMetadataStringLength`, `optimizer.datasourceV2ExprFolding`, `optimizer.datasourceV2JoinPushdown` — each named in its concept |
+
+**Configs this group reads that the slice cannot see.** These are invisible to `--sweeps` and to any
+namespace pattern, so they can only ever be caught by eye:
+
+- `spark.sql.timestampType` — decides whether an inferred partition timestamp is LTZ or NTZ
+- `spark.sql.caseSensitive` — the matching mode in schema clipping and in `ParquetRowConverter`
+- `spark.sql.columnVector.offheap.enabled` — the vectorized readers' memory mode
+- `spark.sql.optimizer.plannedWrite.enabled` — `V1Writes`
+- `spark.sql.maxConcurrentOutputFileWriters` — the dynamic-partition write path
+- `spark.io.warning.largeFileThreshold` — the one warning about an unsplittable file
+- `spark.sql.optimizer.nestedSchemaPruning.enabled` — read twice: once by the optimizer rule, once by `ParquetReadSupport` out of the *Hadoop* configuration
+
+Plus every JDBC knob, which is an **option**, not a config: `batchsize`, `isolationLevel`,
+`numPartitions`, `truncate`, `cascadeTruncate`, `createTableOptions`, `createTableColumnTypes`,
+`queryTimeout`, `pushDownPredicate`, `pushDownAggregate`, `pushDownLimit`, `pushDownOffset`.
+
+## Breadth check 2 — the packages
+
+Every package the group's scope claims, walked by hand including sub-packages (`--coverage` cannot
+see nested ones). Counts are **Scala and Java files** directly in each package; `check_drift.py
+--sweeps` rolls child packages into parents and so reports different totals.
 
 | Package | Files | Cited | Covered by |
 |---|---|---|---|
-| `execution/datasources/` | 50 | 50 | the V1 read and write concepts, listing, partitioning, pruning, rules |
-| `execution/datasources/parquet/` | 15 | 15 | inference, vectorized reader, filters, rebasing, variant shredding |
-| `execution/datasources/orc/` | 9 | 9 | schema resolution, filters, options |
-| `execution/datasources/csv/` | 4 | 4 | splitability, inference |
-| `execution/datasources/json/` | 4 | 4 | splitability, inference-as-a-job |
-| `execution/datasources/xml/` | 6 | 6 | the text-formats concept |
+| `execution/datasources/` (scala) | 50 | 50 | the V1 read and write concepts, listing, partitioning, pruning, rules, `LogicalRelation`, `SourceOptions` |
+| `execution/datasources/` (java) | 2 | 2 | `HadoopLineRecordReader`, `SchemaColumnConvertNotSupportedException` |
+| `execution/datasources/parquet/` (scala) | 15 | 15 | inference, clipping, converter tree, schema converter, write support, filters, rebasing, shredding |
+| `execution/datasources/parquet/` (java) | 19 | 19 | the vectorized reader, column vectors, read state, updaters, encodings, footer, WKB |
+| `execution/datasources/orc/` (scala) | 9 | 9 | schema resolution, filters, options, serde |
+| `execution/datasources/orc/` (java) | 10 | 10 | the zero-copy column vectors, batch reader, footer statistics, codecs |
+| `execution/datasources/csv/` | 4 | 4 | splitability, inference, the output writer |
+| `execution/datasources/json/` | 4 | 4 | splitability, inference-as-a-job, the output writer |
+| `execution/datasources/xml/` | 6 | 6 | tag-based splitting, the two data sources, XSD, the output writer |
 | `execution/datasources/text/` | 3 | 3 | the text-formats concept |
 | `execution/datasources/binaryfile/` | 1 | 1 | binaryFile |
 | `execution/datasources/noop/` | 1 | 1 | noop |
-| `execution/datasources/jdbc/` | 8 | 8 | JDBC partitioning |
+| `execution/datasources/jdbc/` | 8 | 8 | JDBC partitioning, record conversion, the write loop |
 | `execution/datasources/jdbc/connection/` | 8 | 8 | connection providers |
 | `execution/datasources/v2/` | 79 | 79 | the DSv2 read/write concepts + the command-executor list |
-| `execution/datasources/v2/{csv,json,orc,parquet,text}/` | 30 | 30 | the V2 file source concept (as five triples) |
-| `execution/datasources/v2/jdbc/` | 6 | 6 | JDBC (V2 path) |
+| `execution/datasources/v2/{parquet,orc,csv,json,text}/` | 30 | 30 | the V2 file-source triples |
+| `execution/datasources/v2/jdbc/` | 6 | 6 | the V2 JDBC table and the V1-scan bridge |
 | `execution/datasources/v2/python/` | 14 | 14 | Python data sources |
 | `execution/datasources/v2/state/` (+ `metadata`, `utils`) | 9 | 9 | the state data source |
 | `jdbc/` | 14 | 14 | dialects |
-| `avro/` | 9 | 9 | Avro |
+| `avro/` | 9 | 9 | Avro, Avro record conversion |
 | `sources/` | 2 | 2 | the V1 relation API |
+| **Total** | **303** | **303** | |
 
-Two files **outside** the scope are cited because the concepts require them:
+Four files **outside** the scope are cited because the concepts require them:
 `execution/PartitionedFileUtil.scala` and `execution/DataSourceScanExec.scala`
-(`sql/core — query-execution`, swept), plus `adaptive/InsertAdaptiveSparkPlan.scala`
-(`sql/core — adaptive`, swept).
+(`sql/core — query-execution`, swept), `adaptive/InsertAdaptiveSparkPlan.scala`
+(`sql/core — adaptive`, swept), and `catalyst/util/STUtils` (`sql/catalyst`, swept as part of the
+geospatial expressions).
 
-**What `status: partial` refers to** is depth, not breadth: the record-level type-conversion layer
-named in the warning at the top of this page is cited but not traced. Roughly 6,000 lines across
-`ParquetRowConverter`/`ParquetReadSupport`/`ParquetWriteSupport`/`ParquetSchemaConverter`,
-`SparkShreddingUtils`, `Orc{Serializer,Deserializer}`, `Avro{Serializer,Deserializer}`,
-`XmlDataSource`/`XSDToSchema` and `JdbcUtils`'s type tables.
+**What is deliberately not traced.** Three areas are cited and named but not walked line by line,
+because each belongs to another group or another sweep:
 
-### Config breadth
-
-All **120** keys in the slice tie to a concept above. Grouped by the concept that owns them:
-
-| Family | Count | Concept |
-|---|---|---|
-| `spark.sql.parquet.*` | 30 | Parquet inference / vectorized reader / filters / rebasing / variant |
-| `spark.sql.variant.*` + `spark.sql.xml.variant.*` | 10 | VARIANT |
-| `spark.sql.sources.v2.bucketing.*` | 11 | storage-partitioned joins |
-| `spark.sql.orc.*` | 9 | ORC |
-| `spark.sql.avro.*` + `legacy.avro.*` | 9 | Avro |
-| `spark.sql.files.*` | 8 | splitting, listing, the corrupt-file skip, `maxRecordsPerFile` |
-| `spark.sql.sources.*` (non-v2) | 14 | provider lookup, listing, bucketing, commit, partition overwrite |
-| `spark.sql.csv.*` / `json.*` / `legacy.*ParsingFallback` / `columnNameOfCorruptRecord` | 12 | the text formats |
-| `spark.sql.optimizer.*` (schema pruning, DSv2 folding/join pushdown) | 4 | nested pruning, V2 pushdown |
-| remainder (`charAsVarchar`, `maxMetadataStringLength`, `filesourceTableRelationCacheSize`, `execution.datasources.hadoopLineRecordReader.enabled`, `sources.default`, …) | 13 | named in their concepts above |
-
-Six keys read by this group fall outside the slice pattern and are cited above anyway:
-`spark.sql.timestampType` and `spark.sql.caseSensitive` (partition inference, column matching),
-`spark.sql.columnVector.offheap.enabled` (vector types),
-`spark.sql.optimizer.plannedWrite.enabled` (V1Writes),
-`spark.sql.maxConcurrentOutputFileWriters` (concurrent writers), and
-`spark.io.warning.largeFileThreshold` (the unsplittable-file warning).
+- The ~40 `v2/*Exec.scala` DDL command executors are one concept, not forty. They are thin wrappers
+  over `TableCatalog` / `ViewCatalog` calls; the interesting half is the catalog API itself, which
+  lives in `sql/catalyst`'s connector package.
+- `SparkShreddingUtils` (893 lines) is named under VARIANT but its shredding *algebra* belongs with
+  **I22**, not with the file source.
+- The state data source's internals belong to `sql/core — streaming-exec`; this page covers only the
+  fact that a checkpoint is readable as a table.
 
 ## Overlapping topic traces
 
 This sweep's codes are `A1`, `A2`, `A8`, `A13`, `A18`, `A25`, `A26`, `B4`, `B5`, `B8`, `E5`, `E17`,
-`E22`, `E23`, `I3`, `I5`, `I7`, `I8`, `I10`, `I21`, `I22`, `I23`, `I24`. Eight have `topics/*.md`
-traces — `B4`, `B5`, `B8`, `I3`, `I5`, `I7`, `I8`, `I10` — **all recorded at 4.2.0**, matching this
-sweep, and `check_drift.py --sweeps` flags no version mismatch. Read against each; no contradiction
-was found. The six below are the ones this sweep adds something substantive to; `B8` and `I3` gain
-only the cross-references already noted in their concepts (the V2 command executors, and the Python
-data-source runner architecture).
+`E22`, `E23`, `E25`, `I3`, `I5`, `I7`, `I8`, `I10`, `I21`, `I22`, `I23`, `I24`, `I35`, plus the three
+proposals (`I36`, `A44`, `E46`). Eight have `topics/*.md` traces — `B4`, `B5`, `B8`, `I3`, `I5`,
+`I7`, `I8`, `I10` — **all recorded at 4.2.0**, matching this sweep; `check_drift.py --sweeps` flags
+no version mismatch. Read against each again on this pass; no contradiction was found, and the
+re-sweep adds to two of them:
 
-| Trace | This sweep adds |
+| Trace | What this re-sweep adds on top of the first pass |
 |---|---|
-| [B4](../topics/b4.md) — Reading and writing | the numbers behind "what decides read parallelism": the exact `maxSplitBytes` formula, `openCostInBytes` as a per-file surcharge, and `maxPartitionNum`'s silent re-pack. On the write side, the required-ordering rule that forces a sort on every partitioned write, and that static `INSERT OVERWRITE` deletes the destination *before* running |
-| [B5](../topics/b5.md) — Schema | that a Parquet or ORC schema comes from **one arbitrary part-file** by default, and the four different file↔table column-matching rules (see E25) |
-| [I5](../topics/i5.md) — Partitioning | the read-side half: partition *discovery* (the upward directory walk, `basePath`, `_temporary`) and the type-inference ladder that silently retypes a partition column |
-| [I7](../topics/i7.md) — Spark UI | the two `INFO` lines (`Pushed Filters:` / `Post-Scan Filters:`) and the V2 `Pushing operators to …` block, plus the four write metrics and the `Expected N files, but only saw M` warning |
-| [I10](../topics/i10.md) — Data formats | why the vectorized reader turns itself off (one unsupported column in the *result* schema), that pushdown is row-group level unless you trade vectorization for `recordLevelFilter`, and that ORC matches Hive-written files **by ordinal** |
-| [I8](../topics/i8.md) — Delta | the `WriteStatsTracker` SPI and `RequiresDistributionAndOrdering` — the two hooks a table format uses to collect file statistics and control file layout during Spark's own write |
+| [B5](../topics/b5.md) — Schema | that the *requested* schema handed to Parquet is neither the file's nor the table's, and that a column the file lacks is synthesised into the request so it can come back as nulls (or as its declared `DEFAULT`) — the mechanism behind "schema evolution just works" and behind it silently not working |
+| [I10](../topics/i10.md) — Data formats | the layer below the format: Parquet's page encodings and dictionary fallback, ORC's zero-copy vectors versus Parquet's decode-into-Spark-vectors, Avro's union naming and incompatible-read guard, and XML's content-defined split boundaries |
+
+The other six are unchanged by this pass — the first sweep's entries under `B4`, `B8`, `I3`, `I5`,
+`I7` and `I8` still describe what this page says about them.
+
+## Sweep log
+
+| Date | Spark | What changed |
+|---|---|---|
+| 2026-08-04 | 4.2.0 | First sweep. 44 concepts, 3 new topics (**I27** partition column type inference, **I28** driver-side file listing, **E25** file↔table column matching). Marked `status: partial`: breadth complete, depth stopping at the record-level type-conversion layer, which was named as the next run. Findings carried: every built-in format runs V1 (`useV1SourceList`); schema comes from one arbitrary part-file; `ignoreCorruptFiles` truncates rather than skips; a cast kills filter pushdown silently; `openCostInBytes` is a per-file surcharge that decides small-file parallelism. |
+| 2026-08-09 | 4.2.0 | **Re-sweep at an unchanged version**, closing the `partial`. **Package breadth found all of the work** — the config slice had been clean since the first pass while the **entire Java tree was uncited**: 29 files and ~7,700 lines holding the whole vectorized decode stack for Parquet *and* ORC. 44 → **59 concepts**, citation 233 → **303 of 303 files**, `partial` → `complete`. Config slice re-derived at **118** keys (the first pass's 120 was a miscount against the same catalog). **Three new topics**: **E46** Parquet page decoding, **A44** type conversion at the file boundary, **I36** JDBC as a source and a sink. Findings worth carrying. **Spark still writes `INT96` timestamps by default** — `outputTimestampType` defaults to a type the Parquet spec deprecated, with its own rebase mode. **A JDBC write is one transaction per partition** despite `saveTable`'s scaladoc saying "a single transaction", so a half-failed write leaves committed partitions behind; and `numPartitions` can only ever *coalesce*. **The two Parquet readers accept different conversions** — `INT32 → DOUBLE` works in the converter tree and throws in the vectorized updater factory, so an unrelated nested column in the projection can decide whether the query runs. **One dictionary per batch**: a writer that fills its dictionary mid-chunk forces eager decode of the whole batch, and rebased or upcast columns are barred from lazy dictionary decoding entirely. **A column `DEFAULT` is applied by the reader, per file** — implemented in both vectorized readers and in neither row-based path. Geospatial was found again on the I/O side (Parquet `GEOMETRY`/`GEOGRAPHY` logical types, WKB converters, a `GeometryUpdater`) and, consistent with the [expressions sweep](sql-catalyst-expressions.md), still **not** proposed as a topic — there is I/O and casting but no predicate, index or join. |
