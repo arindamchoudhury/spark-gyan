@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-25
+swept_at: 2026-08-09
 group: execution-engine
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer,
   submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
@@ -103,6 +103,40 @@ concepts:
     topics: [E3, A8]
   - name: the-hadoop-commit-protocol
     topics: [E17, B4]
+  - name: the-task-object-and-its-serialization
+    topics: [B1, E1]
+  - name: task-metrics-and-the-accumulator-pipeline
+    topics: []
+    propose:
+      code: E49
+      level: Expert
+      title: "Task Metrics and the Accumulator Pipeline"
+      what: "Every per-task number Spark reports is a LongAccumulator on TaskMetrics, merged back to the driver through two independent channels — partial values on each executor heartbeat and final values in the task result — with user accumulators riding the same pipeline as _externalAccums."
+      why: "It is the only model that explains why a custom accumulator over-counts under speculation and stage retry, why shuffle-read metrics are zero until mergeShuffleReadMetrics runs, and why spark.executor.heartbeat.dropZeroAccumulatorUpdates changes what a live UI shows without changing any final number. Anyone who has written an accumulator and not trusted its value needs this."
+  - name: executor-memory-metrics-and-procfs
+    topics: [E3]
+  - name: driver-executor-message-protocol
+    topics: [E1, E2]
+  - name: executor-class-loading-and-session-isolation
+    topics: []
+    propose:
+      code: E50
+      level: Expert
+      title: "Executor Class Loading, Classpath Precedence, and Session Isolation"
+      what: "An executor builds one class loader per job-artifact state, optionally wrapping it in an ExecutorClassLoader that fetches REPL classes over RPC, and caches one such state per Spark Connect session in a bounded LRU; spark.executor.userClassPathFirst inverts delegation for both classes and resources."
+      why: "Dependency conflicts are resolved — or made worse — here. userClassPathFirst also changes getResourceAsStream, so shading a jar to fix a NoSuchMethodError can silently take over META-INF/services and logging config. It is also the executor half of Connect multi-tenancy, where the LRU size decides whether an idle session re-resolves all its artifacts on its next task."
+  - name: rdd-write-path-and-hadoop-output-formats
+    topics: [E17, B4, I4]
+  - name: the-schedulable-tree
+    topics: [B1, E1]
+  - name: executor-loss-reasons-and-exit-codes
+    topics: [E2, A13]
+  - name: fractional-resource-allocation
+    topics: [E2, B1]
+  - name: dagscheduler-event-loop
+    topics: [E1, B1]
+  - name: preferred-locations-from-hadoop-input-formats
+    topics: [I5, A4]
 ---
 
 The scheduling core: how an action becomes a job, a job becomes stages, a stage becomes tasks, and what happens when any of it fails. Swept in two halves — the driver-side job/stage layer (`DAGScheduler`) and the task-scheduling/executor layer (`TaskSchedulerImpl`, `TaskSetManager`, `Executor`).
@@ -150,6 +184,8 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 !!! info "This is where grey 'skipped' stages in the UI come from"
 
     A skipped stage is one whose outputs `MapOutputTracker` still holds. After the owning jobs finish, the `shuffleIdToMapStage` entry is dropped but the tracker entry survives — so a later job creates a *fresh* stage object with a new id and still skips its tasks.
+
+- [StageInfo.scala:96](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/StageInfo.scala#L96) — `fromStage`, the listener-facing snapshot; it carries a `shuffleDepId` only for a `ShuffleMapStage`, which is how the UI tells the two stage kinds apart
 
 **Configs:** `spark.scheduler.mode`, `spark.scheduler.allocation.file`; [`spark.scheduler.resource.profileMergeConflicts`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L238) gates stage-level profile merging — with it off, two conflicting `ResourceProfile`s on one stage throw, and the message [names the key](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L662)
 
@@ -201,7 +237,7 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 - [DAGScheduler.scala:1744](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L1744) — `RDDCheckpointData.synchronized` around task-binary serialization, for a consistent checkpoint view
 - [DAGScheduler.scala:1756](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L1756) — the large-task-binary warning
 
-**Configs:** `spark.stage.maxAttempts`, `spark.scheduler.barrier.maxConcurrentTasksCheck.interval`, `.maxFailures`
+**Configs:** `spark.stage.maxAttempts`, `spark.scheduler.barrier.maxConcurrentTasksCheck.interval`, `spark.scheduler.barrier.maxConcurrentTasksCheck.maxFailures`
 
 **Maps to topics:** B1, E1, A4
 
@@ -306,6 +342,8 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
     If `killAllTaskAttempts` throws `UnsupportedOperationException`, `ableToCancelStages` is false and the job listener is **never notified** — a caller blocked in `runJob` waits indefinitely. Similarly, once a job group is evicted from the bounded tracking set, future jobs in that group are silently not cancelled.
 
+- [JobResult.scala:27](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/JobResult.scala#L27) — the entire result vocabulary is `JobSucceeded` and `JobFailed(exception)`; a cancelled job is a `JobFailed`, which is why cancellation and failure are indistinguishable to a listener that reads only the result
+
 **Configs:** `spark.job.interruptOnCancel` (local property), `spark.scheduler.numCancelledJobGroupsToTrack`, `spark.scheduler.stage.legacyAbortAfterKillTasks`
 
 **Maps to topics:** B1, E1
@@ -332,6 +370,8 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
     side of finalization (`RemoteBlockPushResolver`) and the reduce-side fallback, see
     [core — shuffle & memory](core-shuffle-memory.md). What remains genuinely untraced anywhere is
     `cancelFinalizeShuffleMergeFutures` and the finalize thread pool's timeout model.
+
+- [MergeStatus.scala:45](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MergeStatus.scala#L45) — the merged-block counterpart to `MapStatus`, carrying a `RoaringBitmap` of which map outputs made it into the merge; a reducer needs both to know what to fetch from where
 
 **Configs:** `spark.shuffle.push.*`
 
@@ -370,6 +410,9 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 - [TaskSchedulerImpl.scala:794](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L794) — offers are `Random.shuffle`d, deliberately non-deterministic
 - [CoarseGrainedSchedulerBackend.scala:704](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L704) — `isReady()`: enough resources registered, **or** the waiting time elapsed
 
+- [WorkerOffer.scala:26](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/WorkerOffer.scala#L26) — one offer is `(executorId, host, cores, address, resources, resourceProfileId)`; an offer round is a `Seq` of these, rebuilt from `ExecutorData` each time
+- [ExecutorInfo.scala:28](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/ExecutorInfo.scala#L28) — the listener-visible superclass of `ExecutorData`, which is what reaches `SparkListenerExecutorAdded`
+
 **Configs:** `spark.scheduler.revive.interval`, `spark.scheduler.minRegisteredResourcesRatio`, `spark.scheduler.maxRegisteredResourcesWaitingTime`, `spark.rpc.message.maxSize`
 
 **Maps to topics:** B1, E2
@@ -385,6 +428,9 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 - [TaskSchedulerImpl.scala:243](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L243) — `submitTasks`; the comment block explains the zombie corner case
 - [TaskSetManager.scala:169](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L169) — the zombie definition, with a standing `TODO` that running attempts are not killed
 - [TaskSchedulerImpl.scala:269](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L269) — the starvation timer warns every `spark.starvation.timeout` (15 s) while nothing launches
+
+- [TaskSet.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSet.scala#L29) — a `TaskSet` is an array of tasks plus stage id, attempt id and priority; its [`id`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSet.scala#L37) is the `stageId.attemptId` string that appears in every scheduler log line
+- [TaskScheduler.scala:36](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskScheduler.scala#L36) — the trait `TaskSchedulerImpl` implements, and the seam an `ExternalClusterManager` replaces
 
 **Configs:** `spark.starvation.timeout`
 
@@ -408,7 +454,9 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
     A `NO_PREF` task — one with no preferred location at all, common for the first stage of a `parallelize` job — is reported as `PROCESS_LOCAL`. Seeing 100% `PROCESS_LOCAL` does not mean locality is working.
 
-**Configs:** `spark.locality.wait` with `.process`/`.node`/`.rack` fallbacks, `spark.locality.wait.legacyResetOnTaskLaunch`
+- [TaskSetManager.scala:1339](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1339) — `getLocalityWait` maps each level to its own key, and returns **0 immediately** for a barrier TaskSet when `legacyResetOnTaskLaunch` is set
+
+**Configs:** `spark.locality.wait`, `spark.locality.wait.process`, `spark.locality.wait.node`, `spark.locality.wait.rack`, `spark.locality.wait.legacyResetOnTaskLaunch`
 
 **Maps to topics:** B1, I5, A4
 
@@ -506,7 +554,7 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
     The losing attempt has already run. Non-idempotent user code — external writes, API calls, counters — has already taken effect by the time it is killed. Output-file commits are protected by the commit coordinator; anything you do yourself is not.
 
-**Configs:** `spark.speculation`, `.interval`, `.multiplier`, `.quantile`, `.minTaskRuntime`, `.task.duration.threshold`, `.efficiency.*`, `spark.executor.decommission.killInterval`
+**Configs:** `spark.speculation`, `spark.speculation.interval`, `spark.speculation.multiplier`, `spark.speculation.quantile`, `spark.speculation.minTaskRuntime`, `spark.speculation.task.duration.threshold`, `spark.speculation.efficiency.enabled`, `spark.speculation.efficiency.longRunTaskFactor`, `spark.speculation.efficiency.processRateMultiplier`, `spark.executor.decommission.killInterval`
 
 **Maps to topics:** A4, B1
 
@@ -524,7 +572,7 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 - [TaskSetExcludeList.scala:41](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetExcludeList.scala#L41) — **dry-run mode**: with app-level exclusion on but task/stage-level off, failures are recorded and nothing is excluded
 - [TaskSchedulerImpl.scala:659](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSchedulerImpl.scala#L659) — the starvation caveat: a steady stream of new TaskSets keeps clearing the expiry map, so the abort timer may never fire
 
-**Configs:** the `spark.excludeOnFailure.*` family (task/stage/application scoped, timeout, kill and decommission variants)
+**Configs:** `spark.excludeOnFailure.enabled`, `spark.excludeOnFailure.timeout`, `spark.excludeOnFailure.taskAndStage.enabled`, `spark.excludeOnFailure.task.maxTaskAttemptsPerExecutor`, `spark.excludeOnFailure.task.maxTaskAttemptsPerNode`, `spark.excludeOnFailure.stage.maxFailedTasksPerExecutor`, `spark.excludeOnFailure.stage.maxFailedExecutorsPerNode`, `spark.excludeOnFailure.application.enabled`, `spark.excludeOnFailure.application.maxFailedTasksPerExecutor`, `spark.excludeOnFailure.application.maxFailedExecutorsPerNode`, `spark.excludeOnFailure.application.fetchFailure.enabled`, `spark.excludeOnFailure.killExcludedExecutors`, `spark.excludeOnFailure.killExcludedExecutors.decommission`, `spark.scheduler.executorTaskExcludeOnFailureTime` (legacy, internal)
 
 **Maps to topics:** none — proposed as E12
 
@@ -545,7 +593,7 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
     JDBC calls and native code ignore `Thread.interrupt`. Combined with speculation or job cancellation, the slots never come back — unless the reaper is enabled, whose remedy is killing the executor.
 
-**Configs:** `spark.task.reaper.enabled`, `.killTimeout`, `.pollingInterval`, `.threadDump`
+**Configs:** `spark.task.reaper.enabled`, `spark.task.reaper.killTimeout`, `spark.task.reaper.pollingInterval`, `spark.task.reaper.threadDump`
 
 **Maps to topics:** E1
 
@@ -594,7 +642,9 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 - [Executor.scala:544](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L544) — `decommission()` only flips a flag; a task launched afterwards is logged at ERROR but **still runs**
 - [TaskSetManager.scala:1211](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskSetManager.scala#L1211) — `ExecutorDecommission` sets `exitCausedByApp = false`, sparing the retry budget
 
-**Configs:** `spark.decommission.enabled`, `spark.executor.decommission.killInterval`, `.forceKillTimeout`, `.signal`, `spark.storage.decommission.*`
+- [ExecutorDecommissionInfo.scala:28](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorDecommissionInfo.scala#L28) — `workerHost` being defined is the signal that the *whole node* is going away, not just this executor, which is what escalates shuffle-output unregistration
+
+**Configs:** `spark.decommission.enabled`, `spark.executor.decommission.killInterval`, `spark.executor.decommission.forceKillTimeout`, `spark.executor.decommission.signal`, `spark.storage.decommission.*`
 
 **Maps to topics:** E2
 
@@ -615,7 +665,7 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
     `spark.dynamicAllocation.cachedExecutorIdleTimeout` defaults to `Integer.MAX_VALUE`, so an executor holding cached blocks is never reclaimed. A notebook that cached a DataFrame hours ago is still paying for those executors.
 
-**Configs:** the `spark.dynamicAllocation.*` family
+**Configs:** `spark.dynamicAllocation.enabled`, `spark.dynamicAllocation.minExecutors`, `spark.dynamicAllocation.maxExecutors`, `spark.dynamicAllocation.initialExecutors`, `spark.dynamicAllocation.executorAllocationRatio`, `spark.dynamicAllocation.executorIdleTimeout`, `spark.dynamicAllocation.cachedExecutorIdleTimeout`, `spark.dynamicAllocation.schedulerBacklogTimeout`, `spark.dynamicAllocation.sustainedSchedulerBacklogTimeout`, `spark.dynamicAllocation.shuffleTracking.enabled`, `spark.dynamicAllocation.shuffleTracking.timeout`, `spark.dynamicAllocation.testing` (internal)
 
 **Maps to topics:** E2, A4
 
@@ -632,6 +682,8 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 - [BarrierTaskContext.scala:88](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/BarrierTaskContext.scala#L88) — a deliberately huge 365-day RPC timeout, so the *coordinator's* own timer produces the error
 - [BarrierCoordinator.scala:128](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/BarrierCoordinator.scala#L128) — the timer that fails all current requesters
 - [BarrierTaskContext.scala:129](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/BarrierTaskContext.scala#L129) — the contract doc: unequal numbers of `barrier()` calls **hang the job or time out**
+
+- [BarrierJobAllocationFailed.scala:45](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/BarrierJobAllocationFailed.scala#L45) — the refusal messages are `val`s on a companion object, so the exact strings are greppable: an unsupported RDD chain, barrier with dynamic allocation, and [not enough slots](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/BarrierJobAllocationFailed.scala#L36)
 
 **Configs:** `spark.barrier.sync.timeout`, `spark.locality.wait.legacyResetOnTaskLaunch` (interacts destructively)
 
@@ -779,6 +831,8 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
     The event that reaches the listener bus is unaffected, so the UI and event logs are complete. But a `SparkListener` that stashes a `TaskInfo` reference and inspects it later, or code reaching into `TaskSetManager.taskInfos`, gets an emptied list once this is on.
 
+- [TaskInfo.scala:78](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskInfo.scala#L78) — `accumulables` is a plain `Seq[AccumulableInfo]` field on every `TaskInfo`, and [`setAccumulables`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskInfo.scala#L83) is what the retention flag clears
+
 **Configs:** `spark.scheduler.dropTaskInfoAccumulablesOnTaskCompletion.enabled` (internal)
 
 **Maps to topics:** E3, E1
@@ -840,6 +894,401 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 
 ---
 
+## The Task object and how it reaches an executor
+
+**What it is:** the unit the whole engine is built around, and the one class every other concept on this page hands to the next. `Task` is an abstract class with exactly two subclasses — `ShuffleMapTask`, which writes shuffle output and returns a `MapStatus`, and `ResultTask`, which runs the user function and returns its value. Neither carries the RDD: the RDD and the closure travel separately as a **broadcast `taskBinary`**, deserialized on the executor at the top of `runTask`. What the driver actually ships per task is a `TaskDescription` — a hand-rolled binary encoding, not Java serialization.
+
+**Code path:** `DAGScheduler.submitMissingTasks` (broadcasts `taskBinary`) → `new ShuffleMapTask`/`new ResultTask` → `TaskSetManager.resourceOffer` → `TaskDescription.encode` → `LaunchTask` → executor → `TaskDescription.decode` → `TaskRunner.run` → `Task.run` → `runTask`
+
+**Anchor files:**
+
+- [Task.scala:61](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Task.scala#L61) — the abstract class and its parameter list: `localProperties`, `serializedTaskMetrics`, `jobId`, `appId`, `isBarrier`
+- [Task.scala:87](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Task.scala#L87) — `run` is `final`: it builds the `TaskContextImpl`, registers with the block manager, sets the `CallerContext`, and calls plugins, then delegates the *only* overridable part to `runTask`
+- [Task.scala:119](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Task.scala#L119) — `isBarrier` decides `BarrierTaskContext` vs `TaskContextImpl`, per stage rather than per partition (there is a `TODO` for SPARK-24874 admitting this)
+- [Task.scala:178](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Task.scala#L178) — `def runTask(context: TaskContext): T`, the whole subclass contract
+- [Task.scala:213](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Task.scala#L213) — `collectAccumulatorUpdates`: internal metric accumulators **always** count failed values, external ones only if `countFailedValues`
+- [ShuffleMapTask.scala:82](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ShuffleMapTask.scala#L82) — `runTask` deserializes `(RDD, ShuffleDependency)` from the broadcast and returns a `MapStatus`
+- [ResultTask.scala:93](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ResultTask.scala#L93) — the entire result path is one line: `func(context, rdd.iterator(partition, context))`
+- [ResultTask.scala:88](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ResultTask.scala#L88) — the deserialization of that broadcast is what `executorDeserializeTime` measures, which is why a fat closure shows up as deserialize time, not run time
+- [TaskDescription.scala:49](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskDescription.scala#L49) — what is actually sent per launch: ids, artifacts, `properties`, cpus, resources, and the serialized task
+- [TaskDescription.scala:92](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskDescription.scala#L92) — `encode`, a manual `DataOutputStream` layout, mirrored by [`decode`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskDescription.scala#L200)
+- [TaskDescription.scala:39](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskDescription.scala#L39) — the comment explaining *why* it is hand-encoded: the executor must add jars to the classpath and set the properties **before** it can deserialize the task itself
+
+!!! info "Thread-local properties are per-task cargo"
+
+    `spark.scheduler.pool`, the job group, the job description and the SQL execution id all reach the executor as the `Properties` map on the `TaskDescription`, snapshotted on the driver at submit time. That is the only channel — a thread local set after submission does not reach the task, and this is exactly the boundary [streaming-aware scheduler logging](#streaming-aware-scheduler-logging) has to work around.
+
+**Configs:** none read here; `spark.rpc.message.maxSize` bounds the encoded `TaskDescription`, and the `taskBinary` broadcast is what keeps the closure out of it
+
+**Maps to topics:** B1, E1
+
+---
+
+## Task metrics and the accumulator pipeline
+
+**What it is:** every number the UI shows for a task — bytes read, shuffle fetch wait, GC time, peak execution memory — is a **`LongAccumulator` on `TaskMetrics`**, not a special-cased field. `TaskMetrics` is created on the driver, serialized into the `Task`, mutated on the executor, and merged back through two independent channels: partial values on each heartbeat, final values on task completion. User accumulators ride the same pipeline as `_externalAccums`.
+
+**Code path:** driver `TaskMetrics.registerAccumulators` → serialized into `Task` → executor mutates via `TaskContext.taskMetrics()` → *(a)* `Executor.reportHeartBeat` every `spark.executor.heartbeatInterval` → `HeartbeatReceiver` → `DAGScheduler.executorHeartbeatReceived`, or *(b)* `Task.collectAccumulatorUpdates` → `DirectTaskResult` → `DAGScheduler.updateAccumulators` → `SparkListenerTaskEnd`
+
+**Anchor files:**
+
+- [TaskMetrics.scala:47](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/TaskMetrics.scala#L47) — the field list is a wall of `new LongAccumulator`: run time, CPU time, GC time, result size, spill, peak on/off-heap execution memory
+- [TaskMetrics.scala:236](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/TaskMetrics.scala#L236) — `nameToAccums`, the `LinkedHashMap` that gives each internal accumulator its `internal.metrics.*` name; this naming *is* the wire format
+- [TaskMetrics.scala:215](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/TaskMetrics.scala#L215) — `createTempShuffleReadMetrics`: each shuffle dependency gets its own temp object, because a task can read several shuffles at once
+- [TaskMetrics.scala:225](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/TaskMetrics.scala#L225) — `mergeShuffleReadMetrics` folds the temps into the reported one; **until it is called the shuffle-read numbers are zero**, which is why the heartbeat path calls it explicitly
+- [TaskMetrics.scala:292](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/TaskMetrics.scala#L292) — `_externalAccums`: user accumulators and `SQLMetrics` live in a separate buffer guarded by a read/write lock
+- [AccumulableInfo.scala:41](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/AccumulableInfo.scala#L41) — the driver-side, listener-visible view, carrying `internal` and `countFailedValues`
+- [InputMetrics.scala:42](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/InputMetrics.scala#L42) / [OutputMetrics.scala](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/OutputMetrics.scala) — two accumulators each: bytes and records
+- [ShuffleReadMetrics.scala:31](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ShuffleReadMetrics.scala#L31) — remote vs local blocks, `remoteBytesReadToDisk`, and `fetchWaitTime`, the number that actually tells you a shuffle is the bottleneck
+- [ShuffleWriteMetrics.scala](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ShuffleWriteMetrics.scala) — bytes, records, write time
+- [Executor.scala:1532](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1532) — the heartbeat loop merges shuffle-read metrics and sets GC time for *every running task*, then ships partial accumulator values
+- [Executor.scala:1535](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1535) — `spark.executor.heartbeat.dropZeroAccumulatorUpdates` filters zero-valued accumulators out of the heartbeat, and `excludeFromHeartbeat` drops more
+- [TaskResult.scala:40](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskResult.scala#L40) — `DirectTaskResult` carries the value, `accumUpdates` and `metricPeaks` together; the accumulator half survives even when the value is spilled to the block manager as an [`IndirectTaskResult`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskResult.scala#L36)
+
+!!! warning "A user accumulator counts speculative and retried attempts unless you opt out"
+
+    Internal metric accumulators are defined to count failed values. A user accumulator is merged on task *success* only — but speculation means two attempts can both succeed for the same partition on different stage attempts, and a stage retry re-runs partitions whose accumulator contributions were already merged. Accumulators are exact only inside an action that runs once; anything else makes them a lower bound. The `countFailedValues` flag decides whether failures count too, and it is not settable from the public `AccumulatorV2` API.
+
+!!! info "Two channels, two truths"
+
+    The heartbeat channel is what makes the UI's numbers move *while* a task runs; the task-end channel is what makes them final. They can disagree, and a task killed mid-flight leaves only whatever the last heartbeat carried. `spark.executor.heartbeat.dropZeroAccumulatorUpdates` therefore changes what a live UI shows without changing any final number.
+
+**Configs:** `spark.executor.heartbeatInterval`, `spark.executor.heartbeat.dropZeroAccumulatorUpdates`, `spark.executor.heartbeat.maxFailures`, `spark.task.maxDirectResultSize`
+
+**Maps to topics:** none yet — see the `propose:` block for **E49**
+
+---
+
+## Executor memory metrics and the procfs process tree
+
+**What it is:** the second, task-independent metric channel. `ExecutorMetrics` is a flat `Array[Long]` of *peak* values — JVM heap and off-heap, on/off-heap execution and storage memory, direct and mapped pool memory, and optionally the whole process tree's RSS. Peaks are kept by `compareAndUpdatePeakValues`, not by sampling into a time series, so what reaches the driver is "the worst this executor ever got", per stage.
+
+**Code path:** `ExecutorMetricsPoller.poll` (every `spark.executor.metrics.pollingInterval`) → `ExecutorMetrics.getCurrentMetrics` → `ExecutorMetricType.metricGetters` (JVM beans, `MemoryManager`, optionally `ProcfsMetricsGetter`) → `compareAndUpdatePeakValues` → heartbeat → `SparkListenerExecutorMetricsUpdate`; separately `ExecutorMetricsSource` exposes the same snapshot to the metrics sinks
+
+**Anchor files:**
+
+- [ExecutorMetrics.scala:32](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorMetrics.scala#L32) — the whole class is an `Array[Long]` indexed by metric type; there are no named fields
+- [ExecutorMetrics.scala:78](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorMetrics.scala#L78) — `compareAndUpdatePeakValues` returns whether anything moved, so an unchanged executor sends no update
+- [ProcfsMetricsGetter.scala:44](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ProcfsMetricsGetter.scala#L44) — reads `/proc/<pid>/stat` for the executor **and every child process**, which is how PySpark worker memory becomes visible at all
+- [ProcfsMetricsGetter.scala:51](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ProcfsMetricsGetter.scala#L51) — `isProcfsAvailable`: a non-Linux host, or a missing `/proc`, disables it silently
+- [ProcfsMetricsGetter.scala:79](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ProcfsMetricsGetter.scala#L79) — one failed read flips `isAvailable` to `false` **permanently** for that executor; the metric does not come back
+- [ProcfsMetricsGetter.scala:108](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ProcfsMetricsGetter.scala#L108) — RSS is field 23 of `/proc/<pid>/stat` multiplied by the page size, obtained by shelling out to `getconf PAGESIZE`
+- [ExecutorMetricsSource.scala:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorMetricsSource.scala#L37) — a `@volatile` snapshot array republished to Dropwizard gauges, so sink scrapes and heartbeats read the same numbers
+- [ExecutorSource.scala:30](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorSource.scala#L30) — the *other* executor source: thread-pool gauges, `METRIC_CPU_TIME`, and per-filesystem-scheme counters
+- [ExecutorSource.scala:77](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorSource.scala#L77) — `spark.executor.metrics.fileSystemSchemes` decides which schemes get `read_bytes`/`write_ops` counters; a scheme not listed is simply absent, not zero
+
+!!! warning "`spark.executor.processTreeMetrics.enabled` is off by default, and silently no-ops off Linux"
+
+    Without it, an executor's reported memory excludes every child process — which on PySpark is where most of the memory actually is. With it on, a container killed for exceeding its memory limit still shows JVM-only peaks in the UI unless the poll happened to land before the kill.
+
+**Configs:** `spark.executor.metrics.pollingInterval`, `spark.executor.processTreeMetrics.enabled`, `spark.executor.metrics.fileSystemSchemes`, `spark.metrics.executorMetricsSource.enabled`
+
+**Maps to topics:** E3
+
+---
+
+## The driver↔executor message protocol
+
+**What it is:** the wire between `CoarseGrainedSchedulerBackend` (driver) and `CoarseGrainedExecutorBackend` (executor) is a single sealed trait of case classes. Every scheduling decision on this page ultimately becomes one of them. The driver keeps an `ExecutorData` per live executor — free cores, resources, log URLs, registration timestamp — and that map *is* the cluster state the offer loop reads.
+
+**Code path:** executor start → `RetrieveSparkAppConfig` → `SparkAppConfig` → `RegisterExecutor` → driver adds `ExecutorData` → `LaunchedExecutor` → `makeOffers` → `LaunchTask` → executor → `StatusUpdate` → driver frees cores → `makeOffers(executorId)`
+
+**Anchor files:**
+
+- [CoarseGrainedClusterMessage.scala:30](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedClusterMessage.scala#L30) — the complete protocol in one object: `LaunchTask`, `KillTask`, `StatusUpdate`, `RegisterExecutor`, `RemoveExecutor`, `ExecutorDecommissioning`, `Shutdown`, `TaskThreadDump`
+- [CoarseGrainedClusterMessage.scala:45](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedClusterMessage.scala#L45) — `LaunchTask` carries a `SerializableBuffer`: one already-encoded `TaskDescription`, one message per task
+- [CoarseGrainedClusterMessage.scala:99](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedClusterMessage.scala#L99) — `ShufflePushCompletion` rides the same channel, which is how push-based shuffle reports back
+- [CoarseGrainedSchedulerBackend.scala:168](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L168) — `StatusUpdate` is the only thing that returns cores to the pool, and it immediately re-offers **that one executor**
+- [CoarseGrainedSchedulerBackend.scala:160](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L160) — the revive thread: `spark.scheduler.revive.interval`, defaulting to **1000 ms** in code, is the safety net for offers that a status update did not trigger
+- [CoarseGrainedSchedulerBackend.scala:115](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L115) — a bounded cache of decommission requests for executors that have **not registered yet**; `spark.scheduler.maxRetainedUnknownDecommissionExecutors` defaults to `0`, so by default such a request is dropped
+- [CoarseGrainedSchedulerBackend.scala:702](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/CoarseGrainedSchedulerBackend.scala#L702) — `sufficientResourcesRegistered` is `true` in the base class; only a cluster-manager subclass makes `minRegisteredResourcesRatio` mean anything
+- [ExecutorData.scala:36](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/ExecutorData.scala#L36) — `freeCores` is mutable and driver-owned; the executor never reports it
+- [ExecutorBackend.scala:27](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorBackend.scala#L27) — the executor's whole outbound interface is one method, `statusUpdate`
+- [SchedulerBackend.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/SchedulerBackend.scala#L29) — the pluggable side: `defaultParallelism`, `killTask`, [`maxNumConcurrentTasks`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/SchedulerBackend.scala#L99) — the last is what barrier stages check before they will schedule
+- [SchedulerBackendUtils.scala:31](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/cluster/SchedulerBackendUtils.scala#L31) — where `spark.executor.instances` is finally read, and the `require` that rejects an initial executor count outside `[min, max]` when dynamic allocation is on
+- [MiscellaneousProcessDetails.scala:28](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/MiscellaneousProcessDetails.scala#L28) — the shape behind `MiscellaneousProcessAdded`: a non-executor process (the YARN AM, a Connect server) registering itself so the UI can show its logs
+- [SupportsDelegationToken.scala:28](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/SupportsDelegationToken.scala#L28) — the opt-in trait a backend implements to receive `UpdateDelegationTokens`; a backend without it simply never sees renewed Hadoop tokens
+- [ExecutorLogUrlHandler.scala:27](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorLogUrlHandler.scala#L27) — `spark.ui.custom.executor.log.url` templating, using `{{ATTRIBUTE}}` placeholders
+- [ExecutorLogUrlHandler.scala:85](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorLogUrlHandler.scala#L85) — a pattern naming an attribute the cluster manager did not supply logs **once** and then falls back to the original URLs forever
+
+!!! info "`spark.executor.instances` is not read by the scheduler"
+
+    It reaches the cluster manager through `SchedulerBackendUtils.getInitialTargetExecutorNumber`, and only when dynamic allocation is off. With dynamic allocation on it is ignored entirely in favour of the min/initial/max triple — setting both is the classic way to be surprised by the executor count.
+
+**Configs:** `spark.executor.instances`, `spark.scheduler.revive.interval`, `spark.scheduler.minRegisteredResourcesRatio`, `spark.scheduler.maxRegisteredResourcesWaitingTime`, `spark.scheduler.maxRetainedUnknownDecommissionExecutors`, `spark.ui.custom.executor.log.url`
+
+**Maps to topics:** E1, E2
+
+---
+
+## Executor class loading and session isolation
+
+**What it is:** the executor does not have one classpath. It builds a `MutableURLClassLoader` per *job artifact state*, optionally wraps it in an `ExecutorClassLoader` that fetches REPL-defined classes over RPC, and caches one such `IsolatedSessionState` per Spark Connect session in a Guava LRU. `spark.executor.userClassPathFirst` inverts the delegation order in both the class and the resource path.
+
+**Code path:** `Executor.createClassLoader` → `MutableURLClassLoader` (or `ChildFirstURLClassLoader`) → `addReplClassLoaderIfNeeded` → `ExecutorClassLoader(uri, parent, userClassPathFirst)` → per task, `isolatedSessionCache.get(uuid)` → `Thread.setContextClassLoader(state.replClassLoader)`
+
+**Anchor files:**
+
+- [Executor.scala:350](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L350) — `userClassPathFirst`, read once per executor
+- [Executor.scala:392](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L392) — `isolatedSessionCache`, a Guava LRU sized by `spark.executor.isolatedSessionCache.size`
+- [Executor.scala:809](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L809) — every task resolves its session state from `taskDescription.artifacts.state` before it runs
+- [Executor.scala:827](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L827) — the context class loader is swapped **per task**, not per executor
+- [Executor.scala:1381](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1381) — `createClassLoaderWithStub`: Connect installs stub classes for `spark.connect.scalaUdf.stubPrefixes` so a missing client-side class fails at *use* rather than at deserialization
+- [Executor.scala:1407](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L1407) — `addReplClassLoaderIfNeeded`, only when a REPL class URI was set
+- [ExecutorClassLoader.scala:50](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorClassLoader.scala#L50) — extends `ClassLoader(null)`: **no parent**, delegation is done by hand through `parentLoader`
+- [ExecutorClassLoader.scala:61](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorClassLoader.scala#L61) — `fetchFn` switches on the URI scheme: `spark://` fetches class bytes over the RPC env, anything else reads from a filesystem
+- [ExecutorClassLoader.scala:100](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorClassLoader.scala#L100) — `findClass`, where `userClassPathFirst` flips local-first and parent-first
+- [Executor.scala:355](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/Executor.scala#L355) — `spark.executor.killOnFatalError.depth`: how far down the `getCause` chain a fatal error is looked for before the executor kills itself
+
+!!! warning "`userClassPathFirst` changes resource lookup too, not just classes"
+
+    [`getResourceAsStream`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorClassLoader.scala#L77) honours the same flag. A jar shipped to shade a dependency conflict will also start winning `META-INF/services` and `log4j2.properties` lookups, which is why turning it on to fix one `NoSuchMethodError` sometimes silently reconfigures logging.
+
+!!! info "This is the executor half of Connect's multi-tenancy"
+
+    One executor process serves many Connect sessions, each with its own jars. The isolation is the LRU cache — evicting a session's state releases its class loader, so a session that goes idle past the cache size pays a full artifact re-resolution on its next task.
+
+**Configs:** `spark.executor.userClassPathFirst`, `spark.executor.isolatedSessionCache.size`, `spark.executor.killOnFatalError.depth`, `spark.executor.extraClassPath`, `spark.executor.defaultExtraClassPath`, `spark.connect.scalaUdf.stubPrefixes`
+
+**Maps to topics:** none yet — see the `propose:` block for **E50**
+
+---
+
+## The RDD write path and the Hadoop output formats
+
+**What it is:** the other caller of [the Hadoop commit protocol](#the-hadoop-commit-protocol). `saveAsHadoopFile`/`saveAsNewAPIHadoopFile` do not go through Spark SQL at all — `SparkHadoopWriter.write` runs its own job, and `HadoopWriteConfigUtil` is the shim that lets one code path serve both the `mapred` and `mapreduce` APIs.
+
+**Code path:** `PairRDDFunctions.saveAsHadoopFile` → `SparkHadoopWriter.write` → `config.createCommitter` → `committer.setupJob` → `sparkContext.runJob(executeTask)` → per task `initWriter` → `write(pair)` per record → `committer.commitTask` → driver `committer.commitJob`
+
+**Anchor files:**
+
+- [SparkHadoopWriter.scala:60](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriter.scala#L60) — `write` is a *job runner*: it sets up the committer, calls `runJob`, and commits — the RDD action is inside this method
+- [SparkHadoopWriter.scala:68](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriter.scala#L68) — `jobTrackerId` is derived from the current `Date`, which is what makes staging paths unique between runs
+- [SparkHadoopWriter.scala:103](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriter.scala#L103) — `commitJob` is timed and logged; [line 109](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriter.scala#L109) is the `abortJob` on any failure
+- [SparkHadoopWriter.scala:150](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriter.scala#L150) — the per-task `commitTask`, and the [`abortTask`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriter.scala#L156) in the failure branch
+- [HadoopWriteConfigUtil.scala:38](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopWriteConfigUtil.scala#L38) — the abstraction: `createJobContext`, `initWriter`, `write`, `closeWriter`, `initOutputFormat`, `assertConf`
+- [HadoopWriteConfigUtil.scala:188](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopWriteConfigUtil.scala#L188) — the old `mapred` implementation, which tags tasks as `TaskType.MAP`
+- [HadoopWriteConfigUtil.scala:325](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopWriteConfigUtil.scala#L325) — the new `mapreduce` implementation, which uses `TaskType.REDUCE` for task attempts
+- [HadoopMapRedCommitProtocol.scala:31](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/HadoopMapRedCommitProtocol.scala#L31) — the `mapred` committer subclass, which exists only to pull the committer off the old `JobConf`
+- [SparkHadoopWriterUtils.scala:40](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriterUtils.scala#L40) — `RECORDS_BETWEEN_BYTES_WRITTEN_METRIC_UPDATES = 256`, hard-coded
+- [SparkHadoopWriterUtils.scala:121](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriterUtils.scala#L121) — bytes-written is therefore only refreshed every 256 records; record counts are exact, byte counts are sampled
+- [SparkHadoopWriterUtils.scala:103](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/internal/io/SparkHadoopWriterUtils.scala#L103) — `isOutputSpecValidationEnabled`, the `spark.hadoop.validateOutputSpecs` escape hatch that lets a write proceed into an existing directory
+
+!!! warning "The RDD write path reaches commit coordination by a different route"
+
+    A DataFrame write is planned by `sql/core`; an RDD write is not planned at all — `SparkHadoopWriter` submits its own job directly. Both end at `FileCommitProtocol`, so both are protected by `OutputCommitCoordinator`, but only the SQL path honours `spark.sql.sources.commitProtocolClass`. An RDD write always gets `HadoopMapReduceCommitProtocol` or the `mapred` subclass.
+
+**Configs:** `spark.hadoop.validateOutputSpecs`, `spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version`, `spark.speculation` (via the coordinator)
+
+**Maps to topics:** E17, B4, I4
+
+---
+
+## The Schedulable tree
+
+**What it is:** the data structure under [scheduling mode and pools](#scheduling-mode-and-pools). `Schedulable` is a two-implementation trait — `Pool` and `TaskSetManager` — so the FIFO case is genuinely the same code as FAIR with a one-level tree. Ordering is recomputed on every offer round by re-sorting the queue, not maintained incrementally.
+
+**Anchor files:**
+
+- [Schedulable.scala:30](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Schedulable.scala#L30) — the trait: `weight`, `minShare`, `priority`, `stageId`, `runningTasks`, and a recursive `getSortedTaskSetQueue`
+- [Pool.scala:31](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Pool.scala#L31) — a pool holds a `ConcurrentLinkedQueue[Schedulable]` and its own `schedulingMode`, so pools can nest with different policies
+- [Pool.scala:105](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Pool.scala#L105) — `getSortedTaskSetQueue` sorts the queue **on every call**, then filters out non-schedulable TaskSets; this runs once per offer round
+- [Pool.scala:90](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/Pool.scala#L90) — executor loss and decommission are broadcast down the tree to every child
+- [SchedulingMode.scala:25](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/SchedulingMode.scala#L25) — three values, and `NONE` is what a `TaskSetManager` reports since it has no sub-queues
+
+!!! info "`minShare` is a claim on *slots*, not a guarantee"
+
+    The FAIR comparator prefers a pool running below its `minShare`, but nothing preempts a running task to get there. A pool whose minShare exceeds what the cluster can supply simply stays "needy" forever and wins every comparison — which looks like the other pools being starved by a misconfiguration rather than by contention.
+
+**Configs:** `spark.scheduler.mode`, `spark.scheduler.allocation.file`, `spark.scheduler.pool` (local property)
+
+**Maps to topics:** B1, E1
+
+---
+
+## Executor loss reasons and exit codes
+
+**What it is:** the taxonomy that decides whether losing an executor counts against the application. Every loss carries an `ExecutorLossReason` whose `exitCausedByApp` flag routes it: app-caused losses count toward failure limits and can trigger exclusion, infrastructure losses do not. The executor's own exit codes are a parallel, smaller vocabulary read from the process exit status when no reason was reported.
+
+**Anchor files:**
+
+- [ExecutorLossReason.scala:26](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorLossReason.scala#L26) — the base class is just a message; the meaning is in the subclasses
+- [ExecutorLossReason.scala:31](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorLossReason.scala#L31) — `ExecutorExited(exitCode, exitCausedByApp, reason)`: the flag is a **constructor argument**, so the cluster-manager integration decides it, not core
+- [ExecutorLossReason.scala:66](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorLossReason.scala#L66) — `ExecutorProcessLost`, the "we do not know why" case, which defaults to *not* app-caused
+- [ExecutorLossReason.scala:82](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorLossReason.scala#L82) — `ExecutorDecommission`, carrying the worker's own reason, so a planned removal is distinguishable from a crash
+- [ExecutorExitCode.scala:46](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorExitCode.scala#L46) — `HEARTBEAT_FAILURE = 56`: an executor that cannot reach the driver kills *itself*
+- [ExecutorExitCode.scala:50](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorExitCode.scala#L50) — `KILLED_BY_TASK_REAPER = 57`, the exit the [task reaper](#kill-path-and-the-taskreaper) forces
+- [ExecutorExitCode.scala:34](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorExitCode.scala#L34) — `DISK_STORE_FAILED_TO_CREATE_DIR = 53`, the one people actually hit: a bad `spark.local.dir` kills executors at startup with no task ever having run
+- [ExecutorExitCode.scala:55](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/executor/ExecutorExitCode.scala#L55) — `explainExitCode`, which is what turns those numbers into the driver-log sentence
+- [ExecutorFailuresInTaskSet.scala:25](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorFailuresInTaskSet.scala#L25) — per-executor, per-TaskSet failure counts with timestamps, the accounting [executor exclusion](#executor-exclusion) escalates on
+
+!!! warning "`exitCausedByApp` is set by the cluster manager, so the same failure counts differently on YARN and Kubernetes"
+
+    Core never inspects the exit code to decide blame; it trusts the flag. A container OOM-killed by the node reports differently depending on which resource manager surfaced it, which is why `spark.executor.maxNumFailures` behaves differently across deployments for what looks like the same crash.
+
+**Configs:** `spark.executor.maxNumFailures` and `spark.executor.failuresValidityInterval` (read in `deploy/ExecutorFailureTracker`, outside this group's scope), `spark.excludeOnFailure.*`
+
+**Maps to topics:** E2, A13
+
+---
+
+## Fractional resource allocation
+
+**What it is:** `spark.task.resource.gpu.amount` can be less than one, so a GPU address is not simply held or free — it holds an integer count out of `ONE_ENTIRE_RESOURCE`. `ExecutorResourcesAmounts` is the driver-side ledger doing that arithmetic per executor, and the reason fractional GPU scheduling can silently place fewer tasks than the core count suggests.
+
+**Anchor files:**
+
+- [ExecutorResourcesAmounts.scala:41](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorResourcesAmounts.scala#L41) — the internal representation is `Map[resourceName, Map[address, Long]]`, amounts scaled to `ONE_ENTIRE_RESOURCE`
+- [ExecutorResourcesAmounts.scala:81](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorResourcesAmounts.scala#L81) — `acquire`, and its [`release`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorResourcesAmounts.scala#L105) counterpart, which [throws](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorResourcesAmounts.scala#L114) if a release would push an address above one whole unit — a double-release is a hard error, not a leak
+- [ExecutorResourcesAmounts.scala:143](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorResourcesAmounts.scala#L143) — `assignAddressesCustomResources`: assignment is all-or-nothing per task, and returns `None` rather than a partial allocation
+- [ExecutorResourcesAmounts.scala:173](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorResourcesAmounts.scala#L173) — a whole-number request takes `ONE_ENTIRE_RESOURCE` per address, so integer and fractional requests share one code path
+- [ExecutorResourceInfo.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ExecutorResourceInfo.scala#L29) — the per-executor view the backend keeps, mixing in `ResourceAllocator` from the `resource/` package
+
+!!! info "Two ledgers, one truth"
+
+    `ExecutorResourceInfo` (per executor, held by the backend) and `ExecutorResourcesAmounts` (per offer round, held by the scheduler) both track availability. The offer-round copy is the one tasks are matched against; the backend copy is the one that survives between rounds. Divergence between them is what the `release` guard is defending.
+
+**Configs:** `spark.task.resource.*`, `spark.executor.resource.*`, `spark.task.cpus`, `spark.executor.cores`
+
+**Maps to topics:** E2, B1
+
+---
+
+## The DAGScheduler event loop
+
+**What it is:** `DAGScheduler` is not called directly by anything that matters — every interaction is a message posted to a single-threaded event loop. That serialization is what makes the scheduler's mutable state (`runningStages`, `waitingStages`, `failedStages`, `jobIdToActiveJob`) safe without locks, and it is also why one slow handler stalls all scheduling.
+
+**Anchor files:**
+
+- [DAGSchedulerEvent.scala:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGSchedulerEvent.scala#L37) — `JobSubmitted`, the entry point every action funnels into
+- [DAGSchedulerEvent.scala:89](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGSchedulerEvent.scala#L89) — `CompletionEvent`, the single message carrying task success, `FetchFailed`, accumulator updates and metric peaks
+- [DAGSchedulerEvent.scala:114](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGSchedulerEvent.scala#L114) — `ResubmitFailedStages`, posted on a delay of [`RESUBMIT_TIMEOUT = 200` ms](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGScheduler.scala#L3624) so a burst of fetch failures coalesces into one stage retry
+- [DAGSchedulerEvent.scala:74](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGSchedulerEvent.scala#L74) — `JobTagCancelled`, the 4.x tag-based cancellation channel alongside `JobGroupCancelled`
+- [ActiveJob.scala:45](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ActiveJob.scala#L45) — an active job is a final stage plus a `finished` boolean array; job completion is `numFinished == numPartitions`, per *partition of the final stage*
+- [ActiveJob.scala:57](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/ActiveJob.scala#L57) — for a `ResultStage` the partition count comes from the job's requested partitions, not the RDD's, which is how `take` submits a job over a subset
+- [JobWaiter.scala](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/JobWaiter.scala) implements [`JobListener`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/JobListener.scala) — `taskSucceeded`/`jobFailed`, the two-method interface that bridges the event loop back to the blocking caller
+- [DAGSchedulerSource.scala:50](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGSchedulerSource.scala#L50) — `messageProcessingTime`, a timer over the event loop itself: the metric that tells you the scheduler, not the cluster, is the bottleneck
+- [DAGSchedulerSource.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/DAGSchedulerSource.scala#L29) — gauges for failed/running/waiting stages and active jobs, read straight off the scheduler's mutable collections
+
+!!! warning "One thread, and `messageProcessingTime` is the only warning you get"
+
+    Deep lineages make `submitMissingTasks` expensive, and it runs on the event-loop thread. While it runs, no task completion is processed and no stage is submitted, so a cluster that looks idle can be waiting on the driver. The gauge exists precisely because this is invisible in the UI's job timeline.
+
+**Configs:** `spark.scheduler.numCancelledJobGroupsToTrack`, `spark.metrics.*` (for the source to be exported)
+
+**Maps to topics:** E1, B1
+
+---
+
+## Preferred locations from Hadoop input formats
+
+**What it is:** the *other* source of preferred locations, distinct from the RDD-level `getPreferredLocations` the [partition selection](#partition-selection-and-preferred-locations) concept traces. `InputFormatInfo` asks a Hadoop `InputFormat` for its splits **before any job runs**, so a `SparkContext` can be given locality hints at construction time and the cluster manager can request executors on the right hosts.
+
+**Anchor files:**
+
+- [InputFormatInfo.scala:38](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/InputFormatInfo.scala#L38) — takes a `Configuration` and an `InputFormat` class, and instantiates it reflectively
+- [InputFormatInfo.scala:96](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/InputFormatInfo.scala#L96) — `prefLocsFromMapreduceInputFormat`, with a [`mapred` twin](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/InputFormatInfo.scala#L137) selected by which API the class implements
+- [InputFormatInfo.scala:168](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/InputFormatInfo.scala#L168) — `computePreferredLocations` inverts split→hosts into host→splits, the shape the cluster manager wants
+- [SplitInfo.scala:27](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/SplitInfo.scala#L27) — one host, one path, one length; equality is by value so duplicate splits collapse
+- [TaskLocation.scala](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/scheduler/TaskLocation.scala) — the runtime counterpart: `ExecutorCacheTaskLocation`, `HostTaskLocation`, `HDFSCacheTaskLocation`, encoded as strings with `executor_` and `hdfs_cache_` prefixes
+
+!!! info "Effectively legacy, and it shows"
+
+    This path predates dynamic allocation and is reached only through the `SparkContext` constructor overload taking `preferredNodeLocationData`. It does full split computation on the driver before the application starts. Nothing in the DataFrame API uses it — `sql/core` does its own driver-side file listing — but it is still live code and still the reason `SplitInfo` exists.
+
+**Configs:** none; the `Configuration` is supplied by the caller
+
+**Maps to topics:** I5, A4
+
+---
+
+## Breadth check 1 — the config slice
+
+The slice is every `core` config matching this pattern, run against `configs/catalog.yaml`:
+
+```bash
+PYTHONIOENCODING=utf-8 python -c "
+import yaml, re
+d = yaml.safe_load(open('docs/reference/spark-source-map/configs/catalog.yaml', encoding='utf-8'))
+cs = [c for c in d['configs'] if c['subsystem'] == 'core']
+pat = re.compile(r'^spark\.(scheduler\.|task\.|speculation|excludeOnFailure\.|blacklist\.|dynamicAllocation\.|stage\.|barrier\.|locality\.|executor\.|resources\.|files\.fetchFailure|job\.)')
+sel = sorted({c['key'] for c in cs if pat.search(c['key'])})
+print(len(sel)); [print(k) for k in sel]
+"
+```
+
+**111 keys. 86 are attributed to a concept on this page; 25 belong to other groups.**
+
+| Keys | Concept |
+|---|---|
+| `spark.scheduler.mode`, `.allocation.file`, `spark.scheduler.pool` | [scheduling mode and pools](#scheduling-mode-and-pools), [the Schedulable tree](#the-schedulable-tree) |
+| `spark.scheduler.resource.profileMergeConflicts` | [stage creation and cross-job reuse](#stage-creation-and-cross-job-reuse) |
+| `spark.stage.maxAttempts`, `.maxConsecutiveAttempts`, `.ignoreDecommissionFetchFailure`, `spark.files.fetchFailure.unRegisterOutputOnHost`, `spark.scheduler.maxRetainedRemovedDecommissionExecutors` | [fetch failure and stage retry](#fetch-failure-and-stage-retry) |
+| `spark.scheduler.barrier.maxConcurrentTasksCheck.interval`, `.maxFailures`, `spark.barrier.sync.timeout` | [barrier execution](#barrier-execution) |
+| `spark.job.interruptOnCancel`, `spark.scheduler.numCancelledJobGroupsToTrack`, `spark.scheduler.stage.legacyAbortAfterKillTasks` | [job completion and cancellation](#job-completion-and-cancellation) |
+| `spark.scheduler.revive.interval`, `.minRegisteredResourcesRatio`, `.maxRegisteredResourcesWaitingTime`, `.maxRetainedUnknownDecommissionExecutors`, `spark.executor.instances` | [executor registration and the offer loop](#executor-registration-and-the-offer-loop), [the driver↔executor message protocol](#the-driverexecutor-message-protocol) |
+| the 5 `spark.locality.wait*` keys | [delay scheduling and locality](#delay-scheduling-and-locality) |
+| `spark.task.cpus`, `spark.executor.cores`, `spark.task.resource.*`, `spark.executor.resource.*` | [slot arithmetic](#slot-arithmetic-and-resource-profiles), [fractional resource allocation](#fractional-resource-allocation) |
+| `spark.task.maxDirectResultSize`, `spark.task.maxFailures` | [task result delivery](#task-result-delivery), [task failure and retry](#task-failure-and-retry) |
+| the 9 `spark.speculation*` keys | [speculation](#speculation) |
+| the 13 `spark.excludeOnFailure.*` keys + `spark.scheduler.executorTaskExcludeOnFailureTime` | [executor exclusion](#executor-exclusion) |
+| `spark.scheduler.excludeOnFailure.unschedulableTaskSetTimeout` | [unschedulable TaskSets](#unschedulable-tasksets-and-the-abort-timer) |
+| the 4 `spark.task.reaper.*` keys | [kill path and the TaskReaper](#kill-path-and-the-taskreaper) |
+| `spark.executor.heartbeatInterval`, `.heartbeat.maxFailures`, `.heartbeat.dropZeroAccumulatorUpdates` | [heartbeat and expiry](#heartbeat-and-expiry), [task metrics and the accumulator pipeline](#task-metrics-and-the-accumulator-pipeline) |
+| `spark.executor.metrics.pollingInterval`, `.metrics.fileSystemSchemes`, `.processTreeMetrics.enabled` | [executor metrics polling](#executor-metrics-polling), [executor memory metrics and procfs](#executor-memory-metrics-and-the-procfs-process-tree) |
+| the 12 `spark.dynamicAllocation.*` keys | [dynamic allocation](#dynamic-allocation) |
+| `spark.executor.decommission.killInterval`, `.forceKillTimeout`, `.signal` | [decommissioning](#decommissioning) |
+| `spark.executor.userClassPathFirst`, `.isolatedSessionCache.size`, `.killOnFatalError.depth`, `.extraClassPath`, `.defaultExtraClassPath` | [executor class loading and session isolation](#executor-class-loading-and-session-isolation) |
+| `spark.scheduler.dropTaskInfoAccumulablesOnTaskCompletion.enabled` | [TaskInfo accumulable retention](#taskinfo-accumulable-retention) |
+| `spark.scheduler.streaming.idAwareLogging.enabled`, `.queryIdLength` | [streaming-aware scheduler logging](#streaming-aware-scheduler-logging) |
+
+**The 25 the slice caught that this group does not read** — each is a finding about the carving, not an omission here:
+
+| Keys | Read where | Owning group |
+|---|---|---|
+| the 5 `spark.scheduler.listenerbus.*` keys | `AsyncEventQueue`, `LiveListenerBus` (in `scheduler/`, but the listener bus, not the scheduler) | `core — monitoring` |
+| the 6 `spark.executor.logs.*` keys | `util/logging/FileAppender`, driven by `ExecutorRunner` | `core — submit-standalone` |
+| `spark.executor.memory`, `.memoryOverhead`, `.memoryOverheadFactor`, `.minMemoryOverhead`, `.pyspark.memory` | `SparkContext` and each resource manager | `core — shuffle-memory`, `resource-managers/*` |
+| `spark.executor.extraJavaOptions`, `.extraLibraryPath` | launch-command construction | `core — submit-standalone` |
+| `spark.resources.discoveryPlugin`, `.warnings.testing` | `resource/ResourceUtils` | `core — rpc-resources` |
+| `spark.executor.allowSparkContext`, `.syncLogLevel.enabled` | `SparkContext` (root package, not `executor/`) | unclaimed root files — see below |
+| `spark.executor.python.worker.log.details` | `api/python/Python.scala` | `core — api-bridge` |
+| `spark.executor.limitActiveProcessorCount.enabled` | k8s `Client` | `resource-managers/kubernetes` |
+| `spark.executor.id` | set by the backend at launch; read as an identifier, not behaviour | — |
+
+**Configs this group reads that are not in the catalog** (invisible to `--sweeps`, so eye-only): `spark.hadoop.outputCommitCoordination.enabled` (a bare `SparkConf.getBoolean`, already noted under [output commit coordination](#output-commit-coordination)) and `spark.hadoop.validateOutputSpecs`, read through `SparkHadoopWriterUtils.isOutputSpecValidationEnabled`.
+
+## Breadth check 2 — the packages
+
+`ls`-walked against the scope, including the three nested sub-packages of `scheduler/` that `check_drift.py --coverage` structurally cannot see. Ratios are cited files over `.scala` files.
+
+| Package | Files | Cited | Note |
+|---|---|---|---|
+| `scheduler/` | 57 | 48 | the 9 uncited are listed below |
+| `scheduler/cluster/` | 6 | 5 | `StandaloneSchedulerBackend` is swept by `submit-standalone` |
+| `scheduler/dynalloc/` | 1 | 1 | `ExecutorMonitor` |
+| `scheduler/local/` | 1 | 1 | `LocalSchedulerBackend` |
+| `executor/` | 18 | 17 | only `package.scala` uncited |
+| `internal/io/` | 6 | 6 | complete as of this run |
+
+**Deliberately left to another group** (8 files, all in `scheduler/`):
+
+- `LiveListenerBus`, `AsyncEventQueue`, `SparkListener`, `SparkListenerBus`, `ReplayListenerBus`, `EventLoggingListener`, `StatsReportListener` — the listener-bus layer. It sits in `scheduler/`, which this group's scope token claims, but it is the observability pipeline and `core — monitoring` owns the theme (and cites four of the seven). **Finding:** `SparkListener`, `SparkListenerBus`, `ReplayListenerBus` and `StatsReportListener` are cited by *no* sweep page. That is a real hole in `core — monitoring`, not in this one, and it is recorded here because this is where the mechanical walk found it.
+- `MapStatus` — explicitly assigned to `core — shuffle-memory` by that group's scope, and cited there.
+
+**Not covered, and not owned by anyone else:** nothing. `package.scala` in both packages is a package object holding implicits and constants, no concept.
+
+The two checks disagreed sharply on this group, which is the reason the July pass looked finished. Config breadth was already ~77% attributed once family shorthand is expanded; package breadth was **24 of 88 files**. Everything this run added came from the package walk. Coverage after this run: **78 of 89 files**.
+
+## Overlapping topic traces
+
+Four topic traces cover codes in this page's front matter, all recorded at Spark 4.2.0, so no version mismatch:
+
+- **[B1 — Spark Architecture & the Execution Model](../topics/b1.md).** Agrees. It already cites `ShuffleMapTask.scala:54`/`:82` and `ResultTask.scala:78` for the stage-boundary-is-a-return-type point; [the Task object](#the-task-object-and-how-it-reaches-an-executor) here goes below that to `TaskDescription` and the broadcast `taskBinary`, which the trace does not reach. No contradiction.
+- **[B4 — Reading and Writing Data](../topics/b4.md).** Agrees. It traces `FileCommitProtocol` from the SQL side (`setupJob`, `commitJob`, `newTaskTempFile`); [the RDD write path](#the-rdd-write-path-and-the-hadoop-output-formats) adds the *other* caller, `SparkHadoopWriter`, which the trace never mentions because no DataFrame write reaches it. Complementary, and the anchors match.
+- **[I5 — Partitioning](../topics/i5.md).** No overlap in substance — the trace is about partition counts and repartitioning, and says nothing about locality hints. [Preferred locations from Hadoop input formats](#preferred-locations-from-hadoop-input-formats) is new to the map.
+- **[I7 — The Spark UI](../topics/i7.md).** Partial disagreement in *coverage*, not in fact. The trace lists `spark.executor.metrics.pollingInterval` in its config table and otherwise reads the UI as a finished artefact; it has nothing on where the numbers come from. That gap is exactly what the **E49** proposal is for, and the trace should gain a pointer to it once E49 is written.
+
 ## Sweep log
 
 | Date | Spark | What changed |
@@ -848,3 +1297,4 @@ The scheduling core: how an action becomes a job, a job becomes stages, a stage 
 | 2026-07-19 | 4.2.0 | Correction: this page originally read the absence of `spark.shuffle.push.*` from this group's slice as a `groups.yaml` carving gap. It is not — `shuffle-memory`'s scope names push-based shuffle and its slice holds all thirteen keys, and the [shuffle & memory sweep](core-shuffle-memory.md) covers the subsystem in full. |
 | 2026-07-25 | 4.2.0 | Carving fix: `internal/io/` moved into this group's scope and swept. The **Hadoop commit protocol** — `FileCommitProtocol` and `HadoopMapReduceCommitProtocol` — was claimed by `config-security`'s over-broad `internal/` token and covered by no sweep at all. It belongs here: `OutputCommitCoordinator` (already on this page) decides *who* may commit, and this is *how* the commit happens, so topic **E17** now has both halves in one place. The finding worth carrying: `commitJob` renames staged files one at a time with no rollback, and under dynamic partition overwrite each destination partition is deleted *before* its replacement is renamed in. |
 | 2026-07-25 | 4.2.0 | Re-sweep at the same Spark version, driven by the config-slice breadth check rather than a release. Five concepts added from keys and files the first pass never tied to anything: output commit coordination (proposed as **E17** — the first pass mentioned the coordinator in one clause of the speculation note and never traced it), unschedulable TaskSets and the abort timer, cluster-manager selection and local mode, `TaskInfo` accumulable retention, and streaming-aware scheduler logging. Correction: the stage-creation note cited `spark.resources.resourceProfileMergeConflicts`, which is not a Spark config key — the real one is `spark.scheduler.resource.profileMergeConflicts` (`DAGScheduler.scala:238`). |
+| 2026-08-09 | 4.2.0 | **Re-sweep at an unchanged version, found by breadth check 2 (packages).** The page was carrying `status: complete` on **24 of 88 in-scope files cited** — `executor/` 4/18, `internal/io/` 2/6, `scheduler/` 19/57 — and had no breadth-check or overlap sections at all, only a sweep log, so nothing recorded what had been skipped. Eleven concepts added and nine existing ones extended; coverage now 78/89. Two proposals: **E49** the task-metrics accumulator pipeline, **E50** executor class loading and session isolation. The whole per-task metrics layer (`TaskMetrics` and the four sibling metric classes), the `Task`/`TaskDescription` pair the entire engine passes around, the driver↔executor message protocol, `SparkHadoopWriter` (a class this group's own scope names by name and the previous pass never opened), and the executor class-loading stack were all absent from a page that both checkers passed. Findings worth carrying: bytes-written metrics refresh only every 256 records while record counts are exact; `ProcfsMetricsGetter` disables itself permanently after one failed read; `exitCausedByApp` is set by the cluster manager, so identical crashes count differently across deployments; and `userClassPathFirst` flips resource lookup as well as class lookup, which is how shading a jar silently takes over logging config. Also recorded a hole in another group: `SparkListener`, `SparkListenerBus`, `ReplayListenerBus` and `StatsReportListener` are cited by no sweep page anywhere — they are `core — monitoring`'s theme and its page misses them. |

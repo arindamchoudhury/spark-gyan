@@ -151,6 +151,8 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E46 | Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels | — | — | ⬜ |
 | E47 | Avro State Encoding and State Schema Evolution | — | — | ⬜ |
 | E48 | Continuous Processing and the Epoch Coordinator | — | — | ⬜ |
+| E49 | Task Metrics and the Accumulator Pipeline | — | — | ⬜ |
+| E50 | Executor Class Loading, Classpath Precedence, and Session Isolation | — | — | ⬜ |
 
 ## Source concept map
 
@@ -278,6 +280,17 @@ flowchart LR
     S6 --> S6c30["taskinfo-accumulable-retention"]
     S6 --> S6c31["streaming-id-aware-scheduler-logging"]
     S6 --> S6c32["the-hadoop-commit-protocol"]
+    S6 --> S6c33["the-task-object-and-its-serialization"]
+    S6 --> S6c34["task-metrics-and-the-accumulator-pipeline"]
+    S6 --> S6c35["executor-memory-metrics-and-procfs"]
+    S6 --> S6c36["driver-executor-message-protocol"]
+    S6 --> S6c37["executor-class-loading-and-session-isolation"]
+    S6 --> S6c38["rdd-write-path-and-hadoop-output-formats"]
+    S6 --> S6c39["the-schedulable-tree"]
+    S6 --> S6c40["executor-loss-reasons-and-exit-codes"]
+    S6 --> S6c41["fractional-resource-allocation"]
+    S6 --> S6c42["dagscheduler-event-loop"]
+    S6 --> S6c43["preferred-locations-from-hadoop-input-formats"]
     S7["core"]
     S7 --> S7c0["Listener bus and async event queues (producer side)"]
     S7 --> S7c1["Event-log write path (EventLoggingListener + file writers)"]
@@ -1068,6 +1081,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | block-locking | core | new | E15 | Block Locking and Cache Visibility |
 | closure-cleaning | core | refinement | I14 | Closure Cleaning and the Task-Not-Serializable Problem |
 | dependency-resolution | core | new | I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars |
+| executor-class-loading-and-session-isolation | core | new | E50 | Executor Class Loading, Classpath Precedence, and Session Isolation |
 | executor-exclusion | core | new | E12 | Executor Exclusion and Health Tracking |
 | fetch-failure-and-stage-retry | core | new | A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up |
 | indeterminate-stages-and-rollback | core | new | A14 | Determinism, Indeterminate Stages, and Correctness Under Retry |
@@ -1079,6 +1093,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | sampling | core | new | I19 | Sampling: sample, takeSample, and Stratified Sampling |
 | serialization | core | refinement | E11 | Serialization: KryoSerializer vs JavaSerializer |
 | spark.api.mode — Classic vs Spark Connect selection | core | new | — | — |
+| task-metrics-and-the-accumulator-pipeline | core | new | E49 | Task Metrics and the Accumulator Pipeline |
 | unmanaged-memory-accounting | core | new | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
 | whole-file-sources | core | new | I17 | Whole-File and Binary RDD Sources |
 | ExecutorPodsSnapshotsStore — a producer/consumer bus with per-subscriber batching | resource-managers/kubernetes | new | E33 | Executor Pod Reconciliation: Watch, Poll, and the Events You Miss |
@@ -1175,7 +1190,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | sql/catalyst — types-parser | — | ✅ complete | 4.2.0 | 2026-07-26 |
 | sql/catalyst — framework | — | ✅ complete | 4.2.0 | 2026-07-26 |
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — execution-engine | — | ✅ complete | 4.2.0 | 2026-07-25 |
+| core — execution-engine | — | ✅ complete | 4.2.0 | 2026-08-09 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-25 |
