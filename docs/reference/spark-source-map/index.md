@@ -19,6 +19,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | B7 | Joins: Types and Mechanics | [10](../../spark-book/ch10-joins.md) 🔄 | apache/spark | ✅ complete |
 | B8 | Spark SQL | [11](../../spark-book/ch11-spark-sql.md) 🔄 | apache/spark | ✅ complete |
 | B9 | Null Handling | [12](../../spark-book/ch12-null-handling.md) 🔄 | apache/spark | ✅ complete |
+| B10 | Combining DataFrames: union, unionByName, and How Columns Are Matched | — | — | ⬜ |
 | I1 | Complex Column Types: Arrays, Maps, Structs | [13](../../spark-book/ch13-complex-types.md) 🔄 | apache/spark | ✅ complete |
 | I2 | Window Functions | [14](../../spark-book/ch14-window-functions.md) 🔄 | apache/spark | ✅ complete |
 | I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) 🔄 | apache/spark | ✅ complete |
@@ -53,6 +54,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | I32 | SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken | — | — | ⬜ |
 | I33 | SQL UDFs: CREATE FUNCTION … RETURN and Plan Inlining | — | — | ⬜ |
 | I34 | Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP | — | — | ⬜ |
+| I35 | Column DEFAULT Values: DDL, INSERT, and the Provider Allowlist | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
 | A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
 | A3 | Join Strategies and Tuning | — | — | ⬜ |
@@ -95,6 +97,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | A40 | Stream Rate Limiting and Backpressure: the PID Loop and Per-Partition Caps | — | — | ⬜ |
 | A41 | Decoupling Spark Tasks from Kafka Partitions: minPartitions and maxRecordsPerPartition | — | — | ⬜ |
 | A42 | UNION ALL: Partitioning-Aware Output and Codegen Fusion | — | — | ⬜ |
+| A43 | Attribute Identity: ExprId, DeduplicateRelations, and Ambiguous Self-Joins | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
 | E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
 | E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
@@ -503,6 +506,27 @@ flowchart LR
     S16 --> S16c14["Row-level command rewrite — MERGE, UPDATE, DELETE"]
     S16 --> S16c15["Time-travel resolution"]
     S16 --> S16c16["Table constraints and schema evolution"]
+    S16 --> S16c17["Inside the single-pass Resolver — per-operator resolvers and the NameScopeStack"]
+    S16 --> S16c18["Expression-ID assignment and attribute identity"]
+    S16 --> S16c19["Metadata resolution, relation bridging and the plan rewriter"]
+    S16 --> S16c20["CTE substitution — precedence, inlining and name shadowing"]
+    S16 --> S16c21["Recursive CTE resolution — WITH RECURSIVE becomes UnionLoop"]
+    S16 --> S16c22["Collation application during analysis"]
+    S16 --> S16c23["Session variable resolution (DECLARE / SET VAR)"]
+    S16 --> S16c24["Cursor resolution (DECLARE / OPEN / FETCH)"]
+    S16 --> S16c25["SQL-defined functions — inlining a CREATE FUNCTION body"]
+    S16 --> S16c26["Parameterized queries and the IDENTIFIER clause"]
+    S16 --> S16c27["Hint resolution — attaching, moving and dropping hints"]
+    S16 --> S16c28["Time-window and session-window rewriting"]
+    S16 --> S16c29["Watermark resolution and streaming source naming"]
+    S16 --> S16c30["Changelog reads — the CHANGES clause and CDC post-processing"]
+    S16 --> S16c31["Pivot, unpivot and inline tables — reshaping during analysis"]
+    S16 --> S16c32["Union and set-operation column resolution"]
+    S16 --> S16c33["Generator and higher-order-function resolution"]
+    S16 --> S16c34["Assignment resolution for UPDATE and MERGE"]
+    S16 --> S16c35["Column DEFAULT values"]
+    S16 --> S16c36["Post-resolution cleanup batches"]
+    S16 --> S16c37["The unresolved-node vocabulary"]
     S17["sql/catalyst"]
     S17 --> S17c0["The Expression contract — eval, doGenCode, and the traits the optimizer reads"]
     S17 --> S17c1["CodegenContext and CodeGenerator — Janino, the class cache, and the JVM limits"]
@@ -1024,9 +1048,11 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | The YARN web proxy — AmIpFilter, redirects, and the proxy-user identity | resource-managers/yarn | new | E38 | The YARN Web Proxy: Why the Spark UI Redirects and Who It Thinks You Are |
 | Cast, EvalMode and ANSI — the three evaluation modes and where the errors come from | sql/catalyst | new | I20 | ANSI Mode, EvalMode, and Error-Safe Evaluation with try_* |
 | Collation — Collate, CollationKey, and collation-aware hashing | sql/catalyst | new | I21 | String Collation |
+| Column DEFAULT values | sql/catalyst | new | I35 | Column DEFAULT Values: DDL, INSERT, and the Provider Allowlist |
 | Correlated subqueries — pull-up, decorrelation and the COUNT bug | sql/catalyst | new | A19 | Correlated Subqueries and Decorrelation |
 | DecimalType and Decimal — precision, scale, and the adjustment rule | sql/catalyst | new | I25 | Decimal Precision, Scale, and Silent Rounding |
 | Distribution and Partitioning — the contract that decides whether you get a shuffle | sql/catalyst | new | A26 | Distribution, Partitioning, and Why Spark Inserts an Exchange |
+| Expression-ID assignment and attribute identity | sql/catalyst | new | A43 | Attribute Identity: ExprId, DeduplicateRelations, and Ambiguous Self-Joins |
 | Geospatial ST expressions — the GEOGRAPHY/GEOMETRY beachhead | sql/catalyst | new | — | — |
 | KeyedPartitioning — the 4.2.0 storage-partitioned-join refactor | sql/catalyst | new | A25 | Storage-Partitioned Joins |
 | Malformed record handling — FailureSafeParser and the corrupt-record column | sql/catalyst | new | I24 | Malformed Records: PERMISSIVE, DROPMALFORMED, FAILFAST and _corrupt_record |
@@ -1039,6 +1065,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | The Types Framework — the 4.2.0 refactor behind a test-only flag | sql/catalyst | new | — | — |
 | The VARIANT type and semi-structured extraction | sql/catalyst | new | I22 | The VARIANT Type and Semi-Structured Data |
 | The grammar — keyword categories and the parser feature flags | sql/catalyst | new | A24 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration |
+| Union and set-operation column resolution | sql/catalyst | new | B10 | Combining DataFrames: union, unionByName, and How Columns Are Matched |
 | Vector expressions — similarity and norms over float arrays | sql/catalyst | new | A23 | Vector Expressions for Embeddings and Similarity |
 | Artifacts — shipping JARs, classes and UDFs to a remote session | sql/connect | new | E19 | Spark Connect Artifacts: Shipping Code to a Remote Session |
 | Reattachable execution — surviving a broken response stream | sql/connect | new | E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection |
@@ -1095,7 +1122,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 
 | Subsystem | Configs | Status | Spark version | When |
 |---|---|---|---|---|
-| sql/catalyst — analysis | 750 | ✅ partial | 4.2.0 | 2026-07-25 |
+| sql/catalyst — analysis | 750 | ✅ complete | 4.2.0 | 2026-08-08 |
 | sql/catalyst — optimizer | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — planner | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | sql/catalyst — expressions | — | ✅ complete | 4.2.0 | 2026-07-26 |
