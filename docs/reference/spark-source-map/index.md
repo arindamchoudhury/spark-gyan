@@ -153,6 +153,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 | E48 | Continuous Processing and the Epoch Coordinator | — | — | ⬜ |
 | E49 | Task Metrics and the Accumulator Pipeline | — | — | ⬜ |
 | E50 | Executor Class Loading, Classpath Precedence, and Session Isolation | — | — | ⬜ |
+| E51 | Unroll Memory: Materialising a Cached Partition Without an OOM | — | — | ⬜ |
 
 ## Source concept map
 
@@ -419,6 +420,14 @@ flowchart LR
     S11 --> S11c27["disk-store-and-encrypted-blocks"]
     S11 --> S11c28["memory-mapped-buffer-disposal"]
     S11 --> S11c29["block-log-writers"]
+    S11 --> S11c30["blockmanagermaster-rpc-plane"]
+    S11 --> S11c31["storage-endpoint-async-removal"]
+    S11 --> S11c32["blockmanagerid-identity"]
+    S11 --> S11c33["unroll-memory"]
+    S11 --> S11c34["managed-buffer-lock-bridge"]
+    S11 --> S11c35["avro-schema-registration"]
+    S11 --> S11c36["serializer-helper-chunked-buffers"]
+    S11 --> S11c37["storage-status-and-metrics-model"]
     S12["core"]
     S12 --> S12c0["master-url-resolution"]
     S12 --> S12c1["deploy-mode-matrix"]
@@ -1095,6 +1104,7 @@ Source-first sweeps discover concepts independently of the learning path; these 
 | spark.api.mode — Classic vs Spark Connect selection | core | new | — | — |
 | task-metrics-and-the-accumulator-pipeline | core | new | E49 | Task Metrics and the Accumulator Pipeline |
 | unmanaged-memory-accounting | core | new | E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool |
+| unroll-memory | core | new | E51 | Unroll Memory: Materialising a Cached Partition Without an OOM |
 | whole-file-sources | core | new | I17 | Whole-File and Binary RDD Sources |
 | ExecutorPodsSnapshotsStore — a producer/consumer bus with per-subscriber batching | resource-managers/kubernetes | new | E33 | Executor Pod Reconciliation: Watch, Poll, and the Events You Miss |
 | SparkKubernetesClientFactory — one prefix, five suffixes, three identities | resource-managers/kubernetes | new | E35 | Spark on Kubernetes: Identity, RBAC, and Credential Propagation |
@@ -1192,7 +1202,7 @@ Which subsystems have been swept for source-concept discovery. Order by discover
 | core — rdd-layer | 546 | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — execution-engine | — | ✅ complete | 4.2.0 | 2026-08-09 |
 | core — shuffle-memory | — | ✅ complete | 4.2.0 | 2026-07-25 |
-| core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-07-25 |
+| core — storage-serializer | — | ✅ complete | 4.2.0 | 2026-08-09 |
 | core — submit-standalone | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — monitoring | — | ✅ complete | 4.2.0 | 2026-07-25 |
 | core — config-security | — | ✅ complete | 4.2.0 | 2026-07-25 |

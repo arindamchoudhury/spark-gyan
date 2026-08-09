@@ -1,7 +1,7 @@
 ---
 subsystem: core
 spark_version: "4.2.0"
-swept_at: 2026-07-25
+swept_at: 2026-08-09
 group: storage-serializer
 all_groups: [rdd-layer, execution-engine, shuffle-memory, storage-serializer,
   submit-standalone, monitoring, config-security, rpc-resources, api-bridge]
@@ -73,6 +73,28 @@ concepts:
     topics: [E1, I6]
   - name: block-log-writers
     topics: [E3, I3]
+  - name: blockmanagermaster-rpc-plane
+    topics: [B1, E2, E1]
+  - name: storage-endpoint-async-removal
+    topics: [E2, E1]
+  - name: blockmanagerid-identity
+    topics: [B1, E2]
+  - name: unroll-memory
+    topics: []
+    propose:
+      code: E51
+      level: Expert
+      title: "Unroll Memory: Materialising a Cached Partition Without an OOM"
+      what: "Before a partition can be cached in memory it must be materialised from an iterator whose size is unknown, so the MemoryStore reserves a small initial budget and grows it geometrically while periodically re-estimating the partially-built block — reserving as *unroll* memory, a third accounting category alongside execution and storage, and transferring it to storage memory atomically only once the block is complete."
+      why: "Every 'Not enough space to cache rdd_N_M in memory' warning is an unroll failure, not a storage-capacity failure, and the two have different fixes. Unroll memory is charged per task attempt and is invisible in the Storage tab, so N concurrent tasks each unrolling a large partition can exhaust storage memory while the tab shows almost nothing cached; and a failed unroll hands back a PartiallyUnrolledIterator that keeps holding its reservation until the caller drains or closes it."
+  - name: managed-buffer-lock-bridge
+    topics: [E15, E1]
+  - name: avro-schema-registration
+    topics: [E11, I10]
+  - name: serializer-helper-chunked-buffers
+    topics: [E11, E1]
+  - name: storage-status-and-metrics-model
+    topics: [E3, I7, I6]
 ---
 
 Where a cached or shuffled block physically lives, how it is locked and located, and the serializers that turn objects into the bytes it stores. Swept in two halves — the block storage layer, and the serialization layer with the `StorageLevel` model.
@@ -598,6 +620,13 @@ Where a cached or shuffled block physically lives, how it is locked and located,
 - [LogBlockWriter.scala:65](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/LogBlockWriter.scala#L65) — `Files.createTempFile` with owner-only permissions ([SPARK-57920]) — logs can contain user data, so the temp file is not world-readable
 - [BlockId.scala:227](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L227) — `PythonWorkerLogBlockId(lastLogTime, executorId, sessionId, workerId)`, and the parsing regex at L288
 - [PythonWorkerLogCapture.scala:44](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/api/python/PythonWorkerLogCapture.scala#L44) — one writer per worker id, held in a `ConcurrentHashMap`
+- [BlockId.scala:179](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockId.scala#L179) — `LogBlockType`, the `Enumeration` (`TEST`, `PYTHON_WORKER`) that types the whole feature; `LogBlockId.empty(logBlockType)` at L199 builds the placeholder id
+- [LogBlockIdGenerator.scala:26](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/LogBlockIdGenerator.scala#L26) — the generator trait; `nextBlockId` (L40) is `final` and re-checks that the subclass produced an id of its own declared type, raising an internal error otherwise
+- [LogLine.scala:30](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/LogLine.scala#L30) — the `LogLine` record: `eventTime`, `sequenceId`, `message`. `LogLine.getClassTag` (L37) maps a `LogBlockType` to the concrete case class, which is how the reader deserializes a block it did not write
+
+!!! info "The log-block feature is typed end to end, and extending it means three edits"
+
+    A new kind of log block needs an entry in the `LogBlockType` enumeration, a `LogLine` subclass registered in `getClassTag`, and a `LogBlockIdGenerator`. `getClassTag` throws a plain `RuntimeException` on an unknown type rather than a Spark error class — the one un-classed failure in an otherwise 4.2.0-era feature.
 
 !!! info "Where PySpark worker logs go in 4.2.0"
 
@@ -613,9 +642,312 @@ Where a cached or shuffled block physically lives, how it is locked and located,
 
 ---
 
+## BlockManagerMaster — the driver proxy every storage operation goes through
+
+**What it is:** the class the group's scope names first, and the one thing on every executor that talks to the driver about blocks. It holds no state: each method wraps one `BlockManagerMessages` case class and sends it to `driverEndpoint`. What matters is *how* it sends them — nearly every call is `askSync`, so registering a block manager, reporting a block status change, looking up a location, or asking for peers all block the calling thread on a round trip to a single driver-side endpoint.
+
+**Code path:** `BlockManager` → `BlockManagerMaster.<op>` → `askSync(msg)` → `BlockManagerMasterEndpoint` (locations, registry) **or** `BlockManagerMasterHeartbeatEndpoint` (liveness only)
+
+**Anchor files:**
+
+- [BlockManagerMaster.scala:34](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L34) — two endpoint refs, not one: `driverEndpoint` and `driverHeartbeatEndPoint`
+- [BlockManagerMaster.scala:77](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L77) — `registerBlockManager`: the executor sends a topology-less `BlockManagerId` and the driver returns a fleshed-out one, which is the exchange behind `blockManagerId = idFromMaster`
+- [BlockManagerMaster.scala:95](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L95) — a reply carrying `INVALID_EXECUTOR_ID` is how the driver *refuses* a re-registration; the `assert` says this may only happen on the re-register path
+- [BlockManagerMaster.scala:195](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L195) — `removeRdd`, `removeShuffle` and `removeBroadcast` all return a `Future` that is awaited only when `blocking = true`; the failure handler merely `logWarning`s
+- [BlockManagerMaster.scala:43](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L43) — that wait is bounded by `spark.cleaner.referenceTracking.blocking.timeout`, defaulting to 120s
+- [BlockManagerMaster.scala:256](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L256) — `getBlockStatus` fans out through `Future`s with an explicit comment that the master endpoint must not block waiting on a block manager that may itself be waiting on the master
+- [BlockManagerMaster.scala:314](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L314) — `tell`: a "one-way" message that is actually a synchronous ask expecting `true`, and throws if not
+- [BlockManagerMessages.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMessages.scala#L29) — the protocol split into two sealed traits, `ToBlockManagerMasterStorageEndpoint` (driver → executor) and `ToBlockManagerMaster` (executor → driver, L67)
+- [BlockManagerMasterHeartbeatEndpoint.scala:27](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterHeartbeatEndpoint.scala#L27) — the class comment: heartbeats were split out of `BlockManagerMasterEndpoint` "due to performance consideration"
+- [BlockManagerMasterHeartbeatEndpoint.scala:50](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterHeartbeatEndpoint.scala#L50) — `heartbeatReceived` returns `false` for an unknown block manager, which is the trigger for the re-registration path
+
+!!! warning "The heartbeat endpoint shares the master endpoint's mutable state"
+
+    `BlockManagerMasterHeartbeatEndpoint` is handed the *same* `mutable.Map[BlockManagerId, BlockManagerInfo]` the master endpoint mutates, and calls `updateLastSeenMs()` on it from its own thread. The split buys latency isolation — a heartbeat no longer queues behind a slow `GetLocations` — at the cost of two endpoints writing one map. It is why stopping the master stops both endpoints ([BlockManagerMaster.scala:300](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala#L300)) and why only one of the two stops is checked for success.
+
+!!! info "Block bookkeeping is a synchronous, single-endpoint protocol"
+
+    Every cached block, every shuffle block, and every removal reaches one driver endpoint, and the executor waits for the reply. That is the structural reason storage bookkeeping shows up as driver pressure on wide jobs, and the reason `getBlockStatus` and `getMatchingBlockIds` carry "should only be used for testing" warnings in their scaladoc — they broadcast a query to every block manager.
+
+**Configs:** `spark.storage.blockManagerHeartbeatTimeoutMs`, `spark.storage.blockManagerMasterDriverHeartbeatTimeoutMs`, `spark.cleaner.referenceTracking.blocking.timeout`
+
+**Maps to topics:** B1, E2, E1
+
+---
+
+## The executor's storage endpoint and asynchronous removal
+
+**What it is:** the other half of the protocol — the executor-side `RpcEndpoint` that receives driver commands. It is an `IsolatedThreadSafeRpcEndpoint`, so it owns its inbox rather than sharing the dispatcher's, and every command that *removes* blocks is pushed onto a separate cached thread pool instead of being handled inline.
+
+**Anchor files:**
+
+- [BlockManagerStorageEndpoint.scala:38](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L38) — `IsolatedThreadSafeRpcEndpoint`: a slow block removal cannot stall unrelated RPC traffic
+- [BlockManagerStorageEndpoint.scala:40](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L40) — `newDaemonCachedThreadPool("block-manager-storage-async-thread-pool", 100)`, the pool that actually runs removals
+- [BlockManagerStorageEndpoint.scala:106](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L106) — `doAsync`: the reply is sent from the future's callback, so the driver's `askSync` is what waits, not the endpoint thread
+- [BlockManagerStorageEndpoint.scala:72](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L72) — `DecommissionBlockManager` is handled **synchronously**, unlike every other mutating command
+- [BlockManagerStorageEndpoint.scala:95](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L95) — `MarkRDDBlockAsVisible`, the executor end of cache-visibility tracking, with the two cases spelled out in comments
+- [BlockManagerStorageEndpoint.scala:86](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L86) — `TriggerThreadDump` and `TriggerHeapHistogram` (L89): the executor thread dump and heap histogram in the Spark UI arrive over the *storage* endpoint
+- [BlockManagerStorageEndpoint.scala:124](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerStorageEndpoint.scala#L124) — `onStop` calls `shutdownNow()`, so in-flight removals are interrupted at executor shutdown
+
+!!! info "The UI's thread dump button rides the block-manager protocol"
+
+    `TriggerThreadDump` / `TriggerHeapHistogram` are `ToBlockManagerMasterStorageEndpoint` messages. There is no separate diagnostics channel: if an executor's storage endpoint is wedged, the thread dump that would tell you why is unavailable too.
+
+!!! warning "A removal reply can outlive the executor"
+
+    `doAsync` replies from a pool thread; `onStop` interrupts that pool. An executor stopping mid-removal therefore fails the driver's `askSync` rather than reporting partial progress — which is safe for `removeRdd` (the driver drops the locations anyway) but means the 100-thread bound is a real ceiling: a driver unpersisting many RDDs at once queues past it silently.
+
+**Maps to topics:** E2, E1
+
+---
+
+## BlockManagerId — identity, interning, and two sentinel ids
+
+**What it is:** the four-field identity (`executorId`, `host`, `port`, `topologyInfo`) that every location, peer list and fetch request is expressed in. It is a `@DeveloperApi` with private constructors: instances may only be made through `apply`, which routes them through a bounded interning cache so that the millions of copies arriving over the wire collapse onto one object per real block manager.
+
+**Anchor files:**
+
+- [BlockManagerId.scala:38](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerId.scala#L38) — private constructors, `var` fields, and `Externalizable` — hand-rolled serialization because this type crosses the wire constantly
+- [BlockManagerId.scala:89](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerId.scala#L89) — `readResolve` re-interns on every deserialization, which is what keeps identity stable
+- [BlockManagerId.scala:139](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerId.scala#L139) — the Guava cache with a hardcoded `maximumSize(10000)` and the comment justifying it at ~48 bytes an entry
+- [BlockManagerId.scala:149](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerId.scala#L149) — `SHUFFLE_MERGER_IDENTIFIER = "shuffle-push-merger"`: a push-based-shuffle merger location is represented as a `BlockManagerId` with a fake executor id
+- [BlockManagerId.scala:151](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerId.scala#L151) — `INVALID_EXECUTOR_ID = "invalid"`, the rejection sentinel `registerBlockManager` checks for
+- [BlockManagerId.scala:67](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerId.scala#L67) — `isDriver` is decided purely by the executor-id string, via `SparkContext.isDriver`
+
+!!! info "Three different things are modelled as a BlockManagerId"
+
+    A real executor, the driver, and a **shuffle push merger** — plus `FallbackStorage.FALLBACK_BLOCK_MANAGER_ID`, which stands in for a filesystem path. Any code reading a location list must therefore treat `BlockManagerId` as "somewhere blocks can be", not "an executor"; that is exactly the assumption `ShuffleBlockFetcherIterator` encodes when it filters the fallback id out of its remote-fetch set.
+
+!!! warning "topologyInfo is part of equality"
+
+    Two ids for the same host and port are *unequal* if one carries topology and the other does not. That is why registration returns a new id and the executor must adopt it — keeping the pre-registration id would make the executor invisible to peer lookups keyed on the topology-bearing one.
+
+**Maps to topics:** B1, E2
+
+---
+
+## Unroll memory — materialising a block whose size is unknown
+
+**What it is:** the mechanism behind the whole `MEMORY_ONLY` story, and the third memory accounting category after execution and storage. Caching an iterator requires knowing how big it will be, which is only knowable by consuming it — so the `MemoryStore` reserves a small budget up front, consumes the iterator while re-estimating size every `spark.storage.unrollMemoryCheckPeriod` elements, and requests more memory geometrically as the estimate grows. Only when the block is complete is the unroll reservation swapped for a storage reservation, under one lock, atomically.
+
+**Code path:** `putIteratorAsValues` / `putIteratorAsBytes` → `putIterator` → `reserveUnrollMemoryForThisTask` → grow loop → `entryBuilder.build()` → release unroll + acquire storage (atomic) → `entries.put` — or, on failure, `Left(unrollMemoryUsedByThisBlock)` → `PartiallyUnrolledIterator`
+
+**Anchor files:**
+
+- [MemoryStore.scala:97](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L97) — `onHeapUnrollMemoryMap` / `offHeapUnrollMemoryMap`, keyed by **task attempt id**: unroll memory is charged per task, not per block
+- [MemoryStore.scala:103](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L103) — `spark.storage.unrollMemoryThreshold`, the 1 MiB reserved before a single element is read
+- [MemoryStore.scala:111](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L111) — a startup warning when total storage memory is smaller than that initial threshold
+- [MemoryStore.scala:233](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L233) — `elementsUnrolled % memoryCheckPeriod == 0`: the size estimate is only refreshed every 16 elements by default
+- [MemoryStore.scala:237](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L237) — `currentSize * memoryGrowthFactor - memoryThreshold`: the request is sized to 1.5× the *current* estimate, not to the shortfall
+- [MemoryStore.scala:252](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L252) — SPARK-45025: an interrupted thread abandons the unroll and returns the memory, so a killed task is not later killed again by the task reaper
+- [MemoryStore.scala:273](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L273) — the hand-off, inside `memoryManager.synchronized`, with `assert(success, "transferring unroll memory to storage memory failed")`
+- [MemoryStore.scala:586](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L586) — `reserveUnrollMemoryForThisTask`; `releaseUnrollMemoryForThisTask` (L608) defaults to releasing the task's *entire* allocation
+- [MemoryStore.scala:777](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L777) — `PartiallyUnrolledIterator`: the failure result, which holds the reservation until `unrolled` is drained (L795) or `close()` is called (L814)
+- [MemoryStore.scala:850](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L850) — `PartiallySerializedBlock`, the `putIteratorAsBytes` equivalent, which registers a task-completion listener (L867) precisely because a caller that abandons it would leak direct buffers
+- [MemoryStore.scala:668](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L668) — `logUnrollFailureMessage`, the source of "Not enough space to cache … in memory!", followed by a memory-usage line naming `numTasksUnrolling`
+
+!!! warning "\"Not enough space to cache\" is an unroll failure, and the memory it needed is invisible in the UI"
+
+    Unroll memory is scratch space shared across tasks: `logMemoryUsage` reports it separately from block memory precisely because the Storage tab does not. With N cores per executor each unrolling a partition, N × the partition size must fit in storage memory *simultaneously* even though only one partition's worth ever appears as cached. This is the most common way a cache that "should fit" does not.
+
+!!! info "The growth factor makes over-reservation deliberate"
+
+    Requesting `currentSize × 1.5` means an unroll typically holds ~50% more memory than the data it has read so far, trading waste for fewer round trips through `MemoryManager`. Lowering `spark.storage.unrollMemoryGrowthFactor` toward 1.0 reduces the overshoot but raises the number of acquire attempts, each of which can trigger eviction.
+
+!!! warning "An abandoned PartiallyUnrolledIterator holds unroll memory for the rest of the task"
+
+    The reservation is released when the partially-unrolled prefix is fully iterated, not when the put fails. A caller that takes the `Left` result and stops early — a `take`, a short-circuiting operator — pins that memory until task end. `close()` exists for this and is the reason the `getOrElseUpdate` failure path is written the way it is.
+
+**Configs:** `spark.storage.unrollMemoryThreshold` (1 MiB), `spark.storage.unrollMemoryCheckPeriod` (16), `spark.storage.unrollMemoryGrowthFactor` (1.5)
+
+**Maps to topics:** none — proposed as E51
+
+---
+
+## BlockManagerManagedBuffer — read locks expressed as Netty refcounts
+
+**What it is:** the adapter that makes block locking work across the network boundary. When a remote executor fetches a block, the served bytes are wrapped in a `ManagedBuffer` whose `retain`/`release` — the network layer's reference counting — are wired directly to `lockForReading` / `unlock` on the `BlockInfoManager`. The block stays locked exactly as long as Netty holds a reference to it.
+
+**Anchor files:**
+
+- [BlockManagerManagedBuffer.scala:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerManagedBuffer.scala#L37) — the class comment naming it "a wrapper / bridge to connect the BlockManager's notion of read locks to the network layer's notion of retain / release counts"
+- [BlockManagerManagedBuffer.scala:56](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerManagedBuffer.scala#L56) — `retain` takes a **non-blocking** read lock and `assert`s it succeeded
+- [BlockManagerManagedBuffer.scala:63](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerManagedBuffer.scala#L63) — `release` unlocks first, then disposes the `BlockData` when the count reaches zero and `dispose` was requested
+- [BlockManagerManagedBuffer.scala:42](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerManagedBuffer.scala#L42) — `unlockOnDeallocate`, the escape hatch for callers that manage the lock themselves
+
+!!! warning "A retain that cannot take the lock trips an assertion, not a retry"
+
+    `retain` uses `blocking = false` and asserts the result is defined. It is sound only because a caller retaining an already-retained buffer holds a read lock already, and read locks are shared — but it means any future path that retains without an existing read lock fails as an `AssertionError` on a Netty thread rather than as a fetch failure.
+
+!!! info "This is where a network stall becomes an un-evictable block"
+
+    Because the lock's lifetime is the buffer's refcount, a slow or stuck remote reader keeps the served block read-locked, and [`MemoryStore.evictBlocksToFreeSpace`](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L497) skips blocks whose write lock it cannot take. Serving a block to a slow peer therefore reduces effective storage memory for the duration — the network-side twin of the un-drained-iterator case.
+
+**Maps to topics:** E15, E1
+
+---
+
+## Avro schema registration and GenericAvroSerializer
+
+**What it is:** the one place Spark ships a custom Kryo serializer for a third-party type. Avro `GenericContainer` records carry their schema, and naively Kryo would write the full schema text with every record. `GenericAvroSerializer` instead writes a 64-bit *parsing fingerprint* when the schema was pre-registered, and a compressed schema when it was not. Registration happens through a dynamic config namespace that no `ConfigEntry` declares.
+
+**Code path:** `SparkConf.registerAvroSchemas(schema*)` → `avro.schema.<fingerprint64>` conf keys → `conf.getAvroSchema` → `KryoSerializer.avroSchemas` → `kryo.register(clazz, new GenericAvroSerializer(avroSchemas))`
+
+**Anchor files:**
+
+- [SparkConf.scala:450](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkConf.scala#L450) — `avroNamespace = "avro.schema."` — note there is **no `spark.` prefix**
+- [SparkConf.scala:458](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkConf.scala#L458) — `registerAvroSchemas` keys each schema by `SchemaNormalization.parsingFingerprint64`
+- [KryoSerializer.scala:98](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/KryoSerializer.scala#L98) — `conf.getAvroSchema`, read once at construction; L173 registers the serializer for `GenericRecord` and friends
+- [GenericAvroSerializer.scala:51](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/GenericAvroSerializer.scala#L51) — **six** unsynchronized `mutable.HashMap` caches (compress, decompress, writer, reader, fingerprint, schema), safe only because a `SerializerInstance` is single-threaded
+- [GenericAvroSerializer.scala:66](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/GenericAvroSerializer.scala#L66) — the codec is `lazy` with a comment explaining that eager initialization would make `KryoSerializer` non-serializable
+- [GenericAvroSerializer.scala:112](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/GenericAvroSerializer.scala#L112) — the branch: registered → one boolean plus one long; unregistered → the schema, compressed with the *`spark.io.compression.codec`* codec
+- [GenericAvroSerializer.scala:141](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/GenericAvroSerializer.scala#L141) — `ERROR_READING_AVRO_UNKNOWN_FINGERPRINT`: a reader that lacks a schema the writer had registered fails hard
+
+!!! warning "Registering schemas on only one side is a decode failure, not a slowdown"
+
+    The fingerprint is written whenever the *writer's* conf knows the schema. If the schema was registered after the executors' `SparkConf` was fixed, or only in the driver's conf, the reader hits `ERROR_READING_AVRO_UNKNOWN_FINGERPRINT` and the task fails. Registering nowhere is safe (schemas travel compressed); registering asymmetrically is not.
+
+!!! info "This is a Kryo-only optimisation, and it is invisible to the config catalog"
+
+    `avro.schema.*` is set programmatically and has no `ConfigEntry`, so it appears in no config listing, no `--conf` documentation, and no drift check. It also does nothing under the Java serializer — `spark.serializer` must be `KryoSerializer` for any of this to run.
+
+**Configs:** `avro.schema.<fingerprint>` (dynamic, undeclared), `spark.serializer`, `spark.io.compression.codec` (via `CompressionCodec.createCodec`)
+
+**Maps to topics:** E11, I10
+
+---
+
+## SerializerHelper and chunk-sized serialization
+
+**What it is:** a two-method object that exists because serializing a large object into a single `Array[Byte]` caps out at 2 GiB and fragments the heap. It serializes into a `ChunkedByteBuffer` whose chunk size is derived from a caller-supplied *estimate*, so a broadcast or task binary that is expected to be large is written in fewer, bigger chunks.
+
+**Anchor files:**
+
+- [SerializerHelper.scala:35](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/SerializerHelper.scala#L35) — `serializeToChunkedBuffer(serializerInstance, obj, estimatedSize = -1)`
+- [SerializerHelper.scala:39](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/SerializerHelper.scala#L39) — `ChunkedByteBuffer.estimateBufferChunkSize(estimatedSize)`; `-1` means "no hint, use the default chunk size"
+- [SerializerHelper.scala:48](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/serializer/SerializerHelper.scala#L48) — `deserializeFromChunkedBuffer`, the symmetric read
+
+!!! info "The estimate is a hint, not a limit"
+
+    Passing a wrong `estimatedSize` cannot fail a serialization — it only changes chunk granularity, and therefore the number of buffer allocations and how much of the last chunk is wasted. Callers that know the size (a broadcast of a known-size value) pass it; callers that do not pass `-1`.
+
+**Maps to topics:** E11, E1
+
+---
+
+## The storage status model and the BlockManager metric source
+
+**What it is:** how everything outside the block layer — the Storage tab, the REST API, the metrics system — sees storage. Three types carry it: `RDDInfo` (per-RDD cache summary), `BlockUpdatedInfo` (the event-log form of one block state change), and `StorageStatus` (a per-block-manager aggregate the driver rebuilds on demand). `BlockManagerSource` exposes eleven gauges over the last of these.
+
+**Anchor files:**
+
+- [RDDInfo.scala:27](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/RDDInfo.scala#L27) — the `@DeveloperApi` record; `isCached` (L43) requires both non-zero size **and** at least one cached partition
+- [RDDInfo.scala:59](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/RDDInfo.scala#L59) — `fromRdd`: the RDD's name falls back to its class name, and the call site is long- or short-form depending on `spark.eventLog.callsite.longForm`
+- [BlockUpdatedInfo.scala:28](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockUpdatedInfo.scala#L28) — the `@DeveloperApi` projection of an `UpdateBlockInfo` message; this is what a `SparkListenerBlockUpdated` event carries
+- [StorageUtils.scala:37](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/StorageUtils.scala#L37) — `StorageStatus`, documented as **not thread-safe** and assuming its inputs are immutable
+- [StorageUtils.scala:156](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/StorageUtils.scala#L156) — `updateStorageInfo`, which maintains the per-RDD and non-RDD running totals so the gauges are O(1) reads
+- [BlockManagerMasterEndpoint.scala:617](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala#L617) — `storageStatus` constructs a *fresh* `StorageStatus` for **every** registered block manager, copying its whole block map, on every request
+- [BlockManagerSource.scala:29](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/BlockManagerSource.scala#L29) — `registerGauge`: each gauge calls `blockManager.master.getStorageStatus` and divides by 1024 twice
+- [SparkContext.scala:725](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkContext.scala#L725) — the source is registered on the driver only
+
+!!! warning "Eleven gauges, eleven driver RPCs, and a full rebuild each time"
+
+    `BlockManagerSource` registers eleven gauges and **each one independently** issues `getStorageStatus`, an `askSync` to the block-manager master endpoint that rebuilds a `StorageStatus` — including a copy of the block map — for every block manager in the cluster. One metrics poll is therefore eleven synchronous driver round trips whose cost scales with `executors × blocks`. On a large, heavily-cached application this is a measurable driver cost paid purely for the `BlockManager.*` metrics, and nothing caches or batches it.
+
+!!! info "The metrics are in MiB and are integer-divided"
+
+    `func(...) / 1024 / 1024` on a `Long`: anything under 1 MiB reports as `0`, and the gauges are `Gauge[Long]`, so there is no fractional resolution. `maxMem_MB` and friends cannot be compared against byte-valued configs without accounting for that truncation.
+
+**Configs:** `spark.eventLog.callsite.longForm` (read by `RDDInfo.fromRdd`)
+
+**Maps to topics:** E3, I7, I6
+
+---
+
+## Breadth check 1 — the config slice
+
+Slice — every `core` config in `configs/catalog.yaml` matching:
+
+```
+^spark\.(storage\.|block\.|diskStore\.|serializer\.|kryo|local\.dir|blockManager\.|shuffle\.file\.buffer|shuffle\.sync|io\.encryption)
+```
+
+**45 keys.** All 45 are now written literally in a `**Configs:**` line. The pre-re-sweep page scored 23/45 on a literal count, but most of that gap was shorthand (`spark.storage.decommission.*`, `` `.replication.policy` ``) rather than missing coverage — expanded below, per the "never a family or a suffix" rule.
+
+| Keys | Concept | Note |
+|---|---|---|
+| `spark.storage.unrollMemoryThreshold`, `spark.storage.unrollMemoryCheckPeriod`, `spark.storage.unrollMemoryGrowthFactor` | unroll memory | **the real gap this check found** — three keys tied to no concept on the previous page |
+| `spark.storage.blockManagerMasterDriverHeartbeatTimeoutMs` | BlockManagerMaster RPC plane | the heartbeat endpoint's own ask timeout, distinct from `spark.storage.blockManagerHeartbeatTimeoutMs` |
+| `spark.storage.decommission.enabled`, `.rddBlocks.enabled`, `.shuffleBlocks.enabled`, `.shuffleBlocks.maxThreads`, `.shuffleBlocks.maxDiskSize`, `.maxReplicationFailuresPerBlock`, `.replicationReattemptInterval`, `.fallbackStorage.path`, `.fallbackStorage.cleanUp` | decommission block migration and fallback storage | previously abbreviated to `spark.storage.decommission.*`; expanded |
+| `spark.storage.replication.policy`, `.replication.topologyMapper`, `.replication.topologyFile`, `.replication.proactive`, `spark.storage.maxReplicationFailures`, `spark.storage.cachedPeersTtl` | replication and topology | previously abbreviated |
+| `spark.kryo.classesToRegister`, `.registrator`, `.registrationRequired`, `.referenceTracking`, `spark.kryo.pool` | Kryo pool and class registration | previously abbreviated |
+| `spark.kryoserializer.buffer`, `.buffer.max`, `spark.kryo.unsafe` | Kryo construction and buffers | |
+| `spark.serializer.objectStreamReset` | JavaSerializer | |
+| `spark.serializer.extraDebugInfo` | NotSerializableException enrichment | |
+| `spark.storage.memoryMapThreshold`, `spark.storage.memoryMapLimitForTests`, `spark.io.encryption.enabled` | DiskStore and encrypted blocks | |
+| `spark.local.dir`, `spark.diskStore.subDirectories`, `spark.storage.cleanupFilesAfterExecutorExit` | disk layout and lifecycle | |
+| `spark.shuffle.file.buffer`, `spark.shuffle.sync` | DiskBlockObjectWriter | shuffle-named but read only by this writer |
+| `spark.storage.localDiskByExecutors.cacheSize` | driver location registry | |
+| `spark.block.failures.beforeLocationRefresh` | unreadable blocks and remote fetch | |
+| `spark.storage.exceptionOnPinLeak` | block locking | |
+| `spark.blockManager.port`, `spark.storage.shuffleManager.initWaitingTimeout` | BlockManager initialization | |
+| `spark.storage.blockManagerHeartbeatTimeoutMs`, `spark.storage.blockManagerTimeoutIntervalMs` | block status reporting and re-registration | the second has no direct consumer (see that concept) |
+
+**Owned by another group:**
+
+- `spark.io.encryption.keySizeBits`, `spark.io.encryption.keygen.algorithm` — key *generation*, owned by [config & security](core-config-security.md). Only `spark.io.encryption.enabled` is read here, as a branch.
+
+**Configs this group reads that are not in the catalog** — invisible to `check_drift.py --sweeps`, so only findable by eye:
+
+- **`avro.schema.<fingerprint64>`** — a dynamic namespace with **no `spark.` prefix**, written by `SparkConf.registerAvroSchemas` and read by `KryoSerializer` ([SparkConf.scala:450](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/SparkConf.scala#L450)). No `ConfigEntry` declares it.
+- `spark.cleaner.referenceTracking.blocking.timeout` — declared in `core` but outside this slice's prefixes; `BlockManagerMaster` reads it directly as the bound on blocking `removeRdd`/`removeShuffle`/`removeBroadcast`.
+- `spark.io.compression.codec` — read indirectly by `GenericAvroSerializer` through `CompressionCodec.createCodec`.
+- `spark.eventLog.callsite.longForm` — read by `RDDInfo.fromRdd`.
+- The 32 MiB log-block roll size is **not a config at all** — a default parameter on `BlockManager.getRollingLogWriter`.
+
+## Breadth check 2 — the packages
+
+Scope: `storage/` (`BlockManager`, `BlockManagerMaster`, `DiskBlockManager`; `StorageLevel` now in `common/utils`), `serializer/` (`KryoSerializer` vs `JavaSerializer`). Walked by hand, including the nested `storage/memory/` sub-package.
+
+| Package | Files | Cited | |
+|---|---|---|---|
+| `core/…/storage/` | 32 | 24 | 75% |
+| `core/…/storage/memory/` | 1 | 1 | 100% |
+| `core/…/serializer/` | 9 | 6 | 67% |
+| `common/utils/…/storage/` (scala + java) | 2 | 2 | 100% |
+
+**Classes the scope names by hand:** `BlockManager` ✅, `BlockManagerMaster` ✅ *(uncited before this re-sweep — the standing `--sweeps` failure)*, `DiskBlockManager` ✅, `StorageLevel` ✅, `KryoSerializer` ✅, `JavaSerializer` ✅.
+
+**Uncited, and why:**
+
+- `ShuffleBlockFetcherIterator.scala` (1682 lines) and `PushBasedFetchHelper.scala` (360) — **swept by [core — shuffle-memory](core-shuffle-memory.md)**, which cites them 19 times. They sit in the `storage/` package but are the shuffle *read* data plane; leaving them there is the right carve, and duplicating them here would put one mechanism on two pages.
+- `BlockManagerSource.scala` — also cited by [core — monitoring](core-monitoring.md) as a metric source. Covered here from the storage side (what the gauges cost); monitoring owns the metrics-system registration.
+- `BlockException.scala`, `BlockNotFoundException.scala`, `BlockSavedOnDecommissionedBlockManagerException.scala`, `ShuffleManagerNotInitializedException.scala` — four one-line exception types. Two are named in prose on this page (the decommission and shuffle-manager-init concepts); `BlockException` has no thrower left in `core` and `BlockNotFoundException` is thrown from the network layer's block handler. Plumbing, recorded rather than written up.
+- `FileSegment.scala` — a 3-field value type; covered inside the `DiskBlockObjectWriter` concept, which is the only thing that produces one.
+- `serializer/package.scala`, `serializer/package-info.java` — package documentation, no code.
+
+**Deliberately not covered:** nothing else. The group is now genuinely walked; the remaining uncited files are the two shuffle-read classes above (another group's) and boilerplate.
+
+**A file no page anywhere cites, found by this walk:** none outside the group. The shuffle-read pair and `BlockManagerSource` all appear on the pages named above.
+
+## Overlapping topic traces
+
+Topic codes in this page's front matter: B1, E1, E2, E3, I3, I6, I7, I10, I14, A4, A14, E11, E15, E51.
+
+Five have a trace, all recorded at **Spark 4.2.0** — the same version as this sweep, so no version mismatch to reconcile. `check_drift.py --sweeps` lists them as the overlap set.
+
+| Trace | Overlap | Verdict |
+|---|---|---|
+| [`topics/i6.md`](../topics/i6.md) | the real one | **Agree, and this page goes deeper.** i6 already reaches `MemoryStore.putIteratorAsValues` ([:309](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L309)) and `evictBlocksToFreeSpace` ([:472](https://github.com/apache/spark/blob/v4.2.0/core/src/main/scala/org/apache/spark/storage/memory/MemoryStore.scala#L472)), and lists `spark.storage.unrollMemoryThreshold` in its config table — both anchors re-verified against the checkout and still correct. What it does not have is the *mechanism*: the growth factor, the check period, the per-task-attempt accounting, or `PartiallyUnrolledIterator`. That is the E51 proposal, and it is a deepening of i6 rather than a contradiction of it. |
+| [`topics/b1.md`](../topics/b1.md) | architecture | Agrees. It stops at the driver/executor and scheduler level and never reaches the block-manager RPC plane, so the `BlockManagerMaster` concept extends it downward. |
+| [`topics/i7.md`](../topics/i7.md) | Spark UI | Agrees. It reads the UI from the `AppStatusStore` side; this page supplies what the Storage tab's numbers *are* (`RDDInfo`, `StorageStatus`) and what they cost to produce. |
+| [`topics/i3.md`](../topics/i3.md) | UDFs | Touches this page only through the 4.2.0 Python worker log blocks. No conflict. |
+| [`topics/i10.md`](../topics/i10.md) | data formats | Overlaps on Avro. i10 covers the Avro *data source*; the Avro concept here is the Kryo serializer for `GenericContainer` records and the `avro.schema.*` registration namespace — a different mechanism that i10 does not mention. |
+
 ## Sweep log
 
 | Date | Spark | What changed |
 |---|---|---|
+| 2026-08-09 | 4.2.0 | **Second re-sweep, unchanged Spark version**, triggered by `check_drift.py --sweeps` failing the page: `status: complete` while never citing `BlockManagerMaster`, a class the group's own scope names. **Package breadth found the work** — the whole driver/executor RPC plane was missing, and so was the page's *shape*: it had a sweep log and none of the other three required sections, so nothing recorded what the two prior passes had skipped. Eight concepts added: **BlockManagerMaster** and the two-endpoint protocol (heartbeats split out for latency, sharing the master's mutable `blockManagerInfo` map), the **executor storage endpoint** and its 100-thread async removal pool (which also carries the UI's thread-dump and heap-histogram commands), **BlockManagerId** identity and interning (three different things are modelled as one — executor, driver, push merger), **unroll memory** (proposed as E51; three configs that tied to nothing), **BlockManagerManagedBuffer** wiring Netty refcounts to block read locks, **Avro schema registration** and its undeclared `avro.schema.*` namespace, **SerializerHelper**, and the **storage status / metric model** — where `BlockManagerSource`'s eleven gauges each issue a separate driver `askSync` that rebuilds every block manager's `StorageStatus`. The `block-log-writers` concept gained `LogBlockType`, `LogBlockIdGenerator` and `LogLine`. Config breadth was the weaker signal here: it scored 23/45 literal, but only the three unroll keys were a genuine gap — the rest was `spark.storage.decommission.*`-style shorthand inherited from the earlier passes, now expanded. Recorded and left to their owning groups: `ShuffleBlockFetcherIterator` and `PushBasedFetchHelper` (shuffle-memory), the metrics-system half of `BlockManagerSource` (monitoring). |
 | 2026-07-25 | 4.2.0 | Re-sweep at the same Spark version. Both breadth checks contributed: the config slice surfaced `spark.storage.shuffleManager.initWaitingTimeout` tied to nothing, and package breadth was the larger gap — `storage/` is 40 files with 11 cited. Five concepts added: the **BlockId taxonomy** (~20 case classes whose `name` is simultaneously the UI label, the log string and the on-disk filename), **`DiskBlockObjectWriter`** and its commit/revert model that every shuffle write and spill runs through, **`DiskStore` and encrypted blocks** (IO encryption removing the memory-map and zero-copy paths, the storage-side twin of the shuffle-side demotion), **memory-mapped buffer disposal** via `Unsafe.invokeCleaner`, and **block log writers** — new in 4.2.0 ([SPARK-53755]/[SPARK-53975]), the mechanism that finally makes PySpark worker logs retrievable by storing them as `LogBlockId` blocks. The initialization concept also gained the `ShuffleManagerNotInitializedException` race it never mentioned. |
 | 2026-07-19 | 4.2.0 | Initial sweep, in two halves (block storage; serialization and StorageLevel). 24 concepts. One gap proposed: E15 (block locking and cache visibility). Two sweeper claims were checked at source and found wrong before writing — eviction order is LRU, not FIFO (`MemoryStore.scala:93` sets `accessOrder=true`), and E11 does already carry a "Learn it with" block. Recorded against existing topics rather than proposed: rack-aware replication silently needing two configs, under-replication not being an error, and decommission counting a gave-up migration as success. |
