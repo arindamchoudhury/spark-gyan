@@ -20,7 +20,8 @@ Two inverse reports live behind flags:
   --coverage  what exists that no scope claims (advisory; editorial call)
   --sweeps    whether each sweep page's `status:` is supported by its
               citations (fails a `complete` page that never opened a
-              package its own scope claims)
+              package its own scope claims, or never cited a class its
+              own scope names)
 
 Exit 1 on errors, 0 if only warnings. Read-only; writes nothing.
 
@@ -119,6 +120,55 @@ def declared_in(files: list[Path], tokens: set[str]) -> set[str]:
     return found
 
 
+def named_classes(scope: str) -> set[str]:
+    """The class names a scope names, with ordinary prose filtered out."""
+    return {t for t in IDENT_RE.findall(scope) if looks_like_class(t)}
+
+
+def resolve_named_classes(scope: str, stems: set[str],
+                          files: list[Path]) -> tuple[set[str], set[str]]:
+    """Split a scope's class names into (resolves in the checkout, does not).
+
+    This is check 3's resolution step, factored out so --sweeps can reuse the
+    answer rather than parsing scopes a second way. Only the resolved half is
+    worth demanding a citation for: a name that resolves nowhere is check 3's
+    error, and a prose word that only looks like a class ("Whole-Stage CodeGen")
+    resolves nowhere either, so the same gate drops both.
+    """
+    toks = named_classes(scope)
+    missing = toks - stems
+    # A filename miss may still be an object sharing a file --
+    # ExtractEquiJoinKeys lives in patterns.scala -- so scan contents.
+    gone = (missing - declared_in(files, missing)) if missing else set()
+    return toks - gone, gone
+
+
+def make_indexer(source: Path):
+    """A cached index_module() over module names; several checks index the same ones."""
+    cache: dict[str, tuple[set[str], set[str], list[Path]]] = {}
+
+    def index(sub_name: str):
+        if sub_name not in cache:
+            d = module_dir(source, sub_name)
+            cache[sub_name] = index_module(d) if d.is_dir() else (set(), set(), [])
+        return cache[sub_name]
+
+    return index
+
+
+def index_modules(index, mods: list[str]) -> tuple[set[str], set[str], list[Path]]:
+    """Union the indexes of every module a group reaches into."""
+    stems: set[str] = set()
+    dirs: set[str] = set()
+    files: list[Path] = []
+    for m_name in mods:
+        s, d, f = index(m_name)
+        stems |= s
+        dirs |= d
+        files += f
+    return stems, dirs, files
+
+
 def package_roots(mod: Path, subsystem: str) -> list[Path]:
     """Every natural package root under a module.
 
@@ -196,7 +246,7 @@ def report_coverage(source: Path, subsystems: dict, plumbing: set[str] | None = 
         toks = scope_tokens(scope_text)
         # Class names in the scope resolve a package too: a group naming
         # DStream covers dstream/ without spelling out the directory.
-        scope_classes = {t for t in IDENT_RE.findall(scope_text) if looks_like_class(t)}
+        scope_classes = named_classes(scope_text)
 
         for root in package_roots(mod, sub):
             rows = []
@@ -372,6 +422,19 @@ def report_config_coverage(configs: list[dict], subsystem: str, groups: list[dic
     return failures
 
 
+def cites_name(text: str, name: str) -> bool:
+    """Does the page mention this identifier, as itself rather than as a prefix.
+
+    `\\b` is not enough: SparkHadoopWriterUtils would satisfy a demand for
+    SparkHadoopWriter, which is a different class in a different file. The whole
+    page counts, including the breadth-check tables -- a page that lists the
+    class as knowingly uncovered has at least *seen* it, which is the bar this
+    check enforces; whether the prose does it justice is not mechanical.
+    """
+    return re.search(r"(?<![A-Za-z0-9_$])" + re.escape(name) + r"(?![A-Za-z0-9_$])",
+                     text) is not None
+
+
 def scope_dirs(source: Path, mods: list[str], scope: str) -> dict[str, list[Path]]:
     """Resolve each package path a scope claims to the directories it names.
 
@@ -412,8 +475,8 @@ def report_sweeps(source: Path, base: Path, subsystems: dict,
                   config_plumbing: tuple[str, ...] = CONFIG_PLUMBING) -> int:
     """Check each sweep page against the files and configs its group's scope covers.
 
-    A sweep page sets its own `status:`; nothing else verifies it. Two mechanical
-    halves of that claim are checkable, from opposite sides:
+    A sweep page sets its own `status:`; nothing else verifies it. Three
+    mechanical halves of that claim are checkable, from opposite sides:
 
     * **Packages.** Every package a group's scope names should have at least one
       file cited on the page, because a package the sweeper never opened cannot
@@ -421,6 +484,12 @@ def report_sweeps(source: Path, base: Path, subsystems: dict,
       names the files that carry a concept, not every file -- but a claimed
       package with *zero* citations on a `status: complete` page is a scope the
       sweep silently skipped.
+    * **Named classes.** A scope names classes by hand when the package alone is
+      too coarse, so a named class is the most specific claim a group makes --
+      and the package check cannot see it miss, being satisfied by any one file
+      from the same directory. `SparkHadoopWriter` was named in `core --
+      execution-engine`'s scope, appeared on no page of a `status: complete`
+      sweep, and every check passed; it took a file-by-file diff to find.
     * **Configs.** Once every group of a subsystem is swept, its configs are the
       user-visible surface of everything in it, so a whole config family that
       appears on no page is a mechanism nobody wrote up. This check exists
@@ -449,6 +518,7 @@ def report_sweeps(source: Path, base: Path, subsystems: dict,
 
     failures: list[str] = []
     pages_by_sub: dict[str, dict[str, str]] = {}
+    index = make_indexer(source)
     for page in sorted(sweeps.glob("*.md")):
         fm = load_front_matter(page)
         sub = str(fm.get("subsystem", "")).strip()
@@ -481,6 +551,24 @@ def report_sweeps(source: Path, base: Path, subsystems: dict,
             print(f"    {claim + '/':<34} {len(files):>4} files  {len(hit):>4} cited  "
                   f"({pct:>3}%){flag}")
 
+        # Named classes. Only the ones that resolve to real source are demanded:
+        # a scope's parenthesised prose carries capitalised words that are not
+        # classes, and a genuinely missing class is check 3's error, not this one.
+        scope_text = group.get("scope") or ""
+        if named_classes(scope_text):
+            stems, _dirs, mod_files = index_modules(index, mods)
+            resolved, unresolved = resolve_named_classes(scope_text, stems, mod_files)
+            uncited = sorted(n for n in resolved if not cites_name(text, n))
+            print(f"    scope names {len(resolved):>2} class(es)"
+                  f"       {len(resolved) - len(uncited):>4} cited"
+                  + (f"  ({len(unresolved)} unresolved — see check 3)" if unresolved else ""))
+            for name in uncited:
+                flag = "   <- named in the scope, cited nowhere on this page"
+                print(f"      {name}{flag}")
+                if status == "complete":
+                    failures.append(f"{page.name}: claims status: complete but never cites "
+                                    f"{name}, which its own scope names")
+
         overlap = []
         for concept in fm.get("concepts", []) or []:
             for code in concept.get("topics", []) or []:
@@ -510,8 +598,8 @@ def report_sweeps(source: Path, base: Path, subsystems: dict,
         print("\nEither sweep the missing surface, or set status: partial and name "
               "what was left out.")
         return 1
-    print("Every claimed package, and every config family of a fully-swept subsystem, "
-          "is cited by a sweep.")
+    print("Every claimed package, every class a scope names, and every config family "
+          "of a fully-swept subsystem, is cited by a sweep.")
     return 0
 
 
@@ -583,13 +671,7 @@ def main(argv: list[str] | None = None) -> int:
         warnings.append("groups.yaml has no _meta.spark_version — drift cannot be detected.")
 
     # --- 2-4. per-subsystem scope checks ------------------------------------
-    index_cache: dict[str, tuple[set[str], set[str], list[Path]]] = {}
-
-    def index(sub_name: str):
-        if sub_name not in index_cache:
-            d = module_dir(source, sub_name)
-            index_cache[sub_name] = index_module(d) if d.is_dir() else (set(), set(), [])
-        return index_cache[sub_name]
+    index = make_indexer(source)
 
     for sub, groups in subsystems.items():
         mod = module_dir(source, sub)
@@ -608,14 +690,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not module_dir(source, extra).is_dir():
                     errors.append(f"{sub} / {gname}: modules: names '{extra}' — no such module")
 
-            stems: set[str] = set()
-            dirs: set[str] = set()
-            files: list[Path] = []
-            for m_name in mods:
-                s, d, f = index(m_name)
-                stems |= s
-                dirs |= d
-                files += f
+            stems, dirs, files = index_modules(index, mods)
 
             for d in {m.group(1) for m in DIR_RE.finditer(scope)}:
                 # A scope may mention a module by path ("StorageLevel now in
@@ -628,11 +703,8 @@ def main(argv: list[str] | None = None) -> int:
                         f"{sub} / {gname}: scope names package '{d}/' — not found under "
                         f"{', '.join(mods)}")
 
-            toks = {t for t in IDENT_RE.findall(scope) if looks_like_class(t)}
-            missing = toks - stems
-            # A filename miss may still be an object sharing a file --
-            # ExtractEquiJoinKeys lives in patterns.scala -- so scan contents.
-            gone = sorted(missing - declared_in(files, missing)) if missing else []
+            _resolved, unresolved = resolve_named_classes(scope, stems, files)
+            gone = sorted(unresolved)
             if gone:
                 errors.append(
                     f"{sub} / {gname}: scope names {', '.join(gone)} — no such class/object "

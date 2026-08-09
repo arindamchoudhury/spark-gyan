@@ -1,8 +1,13 @@
-"""Tests for check_drift.py's config-coverage check.
+"""Tests for check_drift.py's --sweeps checks.
 
-The package half of --sweeps needs a real checkout to test; this half does not,
-so the config logic is tested directly. It exists because `core` was 9/9 swept,
-every page `status: complete`, with 40% of its configs cited nowhere.
+The config half needs no checkout, so its logic is tested directly. It exists
+because `core` was 9/9 swept, every page `status: complete`, with 40% of its
+configs cited nowhere.
+
+The named-class half does need a checkout, so those tests build a miniature one
+in tmp_path and drive report_sweeps() end to end. It exists because
+SparkHadoopWriter was named in a group's scope, cited on no page of a
+`status: complete` sweep, and every check passed.
 """
 from __future__ import annotations
 
@@ -16,8 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_drift import (  # noqa: E402
     MIN_FAMILY,
     SRC_FILE_RE,
+    cites_name,
     config_family,
     report_config_coverage,
+    report_sweeps,
 )
 
 
@@ -126,6 +133,96 @@ def test_src_file_re_widening_changes_nothing_else():
     # last two segments. Harmless here — pages cite configs and files in the same blob,
     # and a spurious `sql.java` matches no real file, so it is never counted as cited.
     assert SRC_FILE_RE.findall("spark.sql.java") == ["sql.java"]
+
+
+# --- the named-class half of --sweeps ---------------------------------------
+
+
+def make_source(tmp_path: Path, tree: dict[str, list[str]]) -> Path:
+    """A miniature checkout: {"core/executor": ["Executor", "SparkHadoopWriter"]}."""
+    source = tmp_path / "spark"
+    for pkg, classes in tree.items():
+        module, _, package = pkg.partition("/")
+        d = source / module / "src" / "main" / "scala" / "org" / "apache" / "spark" / package
+        d.mkdir(parents=True, exist_ok=True)
+        for name in classes:
+            (d / f"{name}.scala").write_text(f"class {name} {{}}\n", encoding="utf-8")
+    return source
+
+
+def make_page(tmp_path: Path, body: str, status: str = "complete",
+              subsystem: str = "core", group: str = "engine") -> Path:
+    base = tmp_path / "docs"
+    (base / "sweeps").mkdir(parents=True, exist_ok=True)
+    (base / "sweeps" / "engine.md").write_text(
+        f"---\nsubsystem: {subsystem}\ngroup: {group}\nstatus: {status}\n"
+        f"spark_version: 4.2.0\n---\n\n{body}\n", encoding="utf-8")
+    return base
+
+
+def subsystems(scope: str, modules: list[str] | None = None) -> dict:
+    g = {"name": "engine", "scope": scope}
+    if modules:
+        g["modules"] = modules
+    return {"core": [g]}
+
+
+# Every page below cites Executor.scala so the *package* check passes: these
+# tests are about the class check, and a package failure would mask it.
+CITES_PACKAGE = "The executor loop lives in Executor.scala."
+
+
+def test_named_class_that_is_cited_passes(tmp_path):
+    source = make_source(tmp_path, {"core/executor": ["Executor", "SparkHadoopWriter"]})
+    base = make_page(tmp_path, CITES_PACKAGE + " Commit runs through SparkHadoopWriter.scala.")
+    assert report_sweeps(source, base, subsystems("executor/ (SparkHadoopWriter)")) == 0
+
+
+def test_named_class_that_is_never_cited_fails(tmp_path, capsys):
+    """The exact SparkHadoopWriter case: the package is cited, the class is not."""
+    source = make_source(tmp_path, {"core/executor": ["Executor", "SparkHadoopWriter"]})
+    base = make_page(tmp_path, CITES_PACKAGE)
+    assert report_sweeps(source, base, subsystems("executor/ (SparkHadoopWriter)")) == 1
+    out = capsys.readouterr().out
+    assert "SparkHadoopWriter" in out
+    assert "cited nowhere on this page" in out
+
+
+def test_prose_capital_that_is_no_class_is_ignored(tmp_path):
+    """Scopes carry capitalised prose; only names resolving to source are demanded."""
+    source = make_source(tmp_path, {"core/executor": ["Executor"]})
+    base = make_page(tmp_path, CITES_PACKAGE)
+    scope = "executor/ (the Tungsten CodeGen path, Whole-Stage plumbing)"
+    assert report_sweeps(source, base, subsystems(scope)) == 0
+
+
+def test_partial_page_is_not_checked(tmp_path):
+    source = make_source(tmp_path, {"core/executor": ["Executor", "SparkHadoopWriter"]})
+    base = make_page(tmp_path, CITES_PACKAGE, status="partial")
+    assert report_sweeps(source, base, subsystems("executor/ (SparkHadoopWriter)")) == 0
+
+
+def test_class_resolved_through_an_extra_module_is_still_demanded(tmp_path):
+    """A named class may legitimately live in another module via `modules:`."""
+    source = make_source(tmp_path, {"core/executor": ["Executor"],
+                                    "common-utils/storage": ["StorageLevel"]})
+    base = make_page(tmp_path, CITES_PACKAGE)
+    subs = subsystems("executor/ (StorageLevel, now in common-utils)", ["common-utils"])
+    assert report_sweeps(source, base, subs) == 1
+
+
+def test_unresolvable_class_is_left_to_check_3(tmp_path):
+    """A scope naming a class that exists nowhere is check 3's error, not this one."""
+    source = make_source(tmp_path, {"core/executor": ["Executor"]})
+    base = make_page(tmp_path, CITES_PACKAGE)
+    assert report_sweeps(source, base, subsystems("executor/ (DeletedInSpark5)")) == 0
+
+
+def test_cites_name_rejects_a_longer_identifier():
+    """SparkHadoopWriterUtils is a different class in a different file."""
+    assert not cites_name("see SparkHadoopWriterUtils.scala", "SparkHadoopWriter")
+    assert cites_name("see SparkHadoopWriter.scala", "SparkHadoopWriter")
+    assert cites_name("`SparkHadoopWriter` commits", "SparkHadoopWriter")
 
 
 if __name__ == "__main__":
