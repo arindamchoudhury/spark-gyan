@@ -10,6 +10,8 @@
 
     Also missing: `SparkContext.clean` as the machinery behind `Task not serializable` — the chapter covers the closure-capture bug but not the mechanism that reports it; RDD aggregations spilling via `ExternalAppendOnlyMap`/`ExternalSorter`, the RDD-level analogue of the aggregate spill in Ch09; `repartition` being literally `coalesce(n, shuffle = true)`, which collapses two APIs into one parameter; and `take()` potentially submitting several jobs, which confuses job counts in the UI. Full list in the [I4 source trace](../reference/spark-source-map/topics/i4.md).
 
+    **Added to the topic 2026-08-10** (core-rdd feature-history audit), so the chapter is now behind the path on these too — all **incomplete**, not wrong: `toDebugString()` as the way to *see* a lineage, and the PySpark quirk that it returns `Optional[bytes]` rather than `str`; `top`/`takeOrdered`; `pipe(command, env, checkCode)`, whose `checkCode` defaults to `False` so a failing subprocess is ignored; `StatCounter` via `rdd.stats()`/`.asDict()`, one pass instead of five actions; and the fact that `zipPartitions` and `getPersistentRDDs` are **Scala/Java-only** and cannot be written in PySpark at all. Broadcast variables and RDD checkpointing, which this chapter also predates, now belong to **I47** and **I25** rather than here.
+
 The RDD (Resilient Distributed Dataset) is Spark's original data model — a schema-free distributed collection of Python objects. Understanding it explains what the DataFrame API is built on and reveals when to reach below the DataFrame abstraction.
 
 ---
