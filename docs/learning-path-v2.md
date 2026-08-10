@@ -1,6 +1,6 @@
 # Learning Path v2: Apache Spark / PySpark
 
-> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 158 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
+> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 160 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
 >
 > **Updated:** 2026-08-10 — audited the Types strand against [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) in the feature history and found two clusters with no topic at all: the datetime/timezone family (session time zone, `TIMESTAMP_NTZ`) and the ANSI `INTERVAL` types. Added **I5** and **I6** to cover them; **I5**–**I41** shifted to **I7**–**I43**. The same audit found four smaller gaps that belonged to topics that already existed, so those were extended in place rather than given topics of their own: `CHAR`/`VARCHAR` storage and padding into **B4**, the ANSI rules the one-line summary hides plus the view-persistence trap into **B5**, the ANSI aggregate family into **B7** with the windowed half in **I8**, and the public `UserDefinedType` API into **I1**.
 >
@@ -19,6 +19,8 @@
 > **Updated:** 2026-08-10 — closed the Security gap, which the coverage section had carried as thin since before the connectors audit. Added **E52** for columnar file encryption, the piece that had fallen between the connector topics (which read it as security) and **E29** (which reads governance as a catalog concern) — Parquet's envelope/KMS model and ORC's encrypt-plus-mask model differ in what an unauthorised reader gets back, which is the whole topic. Extended **E15** into the path's stated starting point for securing a cluster, with three verified defaults that make "enabled" different from "secured": `network.crypto.enabled` is `false`, `saslFallback` stays `true` when you enable it, and `authEngineVersion` defaults to `1`, whose constant is named `UNSAFE_SKIP_HKDF_VERSION`. Also corrected a wrong claim in the thin section: Spark has no UI Content-Security-Policy setting — the response headers are `xContentTypeOptions`, `strictTransportSecurity` and `allowFramingFrom`. Only MLlib is now listed as thin.
 >
 > **Updated:** 2026-08-10 — re-audited Connectors a second time and found two clusters the first pass had lost. Both were in the rows the first audit enumerated; the clustering step dropped them, which is the failure mode worth naming: enumeration was complete, classification was not. Added **I46** for the `_metadata` file-metadata columns — the rare topic with no book *and* no docs page, since `_metadata` appears nowhere under Spark's `docs/` tree at `v4.2.0`. Folded JDBC authentication into **I34** as its own callout: `principal`/`keytab`/`refreshKrb5Config`, the service-loaded provider and the static `disabledJdbcConnProviderList`, and the rule that a `keytab` value means "shipped with `--files`" or "pre-installed on every node" depending only on whether it contains a slash. Also corrected **A46**: the per-read JDBC option `pushDownJoin` defaults to `true` while the optimizer conf defaults to `false`, so the two halves disagree and reading either alone misleads.
+>
+> **Updated:** 2026-08-10 — audited [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md), enumerating all 87 non-Improvement rows rather than clustering first, which is what the connectors re-audit taught. Three gaps, one structural: Spark has exactly two shared-variable abstractions and **E6** covered accumulators while broadcast variables had **no** topic at all — every one of the page's "broadcast" mentions was a broadcast *join*. Added **I47** for the shared variable and the `unpersist`-versus-`destroy` split. Folded **RDD checkpointing** into **I25**, where the interesting part is checkpoint-versus-cache: it truncates lineage rather than preserving it, runs its own second job unless you cache first, and leaves files behind because `cleaner.referenceTracking.cleanCheckpoints` defaults to `false`. Added **E53** for the fair scheduler and pools, which **B1** had been linking and calling out as blurred without anywhere to send you — the sharp edges being that the mode is `FIFO` by default, that per-pool `schedulingMode` is a *second* FIFO/FAIR setting, and that pool selection is a thread-local that does not survive an executor service.
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
@@ -115,9 +117,9 @@ Roughly two thirds of the topics below came from reading the Spark source rather
 ```mermaid
 flowchart TD
     B["<b>Beginner</b> — write correct Spark<br/>12 topics · 32–45 hrs"]
-    I["<b>Intermediate</b> — real data, real formats, read a plan<br/>46 topics · 70–92 hrs"]
+    I["<b>Intermediate</b> — real data, real formats, read a plan<br/>47 topics · 72–94 hrs"]
     A["<b>Advanced</b> — make it fast, make it stream<br/>48 topics · 75–108 hrs"]
-    E["<b>Expert</b> — run it in production, know the internals<br/>52 topics · 82–123 hrs"]
+    E["<b>Expert</b> — run it in production, know the internals<br/>53 topics · 84–126 hrs"]
     B -->|"🎯 end-to-end batch pipeline"| I
     I -->|"🎯 diagnose a slow job from a plan"| A
     A -->|"🎯 tune and stream under load"| E
@@ -129,9 +131,9 @@ Each level is divided into **strands** — short runs of topics that belong toge
 | Level | Strands |
 |---|---|
 | **Beginner** | The engine model · Core DataFrame verbs · Shaping data · Data in and out, and SQL |
-| **Intermediate** | Types beyond the basics · Windows and row multiplication · The Python boundary · RDDs underneath · Partitioning, caching, diagnosis · Ingestion depth · Table formats and the lakehouse · Procedural SQL · Formats and the types they carry |
+| **Intermediate** | Types beyond the basics · Windows and row multiplication · The Python boundary · RDDs underneath · Partitioning, caching, diagnosis · Ingestion depth · Table formats and the lakehouse · Procedural SQL · Formats and the types they carry · Shared variables |
 | **Advanced** | How a query is compiled · Statistics and adaptive execution · Joins, aggregation and windows at scale · Reliability of a running job · The file boundary · Streaming · Pipelines · Engineering practice · Pushdown and the write path |
-| **Expert** | Memory and execution internals · Scheduling and cluster reliability · Deployment · Observability · Connect · Catalogs, governance, transactions · Streaming state and operations · Kafka operations · Pipelines in production · Platform engineering · Legacy engines · Data at rest |
+| **Expert** | Memory and execution internals · Scheduling and cluster reliability · Deployment · Observability · Connect · Catalogs, governance, transactions · Streaming state and operations · Kafka operations · Pipelines in production · Platform engineering · Legacy engines · Data at rest · Multi-tenancy |
 
 ### What the 2026 market asks for, and where it lands
 
@@ -348,7 +350,7 @@ You should also be able to answer, for your own pipeline: how many tasks each st
 
 **Goal:** work confidently with complex and modern types, windows, UDFs and table formats. Begin reading execution plans. Write pipelines that do not fall over on real data.
 
-**Estimated time:** 70–92 hrs · **46 topics**
+**Estimated time:** 72–94 hrs · **47 topics**
 
 The first six strands are the level proper. Strands *ingestion depth* and *procedural SQL* are read on demand rather than in sequence — you will meet each when a specific problem sends you there.
 
@@ -670,13 +672,15 @@ This strand is the gate for the whole Advanced level. Do not skip it.
 
 `v1: I6`
 
-**What** — `cache()`, `persist(StorageLevel.*)`, `unpersist()`; storage levels; when caching helps and when it hurts; the default level (`MEMORY_AND_DISK_DESER` in PySpark's naming) and how cache entries are matched and evicted.
+**What** — `cache()`, `persist(StorageLevel.*)`, `unpersist()`; storage levels; when caching helps and when it hurts; the default level (`MEMORY_AND_DISK_DESER` in PySpark's naming) and how cache entries are matched and evicted. Plus the *other* way to stop recomputing — **checkpointing**, which writes the data out and **truncates the lineage** rather than caching it, in two flavours: reliable (`checkpoint()`, to a `SparkContext.setCheckpointDir` location) and local (`localCheckpoint()`, to executor disk).
 
 **Why** — caching an intermediate DataFrame used several times avoids recomputing it; caching the wrong thing wastes memory and slows everything down.
 
 **Learn** — LS2e Ch 7; SDG Ch 19 · docs: [RDD Persistence](https://spark.apache.org/docs/latest/rdd-programming-guide.html#rdd-persistence), [CACHE TABLE](https://spark.apache.org/docs/latest/sql-ref-syntax-aux-cache-cache-table.html), [Memory Management Overview](https://spark.apache.org/docs/latest/tuning.html#memory-management-overview), [`pyspark.StorageLevel`](https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.StorageLevel.html) · source: [trace I6](reference/spark-source-map/topics/i6.md), sweeps [storage & serialization](reference/spark-source-map/sweeps/core-storage-serializer.md), [query execution](reference/spark-source-map/sweeps/sql-core-query-execution.md)
 
-**Milestone** — identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower. Then two the source settles: explain why `cached_df.filter(...)` may recompute from source, and say which storage level `df.cache()` actually gives you — spelled the way PySpark spells it.
+**Milestone** — identify in the Spark UI whether a cached DataFrame is being reused, and name three situations where caching makes a job slower. Then two the source settles: explain why `cached_df.filter(...)` may recompute from source, and say which storage level `df.cache()` actually gives you — spelled the way PySpark spells it. Then the checkpoint half: build an RDD with a long iterative lineage, print `toDebugString()` before and after `checkpoint()`, and show the lineage collapse. Run the same job without caching first and count how many times the source was read.
+
+> **Checkpointing is not caching, and it costs a second pass.** A cache keeps the lineage — evict the blocks and Spark recomputes from source. A checkpoint *replaces* the lineage with a read of the written files, which is the point: iterative algorithms and long `union`/`join` chains build a DAG that eventually costs more to plan and to recover than to store. Three things surprise people, all verified at tag `v4.2.0`. **(1)** `checkpoint()` triggers **its own job** — the RDD is computed once for the checkpoint and again for whatever you were doing, unless you `cache()` it first, which is why "cache then checkpoint" is the standard idiom rather than a superstition. **(2)** `localCheckpoint()` truncates lineage using executor disk instead of a reliable store, so it is much faster and **not fault-tolerant** — lose the executor and the data is unrecoverable, lineage included; `LocalRDDCheckpointData` forces a storage level containing disk for exactly this reason, since a memory-only level would lose checkpoint data to ordinary eviction. **(3)** `spark.cleaner.referenceTracking.cleanCheckpoints` defaults to **`false`** (1.4.0), so reliable checkpoint files outlive your application and accumulate until something else deletes them. Spark 4.0 added `spark.checkpoint.dir` (SPARK-48268) so the directory can be set by configuration rather than only by the `setCheckpointDir` call.
 
 #### ⬜ I26 — The Spark UI: Reading Plans and Diagnosing Jobs
 
@@ -955,6 +959,20 @@ Read on demand. **I36** asks which format to choose; these three ask what the fo
 **Learn** — **no book and no docs page**: `_metadata` appears nowhere under Spark's `docs/` tree at tag `v4.2.0`, which makes this a rare topic where source is not the deepest authority but the *only* one — a clean worked example of the [authority ladder](#the-authority-ladder) bottoming out · docs: the nearest thing is [generic file options](https://spark.apache.org/docs/latest/sql-data-sources-generic-options.html), which covers the other read-time metadata (partition discovery, `modifiedBefore`/`modifiedAfter`) but not this · source: `sql/core/.../datasources/FileFormat.scala` — `METADATA_NAME`, the `FileSourceConstantMetadataStructField` list, and the extractor map that fills each field from a `PartitionedFile`; then `ParquetFileFormat.ROW_INDEX_FIELD` for the generated one · sweep [datasources](reference/spark-source-map/sweeps/sql-core-datasources.md) · related: **I30** (partition columns, the *other* columns that appear from outside your data), **I31**, **A48**, **I36**
 
 **Milestone** — read a multi-file dataset and select `_metadata.file_path` and `_metadata.file_modification_time` alongside real columns; then show that neither appears in `printSchema()` nor in `SELECT *`, and say why that is a design choice rather than an omission. Add `_metadata.row_index` on Parquet and then on CSV, and explain the difference from the constant-versus-generated distinction rather than from "CSV is older". Finally, use `file_path` to trace one row back to its source file, rewrite that file, and state what happened to its `row_index` values and why you should not have stored them.
+
+### Strand — Shared variables
+
+#### ⬜ I47 — Broadcast Variables: The Other Shared Variable, and Why `unpersist` Is Not `destroy`
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/core-rdd.md), where Torrent broadcast (0.8.1) and the `SparkContext.addFile`/`addJar` shipping model trace back to 0.6.0 — found by auditing that page and noticing an asymmetry rather than a missing row: Spark has exactly **two** shared-variable abstractions, and **E6** gave accumulators a topic while broadcast variables had none
+
+**What** — `sc.broadcast(value)` ships a read-only value to every executor **once**, rather than once per task inside a closure, and returns a handle whose `.value` reads it back. The transport is BitTorrent-shaped: the driver splits the value into blocks (`spark.broadcast.blockSize`), and executors fetch blocks from each other as well as from the driver, so driver egress does not scale with executor count — which is why it is called `TorrentBroadcast`. `spark.broadcast.compress` and `spark.broadcast.checksum` govern the bytes on the wire. The lifecycle has two distinct endings that are easy to confuse: **`unpersist()`** drops the cached copies on executors, and the value is re-broadcast on next use; **`destroy()`** is permanent — the handle is dead and touching `.value` afterwards raises.
+
+**Why** — because the alternative is silent and expensive: referencing a large local object inside a lambda captures it in the closure and serialises it **per task**, so a 100 MB lookup table across 2,000 tasks moves 200 GB instead of 100 MB. Nothing in the plan or the UI says "you should have broadcast this"; you see it only as inexplicably slow task deserialisation. The `unpersist`/`destroy` split is the second trap, and it is one-way: `destroy()` on a variable a later stage still needs fails at runtime on the executor, not at the call. Note this is a *different mechanism* from a broadcast **join** (**A15**), which the optimizer decides for you and which broadcasts a DataFrame side — the two share a name and a transport and nothing else.
+
+**Learn** — Rioux Ch 8 and SDG Ch 14 both cover shared variables; neither states the `unpersist`/`destroy` distinction · docs: [RDD Programming Guide → Broadcast Variables](https://spark.apache.org/docs/latest/rdd-programming-guide.html#broadcast-variables) — short, and the only official treatment; [Configuration → Compression and Serialization](https://spark.apache.org/docs/latest/configuration.html#compression-and-serialization) for the three `spark.broadcast.*` knobs · feature history: [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) · source: `core/.../broadcast/TorrentBroadcast.scala` for the block-fetch protocol, `Broadcast.scala` for the four lifecycle methods and which of them is reversible · sweeps [rdd layer](reference/spark-source-map/sweeps/core-rdd-layer.md), [storage & serializer](reference/spark-source-map/sweeps/core-storage-serializer.md) · related: **E6** (accumulators, the write-direction twin), **A15** (broadcast *joins*, a different thing), **I18** (closure cleaning — the mechanism that makes the non-broadcast case expensive), **I35**
+
+**Milestone** — take a lookup dictionary of a few hundred MB, use it inside a `map` over many partitions two ways — captured in the closure, and broadcast — and compare task deserialisation time in the UI, not just wall clock. Then call `unpersist()` and run the job again, showing it still works and saying what happened on the second run. Call `destroy()` and run it once more; quote the error and say which process raised it. Finally explain why `spark.broadcast.blockSize` exists at all, in terms of what the driver would otherwise have to serve.
 
 ### 🎯 Intermediate Checkpoint
 
@@ -1597,7 +1615,7 @@ Take a production-shaped workload and make it fast and reliable:
 
 **Goal:** architect production data platforms. Reason about memory, serialisation and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines, and extend the engine where it does not do what you need.
 
-**Estimated time:** 82–123 hrs, ongoing · **52 topics**
+**Estimated time:** 84–126 hrs, ongoing · **53 topics**
 
 Nothing in this level is required before anything else in it. Read the strand that matches the platform you actually operate: Kubernetes or YARN, Kafka or files, declarative pipelines or hand-rolled jobs.
 
@@ -2263,6 +2281,22 @@ Read these when you inherit them, or to understand why the modern designs look t
 
 > **The passthrough cuts both ways.** None of these option keys are validated by Spark — they are copied verbatim into the Hadoop conf. A misspelt `parquet.encryption.column.keys` does not raise; it writes the file **unencrypted**. Verify encryption by reading a file back without the key, never by the write succeeding.
 
+### Strand — Multi-tenancy
+
+#### ⬜ E53 — Scheduling Within One Application: FAIR Pools, Weights, and the Thread-Local That Selects Them
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/core-rdd.md), where the fair scheduler arrives in 0.8.0 — **B1** already links the [scheduling within an application](https://spark.apache.org/docs/latest/job-scheduling.html#scheduling-within-an-application) anchor and calls it one of "two mechanisms the books blur", then teaches neither; this is the one that had no home
+
+**What** — a single `SparkContext` can run several jobs at once when they are submitted from different threads, and `spark.scheduler.mode` (0.8.0, default **`FIFO`**) decides how they share the cluster. Under `FAIR`, jobs go into **pools** defined by `spark.scheduler.allocation.file` — an XML file whose entries carry `@name`, `schedulingMode`, `minShare` and `weight` (defaults `FIFO`, `0`, `1`) — and a job joins a pool by setting the `spark.scheduler.pool` **local property** on its thread before submitting. Unset, it lands in the pool named `default`.
+
+**Why** — three reasons, each of which bites a real deployment. **The mode is FIFO by default**, so a long job submitted first can starve every short one behind it — which is exactly what a shared notebook cluster, a Thrift Server, or any app serving concurrent queries looks like. **There are two levels of FIFO/FAIR and setting one does not set the other**: `spark.scheduler.mode=FAIR` governs sharing *between* pools, while each pool's own `schedulingMode` defaults to `FIFO`, so jobs inside a pool still queue unless the XML says otherwise — a configuration that looks fair and behaves half-fair. And **pool selection is thread-local**, which is the part that breaks in practice: set `spark.scheduler.pool` and hand the work to an executor service or an async framework and the property does not follow, so the job silently runs in `default`. This is also the mechanism underneath most "why is my shared cluster unfair" questions that get misdiagnosed as a cluster-manager problem — it is not YARN queues or Kubernetes quotas (that is **scheduling *across* applications**, the other half of the same docs page and the concern of **E15**).
+
+**Learn** — no book covers pools in usable detail · docs: [Job Scheduling → within an application](https://spark.apache.org/docs/latest/job-scheduling.html#scheduling-within-an-application) — read it together with the *across applications* section above it, since the whole difficulty is telling the two apart; [Configuration → Scheduling](https://spark.apache.org/docs/latest/configuration.html#scheduling) · feature history: [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) · source: `core/.../scheduler/SchedulableBuilder.scala` holds the XML property names and every default in about forty lines — read it instead of guessing from the docs example; `Pool.scala` for how `minShare` and `weight` actually combine · sweeps [execution engine](reference/spark-source-map/sweeps/core-execution-engine.md), [config & security](reference/spark-source-map/sweeps/core-config-security.md) · related: **E15** (scheduling *across* applications — the other mechanism), **B1**, **E12**, **A28** (stage-level resources, a different axis of the same "not all work is equal" problem)
+
+**Milestone** — submit two jobs from two threads of one application, one long and one short, under the default mode, and show the short one waiting. Switch to `FAIR`, re-run, and show it no longer waits. Then write an allocation file with two pools of different `weight`, put each job in one via the local property, and demonstrate the split — then set a pool's `schedulingMode` and explain what changed *inside* it that the global setting did not. Finally, submit from a thread pool without propagating the local property, show the job landing in `default`, and say what you would have to do to carry it across.
+
+> **New in 4.2.0.** `spark.scheduler.streaming.idAwareLogging.enabled` adds the Structured Streaming query id and batch id to scheduler log messages — small, but it is what makes pool behaviour legible when the concurrent jobs are streaming micro-batches rather than interactive queries.
+
 ### 🎯 Expert Checkpoint
 
 Operate and extend a platform, not a job:
@@ -2323,7 +2357,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**–**I46**, **A29**, **A30**, **A35**–**A37**, **A46**–**A48**, **E34**, **E40**–**E42**, **E52** |
 | [Build & Language support](reference/spark-feature-history/build-lang.md) | 407 · 37 | **B1** version floors — the rest is **out of scope**, see below |
 | [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) | 324 · 56 | **I33**, **A31**, **A38**, **A46**, **A48**, **E31**, **E32** |
-| [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **A25**–**A28**, **E6**, **E12**–**E14** |
+| [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **I25** (checkpointing), **I47**, **A25**–**A28**, **E6**, **E12**–**E14**, **E53** |
 | [PySpark & Python UDFs](reference/spark-feature-history/pyspark.md) | 297 · 96 | **I10**–**I15**, **A24**, **A31** |
 | [Web UI / History / Metrics](reference/spark-feature-history/web-ui.md) | 284 · 65 | **I26**, **I27**, **E24**, **E25** |
 | [Deploy](reference/spark-feature-history/deploy.md) | 280 · 25 | **E15**–**E23** |
@@ -2357,23 +2391,23 @@ flowchart LR
     subgraph BEG["Beginner · 12 · 32–45 hrs"]
       B1["engine model<br/>B1–B2"] --> B2["DataFrame verbs<br/>B3–B6"] --> B3["shaping<br/>B7–B9"] --> B4["I/O + SQL + functions<br/>B10–B12"]
     end
-    subgraph INT["Intermediate · 46 · 70–92 hrs"]
+    subgraph INT["Intermediate · 47 · 72–94 hrs"]
       I1["types<br/>I1–I7"] --> I2["windows<br/>I8–I9"] --> I3["Python<br/>I10–I15"] --> I4["RDDs<br/>I16–I23"] --> I5["partition/cache/UI<br/>I24–I27"] --> I6["table formats<br/>I36–I39"]
     end
     subgraph ADV["Advanced · 48 · 75–108 hrs"]
       A1["compilation<br/>A1–A9"] --> A2["stats + AQE<br/>A10–A14"] --> A3["scale<br/>A15–A24"] --> A4["streaming<br/>A32–A38"]
     end
-    subgraph EXP["Expert · 52 · 82–123 hrs"]
+    subgraph EXP["Expert · 53 · 84–126 hrs"]
       E1["internals<br/>E1–E11"] --> E2["deploy<br/>E15–E23"] --> E3["state + pipelines<br/>E35–E46"]
     end
     BEG --> INT --> ADV --> EXP
 ```
 
-The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I46), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
+The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I46), shared variables (I47), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
 
 ### Where you are
 
-**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 158**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
+**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 160**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
 
 **Everything done is carrying 🔄** — written against Spark 4.1.x and now partly stale under 4.2.0.
 
