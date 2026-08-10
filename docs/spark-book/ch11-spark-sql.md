@@ -17,6 +17,9 @@
 !!! note "Also flagged for B8 (added to the path 2026-07-21) — more 4.2.0 SQL surface"
     Beyond `QUALIFY` / `SET PATH` / metric views above, the path now marks these 4.2.0 SQL additions for this chapter: `SYSTEM.BUILTIN` / `SYSTEM.SESSION` qualification ([SPARK-57109], wired through the SQL-PATH resolution engine [SPARK-56605]); `time_bucket` ([SPARK-56594]); tuple sketches ([SPARK-54179]); `IGNORE NULLS` / `RESPECT NULLS` now on the **aggregate** functions `collect_list` / `collect_set` / `array_agg` ([SPARK-55256], [SPARK-55533]) — separate from the `ignoreNulls` option some window functions (`first`/`last`/`nth_value`) already had (`lag`/`lead` did not); and top-K `max_by` / `min_by` ([SPARK-55322]).
 
+!!! note "Also flagged for B8 (added to the path 2026-08-10) — querying files without a table"
+    The DSv2 audit added a callout to **B11** this chapter does not have: ``SELECT * FROM parquet.`/path` `` queries a directory with no view and no `CREATE TABLE` (SPARK-11197, 1.6.0), governed by `spark.sql.runSQLOnFiles` — `internal()`, default `true`. The trap belongs in the name-resolution section: a mistyped format name is resolved as a *table* name, so the failure reads "table or view not found" for something never meant to be a table. Incomplete, not wrong — the chapter's existing claims stand.
+
 Spark SQL is not a separate system — it is the same Catalyst engine that runs the DataFrame API, exposed through SQL strings. Knowing both lets you choose the most readable form for each situation and mix them freely in the same pipeline.
 
 ---
