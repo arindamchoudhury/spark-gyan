@@ -1,6 +1,6 @@
 # Learning Path v2: Apache Spark / PySpark
 
-> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 156 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
+> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 157 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
 >
 > **Updated:** 2026-08-10 — audited the Types strand against [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) in the feature history and found two clusters with no topic at all: the datetime/timezone family (session time zone, `TIMESTAMP_NTZ`) and the ANSI `INTERVAL` types. Added **I5** and **I6** to cover them; **I5**–**I41** shifted to **I7**–**I43**. The same audit found four smaller gaps that belonged to topics that already existed, so those were extended in place rather than given topics of their own: `CHAR`/`VARCHAR` storage and padding into **B4**, the ANSI rules the one-line summary hides plus the view-persistence trap into **B5**, the ANSI aggregate family into **B7** with the windowed half in **I8**, and the public `UserDefinedType` API into **I1**.
 >
@@ -15,6 +15,8 @@
 > **Updated:** 2026-08-10 — audited [Connectors](reference/spark-feature-history/connectors.md), the one area the coverage table listed as covered without ever being checked feature by feature. Four clusters had no owner: the `TIME` type and its 4.2.0 serde across five formats (which had **no** mention anywhere on the page), Avro's schema/union/function surface, DSv2 pushdown to JDBC, and the cloud output committers. Added **I44**–**I45** at the end of Intermediate and **A46**–**A47** at the end of Advanced, each in a new strand, so no renumbering was needed. Three further connector clusters — file-format pushdown mechanics, codec choice per format, XML past inference — are now declared **thin** rather than left implicit. All facts verified against the local checkout at tag `v4.2.0`, not against the release notes: that is how the topics can state that `datasourceV2JoinPushdown` is `internal()` and defaults to `false`, and that Parquet loses `TIME` precision where ORC and Avro do not.
 >
 > **Updated:** 2026-08-10 — second connectors pass, closing the three clusters the first pass had only declared thin. **A48** takes file-format pushdown, which turned out to be the sharpest of them: aggregate pushdown lives only in the **V2** scan builders while `spark.sql.sources.useV1SourceList` puts every built-in file source on the **V1** path by default, so its own config does nothing alone — and nested predicate pushdown is DSv1-only, so the two cannot both be on. Codec choice folded into **I36** and XML's non-inference surface into **I28**, as callouts rather than topics. Connectors is no longer listed as thin; columnar file encryption moves to the Security gap, where key management already is.
+>
+> **Updated:** 2026-08-10 — closed the Security gap, which the coverage section had carried as thin since before the connectors audit. Added **E52** for columnar file encryption, the piece that had fallen between the connector topics (which read it as security) and **E29** (which reads governance as a catalog concern) — Parquet's envelope/KMS model and ORC's encrypt-plus-mask model differ in what an unauthorised reader gets back, which is the whole topic. Extended **E15** into the path's stated starting point for securing a cluster, with three verified defaults that make "enabled" different from "secured": `network.crypto.enabled` is `false`, `saslFallback` stays `true` when you enable it, and `authEngineVersion` defaults to `1`, whose constant is named `UNSAFE_SKIP_HKDF_VERSION`. Also corrected a wrong claim in the thin section: Spark has no UI Content-Security-Policy setting — the response headers are `xContentTypeOptions`, `strictTransportSecurity` and `allowFramingFrom`. Only MLlib is now listed as thin.
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
@@ -113,7 +115,7 @@ flowchart TD
     B["<b>Beginner</b> — write correct Spark<br/>12 topics · 32–45 hrs"]
     I["<b>Intermediate</b> — real data, real formats, read a plan<br/>45 topics · 68–90 hrs"]
     A["<b>Advanced</b> — make it fast, make it stream<br/>48 topics · 75–108 hrs"]
-    E["<b>Expert</b> — run it in production, know the internals<br/>51 topics · 80–120 hrs"]
+    E["<b>Expert</b> — run it in production, know the internals<br/>52 topics · 82–123 hrs"]
     B -->|"🎯 end-to-end batch pipeline"| I
     I -->|"🎯 diagnose a slow job from a plan"| A
     A -->|"🎯 tune and stream under load"| E
@@ -127,7 +129,7 @@ Each level is divided into **strands** — short runs of topics that belong toge
 | **Beginner** | The engine model · Core DataFrame verbs · Shaping data · Data in and out, and SQL |
 | **Intermediate** | Types beyond the basics · Windows and row multiplication · The Python boundary · RDDs underneath · Partitioning, caching, diagnosis · Ingestion depth · Table formats and the lakehouse · Procedural SQL · Formats and the types they carry |
 | **Advanced** | How a query is compiled · Statistics and adaptive execution · Joins, aggregation and windows at scale · Reliability of a running job · The file boundary · Streaming · Pipelines · Engineering practice · Pushdown and the write path |
-| **Expert** | Memory and execution internals · Scheduling and cluster reliability · Deployment · Observability · Connect · Catalogs, governance, transactions · Streaming state and operations · Kafka operations · Pipelines in production · Platform engineering · Legacy engines |
+| **Expert** | Memory and execution internals · Scheduling and cluster reliability · Deployment · Observability · Connect · Catalogs, governance, transactions · Streaming state and operations · Kafka operations · Pipelines in production · Platform engineering · Legacy engines · Data at rest |
 
 ### What the 2026 market asks for, and where it lands
 
@@ -1579,7 +1581,7 @@ Take a production-shaped workload and make it fast and reliable:
 
 **Goal:** architect production data platforms. Reason about memory, serialisation and execution without the Spark UI. Build governed, observable, CI/CD-deployed pipelines, and extend the engine where it does not do what you need.
 
-**Estimated time:** 80–120 hrs, ongoing · **51 topics**
+**Estimated time:** 82–123 hrs, ongoing · **52 topics**
 
 Nothing in this level is required before anything else in it. Read the strand that matches the platform you actually operate: Kubernetes or YARN, Kafka or files, declarative pipelines or hand-rolled jobs.
 
@@ -1761,13 +1763,15 @@ Nothing in this level is required before anything else in it. Read the strand th
 
 `v1: E2`
 
-**What** — cluster managers (YARN, Kubernetes, standalone, vendor platforms); driver and executor sizing; dynamic allocation; auto-scaling; deploy modes. Plus the **cluster-security surface**: the shared authentication secret, RPC/shuffle encryption, TLS, local-disk (shuffle-spill) encryption, and Kerberos/delegation-token lifecycle.
+**What** — cluster managers (YARN, Kubernetes, standalone, vendor platforms); driver and executor sizing; dynamic allocation; auto-scaling; deploy modes. Plus the **cluster-security surface**, which is this topic's second half and the path's single starting point for securing a cluster: the shared authentication secret (`spark.authenticate`, `spark.authenticate.secret`), the AES RPC encryption layer (`spark.network.crypto.enabled`) and its handshake, SSL/TLS for RPC (`spark.ssl.rpc.*`) and for the UI, local-disk (shuffle-spill) encryption, log and UI **redaction** (`spark.redaction.regex`), the UI's response security headers, and the Kerberos/delegation-token lifecycle.
 
 **Why** — a job that works on a laptop breaks on a cluster in ways that require understanding how the cluster manager allocates resources.
 
 **Learn** — SDG Ch 15–17; ADEB Module 3 · docs: [Cluster Mode Overview](https://spark.apache.org/docs/latest/cluster-overview.html), [Running Spark on Kubernetes](https://spark.apache.org/docs/latest/running-on-kubernetes.html), [Security](https://spark.apache.org/docs/latest/security.html) · source: sweeps [config & security](reference/spark-source-map/sweeps/core-config-security.md), [submit & standalone](reference/spark-source-map/sweeps/core-submit-standalone.md), [k8s driver & executor](reference/spark-source-map/sweeps/resource-managers-kubernetes-driver-executor.md), [yarn AM & executor](reference/spark-source-map/sweeps/resource-managers-yarn-am-executor.md)
 
-**Milestone** — size a cluster for a given workload (executor count, cores each, memory), explain client versus cluster deploy mode, and configure dynamic allocation. Then turn on authentication and wire encryption end to end and confirm from the logs that both took effect.
+**Milestone** — size a cluster for a given workload (executor count, cores each, memory), explain client versus cluster deploy mode, and configure dynamic allocation. Then turn on authentication and wire encryption end to end and confirm from the logs that both took effect. Then the security half, where "on" is not the same as "secure": with `spark.network.crypto.enabled=true`, say what `spark.network.crypto.saslFallback` still permits and how you would prove from a log that a given connection did not take that path; set `spark.network.crypto.authEngineVersion=2` and explain what the default buys and what it costs; and put a secret in a config, load the UI's environment page, and show `spark.redaction.regex` masking it — then find one place the same value still appears.
+
+> **Three defaults worth knowing before you call a cluster secured.** All verified at tag `v4.2.0`. **(1)** `spark.network.crypto.enabled` is **`false`** (2.2.0) — RPC and shuffle traffic is unencrypted unless you turn it on, and `spark.authenticate` alone does not do it. **(2)** With it on, `spark.network.crypto.saslFallback` defaults to **`true`**, so a peer that does not speak the AES protocol is still accepted over SASL — a mixed-version cluster can silently negotiate down. **(3)** The cipher is `AES/GCM/NoPadding`, but the handshake version is not: `spark.network.crypto.authEngineVersion` defaults to **`1`**, and version 1's constant in `AuthEngine.java` is literally named `UNSAFE_SKIP_HKDF_VERSION` because it omits the final HKDF round for backward compatibility with the 1.0 protocol. Version 2 performs it. Separately, `spark.ssl.rpc.enabled` (also **`false`**) is a *different* mechanism from `network.crypto` — TLS rather than Spark's own AES handshake — and the two are configured independently. On the UI side the response headers are `spark.ui.xContentTypeOptions.enabled`, `spark.ui.strictTransportSecurity` and `spark.ui.allowFramingFrom`; there is **no** Content-Security-Policy setting, so do not go looking for one.
 
 > **New in 4.2.0 on Kubernetes.** The Kubernetes resource-manager API was promoted to **Stable** with Java-friendly signatures; there is a Deployment API, `NetworkPolicy` support for executor pods, heterogeneous executor management, recovery-mode executors, Volcano pod-group templates, reduced control-plane overhead (patch instead of edit; no cluster-wide LIST in pod polling), and smaller Docker images. If you run Spark on Kubernetes, 4.2.0 is the release where this surface stopped moving.
 
@@ -2227,6 +2231,22 @@ Read these when you inherit them, or to understand why the modern designs look t
 
 **Milestone** — write a `TRANSFORM … USING` over a small table with a Python script emitting tab-separated output, and show that without `FIELDS TERMINATED BY '\t'` you get one column rather than several. Make the script emit a non-numeric value in a column declared `INT` and confirm the result is `NULL` with nothing in the driver log. Finally make the script `exit 1` after emitting some rows, and note how long the query takes to fail and which config controls that wait.
 
+### Strand — Data at rest
+
+#### ⬜ E52 — Column Encryption and Key Management: Parquet Envelopes, ORC Masks, and Who Holds the Key
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/connectors.md) and [Security](reference/spark-feature-history/security.md), where Parquet and ORC column encryption (SPARK-35658, 34029, 35325) sat between two areas and was picked up by neither: the connector topics treat it as a security concern, and **E29** treats governance as a catalog concern
+
+**What** — both columnar formats have encrypted individual columns since Spark 3.2, and they chose opposite models. **Parquet** does *envelope encryption*: a random data encryption key (DEK) per file and per column, each wrapped by a master key (MEK) that never leaves a KMS you supply through `parquet.crypto.factory.class` and `parquet.encryption.kms.client.class`; you name the columns and their keys per write with `parquet.encryption.column.keys` and `parquet.encryption.footer.key`. **ORC** is declarative and pairs encryption with masking: `orc.encrypt "pii:ssn,email"` names a key and its columns, `orc.mask "nullify:ssn;sha256:email"` says what a reader *without* that key sees instead, with the key itself coming from a provider such as Hadoop KMS via `orc.key.provider` and `hadoop.security.key.provider.path`.
+
+**Why** — the models differ in the one way that matters operationally: what an unauthorised reader gets. ORC hands back masked values, so a query keeps working and returns `NULL` or a hash where the plaintext was — no error, which is either exactly what you want or a silent data-quality problem depending on who is asking. Parquet does not mask; without the key the column cannot be read at all, and with an *encrypted footer* even the schema is unreadable, so the failure arrives as an unreadable file rather than a permissions message. Beyond that, the whole feature is only as good as the key management behind it, and that is the part no format solves for you: the KMS client is an interface you implement or adopt, key rotation is a KMS operation that your already-written files must survive, and the mock KMS shipped in `parquet-hadoop-tests.jar` exists so you can learn the mechanics without one — which makes it very easy to demo something that would not survive contact with a real deployment.
+
+**Learn** — no book covers either · docs: [Parquet → Columnar Encryption](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html#columnar-encryption) — read the KMS client interface section, not just the example; [ORC → Columnar Encryption](https://spark.apache.org/docs/latest/sql-data-sources-orc.html#columnar-encryption); [Security](https://spark.apache.org/docs/latest/security.html) for where this sits relative to the wire-level surface in **E15**; [Apache Hadoop KMS](https://hadoop.apache.org/docs/current/hadoop-kms/index.html) · feature history: [Connectors](reference/spark-feature-history/connectors.md), [Security](reference/spark-feature-history/security.md) · source: Spark holds almost none of this — the options fall through to parquet-mr and ORC unvalidated by the same `SessionState.newHadoopConfWithOptions` passthrough that **A48** turns on its head, so read the two docs pages as the interface and the format libraries for behaviour · related: **E15** (wire and disk, the other half of "encrypted"), **E29** (who is allowed to ask), **A48** (the same unvalidated option path), **I36**
+
+**Milestone** — using the mock KMS jar, write a Parquet table with one encrypted column and a footer key, then read it back in a session with no key configured and record exactly what fails and at which point. Repeat with ORC using `orc.encrypt` plus `orc.mask "nullify:…"`, read it without the key, and show the query *succeeding* with masked values — then state which of the two behaviours you would want for a PII column and defend it. Finally, describe what has to happen to files already written when a master key is rotated, and say which component performs it.
+
+> **The passthrough cuts both ways.** None of these option keys are validated by Spark — they are copied verbatim into the Hadoop conf. A misspelt `parquet.encryption.column.keys` does not raise; it writes the file **unencrypted**. Verify encryption by reading a file back without the key, never by the write succeeding.
+
 ### 🎯 Expert Checkpoint
 
 Operate and extend a platform, not a job:
@@ -2284,7 +2304,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [SQL & Catalyst](reference/spark-feature-history/sql-catalyst.md) | 1,458 · 135 | **B11**, **I40**–**I43**, **A1**–**A14**, **A17**, **A20**–**A22**, **E9**–**E11** |
 | [Misc / Other](reference/spark-feature-history/misc.md) | 927 · 10 | no single home — a residual bucket, not a subsystem |
 | [MLlib / ML](reference/spark-feature-history/mllib.md) | 723 · 6 | **A44** only — **thin**, see below |
-| [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**, **I45**, **A29**, **A30**, **A35**–**A37**, **A46**–**A48**, **E34**, **E40**–**E42** |
+| [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**, **I45**, **A29**, **A30**, **A35**–**A37**, **A46**–**A48**, **E34**, **E40**–**E42**, **E52** |
 | [Build & Language support](reference/spark-feature-history/build-lang.md) | 407 · 37 | **B1** version floors — the rest is **out of scope**, see below |
 | [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) | 324 · 56 | **I33**, **A31**, **A38**, **A46**, **A48**, **E31**, **E32** |
 | [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **A25**–**A28**, **E6**, **E12**–**E14** |
@@ -2299,14 +2319,16 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) | 159 · 8 | **B4**, **B5**, **I1**–**I7** |
 | [pandas API on Spark](reference/spark-feature-history/pandas-on-spark.md) | 128 · 38 | **I12** |
 | [DStreams](reference/spark-feature-history/dstreams.md) | 94 · 0 | **E49**, **E50** — as history, not as something to build with |
-| [Security](reference/spark-feature-history/security.md) | 66 · 16 | **E16**, **E29**, **E42** — **thin**, see below |
+| [Security](reference/spark-feature-history/security.md) | 66 · 16 | **E15** (wire, disk, redaction), **E16**, **E29**, **E42**, **E52** (data at rest) |
 | [Arrow](reference/spark-feature-history/arrow.md) | 45 · 21 | **I10**, **I13**, **I14** |
 | [GraphX](reference/spark-feature-history/graphx.md) | 31 · 0 | **out of scope** — see below |
 | [Geospatial](reference/spark-feature-history/geospatial.md) | 12 · 12 | **I7** |
 
 **Deliberately out of scope.** Three areas have no topic on purpose. **GraphX** has taken no change since 3.2.0 and nothing at all in the 4.x line; it is in maintenance, the ecosystem moved to GraphFrames and to dedicated graph engines, and time spent on it does not transfer. **SparkR** is an R API on a Python path, and Spark deprecated it in 4.0 (SPARK-49347). Most of **Build & Language support** is Spark's *own* build — Maven and SBT plumbing, CI configuration, Docker publishing, and several hundred transitive dependency bumps — which has no learnable surface unless you are building Spark from source; the part that does affect you is the version floors, and those are in **B1**. **Misc / Other** is a residual bucket by construction: it is where items that matched no other area landed, so it has no single home and is not evidence of a gap.
 
-**Known thin, not yet decided.** Two areas are under-covered and should be treated as open rather than settled. **MLlib** is 723 items behind one topic (**A44**) — the largest imbalance on this page; a path that took ML seriously would need three or four topics, and the honest position is that this one currently does not. **Security** is spread across **E16**, **E29** and **E42** with no topic on the wire-level surface — RPC SSL and AES-GCM, redaction, the UI Content-Security-Policy header, AuthV2 — so a reader who needs to secure a cluster has no single place to start; columnar **file** encryption (Parquet's own encryption feature, ORC encryption) belongs to that same gap rather than to the connector topics, because the hard part is key management, not the format. **Connectors** is no longer on that list. The 2026-08-10 audit closed it in two passes: **I44**–**I45** and **A46**–**A47** took the four clusters that needed topics, **A48** took file-format pushdown, and the two remaining clusters were folded into topics that already existed rather than given entries of their own — codec choice per format into **I36**, and XML's life outside the shared inference machinery into **I28**. What is left of that area inside this page's scope is columnar **file** encryption, which is filed above under Security because the hard part is key management, not the format.
+**Known thin, not yet decided.** One area is under-covered and should be treated as open rather than settled. **MLlib** is 723 items behind one topic (**A44**) — the largest imbalance on this page; a path that took ML seriously would need three or four topics, and the honest position is that this one currently does not. **Security is no longer on that list either.** It was the older of the two gaps and predates the connectors audit. The wire-level surface now has a stated home in **E15**, whose security half carries authentication, RPC encryption, TLS, redaction and the UI response headers together with the three defaults that make "enabled" different from "secured"; and columnar **file** encryption, which had fallen between the connector topics and **E29**, is now **E52**.
+
+**Connectors** is no longer on that list. The 2026-08-10 audit closed it in two passes: **I44**–**I45** and **A46**–**A47** took the four clusters that needed topics, **A48** took file-format pushdown, and the two remaining clusters were folded into topics that already existed rather than given entries of their own — codec choice per format into **I36**, and XML's life outside the shared inference machinery into **I28**. What is left of that area inside this page's scope is columnar **file** encryption, which is filed above under Security because the hard part is key management, not the format.
 
 Below the threshold on purpose: the **image** data source (2.3/2.4, effectively superseded by `binaryFile`, which **I20** names) and **Hive-hash bucketed writes** (SPARK-32709/32712, a compatibility surface for Hive clusters rather than a learnable Spark mechanism).
 
@@ -2325,7 +2347,7 @@ flowchart LR
     subgraph ADV["Advanced · 48 · 75–108 hrs"]
       A1["compilation<br/>A1–A9"] --> A2["stats + AQE<br/>A10–A14"] --> A3["scale<br/>A15–A24"] --> A4["streaming<br/>A32–A38"]
     end
-    subgraph EXP["Expert · 51 · 80–120 hrs"]
+    subgraph EXP["Expert · 52 · 82–123 hrs"]
       E1["internals<br/>E1–E11"] --> E2["deploy<br/>E15–E23"] --> E3["state + pipelines<br/>E35–E46"]
     end
     BEG --> INT --> ADV --> EXP
@@ -2335,7 +2357,7 @@ The strands not shown on the diagram — ingestion depth (I28–I35), procedural
 
 ### Where you are
 
-**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 156**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
+**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 157**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
 
 **Everything done is carrying 🔄** — written against Spark 4.1.x and now partly stale under 4.2.0.
 
