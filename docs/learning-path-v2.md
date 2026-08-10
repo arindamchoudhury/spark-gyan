@@ -165,7 +165,7 @@ Each level is divided into **strands** — short runs of topics that belong toge
 
 #### 🔄 B1 — Spark Architecture and the Execution Model
 
-`v1: B1` · chapter [03](spark-book/ch03-spark-installation.md) written against 4.1.x
+`v1: B1` · chapters [01](spark-book/ch01-introduction-to-spark.md), [02](spark-book/ch02-spark-architecture.md), [03](spark-book/ch03-spark-installation.md) written against 4.1.x
 
 **What** — how Spark distributes work: driver, executors, cluster manager, JVM vs Python process, lazy evaluation, DAG, stages, tasks.
 

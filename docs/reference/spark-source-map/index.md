@@ -10,7 +10,7 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 
 | Topic | Title | Chapter | Repos | Status |
 |---|---|---|---|---|
-| B1 | Spark Architecture & the Execution Model | [03](../../spark-book/ch03-spark-installation.md) 🔄 | apache/spark | ✅ complete |
+| B1 | Spark Architecture & the Execution Model | [01](../../spark-book/ch01-introduction-to-spark.md) · [02](../../spark-book/ch02-spark-architecture.md) 🔄 · [03](../../spark-book/ch03-spark-installation.md) 🔄 | apache/spark | ✅ complete |
 | B2 | SparkSession and Entry Points | [04](../../spark-book/ch04-sparksession.md) 🔄 | apache/spark | ✅ complete |
 | B3 | The DataFrame API: Basics | [06](../../spark-book/ch06-dataframe-basics.md) 🔄 | apache/spark | ✅ complete |
 | B4 | Reading and Writing Data | [07](../../spark-book/ch07-reading-writing-data.md) 🔄 | apache/spark | ✅ complete |
