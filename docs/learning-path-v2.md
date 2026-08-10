@@ -6,6 +6,10 @@
 >
 > **Updated:** 2026-08-10 — audited the Python-boundary strand against [Arrow](reference/spark-feature-history/arrow.md). The UDF and UDTF execution path was already well covered; the *conversion* path (`toPandas`/`createDataFrame`, the type boundary, the PyArrow floor) and the whole-partition APIs (`mapInPandas`/`mapInArrow`/`applyInArrow`) had no topic at all. Added **I13** and **I14** to cover them; **I13**–**I41** shifted to **I15**–**I43**.
 >
+> **Updated:** 2026-08-10 — audited [Build & Language support](reference/spark-feature-history/build-lang.md). That area is 408 items, but almost all of it is Spark's *own* build — Maven/SBT, CI, Docker publishing, transitive dependency bumps — with no learnable surface, so it stays out by design. The learner-facing residue was mostly already covered; what was missing was the Python version floor and the Python dependency floors, plus the fact that Mesos was removed in 4.0. All folded into **B1** as version-floor notes rather than given a topic. No renumbering.
+>
+> **Updated:** 2026-08-10 — added [What this path covers, and what it deliberately does not](#what-this-path-covers-and-what-it-deliberately-does-not): all 22 feature-history capability areas mapped to the topics that carry them, with GraphX, SparkR and the Spark build declared out of scope and MLlib, built-in functions and security flagged as known-thin. Ends the run of area audits by making coverage a stated position rather than something you have to reconstruct.
+>
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
 > **Relationship to [v1](learning-path.md).** v1 remains the detail store: it carries the long `!!! info` / `!!! warning` blocks recording specific source findings per topic, and it is not deleted. v2 is the page you study from. Every topic here names its v1 code so you can jump to that detail, and the [v1 → v2 code map](#v1-v2-code-map) at the end is the full crosswalk.
@@ -156,6 +160,12 @@ Each level is divided into **strands** — short runs of topics that belong toge
 **Milestone** — explain without notes what happens between `spark.read.parquet(...)` and `.show()`: where the plan lives, when it executes, which process runs the Python. Then, from the source: name the single function that decides where one stage ends and the next begins; explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop; explain why a stage you watched succeed can run again.
 
 > **Carrying 🔄.** Ch03 states Spark 4.x supports only Java 17 and 21 — 4.2.0 builds and runs on **Java 25** (SPARK-51167). It also misses that Spark 4.x is **Scala 2.13 only**, which decides the `_2.13` suffix on every dependency artifact. The architecture material in Ch01–Ch02 re-verified clean against 4.2.0; only the install chapter needs work.
+
+> **The version floors, and where they are actually enforced.** The [docs index](https://spark.apache.org/docs/latest/index.html) states it in one line: *Java 17/21/25, Scala 2.13, Python 3.10+, R 4.0+ (Deprecated)* — with the caveat that **Java 25 before 25.0.3 is deprecated as of 4.2.0**, so "Java 25" is not quite a free choice of patch level. On the Python side the [PySpark installation page](https://spark.apache.org/docs/latest/api/python/getting_started/install.html) is the reference: `python_requires=">=3.10"`, classifiers declaring **3.10 through 3.14**, and the dependency floors `pandas>=2.2.0,<3.0.0`, `pyarrow>=18.0.0`, and `grpcio`/`grpcio-status` `>=1.76.0` for Connect. Check these before debugging anything strange in a new environment — a missing or too-old PyArrow does not fail loudly, it silently costs you the Arrow path (**I13**).
+
+> **A live example of why the source outranks the docs.** NumPy's floor is stated inconsistently *inside Spark itself* at tag `v4.2.0`: the packaging constants say `_minimum_numpy_version = "1.21"` (`python/packaging/classic/setup.py`, and the same in the `client` and `connect` variants), while the runtime guard `require_minimum_numpy_version()` in `python/pyspark/sql/pandas/utils.py` raises below **1.22** — which is also what the published install page says. So `pip` will cheerfully install NumPy 1.21 and Spark will then refuse it at import. The effective floor is **1.22**; the packaging constant is stale, and the comment at the top of that same file asks whoever edits it to keep `utils.py` in sync. Worth doing once as an exercise in the [authority ladder](#the-authority-ladder): two files in one repo disagree, and only running the code tells you which one governs.
+
+> **Cluster managers that no longer exist.** Mesos was removed outright in Spark 4.0 (SPARK-44442). Every book in this path lists it as one of four options; the docs index now names three — Standalone, YARN, Kubernetes — and **E15** onward covers only those. SparkR was deprecated in the same release (SPARK-49347), which is why R has no topic here.
 
 #### 🔄 B2 — SparkSession and Entry Points
 
@@ -2162,6 +2172,39 @@ Every book cited on this page was written against Spark 2.x or 3.x. The [feature
 
 **How to check something yourself.** Pick the capability area in the [feature history index](reference/spark-feature-history/index.md), read its timeline table, and follow the `SPARK-*` link. Each area page is one table sorted oldest to newest, so "when did X become possible" is a page scan, not a search. The merged `_all.jsonl` is the single stream across every release, including the prose-only feature releases (4.0.0, 4.1.0, 4.2.0) that ship no JIRA dump — which is why those three do not appear in `_catalog.jsonl`.
 
+### What this path covers, and what it deliberately does not
+
+The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 tracked items into 22 capability areas. That makes it possible to state coverage honestly rather than leaving gaps implicit — an area with no topic should be a decision on this page, not an accident. The `4.x` column is the subset that landed in the 4.x line, because that is where a book cannot help you. The two columns sum to exactly the 7,190 and 904 quoted above, so a dropped row shows up as an arithmetic error rather than a silent omission — re-check the sums whenever the feature history is regenerated.
+
+| Capability area | Items · 4.x | Where it lands |
+|---|---|---|
+| [SQL & Catalyst](reference/spark-feature-history/sql-catalyst.md) | 1,458 · 135 | **B11**, **I40**–**I43**, **A1**–**A14**, **A17**, **A20**–**A22**, **E9**–**E11** |
+| [Misc / Other](reference/spark-feature-history/misc.md) | 927 · 10 | no single home — a residual bucket, not a subsystem |
+| [MLlib / ML](reference/spark-feature-history/mllib.md) | 723 · 6 | **A44** only — **thin**, see below |
+| [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **A29**, **A30**, **A35**–**A37**, **E34**, **E40**–**E42** |
+| [Build & Language support](reference/spark-feature-history/build-lang.md) | 407 · 37 | **B1** version floors — the rest is **out of scope**, see below |
+| [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) | 324 · 56 | **I33**, **A31**, **A38**, **E31**, **E32** |
+| [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **A25**–**A28**, **E6**, **E12**–**E14** |
+| [PySpark & Python UDFs](reference/spark-feature-history/pyspark.md) | 297 · 96 | **I10**–**I15**, **A24**, **A31** |
+| [Web UI / History / Metrics](reference/spark-feature-history/web-ui.md) | 284 · 65 | **I26**, **I27**, **E24**, **E25** |
+| [Deploy](reference/spark-feature-history/deploy.md) | 280 · 25 | **E15**–**E23** |
+| [Shuffle / Storage / Memory](reference/spark-feature-history/shuffle-storage.md) | 259 · 25 | **I24**, **I25**, **A18**, **A19**, **A27**, **E1**–**E5** |
+| [Structured Streaming](reference/spark-feature-history/structured-streaming.md) | 234 · 94 | **A32**–**A38**, **E35**–**E39** |
+| [Built-in Functions](reference/spark-feature-history/builtin-functions.md) | 200 · 36 | **B7**, **A21**, **A23** — **thin**, see below |
+| [Spark Connect](reference/spark-feature-history/spark-connect.md) | 178 · 149 | **B2**, **A45**, **E26**–**E28** |
+| [SparkR](reference/spark-feature-history/sparkr.md) | 175 · 1 | **out of scope** — this is a PySpark path, and SparkR was deprecated in 4.0 |
+| [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) | 159 · 8 | **B4**, **B5**, **I1**–**I7** |
+| [pandas API on Spark](reference/spark-feature-history/pandas-on-spark.md) | 128 · 38 | **I12** |
+| [DStreams](reference/spark-feature-history/dstreams.md) | 94 · 0 | **E49**, **E50** — as history, not as something to build with |
+| [Security](reference/spark-feature-history/security.md) | 66 · 16 | **E16**, **E29**, **E42** — **thin**, see below |
+| [Arrow](reference/spark-feature-history/arrow.md) | 45 · 21 | **I10**, **I13**, **I14** |
+| [GraphX](reference/spark-feature-history/graphx.md) | 31 · 0 | **out of scope** — see below |
+| [Geospatial](reference/spark-feature-history/geospatial.md) | 12 · 12 | **I7** |
+
+**Deliberately out of scope.** Three areas have no topic on purpose. **GraphX** has taken no change since 3.2.0 and nothing at all in the 4.x line; it is in maintenance, the ecosystem moved to GraphFrames and to dedicated graph engines, and time spent on it does not transfer. **SparkR** is an R API on a Python path, and Spark deprecated it in 4.0 (SPARK-49347). Most of **Build & Language support** is Spark's *own* build — Maven and SBT plumbing, CI configuration, Docker publishing, and several hundred transitive dependency bumps — which has no learnable surface unless you are building Spark from source; the part that does affect you is the version floors, and those are in **B1**. **Misc / Other** is a residual bucket by construction: it is where items that matched no other area landed, so it has no single home and is not evidence of a gap.
+
+**Known thin, not yet decided.** Three areas are under-covered and should be treated as open rather than settled. **MLlib** is 724 items behind one topic (**A44**) — the largest imbalance on this page; a path that took ML seriously would need three or four topics, and the honest position is that this one currently does not. **Built-in Functions** has no topic of its own: the catalogue is reached through **B7**, **A21** and **A23**, which is enough to find a function but not enough to teach the shape of the library. **Security** is spread across **E16**, **E29** and **E42** with no topic on the wire-level surface — RPC SSL and AES-GCM, redaction, the UI Content-Security-Policy header, AuthV2 — so a reader who needs to secure a cluster has no single place to start.
+
 ---
 
 ## Suggested study sequence
@@ -2424,7 +2467,7 @@ Every v1 topic appears exactly once. Six v2 topics are new and have no v1 code.
 - `sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala` — confirms `regr_*`, `percentile_cont`, `percentile_disc` and `user` are registered, the family **B7** and **I8** point at
 - `sql/api/src/main/scala/org/apache/spark/sql/types/UserDefinedType.scala` — `@DeveloperApi @Since("3.2.0")`, the basis for the **I1** note
 - `SQLConf.scala`, the `spark.sql.execution.arrow.*` and `spark.sql.execution.pandas.*` block — every Arrow config name, version and default quoted in **I13**, including `pyspark.enabled` falling back to the 2.3.0 key, `fallback.enabled` defaulting to `true`, `maxRecordsPerBatch` at `10000`, `maxBytesPerBatch` at `64MB`, `convertToArrowArraySafely` at `true`, and `compression.codec` at `none`
-- `python/pyspark/sql/pandas/utils.py` and `python/packaging/classic/setup.py` — the minimum PyArrow version (`18.0.0`) cited in **I13**
+- `python/pyspark/sql/pandas/utils.py` and `python/packaging/classic/setup.py` — the minimum PyArrow version (`18.0.0`) cited in **I13**; also the `python_requires=">=3.10"` floor, the 3.10–3.14 classifiers and the pandas/grpcio floors in **B1**, and the NumPy `1.21` vs `1.22` disagreement between the packaging constants and `require_minimum_numpy_version()` that **B1** uses as its authority-ladder example
 - `python/pyspark/sql/pandas/map_ops.py` and `group_ops.py` — the `mapInArrow(func, schema, barrier=False, profile=None)` signature behind **I14**, and the grouped and cogrouped `applyInArrow` / `applyInPandas` pairs
 - `sql/gen-sql-functions-docs.py` — the function-group list that decides the `api/sql/*-functions/` page names cited throughout
 - `python/docs/source/tutorial/pandas_on_spark/` — the pandas-on-Spark user-guide pages behind **I12**
