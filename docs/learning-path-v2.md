@@ -1,6 +1,6 @@
 # Learning Path v2: Apache Spark / PySpark
 
-> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 155 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
+> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 156 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
 >
 > **Updated:** 2026-08-10 — audited the Types strand against [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) in the feature history and found two clusters with no topic at all: the datetime/timezone family (session time zone, `TIMESTAMP_NTZ`) and the ANSI `INTERVAL` types. Added **I5** and **I6** to cover them; **I5**–**I41** shifted to **I7**–**I43**. The same audit found four smaller gaps that belonged to topics that already existed, so those were extended in place rather than given topics of their own: `CHAR`/`VARCHAR` storage and padding into **B4**, the ANSI rules the one-line summary hides plus the view-persistence trap into **B5**, the ANSI aggregate family into **B7** with the windowed half in **I8**, and the public `UserDefinedType` API into **I1**.
 >
@@ -13,6 +13,8 @@
 > **Updated:** 2026-08-10 — audited [Built-in Functions](reference/spark-feature-history/builtin-functions.md) and found the coverage inverted: the marquee families already had dedicated topics (**A21** sketches, **A23** vectors, both complete on their 4.x rows) while the everyday catalogue had no owner. Added **B12** at the end of the Beginner level, which needed no renumbering. That area is no longer listed as thin.
 >
 > **Updated:** 2026-08-10 — audited [Connectors](reference/spark-feature-history/connectors.md), the one area the coverage table listed as covered without ever being checked feature by feature. Four clusters had no owner: the `TIME` type and its 4.2.0 serde across five formats (which had **no** mention anywhere on the page), Avro's schema/union/function surface, DSv2 pushdown to JDBC, and the cloud output committers. Added **I44**–**I45** at the end of Intermediate and **A46**–**A47** at the end of Advanced, each in a new strand, so no renumbering was needed. Three further connector clusters — file-format pushdown mechanics, codec choice per format, XML past inference — are now declared **thin** rather than left implicit. All facts verified against the local checkout at tag `v4.2.0`, not against the release notes: that is how the topics can state that `datasourceV2JoinPushdown` is `internal()` and defaults to `false`, and that Parquet loses `TIME` precision where ORC and Avro do not.
+>
+> **Updated:** 2026-08-10 — second connectors pass, closing the three clusters the first pass had only declared thin. **A48** takes file-format pushdown, which turned out to be the sharpest of them: aggregate pushdown lives only in the **V2** scan builders while `spark.sql.sources.useV1SourceList` puts every built-in file source on the **V1** path by default, so its own config does nothing alone — and nested predicate pushdown is DSv1-only, so the two cannot both be on. Codec choice folded into **I36** and XML's non-inference surface into **I28**, as callouts rather than topics. Connectors is no longer listed as thin; columnar file encryption moves to the Security gap, where key management already is.
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
@@ -110,7 +112,7 @@ Roughly two thirds of the topics below came from reading the Spark source rather
 flowchart TD
     B["<b>Beginner</b> — write correct Spark<br/>12 topics · 32–45 hrs"]
     I["<b>Intermediate</b> — real data, real formats, read a plan<br/>45 topics · 68–90 hrs"]
-    A["<b>Advanced</b> — make it fast, make it stream<br/>47 topics · 73–105 hrs"]
+    A["<b>Advanced</b> — make it fast, make it stream<br/>48 topics · 75–108 hrs"]
     E["<b>Expert</b> — run it in production, know the internals<br/>51 topics · 80–120 hrs"]
     B -->|"🎯 end-to-end batch pipeline"| I
     I -->|"🎯 diagnose a slow job from a plan"| A
@@ -712,6 +714,8 @@ Read on demand. Each of these is a specific way a read goes wrong.
 
 **Milestone** — read the same CSV with and without `inferSchema` and show the difference in both schema and job count; then engineer a column whose values force the lattice to widen to `string`, and predict the result before running.
 
+> **XML is the newest member of this machinery, and it has a life outside it.** The built-in XML source arrived in 4.0 (SPARK-44265) and joins CSV and JSON in everything above — the same inference lattice, the same three parse modes, the same `_corrupt_record` rules. Two things are XML-only and live outside this topic: `from_xml` / `to_xml` parse and generate a struct from a `string` column with no reader involved, which is how you handle an XML payload inside a row (they sit in the XML group of the [function catalogue](https://spark.apache.org/docs/latest/sql-ref-functions.html) — see **B12**); and 4.1 added read support for round-tripping **binary** through XML (SPARK-52917) plus a rework of the parser's memory behaviour (SPARK-52582), which matters because XML has no equivalent of a per-line split — a single large document is one indivisible unit of work.
+
 #### ⬜ I29 — Malformed Records: `PERMISSIVE`, `DROPMALFORMED`, `FAILFAST` and `_corrupt_record`
 
 `v1: I24`
@@ -813,6 +817,8 @@ Read this strand in order — it is the run in Intermediate where sequence matte
 **Learn** — LS2e Ch 4; SDG Ch 9; DLDG Ch 1 · docs: [Parquet](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html), [ORC](https://spark.apache.org/docs/latest/sql-data-sources-orc.html), [Avro](https://spark.apache.org/docs/latest/sql-data-sources-avro.html), [Performance Tuning](https://spark.apache.org/docs/latest/sql-performance-tuning.html) · source: [trace I10](reference/spark-source-map/topics/i10.md), sweeps [datasources](reference/spark-source-map/sweeps/sql-core-datasources.md), [planner](reference/spark-source-map/sweeps/sql-catalyst-planner.md) · deep dive later: **E34** (page decoding)
 
 **Milestone** — explain why `F.col("date") > '2024-01-01'` on Parquet can be resolved without reading data and the same filter on CSV cannot. Then from a real plan: find `ColumnarToRowExec` and say what it tells you about where the columnar advantage stopped; and given a filter that was *not* pushed down, explain why the format is usually not the reason.
+
+> **The codec is a second decision, and its default moved.** Format choice does not settle compression. ORC's default became **zstd** in 4.0 (SPARK-46648, previously snappy) and it also gained Brotli and LZ4; Parquet stays on snappy but added `lz4raw` in 3.5; Avro takes xz and zstandard with a *compression level* and a ZSTD buffer pool; and 4.1 added ZStandard to the generic file-source reader (SPARK-52482), which is what lets a plain `spark.read.text` handle `.zst`. The trade is the usual one — zstd buys roughly snappy-speed decompression at meaningfully better ratios, gzip/xz buy ratio at a decompression cost you pay on **every** read — so it is a write-time decision with a permanent read-time bill. Set it per write with the `compression` option, never globally, and re-check the default when you upgrade rather than assuming the file you are reading matches the one you wrote. A full mechanism-level treatment of what a codec costs to decode is **E34**.
 
 #### ⬜ I37 — Delta Lake Basics
 
@@ -948,7 +954,7 @@ Take a pipeline that is too slow and diagnose it without guessing:
 
 **Goal:** write high-performance production pipelines. Understand the optimiser deeply enough to fix it when it decides wrongly. Handle streaming workloads. Build declarative pipelines.
 
-**Estimated time:** 73–105 hrs · **47 topics**
+**Estimated time:** 75–108 hrs · **48 topics**
 
 Strands *how a query is compiled* → *statistics and adaptive execution* → *joins at scale* are the tuning spine, read in order. *Streaming* is a self-contained run and can be taken first if that is what your job needs.
 
@@ -1545,6 +1551,18 @@ Two topics about the two ends of a query that leave Spark: what the optimizer ha
 **Learn** — no book covers committers · docs: [Integration with Cloud Infrastructures](https://spark.apache.org/docs/latest/cloud-integration.html) — its committer section gives the exact three-line configuration; then the Hadoop S3A committers documentation for what "magic" and "directory" actually do · feature history: [Connectors](reference/spark-feature-history/connectors.md) · source: `core/.../SparkContext.scala` → `enableMagicCommitterIfNeeded` is the whole auto-wiring, five `setIfMissing` calls; `hadoop-cloud/.../PathOutputCommitProtocol.scala` holds the dynamic-partition rules and the `UNSUPPORTED` error · sweep [execution engine](reference/spark-source-map/sweeps/core-execution-engine.md) · related: **E14** (which attempt commits), **B10**, **I31** · prerequisite: none, but it only matters if you write to object storage
 
 **Milestone** — print `spark.sql.sources.commitProtocolClass` and `spark.hadoop.fs.s3a.committer.name` on a cluster with and without the `hadoop-cloud` jar, and explain the difference from the one method that sets them. Then set `fs.s3a.committer.name` explicitly to `directory` and show your value survived — naming the reason `setIfMissing` guarantees that. Finally run an `INSERT OVERWRITE` with `spark.sql.sources.partitionOverwriteMode=dynamic` onto an unpartitioned dataset, quote the error, and say which of the two dynamic-partition rules produced it.
+
+#### ⬜ A48 — Pushdown Into a File: Aggregates, Nested Columns, and the V1/V2 Split That Decides Which You Get
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/connectors.md), where aggregate pushdown (SPARK-36645, 34960), nested predicate pushdown (17636, 25557), nested schema pruning (4502, 25603), the Parquet column index (34289, 34859) and write-side bloom filters (34562) are five separate mechanisms that **I36** covered in the four words "predicate pushdown; column pruning"
+
+**What** — the file-side twin of **A46**. Five mechanisms that let a scan read less than the whole column: **nested schema pruning** (`spark.sql.optimizer.nestedSchemaPruning.enabled`, 2.4.1, default **`true`**) reads one struct field instead of the struct; **nested predicate pushdown** (`spark.sql.optimizer.nestedPredicatePushdown.supportedFileSources`, `internal()`, default `parquet,orc`) filters on `a.b.c` at the file; **aggregate pushdown** (`spark.sql.parquet.aggregatePushdown` / `spark.sql.orc.aggregatePushdown`, both 3.3.0, both default **`false`**) answers `MIN`/`MAX`/`COUNT` from footer statistics without reading a single page; the **Parquet column index** skips pages inside a row group rather than whole row groups; and **write-side bloom filters** let a later equality predicate skip a row group the min/max range could not.
+
+**Why** — because the *first* three live on different code paths, and the split is invisible. Aggregate pushdown is implemented only in the **V2** scan builders (`ParquetScanBuilder`, `OrcScanBuilder`, driven by `V2ScanRelationPushDown`), but `spark.sql.sources.useV1SourceList` defaults to `avro,csv,json,kafka,orc,parquet,text` — every built-in file source takes the **V1** path unless you remove it. So flipping `parquet.aggregatePushdown` to `true` on a default cluster changes nothing at all: you need two configs, and only one of them is named after the feature. Meanwhile nested predicate pushdown is documented in its own config as "only effective with file-based data sources in **DSv1**" — the opposite path. Take Parquet off the V1 list to get aggregate pushdown and you give up nested predicate pushdown. That trade is stated nowhere outside the two config docstrings, and neither shows in a plan. Bloom filters compound it from the other end: Spark has no first-class surface for them at all — no `ParquetOptions` key, no `SQLConf` entry, no line in the Parquet docs page. They work only because `SessionState.newHadoopConfWithOptions` copies every writer option straight into the Hadoop conf unvalidated, so parquet-mr sees `parquet.bloom.filter.enabled#col`. A typo in that key is not an error; it is a bloom filter you believe you wrote and did not.
+
+**Learn** — no book covers any of the five · docs: [Parquet](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html) and [ORC](https://spark.apache.org/docs/latest/sql-data-sources-orc.html) for the options that *are* documented, [Data Source V2](https://spark.apache.org/docs/latest/sql-data-sources-v2.html) for the path split, [Performance Tuning](https://spark.apache.org/docs/latest/sql-performance-tuning.html) · feature history: [Connectors](reference/spark-feature-history/connectors.md) · source: read the four config docstrings in `SQLConf.scala` back to back — `NESTED_SCHEMA_PRUNING_ENABLED`, `NESTED_PREDICATE_PUSHDOWN_FILE_SOURCE_LIST`, `PARQUET_AGGREGATE_PUSHDOWN_ENABLED`, `USE_V1_SOURCE_LIST` — they contradict each other in a way no single page admits; then `datasources/v2/parquet/ParquetScanBuilder.scala` for where aggregate pushdown actually lives, and `SessionState.newHadoopConfWithOptions` for the unvalidated passthrough · sweeps [datasources](reference/spark-source-map/sweeps/sql-core-datasources.md), [optimizer](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md) · related: **A46** (the same question asked of a database), **I36**, **A1**, **E34** (what a page actually costs to decode) · **not** **A14**, which is runtime *join* bloom filters and shares only the name
+
+**Milestone** — on a Parquet table, run `SELECT MIN(x), MAX(x) FROM t` with `spark.sql.parquet.aggregatePushdown=true` and show from the plan and the input-size metric that it did **not** push down. Then remove `parquet` from `spark.sql.sources.useV1SourceList`, re-run, and show the scan reading effectively nothing — naming which class handled it the second time. With Parquet still off the V1 list, put a filter on a nested field and say what you lost. Then select one field of a struct and prove from the plan that pruning happened; disable it and compare bytes read. Finally write a table with `parquet.bloom.filter.enabled#id=true`, write a second with the key deliberately misspelled, query both by `id`, and explain why only one is faster and why neither raised an error.
 
 ### 🎯 Advanced Checkpoint
 
@@ -2266,9 +2284,9 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [SQL & Catalyst](reference/spark-feature-history/sql-catalyst.md) | 1,458 · 135 | **B11**, **I40**–**I43**, **A1**–**A14**, **A17**, **A20**–**A22**, **E9**–**E11** |
 | [Misc / Other](reference/spark-feature-history/misc.md) | 927 · 10 | no single home — a residual bucket, not a subsystem |
 | [MLlib / ML](reference/spark-feature-history/mllib.md) | 723 · 6 | **A44** only — **thin**, see below |
-| [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**, **I45**, **A29**, **A30**, **A35**–**A37**, **A46**, **A47**, **E34**, **E40**–**E42** — still **thin in three places**, see below |
+| [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**, **I45**, **A29**, **A30**, **A35**–**A37**, **A46**–**A48**, **E34**, **E40**–**E42** |
 | [Build & Language support](reference/spark-feature-history/build-lang.md) | 407 · 37 | **B1** version floors — the rest is **out of scope**, see below |
-| [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) | 324 · 56 | **I33**, **A31**, **A38**, **A46**, **E31**, **E32** |
+| [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) | 324 · 56 | **I33**, **A31**, **A38**, **A46**, **A48**, **E31**, **E32** |
 | [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **A25**–**A28**, **E6**, **E12**–**E14** |
 | [PySpark & Python UDFs](reference/spark-feature-history/pyspark.md) | 297 · 96 | **I10**–**I15**, **A24**, **A31** |
 | [Web UI / History / Metrics](reference/spark-feature-history/web-ui.md) | 284 · 65 | **I26**, **I27**, **E24**, **E25** |
@@ -2288,11 +2306,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 
 **Deliberately out of scope.** Three areas have no topic on purpose. **GraphX** has taken no change since 3.2.0 and nothing at all in the 4.x line; it is in maintenance, the ecosystem moved to GraphFrames and to dedicated graph engines, and time spent on it does not transfer. **SparkR** is an R API on a Python path, and Spark deprecated it in 4.0 (SPARK-49347). Most of **Build & Language support** is Spark's *own* build — Maven and SBT plumbing, CI configuration, Docker publishing, and several hundred transitive dependency bumps — which has no learnable surface unless you are building Spark from source; the part that does affect you is the version floors, and those are in **B1**. **Misc / Other** is a residual bucket by construction: it is where items that matched no other area landed, so it has no single home and is not evidence of a gap.
 
-**Known thin, not yet decided.** Three areas are under-covered and should be treated as open rather than settled. **MLlib** is 723 items behind one topic (**A44**) — the largest imbalance on this page; a path that took ML seriously would need three or four topics, and the honest position is that this one currently does not. **Security** is spread across **E16**, **E29** and **E42** with no topic on the wire-level surface — RPC SSL and AES-GCM, redaction, the UI Content-Security-Policy header, AuthV2 — so a reader who needs to secure a cluster has no single place to start; columnar **file** encryption (Parquet's own encryption feature, ORC encryption) belongs to that same gap rather than to the connector topics, because the hard part is key management, not the format. And **Connectors** still has three clusters with no owner even after **I44**–**I45** and **A46**–**A47**:
-
-- **File-format pushdown mechanics.** Aggregate pushdown into Parquet and ORC, nested-column predicate pushdown, nested schema pruning, the Parquet column index, and the **write-side** bloom filters a Parquet file can carry (SPARK-34562 — not the runtime join filters of **A14**, which share only the name) are each a distinct mechanism with its own config and its own silent-no-op failure — and **I36** covers all of them in the four words "predicate pushdown; column pruning". **A46** is the JDBC half of this story; the file half has no equivalent. This is the largest of the three and the most likely to become a topic.
-- **Compression and codec choice per format.** ORC's default moved to zstd in 4.0, Brotli and LZ4 arrived alongside it, Parquet gained `lz4raw`, Avro gained xz/zstandard *levels* and a ZSTD buffer pool, and 4.1 added ZStandard to the generic file-source reader. There is no single place that says which codec to pick for which format and what the read-side cost is.
-- **XML past schema inference.** The built-in XML source (4.0) is reachable through **I28** and **I29** only as one more member of the shared inference and malformed-record machinery. Nothing owns `from_xml`/`to_xml`, the binary round-trip added in 4.1, or the parser's memory behaviour.
+**Known thin, not yet decided.** Two areas are under-covered and should be treated as open rather than settled. **MLlib** is 723 items behind one topic (**A44**) — the largest imbalance on this page; a path that took ML seriously would need three or four topics, and the honest position is that this one currently does not. **Security** is spread across **E16**, **E29** and **E42** with no topic on the wire-level surface — RPC SSL and AES-GCM, redaction, the UI Content-Security-Policy header, AuthV2 — so a reader who needs to secure a cluster has no single place to start; columnar **file** encryption (Parquet's own encryption feature, ORC encryption) belongs to that same gap rather than to the connector topics, because the hard part is key management, not the format. **Connectors** is no longer on that list. The 2026-08-10 audit closed it in two passes: **I44**–**I45** and **A46**–**A47** took the four clusters that needed topics, **A48** took file-format pushdown, and the two remaining clusters were folded into topics that already existed rather than given entries of their own — codec choice per format into **I36**, and XML's life outside the shared inference machinery into **I28**. What is left of that area inside this page's scope is columnar **file** encryption, which is filed above under Security because the hard part is key management, not the format.
 
 Below the threshold on purpose: the **image** data source (2.3/2.4, effectively superseded by `binaryFile`, which **I20** names) and **Hive-hash bucketed writes** (SPARK-32709/32712, a compatibility surface for Hive clusters rather than a learnable Spark mechanism).
 
@@ -2308,7 +2322,7 @@ flowchart LR
     subgraph INT["Intermediate · 45 · 68–90 hrs"]
       I1["types<br/>I1–I7"] --> I2["windows<br/>I8–I9"] --> I3["Python<br/>I10–I15"] --> I4["RDDs<br/>I16–I23"] --> I5["partition/cache/UI<br/>I24–I27"] --> I6["table formats<br/>I36–I39"]
     end
-    subgraph ADV["Advanced · 47 · 73–105 hrs"]
+    subgraph ADV["Advanced · 48 · 75–108 hrs"]
       A1["compilation<br/>A1–A9"] --> A2["stats + AQE<br/>A10–A14"] --> A3["scale<br/>A15–A24"] --> A4["streaming<br/>A32–A38"]
     end
     subgraph EXP["Expert · 51 · 80–120 hrs"]
@@ -2317,11 +2331,11 @@ flowchart LR
     BEG --> INT --> ADV --> EXP
 ```
 
-The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I45), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A47), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
+The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I45), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
 
 ### Where you are
 
-**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 155**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
+**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 156**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
 
 **Everything done is carrying 🔄** — written against Spark 4.1.x and now partly stale under 4.2.0.
 
