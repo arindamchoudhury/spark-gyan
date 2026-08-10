@@ -9,7 +9,7 @@
 
 The industry characterizes big data by a set of properties — the **Vs of big data** — that together explain why it cannot be handled with tools built for smaller datasets. The classic taxonomy lists five (Volume, Velocity, Variety, Veracity, Value); the six covered below extend it with **Variability**.
 
-**Volume** is the most obvious: the sheer amount of data generated has grown beyond what any single machine can store or process. The total data generated worldwide reached 181 zettabytes in 2025 and is forecast to hit 221 zettabytes in 2026 — a 22% increase in a single year. By 2029 the projection is 527 zettabytes. What qualifies as "big" shifts as hardware improves; the practical definition is simpler: data is big when it exceeds the capacity of the system you have.
+**Volume** is the most obvious: the sheer amount of data generated has grown beyond what any single machine can store or process. The total data generated worldwide reached 181 zettabytes in 2025, and the 2026 figure is put at 221 zettabytes — a 22% increase in a single year. By 2029 the projection is 527 zettabytes. What qualifies as "big" shifts as hardware improves; the practical definition is simpler: data is big when it exceeds the capacity of the system you have.
 
 **Velocity** is the speed at which data arrives and must be processed. A payment terminal generates a transaction record on each swipe. A network of IoT sensors emits readings every second. A social media platform logs clicks, impressions, and scroll events continuously. Organizations must process this stream fast enough to act on it — fraud detection must fire before the transaction clears, not after. Data collected faster than it can be processed piles up as a liability rather than an asset.
 
@@ -369,7 +369,7 @@ Reading from and writing to each of these backends — the format options, the p
 
 ---
 
-## Summary: MapReduce vs Spark
+## MapReduce vs Spark, side by side
 
 | | MapReduce | Spark |
 |---|---|---|
@@ -377,7 +377,7 @@ Reading from and writing to each of these backends — the format options, the p
 | **Data between steps** | Full HDFS write + read between every job | In-memory pipeline; disk only at shuffle boundaries |
 | **Working-set reuse** | Impossible — every job rereads from disk | `.cache()` keeps partitions in executor memory |
 | **Iterative workloads** | 100 iterations = 100 full HDFS reads | After first load, subsequent iterations read from memory |
-| **Measured speedup** | Baseline | 10× faster on iterative ML (Zaharia 2010), up to 20× with RDDs (Zaharia 2012); 35–70× faster on interactive queries |
+| **Measured speedup** | Baseline | 10× faster on iterative ML (Zaharia 2010), up to 20× with RDDs (Zaharia 2012); on the cached 39 GB interactive workload above, a 35 s first query fell to 0.5–1 s once cached |
 | **Fault tolerance** | Rerun the job from checkpointed HDFS output | Lineage: recompute only the lost partition |
 | **Optimization** | None — user controls all efficiency | Catalyst: predicate pushdown, column pruning, join reordering, broadcast selection |
 | **API** | Java `map()` and `reduce()` functions | Python/Scala/Java/R — DataFrames, SQL, Streaming, MLlib |
@@ -414,6 +414,36 @@ Spark is genuinely excellent for large-scale distributed batch processing, itera
 | Distributed ML training, hyperparameter search | Ray, PyTorch distributed |
 | Small team, managed simplicity preferred | BigQuery, Databricks Serverless, Athena |
 | General-purpose large-scale batch + ML + streaming | **Spark** |
+
+---
+
+## Exercises
+
+1. **Recall** — MapReduce and Spark both shuffle, both partition data, and both prefer local data. Name the one structural difference that produces Spark's speed advantage, and explain why it also creates a fault-tolerance problem that MapReduce did not have.
+
+2. **Recall** — A colleague says "Spark is faster because it's in-memory and Hadoop is on-disk." State what is wrong with that sentence, and give the more precise version.
+
+3. **Apply** — Take the three-step pipeline from the chaining problem (filter malformed rows → join a users table → count per country). Write down how many full dataset writes to durable storage MapReduce performs, and how many Spark performs. Justify each number by naming what forces the write.
+
+4. **Apply** — For each of these, decide whether Spark is the right tool and name the alternative if it is not: (a) a 400 MB CSV joined against a 2 MB lookup table, once a day; (b) a fraud rule that must reject a card transaction within 20 ms; (c) an analyst joining a Hive table against a live PostgreSQL table, expecting a result in two seconds; (d) 40 TB of daily clickstream aggregated into a reporting table.
+
+5. **Extend** — The chapter claims lineage removes the need to replicate intermediate results. Find the failure mode where lineage-based recovery is *more* expensive than a replica would have been, and describe what Spark offers to escape it. (Hint: consider a lineage chain a hundred stages long, and see **Chapter 17 (I6 — Caching and Persistence)**.)
+
+6. **Extend** — `spark.sql.ansi.enabled` flipped to `true` in Spark 4.0. Find one expression that returns `null` under Spark 3.5 and raises an error under 4.2.0, and decide whether the new behavior would have caught a bug or broken a pipeline in work you have done.
+
+---
+
+## Summary
+
+- **Big data is defined by the system, not the byte count.** Data is "big" when it exceeds what one machine can hold or process in time. Volume, Velocity, Variety, Veracity, Variability, and Value each apply pressure that vertical scaling cannot relieve indefinitely.
+- **Horizontal scaling trades a hardware problem for a coordination problem.** Splitting work over many commodity machines is cheap and elastic; the hard part is partitioning, routing, failure recovery, and load balancing — which is exactly the part a framework exists to own.
+- **MapReduce solved coordination but fixed the shape of computation.** Every job is one Map phase and one Reduce phase, and every job's output goes to HDFS before the next can start. Any multi-step pipeline pays a full disk round-trip per step.
+- **Spark's contribution is the working set.** An RDD is a partitioned, read-only collection that can stay in executor memory across operations, so an iterative or interactive workload loads the data once instead of once per pass.
+- **Lineage replaces replication.** The driver holds the recipe for every partition. When an executor dies, only the lost partitions are recomputed — which is what makes it safe to keep intermediate results in memory alone.
+- **Spark kept more of MapReduce than it discarded.** The shuffle protocol, the partition-per-task model, data locality levels, and key-value primitives all carried over. What changed is *how often* the expensive parts run: at stage boundaries, not between every step.
+- **The DataFrame API is what makes optimization possible.** A relational description can be rewritten by Catalyst; an arbitrary lambda cannot be inspected. This is the reason to prefer built-in functions over UDFs.
+- **Spark is not the default answer.** Data that fits on one machine, millisecond-latency streaming, federated interactive SQL, and fine-grained distributed ML each have a better tool.
+- Chapter 02 takes the execution model apart: driver, cluster manager, executors, and the path from an action to a running task.
 
 ---
 
