@@ -18,8 +18,8 @@
 
 Partitioning is how Spark divides data across executor memory. Get it wrong and your jobs are either too slow (too many tiny tasks), too memory-hungry (too few large ones), or produce thousands of useless tiny output files. Get it right and the same job runs 10× faster.
 
-!!! note "📌 Topics deferred here from Chapter 1"
-    Chapter 1 introduces partitions as the unit of parallelism (one partition = one task). The following are covered in full here:
+!!! note "📌 Topics deferred here from Chapters 1 and 2"
+    Chapter 1 introduces the partition model Spark inherited from MapReduce; Chapter 2 establishes partitions as the unit of parallelism (one partition = one task). The following are covered in full here:
 
     - **Partition count vs scheduling overhead tradeoff** — more partitions means more parallelism but also more task serialization, launch, and GC overhead; the right count depends on data volume and executor cores
     - **`spark.sql.shuffle.partitions`** — the default 200 shuffle output partitions and when to change it

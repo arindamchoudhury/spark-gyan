@@ -2,14 +2,14 @@
 
 Personal book written as I work through the [learning path](../learning-path.md). Each chapter is my own synthesis of a topic — my own verification against the official docs, not a summary of any single source.
 
-!!! warning "Chapters 01–16 were written against Spark 4.1.x; current stable is 4.2.0"
-    Spark 4.2.0 shipped 2026-07-14, after every chapter below was written. All sixteen carry a `Spark 4.1.x` line in their header that needs bumping. Four have substantive drift and are marked 🔄 in the table — start there. The rest are a version-string edit only; correct them as you next touch each chapter rather than in one sweep.
+!!! warning "Chapters 02–16 were written against Spark 4.1.x; current stable is 4.2.0"
+    Spark 4.2.0 shipped 2026-07-14, after every chapter below was written. Chapter 01 has been revised against 4.2.0; the remaining fifteen still carry a `Spark 4.1.x` line in their header that needs bumping. Four have substantive drift and are marked 🔄 in the table — start there. The rest are a version-string edit only; correct them as you next touch each chapter rather than in one sweep.
 
 **Status key:** ✅ written and current · 🔄 written, needs revisiting (see the banner at the top of the chapter) · ⬜ not yet written
 
 | Status | Ch | Topic code | Title | Written |
 |---|---|---|---|---|
-| ✅ | 01 | B1 | [Introduction to Spark](ch01-introduction-to-spark.md) | 2026-06-05 |
+| ✅ | 01 | B1 | [Introduction to Spark](ch01-introduction-to-spark.md) | 2026-06-05 · rev 2026-08-10 |
 | 🔄 | 02 | B1 | [Spark Architecture and the Execution Model](ch02-spark-architecture.md) | 2026-06-05 |
 | 🔄 | 03 | B1 | [Spark Installation](ch03-spark-installation.md) | 2026-06-05 |
 | 🔄 | 04 | B2 | [SparkSession and Entry Points](ch04-sparksession.md) | 2026-06-05 |
