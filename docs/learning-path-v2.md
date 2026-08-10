@@ -1,6 +1,6 @@
 # Learning Path v2: Apache Spark / PySpark
 
-> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 160 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
+> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 161 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
 >
 > **Updated:** 2026-08-10 — audited the Types strand against [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) in the feature history and found two clusters with no topic at all: the datetime/timezone family (session time zone, `TIMESTAMP_NTZ`) and the ANSI `INTERVAL` types. Added **I5** and **I6** to cover them; **I5**–**I41** shifted to **I7**–**I43**. The same audit found four smaller gaps that belonged to topics that already existed, so those were extended in place rather than given topics of their own: `CHAR`/`VARCHAR` storage and padding into **B4**, the ANSI rules the one-line summary hides plus the view-persistence trap into **B5**, the ANSI aggregate family into **B7** with the windowed half in **I8**, and the public `UserDefinedType` API into **I1**.
 >
@@ -23,6 +23,8 @@
 > **Updated:** 2026-08-10 — audited [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md), enumerating all 87 non-Improvement rows rather than clustering first, which is what the connectors re-audit taught. Three gaps, one structural: Spark has exactly two shared-variable abstractions and **E6** covered accumulators while broadcast variables had **no** topic at all — every one of the page's "broadcast" mentions was a broadcast *join*. Added **I47** for the shared variable and the `unpersist`-versus-`destroy` split. Folded **RDD checkpointing** into **I25**, where the interesting part is checkpoint-versus-cache: it truncates lineage rather than preserving it, runs its own second job unless you cache first, and leaves files behind because `cleaner.referenceTracking.cleanCheckpoints` defaults to `false`. Added **E53** for the fair scheduler and pools, which **B1** had been linking and calling out as blurred without anywhere to send you — the sharp edges being that the mode is `FIFO` by default, that per-pool `schedulingMode` is a *second* FIFO/FAIR setting, and that pool selection is a thread-local that does not survive an executor service.
 >
 > **Updated:** 2026-08-10 — folded the core-rdd audit's remaining small items into **I16**, which had been a seven-method topic: `toDebugString()`, `top`/`takeOrdered`, `pipe`, and `StatCounter`, plus a callout on four PySpark-specific facts that decide whether the advice in any book actually runs — `toDebugString()` returns `bytes`, `pipe`'s `checkCode` defaults to `False` so a failing subprocess is silently ignored, and `zipPartitions` and `getPersistentRDDs` do not exist in PySpark at all. Chapter 05's revisit banner records the same drift; it was already 🔄 and stays so.
+>
+> **Updated:** 2026-08-10 — finished the core-rdd audit by walking its 211 `Improvement` rows, the population the first pass had written off as plumbing. It is ~95% plumbing; the residue held two real gaps. Added **A49** for **speculative execution**, which two topics already leaned on to explain themselves (**E6** for accumulator double-counting, **E14** for why commit coordination exists) while nothing taught it — and whose real lesson is that `quantile=0.9` and `multiplier=3` mean nine of ten tasks must finish before a straggler is even a candidate, so "I enabled speculation and nothing happened" is the documented behaviour. Folded the **`LiveListenerBus`** drop behaviour into **E24**: four bounded queues at 10,000 events each, silently discarding on overflow, which is why a UI can miss a stage and a custom listener can have gaps while the app-status store looks healthy.
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
@@ -120,7 +122,7 @@ Roughly two thirds of the topics below came from reading the Spark source rather
 flowchart TD
     B["<b>Beginner</b> — write correct Spark<br/>12 topics · 32–45 hrs"]
     I["<b>Intermediate</b> — real data, real formats, read a plan<br/>47 topics · 72–94 hrs"]
-    A["<b>Advanced</b> — make it fast, make it stream<br/>48 topics · 75–108 hrs"]
+    A["<b>Advanced</b> — make it fast, make it stream<br/>49 topics · 77–110 hrs"]
     E["<b>Expert</b> — run it in production, know the internals<br/>53 topics · 84–126 hrs"]
     B -->|"🎯 end-to-end batch pipeline"| I
     I -->|"🎯 diagnose a slow job from a plan"| A
@@ -134,7 +136,7 @@ Each level is divided into **strands** — short runs of topics that belong toge
 |---|---|
 | **Beginner** | The engine model · Core DataFrame verbs · Shaping data · Data in and out, and SQL |
 | **Intermediate** | Types beyond the basics · Windows and row multiplication · The Python boundary · RDDs underneath · Partitioning, caching, diagnosis · Ingestion depth · Table formats and the lakehouse · Procedural SQL · Formats and the types they carry · Shared variables |
-| **Advanced** | How a query is compiled · Statistics and adaptive execution · Joins, aggregation and windows at scale · Reliability of a running job · The file boundary · Streaming · Pipelines · Engineering practice · Pushdown and the write path |
+| **Advanced** | How a query is compiled · Statistics and adaptive execution · Joins, aggregation and windows at scale · Reliability of a running job · The file boundary · Streaming · Pipelines · Engineering practice · Pushdown and the write path · Stragglers |
 | **Expert** | Memory and execution internals · Scheduling and cluster reliability · Deployment · Observability · Connect · Catalogs, governance, transactions · Streaming state and operations · Kafka operations · Pipelines in production · Platform engineering · Legacy engines · Data at rest · Multi-tenancy |
 
 ### What the 2026 market asks for, and where it lands
@@ -994,7 +996,7 @@ Take a pipeline that is too slow and diagnose it without guessing:
 
 **Goal:** write high-performance production pipelines. Understand the optimiser deeply enough to fix it when it decides wrongly. Handle streaming workloads. Build declarative pipelines.
 
-**Estimated time:** 75–108 hrs · **48 topics**
+**Estimated time:** 77–110 hrs · **49 topics**
 
 Strands *how a query is compiled* → *statistics and adaptive execution* → *joins at scale* are the tuning spine, read in order. *Streaming* is a self-contained run and can be taken first if that is what your job needs.
 
@@ -1604,6 +1606,20 @@ Two topics about the two ends of a query that leave Spark: what the optimizer ha
 
 **Milestone** — on a Parquet table, run `SELECT MIN(x), MAX(x) FROM t` with `spark.sql.parquet.aggregatePushdown=true` and show from the plan and the input-size metric that it did **not** push down. Then remove `parquet` from `spark.sql.sources.useV1SourceList`, re-run, and show the scan reading effectively nothing — naming which class handled it the second time. With Parquet still off the V1 list, put a filter on a nested field and say what you lost. Then select one field of a struct and prove from the plan that pruning happened; disable it and compare bytes read. Finally write a table with `parquet.bloom.filter.enabled#id=true`, write a second with the key deliberately misspelled, query both by `id`, and explain why only one is faster and why neither raised an error.
 
+### Strand — Stragglers
+
+#### ⬜ A49 — Speculative Execution: Racing a Straggler, and the Two Defaults That Mean Nothing Happens
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/core-rdd.md) — found by walking that page's 211 `Improvement` rows, the population an earlier audit had skipped as plumbing. Seven of them are speculation work (SPARK-10530, 16929, 19757, 19777, 26755, 29976, 33741). Two topics already *relied* on speculation to explain themselves — **E6** for accumulator double-counting, **E14** for why commit coordination exists — and neither taught it
+
+**What** — `spark.speculation` (0.6.0, default **`false`**) starts a second attempt of a task that is running much slower than its peers and takes whichever finishes first, killing the loser. Four numbers decide "much slower": `spark.speculation.quantile` (default **`0.9`**) is the fraction of a stage's tasks that must have *completed* before speculation is considered at all; `spark.speculation.multiplier` (default **`3`**) is how many times the median duration a surviving task must exceed; `spark.speculation.interval` (100 ms) is how often the check runs; and `spark.speculation.minTaskRuntime` (3.2.0, 100 ms) suppresses it for tasks too short to be worth racing. Two escape hatches sit alongside: `spark.speculation.task.duration.threshold` (3.0.0, **unset** by default) speculates any task exceeding an absolute duration regardless of the quantile, and the 3.4.0 `spark.speculation.efficiency.*` family refuses to speculate tasks that are slow because they are *processing more data* rather than because their host is sick.
+
+**Why** — the two defaults in bold are why most people conclude speculation "does nothing". With `quantile=0.9` and `multiplier=3`, a stage of ten tasks with one straggler must see **nine finish** before the tenth is even a candidate, and it must then be running more than three times the median. On a stage of four tasks, three must finish first. Turning `spark.speculation=true` and observing no change is the expected outcome, not a misconfiguration — the knob you actually want for a long-tail stage is usually `task.duration.threshold`. The other half is the part that makes this a correctness topic rather than a tuning one: speculation means **two attempts of one task run at once, both writing**. That is safe for a Spark-managed write only because `OutputCommitCoordinator` (**E14**) arbitrates the commit, and it is *not* safe for a side effect your own code performs — an external API call, a database write inside `foreachPartition`, a file written outside the commit protocol. Accumulators have the same exposure from the other direction (**E6**). Speculation also costs cluster capacity by construction: every speculated task is duplicated work, so on a cluster that is slow because it is *saturated* it makes things worse, and skew (**A18**) is a cause of slow tasks that speculation cannot fix, because the duplicate is just as slow.
+
+**Learn** — no book covers the thresholds · docs: [Configuration → Scheduling](https://spark.apache.org/docs/latest/configuration.html#scheduling) — the whole `spark.speculation.*` family is one block, worth reading top to bottom once; [Job Scheduling](https://spark.apache.org/docs/latest/job-scheduling.html) · feature history: [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) · source: `core/.../scheduler/TaskSetManager.scala` → `checkSpeculatableTasks` is the whole decision in one method; the config defaults are a single block in `internal/config/package.scala` and are the fastest way to check what your version does · sweep [execution engine](reference/spark-source-map/sweeps/core-execution-engine.md) · prerequisite: **A25** · related: **E14** (what makes the duplicate write safe), **E6** (what it does to accumulators), **A26** (determinism under retry), **A18** (skew, which speculation cannot fix), **E12**
+
+**Milestone** — build a stage with one artificially slow task among ten, enable speculation with the defaults, and show that nothing is speculated — then say from the two thresholds exactly why, before changing anything. Fix it two ways: lower the quantile, and set `task.duration.threshold`, and say which you would use in production and why. Then find the speculated attempt in the UI and name which attempt committed and which was killed. Finally, write a `foreachPartition` that appends to an external store, run it under speculation, and explain why the result may be wrong even though a Spark-managed write to a table would not be.
+
 ### 🎯 Advanced Checkpoint
 
 Take a production-shaped workload and make it fast and reliable:
@@ -1922,6 +1938,8 @@ Nothing in this level is required before anything else in it. Read the strand th
 **Learn** — SDG Ch 18; ADEB Module 3 · docs: [Monitoring and Instrumentation](https://spark.apache.org/docs/latest/monitoring.html), [Web UI](https://spark.apache.org/docs/latest/web-ui.html) · source: sweeps [monitoring](reference/spark-source-map/sweeps/core-monitoring.md), [config & security](reference/spark-source-map/sweeps/core-config-security.md), [execution engine](reference/spark-source-map/sweeps/core-execution-engine.md) · prerequisites: **I26**, **E7**
 
 **Milestone** — configure a custom listener that emits stage-completion metrics to a log sink; set up an alert that fires when a job's duration exceeds 2× its 7-day moving average; and determine from logs or metrics which shuffle write path a given job actually used.
+
+> **Everything here rides one bus, and the bus drops events.** Every listener you write, the UI, the History Server's event log and the app-status store are all fed by `LiveListenerBus`, which is **asynchronous and bounded**. Events go into four independent queues — `shared`, `appStatus`, `executorManagement`, `eventLog` — each holding `spark.scheduler.listenerbus.eventqueue.capacity` events (2.3.0, default **10,000**), overridable per queue as `spark.scheduler.listenerbus.eventqueue.<name>.capacity`. When a queue fills, further events for that queue are **discarded**, and the only signal is a log line counting the drops. The consequences are the ones that make you distrust your own tooling: a UI whose stage never completes, a history file missing jobs, a custom listener with gaps, metrics that quietly undercount. Because the queues are separate, a slow listener of yours degrades `shared` while `appStatus` stays healthy — so "the UI is fine, my listener is missing events" is a diagnosis, not a contradiction. Two rules follow: a listener callback must be **fast** (queue work, never block or do I/O inline), and on a large or highly parallel job the capacity is a tuning parameter, not a constant. Verified at tag `v4.2.0` in `core/.../scheduler/LiveListenerBus.scala`.
 
 > **New in 4.2.0.** Eighteen Web UI / History / metrics items land in this release — check the [Web UI feature history](reference/spark-feature-history/web-ui.md) before assuming a panel does not exist.
 
@@ -2361,7 +2379,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**–**I46**, **A29**, **A30**, **A35**–**A37**, **A46**–**A48**, **E34**, **E40**–**E42**, **E52** |
 | [Build & Language support](reference/spark-feature-history/build-lang.md) | 407 · 37 | **B1** version floors — the rest is **out of scope**, see below |
 | [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) | 324 · 56 | **I33**, **A31**, **A38**, **A46**, **A48**, **E31**, **E32** |
-| [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **I25** (checkpointing), **I47**, **A25**–**A28**, **E6**, **E12**–**E14**, **E53** |
+| [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **I25** (checkpointing), **I47**, **A25**–**A28**, **A49**, **E6**, **E12**–**E14**, **E24** (listener bus), **E53** |
 | [PySpark & Python UDFs](reference/spark-feature-history/pyspark.md) | 297 · 96 | **I10**–**I15**, **A24**, **A31** |
 | [Web UI / History / Metrics](reference/spark-feature-history/web-ui.md) | 284 · 65 | **I26**, **I27**, **E24**, **E25** |
 | [Deploy](reference/spark-feature-history/deploy.md) | 280 · 25 | **E15**–**E23** |
@@ -2398,7 +2416,7 @@ flowchart LR
     subgraph INT["Intermediate · 47 · 72–94 hrs"]
       I1["types<br/>I1–I7"] --> I2["windows<br/>I8–I9"] --> I3["Python<br/>I10–I15"] --> I4["RDDs<br/>I16–I23"] --> I5["partition/cache/UI<br/>I24–I27"] --> I6["table formats<br/>I36–I39"]
     end
-    subgraph ADV["Advanced · 48 · 75–108 hrs"]
+    subgraph ADV["Advanced · 49 · 77–110 hrs"]
       A1["compilation<br/>A1–A9"] --> A2["stats + AQE<br/>A10–A14"] --> A3["scale<br/>A15–A24"] --> A4["streaming<br/>A32–A38"]
     end
     subgraph EXP["Expert · 53 · 84–126 hrs"]
@@ -2407,11 +2425,11 @@ flowchart LR
     BEG --> INT --> ADV --> EXP
 ```
 
-The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I46), shared variables (I47), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
+The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I46), shared variables (I47), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), stragglers (A49), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
 
 ### Where you are
 
-**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 160**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
+**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 161**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
 
 **Everything done is carrying 🔄** — written against Spark 4.1.x and now partly stale under 4.2.0.
 
