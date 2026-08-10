@@ -3,7 +3,9 @@
 Personal book written as I work through the [learning path](../learning-path.md). Each chapter is my own synthesis of a topic — my own verification against the official docs, not a summary of any single source.
 
 !!! warning "Chapters 02–16 were written against Spark 4.1.x; current stable is 4.2.0"
-    Spark 4.2.0 shipped 2026-07-14, after every chapter below was written. Chapter 01 has been revised against 4.2.0; the remaining fifteen still carry a `Spark 4.1.x` line in their header that needs bumping. Four have substantive drift and are marked 🔄 in the table — start there. The rest are a version-string edit only; correct them as you next touch each chapter rather than in one sweep.
+    Spark 4.2.0 shipped 2026-07-14, after every chapter below was written. Chapter 01 has been revised against 4.2.0; the remaining fifteen still carry a `Spark 4.1.x` line in their header that needs bumping. Several have substantive drift and are marked 🔄 in the table — start there. The rest are a version-string edit only; correct them as you next touch each chapter rather than in one sweep.
+
+    Four chapters carry claims that are outright **wrong** rather than merely dated, and those come first: **Ch 02** (a word-count walkthrough describing a global-sort shuffle Spark does not plan, and "one action = one job" stated as an invariant), **Ch 03** (Java 17/21 only — 4.2.0 supports Java 25), **Ch 06** (ANSI mode is on by default, so examples relying on a bad cast returning `null` now raise), and **Ch 15** (Arrow UDFs are the default, invalidating the performance hierarchy as written). Each chapter's own banner says which kind of drift it has.
 
 **Status key:** ✅ written and current · 🔄 written, needs revisiting (see the banner at the top of the chapter) · ⬜ not yet written
 

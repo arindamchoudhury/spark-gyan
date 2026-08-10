@@ -3,16 +3,15 @@
 > *Learning-path topic: B1 (Beginner)*
 > *Written: 2026-06-05 · Spark 4.1.x / Python 3.10+*
 
-!!! warning "🔄 Needs revisiting — B1 completeness pass (flagged 2026-07-18)"
-    Incomplete, not wrong. This chapter was previously marked clean, but only because the source trace behind it had followed one path — session → scheduler → task — and never examined the layers below. Tracing those opened five gaps:
+!!! warning "🔄 Needs revisiting — two wrong claims, plus open gaps (updated 2026-08-10)"
+    **Wrong — fix these first.** The 2026-08-10 B1 completeness pass found two claims below that describe behaviour Spark does not have:
 
-    - **The three shuffle writers.** `getWriter` selects between `BypassMergeSortShuffleWriter`, `UnsafeShuffleWriter` and `SortShuffleWriter`. Crossing `spark.shuffle.sort.bypassMergeThreshold` or introducing a map-side combine silently changes which one runs — a real performance cliff the chapter never mentions.
-    - **`FetchFailed` is not an ordinary task failure.** It means an upstream stage's output is gone, so the DAGScheduler resubmits the *parent stage* rather than retrying the task. This is the mechanism behind "a stage I thought had finished ran again".
-    - **Executor loss forces recomputation** by unregistering that executor's map output from `MapOutputTracker` — the concrete version of the lineage-based fault tolerance the chapter describes abstractly.
-    - **`maxResultSize` drops results at the executor** rather than transmitting them.
-    - **Locality wait** explains idle cores while tasks queue.
+    - **The word-count stage count is given two different ways, and the three-stage version is wrong.** [§ Stage 2](#stage-2-dagscheduler-builds-the-stage-dag) and [§ Stage 7](#stage-7-resultstage-results-return-to-the-driver) say `.orderBy(...)` adds a third stage fed by a `rangepartitioning` shuffle, and diagram it. `SpecialLimits.planTakeOrdered` rewrites `Limit(n, Sort(…))` into `TakeOrderedAndProjectExec` whenever `n` is under `spark.sql.execution.topKSortFallbackThreshold` (default `Integer.MAX_VALUE − 15`), so `.orderBy(...).show(10)` performs **no global-sort shuffle at all** — each partition emits a local top-*n* and the driver merges. The two-stage reading earlier in the chapter is the correct one.
+    - **"A job maps one-to-one to an action" is false for `show()`.** `SparkPlan.executeTake` loops: it scans `spark.sql.limit.initialNumPartitions` (1) partitions and, if short of rows, multiplies by `spark.sql.limit.scaleUpFactor` (4) and submits another job. The chapter's own `.show(10)` example is exactly the case that submits several.
 
-    Full anchors in the [B1 source trace](../reference/spark-source-map/topics/b1.md).
+    **Incomplete — additive, safe to read around.** Five gaps from the 2026-07-18 pass are still open (the three shuffle writers and what gates each; `FetchFailed` resubmitting the *parent stage* rather than retrying a task; executor loss unregistering map output from `MapOutputTracker`; `maxResultSize` dropping results at the executor; locality wait explaining idle cores). The 2026-08-10 pass adds four more: what declares an executor dead (`heartbeat.maxFailures` self-exit and `HeartbeatReceiver.expireDeadHosts`, which a long GC pause is indistinguishable from); the listener bus silently **dropping events** on overflow, so the UI numbers the chapter tells you to read are best-effort; intra-application scheduling (`spark.scheduler.mode`, pools, FIFO starvation with idle cores); and where the task count comes from (`spark.default.parallelism` resolving differently per backend, and `isReady` giving up after 30s).
+
+    The chapter's header also still pins `Spark 4.1.x`; the architecture, scheduler and Py4J material re-verified clean against 4.2.0. Full anchors in the [B1 source trace](../reference/spark-source-map/topics/b1.md).
 
 This chapter covers the physical architecture of a Spark cluster — the components that run when a job executes and how they coordinate.
 
