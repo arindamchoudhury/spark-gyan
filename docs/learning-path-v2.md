@@ -1,6 +1,6 @@
 # Learning Path v2: Apache Spark / PySpark
 
-> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 150 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
+> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 151 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
 >
 > **Updated:** 2026-08-10 — audited the Types strand against [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) in the feature history and found two clusters with no topic at all: the datetime/timezone family (session time zone, `TIMESTAMP_NTZ`) and the ANSI `INTERVAL` types. Added **I5** and **I6** to cover them; **I5**–**I41** shifted to **I7**–**I43**. The same audit found four smaller gaps that belonged to topics that already existed, so those were extended in place rather than given topics of their own: `CHAR`/`VARCHAR` storage and padding into **B4**, the ANSI rules the one-line summary hides plus the view-persistence trap into **B5**, the ANSI aggregate family into **B7** with the windowed half in **I8**, and the public `UserDefinedType` API into **I1**.
 >
@@ -9,6 +9,8 @@
 > **Updated:** 2026-08-10 — audited [Build & Language support](reference/spark-feature-history/build-lang.md). That area is 408 items, but almost all of it is Spark's *own* build — Maven/SBT, CI, Docker publishing, transitive dependency bumps — with no learnable surface, so it stays out by design. The learner-facing residue was mostly already covered; what was missing was the Python version floor and the Python dependency floors, plus the fact that Mesos was removed in 4.0. All folded into **B1** as version-floor notes rather than given a topic. No renumbering.
 >
 > **Updated:** 2026-08-10 — added [What this path covers, and what it deliberately does not](#what-this-path-covers-and-what-it-deliberately-does-not): all 22 feature-history capability areas mapped to the topics that carry them, with GraphX, SparkR and the Spark build declared out of scope and MLlib, built-in functions and security flagged as known-thin. Ends the run of area audits by making coverage a stated position rather than something you have to reconstruct.
+>
+> **Updated:** 2026-08-10 — audited [Built-in Functions](reference/spark-feature-history/builtin-functions.md) and found the coverage inverted: the marquee families already had dedicated topics (**A21** sketches, **A23** vectors, both complete on their 4.x rows) while the everyday catalogue had no owner. Added **B12** at the end of the Beginner level, which needed no renumbering. That area is no longer listed as thin.
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
@@ -104,7 +106,7 @@ Roughly two thirds of the topics below came from reading the Spark source rather
 
 ```mermaid
 flowchart TD
-    B["<b>Beginner</b> — write correct Spark<br/>11 topics · 30–40 hrs"]
+    B["<b>Beginner</b> — write correct Spark<br/>12 topics · 32–45 hrs"]
     I["<b>Intermediate</b> — real data, real formats, read a plan<br/>43 topics · 65–85 hrs"]
     A["<b>Advanced</b> — make it fast, make it stream<br/>45 topics · 70–100 hrs"]
     E["<b>Expert</b> — run it in production, know the internals<br/>51 topics · 80–120 hrs"]
@@ -143,7 +145,7 @@ Each level is divided into **strands** — short runs of topics that belong toge
 
 **Goal:** understand what Spark is and why it exists; write correct PySpark programs that read, transform and write data.
 
-**Estimated time:** 30–40 hrs · **11 topics**
+**Estimated time:** 32–45 hrs · **12 topics**
 
 ### Strand — The engine model
 
@@ -251,6 +253,8 @@ Each level is divided into **strands** — short runs of topics that belong toge
 
 **Milestone** — several aggregations in one `agg()`, `F.when()` for conditional counting, and a query equivalent to SQL `GROUP BY … HAVING`. Then from the plan: run `explain()` on `groupBy().sum()` and explain why `HashAggregateExec` appears twice; predict how the plan changes when you add one `countDistinct`. Then compute a median two ways — `percentile_cont(0.5)` and `percentile_disc(0.5)` — over a group with an even number of rows, and explain why the two answers differ.
 
+> **Modifiers that are syntax, not functions.** An aggregate can take a `FILTER (WHERE …)` predicate so one `agg()` computes several conditionally-scoped results without a `when`/`otherwise` per column; `collect_list`/`collect_set`/`array_agg` take `RESPECT NULLS` from 4.2.0 to keep nulls they otherwise drop; and the ordered-set aggregates take `WITHIN GROUP (ORDER BY …)`. These apply across the whole family rather than belonging to any one function — **B12** is where they live.
+
 > **The ANSI aggregate family arrived after every book in this path.** Spark 3.3 and 3.4 added the ANSI standard aggregates: the six `regr_*` regression functions (`regr_r2`, `regr_slope`, `regr_intercept`, `regr_sxx`, `regr_sxy`, `regr_syy`), the ordered-set aggregates `percentile_cont` and `percentile_disc`, and the `user` general value specification. All are registered in `FunctionRegistry` at tag `v4.2.0` and all are on the [agg functions](https://spark.apache.org/docs/latest/api/sql/agg-functions/) page. Reach for these before writing a UDF or a `collect_list` and a Python median — this is the single most common place where people hand-roll something Spark already ships.
 
 #### 🔄 B8 — Joins: Types and Mechanics
@@ -302,6 +306,22 @@ Each level is divided into **strands** — short runs of topics that belong toge
 **Learn** — Rioux Ch 7 (bilingual programming); LS2e Ch 4 for tables, views, catalog API · docs: [SQL Programming Guide](https://spark.apache.org/docs/latest/sql-programming-guide.html), then the [SQL Syntax reference](https://spark.apache.org/docs/latest/sql-ref-syntax.html) as a reference rather than a read-through — `selectExpr` and `F.expr` use the same parser, so anything documented there works inside them; [Identifiers](https://spark.apache.org/docs/latest/sql-ref-identifier.html) and [Name Resolution](https://spark.apache.org/docs/latest/sql-ref-name-resolution.html) for temp-view shadowing; [CTEs](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-cte.html) — a `WITH` is usually *inlined*, not materialised · source: [trace B8](reference/spark-source-map/topics/b8.md), sweeps [query execution](reference/spark-source-map/sweeps/sql-core-query-execution.md), [framework](reference/spark-source-map/sweeps/sql-catalyst-framework.md), [analysis](reference/spark-source-map/sweeps/sql-catalyst-analysis.md)
 
 **Milestone** — register a temp view, query it, mix SQL expressions into a method chain. Then, with a user-supplied value in hand: write the query so the value can never be parsed as SQL, and say why your approach guarantees that rather than merely making it unlikely.
+
+#### ⬜ B12 — The Built-in Function Catalogue: Finding What Already Exists
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/builtin-functions.md), where the marquee families had topics (**A21** sketches, **A23** vectors) but the catalogue itself — how to search it and how to tell what your version has — had no owner
+
+**What** — the shape of the library, so that "does Spark already do this?" is a lookup rather than a guess. The [Functions hub](https://spark.apache.org/docs/latest/sql-ref-functions.html) splits built-ins three ways — **scalar** (array, collection, struct, map, date/time, math, string, bitwise, conversion, conditional, predicate, hash, CSV, JSON, XML, URL, misc), **aggregate-like** (aggregate, window, sketch-based approximate), and **generator** — while the [API index](https://spark.apache.org/docs/latest/api/sql/) renders one page per group, each entry carrying a **`Since` version**. Alongside the functions themselves: the naming conventions that let you predict a name (`try_*` for the null-returning twin, `*_agg`, `approx_*`, `make_*`), the cross-cutting modifiers that are syntax rather than functions — `WITHIN GROUP (ORDER BY …)`, `IGNORE NULLS` / `RESPECT NULLS`, a `FILTER` predicate on an aggregate — and [named arguments](https://spark.apache.org/docs/latest/sql-ref-function-invocation.html) (`namedParameter => value`, 3.5), which exist because some built-ins have too many optional parameters to call positionally.
+
+**Why** — the most common avoidable mistake in Spark is writing a UDF for something that ships in the box: you pay a serialisation boundary and lose codegen for a function that already exists. The books cover perhaps twenty functions and the library has hundreds, so the skill worth building is not memorising them but knowing the catalogue's shape and reading the `Since` column — which is also how you avoid the opposite failure of copying a snippet that needs a newer Spark than you run.
+
+**Learn** — LS2e Ch 4 introduces `F.expr()` and the catalogue idea; no book is current on its contents · docs: [Functions](https://spark.apache.org/docs/latest/sql-ref-functions.html) as the map, then the [built-in function index](https://spark.apache.org/docs/latest/api/sql/) as the thing you keep open while working — never read either front to back; [Function Invocation](https://spark.apache.org/docs/latest/sql-ref-function-invocation.html) for named and mixed argument notation; [`pyspark.sql.functions` reference](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/functions.html) for the Python names, which do not always match the SQL ones · feature history: [Built-in Functions](reference/spark-feature-history/builtin-functions.md) — the fastest way to answer "when did this appear" · source: `sql/catalyst/.../analysis/FunctionRegistry.scala` is the actual list; `sql/gen-sql-functions-docs.py` holds the group names the doc pages are generated from · related: **B5** (`try_*`), **B7** (aggregates), **I8** (windows), **A21**, **A23**
+
+**Milestone** — take three transformations you would reach for a UDF to do and find the built-in for each, naming the group page you found it on. Then check `SELECT * FROM ...` against a function you have never used and read its `Since` version — say whether your Spark has it. Finally use each of the three cross-cutting modifiers once: an aggregate with a `FILTER` predicate, `collect_list` with `RESPECT NULLS`, and `mode() WITHIN GROUP (ORDER BY col)`.
+
+> **Where the generated docs lag the engine.** The function pages are generated from each expression's usage string, so a feature can be live in the engine and invisible on its page. Two cases at tag `v4.2.0`, both verified in source rather than inferred: the [agg functions](https://spark.apache.org/docs/latest/api/sql/agg-functions/) page renders `collect_list(expr)` with no nulls option, but `CollectList` takes `ignoreNulls: Boolean = true` (`.../expressions/aggregate/collect.scala`) — nulls are dropped by default and **`RESPECT NULLS` is the 4.2.0 opt-in to keep them** (SPARK-55256, SPARK-55533). And the [window syntax page](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-window.html) restricts `IGNORE NULLS` to `LAG`/`LEAD`/`NTH_VALUE`/`FIRST_VALUE`/`LAST_VALUE` and documents no `FILTER` clause, though 4.2.0 added a filter predicate to window aggregates (SPARK-55702). When a page looks stale, the [feature history](reference/spark-feature-history/builtin-functions.md) and then `FunctionRegistry` settle it — this is the [authority ladder](#the-authority-ladder) doing its job on a page you would otherwise trust completely.
+
+> **4.x additions worth knowing exist.** `time_bucket` for time-series bucketing (4.2.0); `max_by(x, y, k)` / `min_by(x, y, k)` returning K elements (4.2.0); `mode()` made deterministic plus `MODE() WITHIN GROUP` (4.0); `to_char` / `to_varchar` for binary and datetime formatting (4.0); `mask` for data masking (3.4); `to_number` / `try_to_number` (3.4); a seedable `uuid` (4.1); `bitmap_and_agg` (4.1). None of these are in any book on this page.
 
 ### 🎯 Beginner Checkpoint
 
@@ -427,6 +447,8 @@ The first six strands are the level proper. Strands *ingestion depth* and *proce
 **Learn** — Rioux Ch 10 is the clearest full chapter; SDG Ch 7 has the deepest semantics · docs: [Window Functions](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-window.html) — `ROWS` vs `RANGE`, and what the default frame becomes once you add `ORDER BY`, which is the single most common window bug; the [window functions](https://spark.apache.org/docs/latest/api/sql/window-functions/) page lists only the nine ranking and navigation functions, so anything else you use over a window comes from the [agg functions](https://spark.apache.org/docs/latest/api/sql/agg-functions/) page instead · source: [trace I2](reference/spark-source-map/topics/i2.md), sweeps [agg/window/exchange](reference/spark-source-map/sweeps/sql-core-agg-window-exchange.md), [expressions](reference/spark-source-map/sweeps/sql-catalyst-expressions.md), [optimizer](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md)
 
 **Milestone** — reproduce a self-join with a window function; explain why an ordered aggregate window differs from an unordered one, naming both default frames; build a 30-day rolling average with `rangeBetween` on a unix timestamp. Then: with duplicate timestamps present, predict how a running sum differs under `rowsBetween` versus `rangeBetween`, and say what `explain()` shows above your window operator. Finally compute a per-group median with `percentile_cont` over a window and say why it needs no frame clause.
+
+> **`IGNORE NULLS` and `FILTER` over a window.** `IGNORE NULLS` is documented on the window-syntax page for `LAG`/`LEAD`/`NTH_VALUE`/`FIRST_VALUE`/`LAST_VALUE` — worth knowing before you debug a `lag` that returned a null you expected it to skip. 4.2.0 also added a `FILTER` predicate on window *aggregates*, which that page does not document; see **B12** for why the generated pages lag the engine.
 
 > **Ordered-set aggregates work over a window too.** `percentile_cont` and `percentile_disc` became usable as window functions in Spark 3.4, which removes the usual "collect_list then a UDF" workaround for a windowed median or quantile. They are documented on the agg page, not the window page — see **B7** for the family they belong to.
 
@@ -2190,7 +2212,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [Deploy](reference/spark-feature-history/deploy.md) | 280 · 25 | **E15**–**E23** |
 | [Shuffle / Storage / Memory](reference/spark-feature-history/shuffle-storage.md) | 259 · 25 | **I24**, **I25**, **A18**, **A19**, **A27**, **E1**–**E5** |
 | [Structured Streaming](reference/spark-feature-history/structured-streaming.md) | 234 · 94 | **A32**–**A38**, **E35**–**E39** |
-| [Built-in Functions](reference/spark-feature-history/builtin-functions.md) | 200 · 36 | **B7**, **A21**, **A23** — **thin**, see below |
+| [Built-in Functions](reference/spark-feature-history/builtin-functions.md) | 200 · 36 | **B12** (the catalogue), **B7**, **B5**, **I1**, **I8**, **A21**, **A23** |
 | [Spark Connect](reference/spark-feature-history/spark-connect.md) | 178 · 149 | **B2**, **A45**, **E26**–**E28** |
 | [SparkR](reference/spark-feature-history/sparkr.md) | 175 · 1 | **out of scope** — this is a PySpark path, and SparkR was deprecated in 4.0 |
 | [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) | 159 · 8 | **B4**, **B5**, **I1**–**I7** |
@@ -2203,7 +2225,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 
 **Deliberately out of scope.** Three areas have no topic on purpose. **GraphX** has taken no change since 3.2.0 and nothing at all in the 4.x line; it is in maintenance, the ecosystem moved to GraphFrames and to dedicated graph engines, and time spent on it does not transfer. **SparkR** is an R API on a Python path, and Spark deprecated it in 4.0 (SPARK-49347). Most of **Build & Language support** is Spark's *own* build — Maven and SBT plumbing, CI configuration, Docker publishing, and several hundred transitive dependency bumps — which has no learnable surface unless you are building Spark from source; the part that does affect you is the version floors, and those are in **B1**. **Misc / Other** is a residual bucket by construction: it is where items that matched no other area landed, so it has no single home and is not evidence of a gap.
 
-**Known thin, not yet decided.** Three areas are under-covered and should be treated as open rather than settled. **MLlib** is 724 items behind one topic (**A44**) — the largest imbalance on this page; a path that took ML seriously would need three or four topics, and the honest position is that this one currently does not. **Built-in Functions** has no topic of its own: the catalogue is reached through **B7**, **A21** and **A23**, which is enough to find a function but not enough to teach the shape of the library. **Security** is spread across **E16**, **E29** and **E42** with no topic on the wire-level surface — RPC SSL and AES-GCM, redaction, the UI Content-Security-Policy header, AuthV2 — so a reader who needs to secure a cluster has no single place to start.
+**Known thin, not yet decided.** Two areas are under-covered and should be treated as open rather than settled. **MLlib** is 723 items behind one topic (**A44**) — the largest imbalance on this page; a path that took ML seriously would need three or four topics, and the honest position is that this one currently does not. **Security** is spread across **E16**, **E29** and **E42** with no topic on the wire-level surface — RPC SSL and AES-GCM, redaction, the UI Content-Security-Policy header, AuthV2 — so a reader who needs to secure a cluster has no single place to start.
 
 ---
 
@@ -2211,8 +2233,8 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 
 ```mermaid
 flowchart LR
-    subgraph BEG["Beginner · 11 · 30–40 hrs"]
-      B1["engine model<br/>B1–B2"] --> B2["DataFrame verbs<br/>B3–B6"] --> B3["shaping<br/>B7–B9"] --> B4["I/O + SQL<br/>B10–B11"]
+    subgraph BEG["Beginner · 12 · 32–45 hrs"]
+      B1["engine model<br/>B1–B2"] --> B2["DataFrame verbs<br/>B3–B6"] --> B3["shaping<br/>B7–B9"] --> B4["I/O + SQL + functions<br/>B10–B12"]
     end
     subgraph INT["Intermediate · 43 · 65–85 hrs"]
       I1["types<br/>I1–I7"] --> I2["windows<br/>I8–I9"] --> I3["Python<br/>I10–I15"] --> I4["RDDs<br/>I16–I23"] --> I5["partition/cache/UI<br/>I24–I27"] --> I6["table formats<br/>I36–I39"]
@@ -2230,7 +2252,7 @@ The strands not shown on the diagram — ingestion depth (I28–I35), procedural
 
 ### Where you are
 
-**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 150**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
+**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 151**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
 
 **Everything done is carrying 🔄** — written against Spark 4.1.x and now partly stale under 4.2.0.
 
@@ -2290,7 +2312,7 @@ All three are proctored, multiple-choice, $200, English-delivered (the DE exams 
 
 ## v1 → v2 code map
 
-Every v1 topic appears exactly once. Six v2 topics are new and have no v1 code.
+Every v1 topic appears exactly once. Seven v2 topics are new and have no v1 code.
 
 | v1 | v2 | Title |
 |---|---|---|
@@ -2438,6 +2460,7 @@ Every v1 topic appears exactly once. Six v2 topics are new and have no v1 code.
 | E49 | **E7** | Task Metrics and the Accumulator Pipeline |
 | E50 | **E8** | Executor Class Loading, Classpath Precedence, and Session Isolation |
 | E51 | **E2** | Unroll Memory: Materialising a Cached Partition Without an OOM |
+| new in v2 | **B12** | The Built-in Function Catalogue: Finding What Already Exists |
 | new in v2 | **I5** | Dates, Timestamps, and `TIMESTAMP_NTZ` |
 | new in v2 | **I6** | `INTERVAL` Types and Date Arithmetic |
 | new in v2 | **I7** | Geospatial Types: `GEOMETRY`, `GEOGRAPHY` and the `ST_*` Functions |
@@ -2464,7 +2487,8 @@ Every v1 topic appears exactly once. Six v2 topics are new and have no v1 code.
 - `sql/api/src/main/scala/org/apache/spark/sql/internal/SqlApiConfHelper.scala` and `SQLConf.scala` — the `spark.sql.session.timeZone`, `spark.sql.timestampType` and `spark.sql.legacy.interval.enabled` config names cited in **I5** and **I6**; also the `charVarcharAsString` / `charAsVarchar` / `preserveCharVarcharTypeInfo` / `readSideCharPadding` defaults in **B4** and the `assumeAnsiFalseIfNotPersisted.enabled` and `allowNegativeScaleOfDecimal` entries in **B5**
 - `sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/util/CharVarcharUtils.scala` — the `__CHAR_VARCHAR_TYPE_STRING` metadata key and the schema rewrite behind **B4**
 - `.../expressions/collectionOperations.scala` and `.../expressions/complexTypeExtractors.scala` — `ElementAt` takes `failOnError` from the ANSI flag while `GetMapValue` has none, the array-versus-map asymmetry **B5** turns on; plus `arithmetic.scala` for `IntegralDivide.checkDivideOverflow` being `LongType`-only
-- `sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala` — confirms `regr_*`, `percentile_cont`, `percentile_disc` and `user` are registered, the family **B7** and **I8** point at
+- `sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala` — confirms `regr_*`, `percentile_cont`, `percentile_disc` and `user` are registered, the family **B7** and **I8** point at; also `time_bucket`, `mask`, `to_char`, `try_to_number`, `bitmap_and_agg` and `vector_cosine_similarity` for the 4.x list in **B12**
+- `sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/collect.scala` — `CollectList(child, …, ignoreNulls = true)` proves the `RESPECT NULLS` support that the generated agg-functions page does not show, the docs-lag example in **B12**
 - `sql/api/src/main/scala/org/apache/spark/sql/types/UserDefinedType.scala` — `@DeveloperApi @Since("3.2.0")`, the basis for the **I1** note
 - `SQLConf.scala`, the `spark.sql.execution.arrow.*` and `spark.sql.execution.pandas.*` block — every Arrow config name, version and default quoted in **I13**, including `pyspark.enabled` falling back to the 2.3.0 key, `fallback.enabled` defaulting to `true`, `maxRecordsPerBatch` at `10000`, `maxBytesPerBatch` at `64MB`, `convertToArrowArraySafely` at `true`, and `compression.codec` at `none`
 - `python/pyspark/sql/pandas/utils.py` and `python/packaging/classic/setup.py` — the minimum PyArrow version (`18.0.0`) cited in **I13**; also the `python_requires=">=3.10"` floor, the 3.10–3.14 classifiers and the pandas/grpcio floors in **B1**, and the NumPy `1.21` vs `1.22` disagreement between the packaging constants and `require_minimum_numpy_version()` that **B1** uses as its authority-ladder example
