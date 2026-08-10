@@ -1,9 +1,9 @@
 # Chapter 14 — Partitioning: Concepts and Control
 
-> *Learning-path topic: I5 (Intermediate)*
+> *Learning-path topic: I24 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-!!! warning "🔄 Needs revisiting — I5 source trace (flagged 2026-07-18)"
+!!! warning "🔄 Needs revisiting — I24 source trace (flagged 2026-07-18)"
     Ten gaps. One is a correction rather than an omission, and it concerns the chapter's central comparison.
 
     **"`coalesce` avoids a shuffle" is true and, left there, misleading.** Because `CoalescedRDD` is a narrow dependency there is no stage boundary, so the upstream computation runs with the coalesced task count. `coalesce(1)` before a write does not merely produce one file — it makes every transformation in that stage single-threaded. `repartition(1)` inserts a shuffle and is frequently much faster, because the expensive upstream work keeps its parallelism. A chapter whose stated purpose is fixing "my job is slow" and "my job wrote 10,000 tiny files" needs this stated as prominently as the shuffle-avoidance itself.
@@ -14,7 +14,7 @@
 
     **Added by the sql/core — adaptive sweep (2026-08-02):** three corrections to that paragraph. `repartition(n)` is **exempt** — `REPARTITION_BY_NUM` is deliberately absent from `CoalesceShufflePartitions.supportedShuffleOrigins`, so its count survives AQE, while `repartition(col)` does not. `spark.sql.adaptive.advisoryPartitionSizeInBytes` is normally a *ceiling*, not a target: with `coalescePartitions.parallelismFirst` on (the default) the real target collapses to `totalShuffleSize / defaultParallelism`. And `REBALANCE` is two rules — `OptimizeSkewInRebalancePartitions` splits the oversized partitions, `CoalesceShufflePartitions` merges the small ones. Detail in the [sql/core — adaptive sweep](../reference/spark-source-map/sweeps/sql-core-adaptive.md).
 
-    Also missing: `repartition` and `coalesce` being one logical node with a boolean (mirroring Ch05's RDD-level relationship); `CoalesceExec` advertising `UnknownPartitioning`, so coalescing before a keyed operation saves nothing; partitionings being negotiated by `EnsureRequirements` rather than commanded, which makes a manual `repartition` before a `groupBy` usually redundant; `RangePartitioner` sampling the data in a preliminary job; and `spark.default.parallelism` not controlling DataFrame shuffles. Full list in the [I5 source trace](../reference/spark-source-map/topics/i5.md).
+    Also missing: `repartition` and `coalesce` being one logical node with a boolean (mirroring Ch05's RDD-level relationship); `CoalesceExec` advertising `UnknownPartitioning`, so coalescing before a keyed operation saves nothing; partitionings being negotiated by `EnsureRequirements` rather than commanded, which makes a manual `repartition` before a `groupBy` usually redundant; `RangePartitioner` sampling the data in a preliminary job; and `spark.default.parallelism` not controlling DataFrame shuffles. Full list in the [I24 source trace](../reference/spark-source-map/topics/i5.md).
 
 Partitioning is how Spark divides data across executor memory. Get it wrong and your jobs are either too slow (too many tiny tasks), too memory-hungry (too few large ones), or produce thousands of useless tiny output files. Get it right and the same job runs 10× faster.
 

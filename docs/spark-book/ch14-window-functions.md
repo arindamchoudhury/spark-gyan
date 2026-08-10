@@ -1,16 +1,16 @@
 # Chapter 12 — Window Functions
 
-> *Learning-path topic: I2 (Intermediate)*
+> *Learning-path topic: I8 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-!!! warning "🔄 Needs revisiting — I2 source trace (flagged 2026-07-18)"
+!!! warning "🔄 Needs revisiting — I8 source trace (flagged 2026-07-18)"
     Incomplete rather than wrong. Nine gaps; two are correctness issues rather than missing detail.
 
     **The default frame changes when you add `orderBy`, including its type.** No ordering gives `ROWS UNBOUNDED PRECEDING TO UNBOUNDED FOLLOWING` — the whole partition. An ordering gives `RANGE UNBOUNDED PRECEDING TO CURRENT ROW` — a running value. So the same aggregate over the same window computes different things depending on a clause that says nothing about frames, and the type flip to `RANGE` means rows tied on the ordering column all enter together. This is the most consequential fact in the topic and it is six lines of `WindowResolution.resolveFrame`.
 
     **Omitting `partitionBy` moves the entire dataset to one partition.** `requiredChildDistribution` returns `AllTuples` and Spark only logs a warning, so it works on sample data and fails at scale. Every window is also a shuffle *plus* a sort, which is the cost model the chapter does not state.
 
-    Also missing: which of the five frame implementations runs (unbounded computes once, sliding adds and removes per row, `lag`/`lead` buffer nothing) — which is what makes "narrow your frame" actionable; that top-N per group is pushed below the shuffle by `InferWindowGroupLimit` but only for recognised forms with *n* ≤ 1000; that window buffers spill with their own `windowExec.buffer.*` thresholds; that functions with a required frame reject a conflicting explicit one; and the opt-in segment-tree evaluation for sliding frames. Full list in the [I2 source trace](../reference/spark-source-map/topics/i2.md).
+    Also missing: which of the five frame implementations runs (unbounded computes once, sliding adds and removes per row, `lag`/`lead` buffer nothing) — which is what makes "narrow your frame" actionable; that top-N per group is pushed below the shuffle by `InferWindowGroupLimit` but only for recognised forms with *n* ≤ 1000; that window buffers spill with their own `windowExec.buffer.*` thresholds; that functions with a required frame reject a conflicting explicit one; and the opt-in segment-tree evaluation for sliding frames. Full list in the [I8 source trace](../reference/spark-source-map/topics/i2.md).
 
 Window functions compute an aggregate or rank across a group of rows — but unlike `groupBy`, they keep every original row and add the result as a new column. They are the most powerful single-pass transformation in PySpark for time series, rankings, and running totals.
 

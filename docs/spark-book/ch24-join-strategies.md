@@ -1,6 +1,6 @@
 # Chapter 24 — Join Strategies and Tuning
 
-> *Learning-path topic: A3 (Advanced)*
+> *Learning-path topic: A15 (Advanced)*
 > *Status: ⬜ Not yet written*
 
 !!! note "📌 Topics deferred here from Chapters 1 and 2"

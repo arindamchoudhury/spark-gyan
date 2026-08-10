@@ -1,6 +1,6 @@
 # Chapter 17 — Caching and Persistence
 
-> *Learning-path topic: I6 (Intermediate)*
+> *Learning-path topic: I25 (Intermediate)*
 > *Status: ⬜ Not yet written*
 
 !!! note "📌 Topics deferred here from Chapters 1 and 2"

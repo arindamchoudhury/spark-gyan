@@ -1,6 +1,6 @@
 # Chapter 33 — Production Deployment: Cluster Management
 
-> *Learning-path topic: E2 (Expert)*
+> *Learning-path topic: E15 (Expert)*
 > *Status: ⬜ Not yet written*
 
 !!! note "📌 Topics deferred here from Chapter 2"

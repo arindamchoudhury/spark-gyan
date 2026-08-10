@@ -199,7 +199,7 @@ The files Spark reads from — whether on HDFS, S3, or GCS — are already prote
 
 To counter this, Spark uses **lineage**. Every RDD records how it was derived — which parent RDD it came from and which transformation produced it. This chain of derivations reaches all the way back to the original source data, which is durably stored in HDFS or S3. Crucially, the lineage graph lives in the **driver** — the separate JVM process that runs the user's main program — not in the executors. Executors compute partition data when tasks run, and retain it only if the RDD is explicitly cached; the driver holds the recipe regardless. When an executor crashes, the driver is still alive and still holds the complete lineage. The DAGScheduler (running in the driver) detects the failed tasks, walks the lineage it already has, and schedules recomputation of only the lost partitions on surviving executors. The rest of the job continues uninterrupted. Lineage is what makes it safe to keep intermediate results only in memory: you never need a replica, because you can always rebuild. The driver going down is a different failure mode — it kills the entire application, because the lineage lives there.
 
-The full anatomy of a Spark application — driver, cluster manager, executors, and the DAGScheduler/TaskScheduler path from an action to a running task — is covered in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**. The RDD API itself, including the five-part interface from the 2012 paper and the transformation catalog, is covered in **Chapter 05 (I4 — RDD Fundamentals)**.
+The full anatomy of a Spark application — driver, cluster manager, executors, and the DAGScheduler/TaskScheduler path from an action to a running task — is covered in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**. The RDD API itself, including the five-part interface from the 2012 paper and the transformation catalog, is covered in **Chapter 05 (I16 — RDD Fundamentals)**.
 
 ### From RDDs to the DataFrame API
 
@@ -208,7 +208,7 @@ RDDs were Spark's original API. The DataFrame API (Spark 1.3) built on top of th
 - **Working-set reuse.** `df.cache()` marks a DataFrame so its partitions are kept in executor memory after the first action — subsequent actions read from memory instead of recomputing from source.
 - **Lineage-based fault recovery.** If a cached partition is evicted, Spark replays the Catalyst logical plan lineage for that partition from the original source — no checkpoint needed.
 
-Caching is a decision with real trade-offs — which storage level to pick, when memory pressure evicts a cached partition, and when `checkpoint()` beats `cache()`. Those are covered in **Chapter 17 (I6 — Caching and Persistence)**.
+Caching is a decision with real trade-offs — which storage level to pick, when memory pressure evicts a cached partition, and when `checkpoint()` beats `cache()`. Those are covered in **Chapter 17 (I25 — Caching and Persistence)**.
 
 ### Spark as a unified engine
 
@@ -294,7 +294,7 @@ Spark 4.2.0 requires **Java 17 or later**, **Scala 2.13**, and **Python 3.10 or 
 
 The important point for a Python user is where the language boundary actually sits. A PySpark DataFrame operation does not process data in Python. `df.filter(F.col("x") > 10)` builds a Catalyst expression tree in the JVM and returns immediately; the rows are read, filtered, and written entirely inside JVM executors. Python holds a handle to a plan, not to data. So DataFrame code in Python runs at the same speed as the equivalent Scala code — the optimizer sees the same tree either way.
 
-The cost appears only when a computation must run *in Python* — a Python UDF, `rdd.map(lambda …)`, or `toPandas()`. There, every row crosses the JVM↔Python process boundary and must be serialized on the way out and back. Spark 4.2.0 makes Arrow-optimized Python UDFs and Arrow-based PySpark IPC the default, which cuts that cost substantially but does not remove the boundary. The practical rule follows directly: express work with built-in functions wherever possible, and reach for a Python UDF only when nothing built-in covers it. **Chapter 15 (I3 — User-Defined Functions)** covers the UDF types, the Arrow path, and how to measure the crossing cost.
+The cost appears only when a computation must run *in Python* — a Python UDF, `rdd.map(lambda …)`, or `toPandas()`. There, every row crosses the JVM↔Python process boundary and must be serialized on the way out and back. Spark 4.2.0 makes Arrow-optimized Python UDFs and Arrow-based PySpark IPC the default, which cuts that cost substantially but does not remove the boundary. The practical rule follows directly: express work with built-in functions wherever possible, and reach for a Python UDF only when nothing built-in covers it. **Chapter 15 (I10 — User-Defined Functions)** covers the UDF types, the Arrow path, and how to measure the crossing cost.
 
 !!! note "Note — Spark Connect changes where the client runs"
     Since Spark 4.0 a PySpark client can run as a thin process that sends an unresolved logical plan to a remote Spark server over gRPC, rather than driving a co-located JVM driver through Py4J. That decouples the client from the cluster's Java and Scala versions entirely. The two modes — classic and Connect — are covered in **Chapter 04 (B2 — SparkSession and Entry Points)**.
@@ -341,7 +341,7 @@ Spark was designed as a reaction to MapReduce's limitations, but it kept the par
 
 **Key-value operations.** At the RDD level, Spark's model is explicitly key-value: `reduceByKey`, `groupByKey`, `combineByKey`, `mapToPair`. These are direct analogues of MapReduce's emit/reduce pattern. The DataFrame API abstracts this away, but the RDD layer underneath still speaks in keys and values.
 
-The rule that decides where a stage boundary falls — narrow versus wide dependencies — and the mechanics of the shuffle write and fetch are covered in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**. How to pick a join strategy so a shuffle is avoided altogether is covered in **Chapter 24 (A3 — Join Strategies and Tuning)**.
+The rule that decides where a stage boundary falls — narrow versus wide dependencies — and the mechanics of the shuffle write and fetch are covered in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**. How to pick a join strategy so a shuffle is avoided altogether is covered in **Chapter 24 (A15 — Join Strategies and Tuning)**.
 
 **Partition model and commodity hardware.** Both divide data into chunks and assign one task per chunk. HDFS blocks are fixed-size (128 MB by default); RDD partitions are logical divisions whose count and size depend on the source and configuration — when reading from HDFS, each partition maps to one block, but after a `repartition()` or `coalesce()` the sizes vary. Both systems assume commodity hardware and treat machine failures as routine, not exceptional.
 
@@ -352,7 +352,7 @@ The rule that decides where a stage boundary falls — narrow versus wide depend
 For file-based storage, Spark reads and writes any system that implements the Hadoop `FileSystem` API — the URI scheme in the path decides which connector is used. In practice that means `hdfs://` on a Hadoop cluster, `file://` on a laptop, and one of `s3a://`, `gs://`, or `abfss://` on a cloud object store.
 
 ??? note "Going deeper — the full connector table"
-    Optional on a first read. **Chapter 07 (B4 — Reading and Writing Data)** covers the options each connector takes.
+    Optional on a first read. **Chapter 07 (B10 — Reading and Writing Data)** covers the options each connector takes.
 
     | Storage | URI scheme | Notes |
     |---|---|---|
@@ -376,7 +376,7 @@ Delta Lake, Iceberg, and Hudi are not filesystems — they are table formats (tr
 
 **Data locality caveat.** The locality levels discussed in the MapReduce comparison (`PROCESS_LOCAL → NODE_LOCAL → RACK_LOCAL → ANY`) are effectively HDFS concepts. Cloud object stores (S3, GCS, ADLS) are remote storage — there is no co-located block to schedule a task against. On cloud clusters the scheduler always falls through to `ANY`, so locality optimization is meaningful only when running Spark against HDFS on a co-located cluster.
 
-Reading from and writing to each of these backends — the format options, the partitioned-write layout, and the save modes — is covered in **Chapter 07 (B4 — Reading and Writing Data)**. Delta Lake as a table format sits in **Chapter 19 (I8 — Delta Lake Basics)**.
+Reading from and writing to each of these backends — the format options, the partitioned-write layout, and the save modes — is covered in **Chapter 07 (B10 — Reading and Writing Data)**. Delta Lake as a table format sits in **Chapter 19 (I37 — Delta Lake Basics)**.
 
 ---
 
@@ -407,7 +407,7 @@ Spark is genuinely excellent for large-scale distributed batch processing, itera
 
 **Data that fits on one machine.** Spark's startup cost — JVM initialization, executor allocation, task scheduling overhead — is real. For a dataset that fits in a laptop's RAM or can be queried from a single Parquet file, DuckDB finishes in milliseconds where Spark is still initializing. The rule of thumb: if pandas or DuckDB can hold the data without swapping, use them. Spark earns its keep when the data genuinely requires multiple machines.
 
-**Sub-second streaming.** Structured Streaming is micro-batch: it accumulates events into small batches and processes them on a configurable interval (down to ~100ms, but not zero). For workloads that require true event-at-a-time semantics — fraud detection that must fire before a transaction clears, CEP rules that depend on event ordering within milliseconds — Apache Flink's continuous processing model is the right fit. Spark streaming latency is measured in hundreds of milliseconds to seconds; Flink's is measured in single-digit milliseconds. The micro-batch model itself — triggers, offsets, and end-to-end guarantees — is covered in **Chapter 28 (A7 — Structured Streaming: Fundamentals)**.
+**Sub-second streaming.** Structured Streaming is micro-batch: it accumulates events into small batches and processes them on a configurable interval (down to ~100ms, but not zero). For workloads that require true event-at-a-time semantics — fraud detection that must fire before a transaction clears, CEP rules that depend on event ordering within milliseconds — Apache Flink's continuous processing model is the right fit. Spark streaming latency is measured in hundreds of milliseconds to seconds; Flink's is measured in single-digit milliseconds. The micro-batch model itself — triggers, offsets, and end-to-end guarantees — is covered in **Chapter 28 (A32 — Structured Streaming: Fundamentals)**.
 
 **Interactive federated SQL across heterogeneous sources.** Trino (formerly PrestoSQL) is designed for low-latency ad-hoc SQL over data that lives in S3, PostgreSQL, Kafka, and Snowflake simultaneously, without moving or ingesting data first. Spark SQL requires data to reach a Spark-readable source (HDFS, S3, Delta Lake) before queries can run. For an analyst who wants to join a Hive table against a live PostgreSQL table and query the result in under two seconds, Trino is the more direct answer.
 
@@ -438,7 +438,7 @@ Spark is genuinely excellent for large-scale distributed batch processing, itera
 
 4. **Apply** — For each of these, decide whether Spark is the right tool and name the alternative if it is not: (a) a 400 MB CSV joined against a 2 MB lookup table, once a day; (b) a fraud rule that must reject a card transaction within 20 ms; (c) an analyst joining a Hive table against a live PostgreSQL table, expecting a result in two seconds; (d) 40 TB of daily clickstream aggregated into a reporting table.
 
-5. **Extend** — The chapter claims lineage removes the need to replicate intermediate results. Find the failure mode where lineage-based recovery is *more* expensive than a replica would have been, and describe what Spark offers to escape it. (Hint: consider a lineage chain a hundred stages long, and see **Chapter 17 (I6 — Caching and Persistence)**.)
+5. **Extend** — The chapter claims lineage removes the need to replicate intermediate results. Find the failure mode where lineage-based recovery is *more* expensive than a replica would have been, and describe what Spark offers to escape it. (Hint: consider a lineage chain a hundred stages long, and see **Chapter 17 (I25 — Caching and Persistence)**.)
 
 6. **Extend** — `spark.sql.ansi.enabled` flipped to `true` in Spark 4.0. Find one expression that returns `null` under Spark 3.5 and raises an error under 4.2.0, and decide whether the new behavior would have caught a bug or broken a pipeline in work you have done.
 

@@ -1,18 +1,18 @@
 # Chapter 06 — Schema: StructType, DDL, and Type Safety
 
-> *Learning-path topic: B5 (Beginner)*
+> *Learning-path topic: B4 (Beginner)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-!!! warning "🔄 Needs revisiting — B5 source trace (flagged 2026-07-18)"
+!!! warning "🔄 Needs revisiting — B4 source trace (flagged 2026-07-18)"
     One correction and eight additions.
 
     **The chapter presents `nullable` as a constraint. It is not.** Nothing in the file-read path validates nullability — it is a hint that lets the optimizer skip null checks. Declaring `nullable=False` and then reading a file containing nulls gives you nulls in a column the plan believes cannot hold them, which yields wrong results rather than an error. Since this chapter's premise is that explicit schemas prevent silent corruption, this needs correcting rather than appending: explicit schemas prevent *some* classes of corruption and quietly enable another.
 
     Spark does enforce in two narrower places with different rules — `createDataFrame` with `verifySchema=True` (per-row type *and* range, on the driver) and writes into an existing table (`spark.sql.storeAssignmentPolicy`). That asymmetry is worth teaching directly.
 
-    Also missing: the three separate cast rules (`canCast` for explicit casts, `canUpCast` for implicit coercion, `canANSIStoreAssign` for table writes — why a `select` can succeed where an `INSERT` fails); that `spark.sql.ansi.enabled` selects between two complete coercion rule sets rather than tightening one; `spark.sql.caseSensitive` defaulting to `false`; `CHAR`/`VARCHAR` being erased to `StringType` with padding reapplied at plan time; `StructType.merge` behind `mergeSchema`; DDL strings going through the real SQL grammar; and the `schema.json()` round-trip. Full list in the [B5 source trace](../reference/spark-source-map/topics/b5.md).
+    Also missing: the three separate cast rules (`canCast` for explicit casts, `canUpCast` for implicit coercion, `canANSIStoreAssign` for table writes — why a `select` can succeed where an `INSERT` fails); that `spark.sql.ansi.enabled` selects between two complete coercion rule sets rather than tightening one; `spark.sql.caseSensitive` defaulting to `false`; `CHAR`/`VARCHAR` being erased to `StringType` with padding reapplied at plan time; `StructType.merge` behind `mergeSchema`; DDL strings going through the real SQL grammar; and the `schema.json()` round-trip. Full list in the [B4 source trace](../reference/spark-source-map/topics/b5.md).
 
-    **Added by the sql/core — datasources sweep (2026-08-04):** where an *inferred* schema comes from, which the chapter treats as a single act. With `mergeSchema` off — the default for both Parquet and ORC — Spark reads a summary file if one exists and otherwise **one arbitrary part-file**, on the explicit assumption that every other file matches. A column present only in newer files therefore may not appear in the DataFrame at all, with no error and no warning. Separately, matching the schema's columns to the file's columns is a *per-format* rule with four different answers (by name, by position, by field ID, by header) — the new topic E25 covers the family. Detail in the [sql/core — datasources sweep](../reference/spark-source-map/sweeps/sql-core-datasources.md).
+    **Added by the sql/core — datasources sweep (2026-08-04):** where an *inferred* schema comes from, which the chapter treats as a single act. With `mergeSchema` off — the default for both Parquet and ORC — Spark reads a summary file if one exists and otherwise **one arbitrary part-file**, on the explicit assumption that every other file matches. A column present only in newer files therefore may not appear in the DataFrame at all, with no error and no warning. Separately, matching the schema's columns to the file's columns is a *per-format* rule with four different answers (by name, by position, by field ID, by header) — the new topic E32 covers the family. Detail in the [sql/core — datasources sweep](../reference/spark-source-map/sweeps/sql-core-datasources.md).
 
 Schema is the contract between your data and your code. An explicit schema catches corrupt data at ingestion time, prevents silent type coercions, and makes pipelines self-documenting. A missing schema turns bugs into mysteries.
 

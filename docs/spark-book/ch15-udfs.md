@@ -1,10 +1,10 @@
 # Chapter 13 — User-Defined Functions: Python and pandas UDFs
 
-> *Learning-path topic: I3 (Intermediate)*
+> *Learning-path topic: I10 (Intermediate)*
 > *Written: 2026-05-31 · Spark 4.1.x / Python 3.10+*
 
-!!! warning "🔄 Needs revisiting — Spark 4.2.0 + I3 source trace (flagged 2026-07-18)"
-    The I3 trace confirmed the Arrow default at source (`spark.sql.execution.pythonUDF.arrow.enabled = true`) and opened ten gaps. Beyond the stale performance framing noted below, four are worth adding:
+!!! warning "🔄 Needs revisiting — Spark 4.2.0 + I10 source trace (flagged 2026-07-18)"
+    The I10 trace confirmed the Arrow default at source (`spark.sql.execution.pythonUDF.arrow.enabled = true`) and opened ten gaps. Beyond the stale performance framing noted below, four are worth adding:
 
     **A UDF's output is always nullable.** `PythonUDF.nullable = true` unconditionally, whatever return type you declare — so downstream null checks can never be optimized away. That is a permanent optimizer cost on top of serialization, and it explains why a UDF hurts more than its own runtime suggests.
 
@@ -14,11 +14,11 @@
 
     **Worker reuse is why the Iterator-UDF pattern works**, and Python worker memory sits outside `spark.executor.memory` (`spark.executor.pyspark.memory`) — so heavy pandas UDFs surface as killed containers rather than JVM OOMs.
 
-    Also missing: Arrow silently downgrading with only a `RuntimeWarning` when PyArrow or pandas is absent; non-deterministic UDFs blocking optimizer rewrites; and batch size being capped by bytes (64MB) as well as rows. Full list in the [I3 source trace](../reference/spark-source-map/topics/i3.md).
+    Also missing: Arrow silently downgrading with only a `RuntimeWarning` when PyArrow or pandas is absent; non-deterministic UDFs blocking optimizer rewrites; and batch size being capped by bytes (64MB) as well as rows. Full list in the [I10 source trace](../reference/spark-source-map/topics/i3.md).
 
     The originally-noted gap: Arrow-optimized Python UDFs and Arrow-based PySpark IPC are **enabled by default** as of 4.2.0 ([SPARK-54555]). Two things below are now stale: the performance table describes Arrow-native UDFs as opt-in via `useArrow=True` (4.1+ framing), and the "typically 5–10× faster than Python UDFs" figure for pandas UDFs was measured against non-Arrow Python UDFs — the real gap on 4.2.0 is narrower. The cost *hierarchy* and the reasoning behind it still hold; the defaults and the multipliers need re-measuring on 4.2.0. Spark 4.2.0 also adds Arrow and pandas grouped-aggregation UDFs, not covered here.
 
-!!! note "Also flagged for I3 (added to the path 2026-07-21) — pandas 3 caveat, Arrow interop, profiling"
+!!! note "Also flagged for I10 (added to the path 2026-07-21) — pandas 3 caveat, Arrow interop, profiling"
     Three 4.2.0 items the path now marks for this chapter. **pandas 3 is not yet the supported runtime** — 4.2.0 did compatibility work ([SPARK-56310], [SPARK-56327]); runtime `install_requires` is `pandas>=2.2.0` (unbounded), but pandas ≥ 3.0.0 triggers a `FutureWarning` ("does not yet fully support"), and [SPARK-57974] documents that 4.2.0 does not support pandas 3 (official support lands in 4.3.0, [SPARK-55139]). Do not write "4.2.0 supports pandas 3" — it is *prepared for* it. The **Arrow C Data Interface / PyCapsule** protocol ([SPARK-54337]) enables zero-copy handoff of DataFrame Arrow batches to Polars/DuckDB. And Python-execution **profiling** was extended — time+memory profiling for Python Data Sources and iterator UDFs ([SPARK-55161], [SPARK-55171]).
 
 Built-in Spark functions cover the vast majority of column transformations. When they don't, UDFs are the escape hatch. Understanding the cost hierarchy — and when to pay it — is what separates accidental slowness from intentional trade-offs.
