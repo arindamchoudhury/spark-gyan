@@ -1,6 +1,6 @@
 # Learning Path v2: Apache Spark / PySpark
 
-> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 157 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
+> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 158 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
 >
 > **Updated:** 2026-08-10 — audited the Types strand against [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) in the feature history and found two clusters with no topic at all: the datetime/timezone family (session time zone, `TIMESTAMP_NTZ`) and the ANSI `INTERVAL` types. Added **I5** and **I6** to cover them; **I5**–**I41** shifted to **I7**–**I43**. The same audit found four smaller gaps that belonged to topics that already existed, so those were extended in place rather than given topics of their own: `CHAR`/`VARCHAR` storage and padding into **B4**, the ANSI rules the one-line summary hides plus the view-persistence trap into **B5**, the ANSI aggregate family into **B7** with the windowed half in **I8**, and the public `UserDefinedType` API into **I1**.
 >
@@ -17,6 +17,8 @@
 > **Updated:** 2026-08-10 — second connectors pass, closing the three clusters the first pass had only declared thin. **A48** takes file-format pushdown, which turned out to be the sharpest of them: aggregate pushdown lives only in the **V2** scan builders while `spark.sql.sources.useV1SourceList` puts every built-in file source on the **V1** path by default, so its own config does nothing alone — and nested predicate pushdown is DSv1-only, so the two cannot both be on. Codec choice folded into **I36** and XML's non-inference surface into **I28**, as callouts rather than topics. Connectors is no longer listed as thin; columnar file encryption moves to the Security gap, where key management already is.
 >
 > **Updated:** 2026-08-10 — closed the Security gap, which the coverage section had carried as thin since before the connectors audit. Added **E52** for columnar file encryption, the piece that had fallen between the connector topics (which read it as security) and **E29** (which reads governance as a catalog concern) — Parquet's envelope/KMS model and ORC's encrypt-plus-mask model differ in what an unauthorised reader gets back, which is the whole topic. Extended **E15** into the path's stated starting point for securing a cluster, with three verified defaults that make "enabled" different from "secured": `network.crypto.enabled` is `false`, `saslFallback` stays `true` when you enable it, and `authEngineVersion` defaults to `1`, whose constant is named `UNSAFE_SKIP_HKDF_VERSION`. Also corrected a wrong claim in the thin section: Spark has no UI Content-Security-Policy setting — the response headers are `xContentTypeOptions`, `strictTransportSecurity` and `allowFramingFrom`. Only MLlib is now listed as thin.
+>
+> **Updated:** 2026-08-10 — re-audited Connectors a second time and found two clusters the first pass had lost. Both were in the rows the first audit enumerated; the clustering step dropped them, which is the failure mode worth naming: enumeration was complete, classification was not. Added **I46** for the `_metadata` file-metadata columns — the rare topic with no book *and* no docs page, since `_metadata` appears nowhere under Spark's `docs/` tree at `v4.2.0`. Folded JDBC authentication into **I34** as its own callout: `principal`/`keytab`/`refreshKrb5Config`, the service-loaded provider and the static `disabledJdbcConnProviderList`, and the rule that a `keytab` value means "shipped with `--files`" or "pre-installed on every node" depending only on whether it contains a slash. Also corrected **A46**: the per-read JDBC option `pushDownJoin` defaults to `true` while the optimizer conf defaults to `false`, so the two halves disagree and reading either alone misleads.
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
@@ -113,7 +115,7 @@ Roughly two thirds of the topics below came from reading the Spark source rather
 ```mermaid
 flowchart TD
     B["<b>Beginner</b> — write correct Spark<br/>12 topics · 32–45 hrs"]
-    I["<b>Intermediate</b> — real data, real formats, read a plan<br/>45 topics · 68–90 hrs"]
+    I["<b>Intermediate</b> — real data, real formats, read a plan<br/>46 topics · 70–92 hrs"]
     A["<b>Advanced</b> — make it fast, make it stream<br/>48 topics · 75–108 hrs"]
     E["<b>Expert</b> — run it in production, know the internals<br/>52 topics · 82–123 hrs"]
     B -->|"🎯 end-to-end batch pipeline"| I
@@ -346,7 +348,7 @@ You should also be able to answer, for your own pipeline: how many tasks each st
 
 **Goal:** work confidently with complex and modern types, windows, UDFs and table formats. Begin reading execution plans. Write pipelines that do not fall over on real data.
 
-**Estimated time:** 68–90 hrs · **45 topics**
+**Estimated time:** 70–92 hrs · **46 topics**
 
 The first six strands are the level proper. Strands *ingestion depth* and *procedural SQL* are read on demand rather than in sequence — you will meet each when a specific problem sends you there.
 
@@ -784,13 +786,15 @@ Read on demand. Each of these is a specific way a read goes wrong.
 
 `v1: I36`
 
-**What** — Spark's JDBC connector maps SQL types through the dialect and the driver's `ResultSetMetaData`, reads in parallel by generating range predicates over a numeric column, and writes by opening one connection per partition that batches every `batchsize` rows and **commits its own transaction**.
+**What** — Spark's JDBC connector maps SQL types through the dialect and the driver's `ResultSetMetaData`, reads in parallel by generating range predicates over a numeric column, and writes by opening one connection per partition that batches every `batchsize` rows and **commits its own transaction**. Plus **how it authenticates**, which is a separate mechanism from everything above: a `JdbcConnectionProvider` is selected by service loading, and the built-in secured path takes `principal` and `keytab` options, with `refreshKrb5Config` for when the Kerberos config must be re-read.
 
 **Why** — the most common non-file source in real pipelines, and the one with the least forgiving failure modes: a write that fails halfway leaves the already-committed partitions in the table, `numPartitions` can only ever *reduce* write parallelism, an unsupported isolation level is silently downgraded with a `WARN`, and truncate-vs-drop on overwrite is a dialect decision rather than a Spark one.
 
 **Learn** — no book states the transaction scope · docs: [JDBC To Other Databases](https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html), [`DataFrameWriter.jdbc`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrameWriter.jdbc.html) · source: sweep [datasources](reference/spark-source-map/sweeps/sql-core-datasources.md)
 
-**Milestone** — write ~1M rows to a local Postgres, then repeat with `batchsize=10` and compare wall-clock and the row count the database reports mid-write. Force a failure partway (a `CHECK` constraint one partition violates) and show earlier partitions are still present — and say what `isolationLevel=SERIALIZABLE` did and did not change. Then read the table back with `partitionColumn` and `numPartitions=4` and quote the four generated predicates, including which one catches `NULL`.
+**Milestone** — write ~1M rows to a local Postgres, then repeat with `batchsize=10` and compare wall-clock and the row count the database reports mid-write. Force a failure partway (a `CHECK` constraint one partition violates) and show earlier partitions are still present — and say what `isolationLevel=SERIALIZABLE` did and did not change. Then read the table back with `partitionColumn` and `numPartitions=4` and quote the four generated predicates, including which one catches `NULL`. Finally, on the auth side: pass a `keytab` as a bare filename with `--files` and again as an absolute path, and say which node resolved it in each case and how you would tell from the logs.
+
+> **Authentication is where the executor's view differs from yours.** A JDBC connection is opened **on the executor**, so every credential has to get there. `keytab` is resolved two different ways depending on how you write it: a value with no path component is assumed to have been shipped with `--files` and is resolved through `SparkFiles.get` at open time, while a value with a path is assumed to be already present on every node — so the same option means "uploaded" or "pre-installed" based only on whether it contains a slash, and the wrong assumption fails on the executor rather than at submit. Provider selection is service-loaded, and `spark.sql.sources.disabledJdbcConnProviderList` (3.1.0, default empty) exists because two providers can both claim the same driver; it is a **static** conf, so it is fixed for the life of the application and cannot be changed per session. The `connectionProvider` option is the per-read way to name one explicitly. Cluster-wide Kerberos and delegation-token lifecycle are **E15**; this is only the JDBC-shaped end of it.
 
 #### ⬜ I35 — Dependency Management at Submit Time: `--packages`, Ivy, and Jars
 
@@ -912,7 +916,7 @@ New in Spark 4.0 and extended in 4.2.0. Read in order — cursors depend on cond
 
 ### Strand — Formats and the types they carry
 
-Read on demand. **I36** asks which format to choose; these two ask what the format you chose does with what you put in it — where a Spark type has no exact counterpart, and where the format's own schema language is something you negotiate with rather than infer.
+Read on demand. **I36** asks which format to choose; these three ask what the format you chose does with what you put in it — where a Spark type has no exact counterpart, where the format's own schema language is something you negotiate with rather than infer, and what the reader hands back that was never in your data at all.
 
 #### ⬜ I44 — The `TIME` Type and What Each Format Does With It
 
@@ -939,6 +943,18 @@ Read on demand. **I36** asks which format to choose; these two ask what the form
 **Learn** — no book covers the options or the functions · docs: [Avro Files](https://spark.apache.org/docs/latest/sql-data-sources-avro.html) — the options table and the `to_avro`/`from_avro` section are the whole topic; [`pyspark.sql.avro.functions`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/avro.html) · feature history: [Connectors](reference/spark-feature-history/connectors.md) · source: `sql/core/.../avro/AvroOptions.scala` holds every option and its default in one file — read it instead of the docs table when they disagree; the expression side (`AvroDataToCatalyst`, `CatalystDataToAvro`, `SchemaOfAvro`) is still in `connector/avro` · sweep [datasources](reference/spark-source-map/sweeps/sql-core-datasources.md) · related: **I36**, **I44**, **A29**, **A35** (Avro on the wire with a registry), **E36** (Avro as the state-store encoding)
 
 **Milestone** — write a DataFrame to Avro, then read it back three ways: with no schema, with an `avroSchema` that renames one field, and with the same schema under `positionalFieldMatching=true` — and explain each result. Point `avroSchemaUrl` at a URL that does not resolve and say at which phase the job fails and what the error is *about*. Then take an Avro union of two branches, read it with `enableStableIdentifiersForUnionType` off and on, and record both sets of column names. Finally, do it without a file: put an Avro payload in a `binary` column and decode it with `from_avro`, then recover its schema with `schema_of_avro`.
+
+#### ⬜ I46 — File Metadata Columns: `_metadata`, and the Two Kinds of Field Inside It
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/connectors.md) (SPARK-37980, which extended the column with Parquet row indexes in 3.4) — found by a **second** audit pass over the same page, because the first one clustered the row under "pushdown mechanics" and lost it
+
+**What** — every file-based read carries a hidden, non-nullable struct column called `_metadata` that is not in your schema and not returned by `SELECT *`; you get it by naming it. Six fields are present for all file formats — `file_path`, `file_name` (both `STRING`), `file_size`, `file_block_start`, `file_block_length` (`BIGINT`) and `file_modification_time` (`TIMESTAMP`) — and Parquet adds a seventh, `row_index`, the ordinal of the row within its file. The distinction is structural, not cosmetic: the six are **constant** metadata, derived from the `PartitionedFile` the scheduler already holds, while `row_index` is **generated** metadata that the reader must actually produce as it decodes (it is materialised through an internal `_tmp_metadata_row_index` column). Constant fields are free; a generated one is work, and only a format whose reader implements it has one at all.
+
+**Why** — it is the answer to a family of questions that otherwise have no good answer: which file did this bad row come from, when was it last written, how do I dedupe across an overlapping reload, how do I give every row a stable identity without adding a column to the data. `row_index` in particular is the closest thing Spark has to a physical row identifier, and it is exactly as stable as the file it lives in — durable across reads of the same file, meaningless after a rewrite or compaction. The trap is the invisibility: `_metadata` does not appear in `printSchema()`, so it is discoverable only if you already know it exists, and a real column named `_metadata` in your data collides with it.
+
+**Learn** — **no book and no docs page**: `_metadata` appears nowhere under Spark's `docs/` tree at tag `v4.2.0`, which makes this a rare topic where source is not the deepest authority but the *only* one — a clean worked example of the [authority ladder](#the-authority-ladder) bottoming out · docs: the nearest thing is [generic file options](https://spark.apache.org/docs/latest/sql-data-sources-generic-options.html), which covers the other read-time metadata (partition discovery, `modifiedBefore`/`modifiedAfter`) but not this · source: `sql/core/.../datasources/FileFormat.scala` — `METADATA_NAME`, the `FileSourceConstantMetadataStructField` list, and the extractor map that fills each field from a `PartitionedFile`; then `ParquetFileFormat.ROW_INDEX_FIELD` for the generated one · sweep [datasources](reference/spark-source-map/sweeps/sql-core-datasources.md) · related: **I30** (partition columns, the *other* columns that appear from outside your data), **I31**, **A48**, **I36**
+
+**Milestone** — read a multi-file dataset and select `_metadata.file_path` and `_metadata.file_modification_time` alongside real columns; then show that neither appears in `printSchema()` nor in `SELECT *`, and say why that is a design choice rather than an omission. Add `_metadata.row_index` on Parquet and then on CSV, and explain the difference from the constant-versus-generated distinction rather than from "CSV is older". Finally, use `file_path` to trace one row back to its source file, rewrite that file, and state what happened to its `row_index` values and why you should not have stored them.
 
 ### 🎯 Intermediate Checkpoint
 
@@ -1536,7 +1552,7 @@ Two topics about the two ends of a query that leave Spark: what the optimizer ha
 
 **What** — `V2ScanRelationPushdown` is the optimizer rule that walks a DSv2 scan and offers it pieces of the plan; `JDBCScanBuilder` is the implementation that decides what to take. It exposes seven entry points — `pushPredicates`, `pushAggregation`, `pushDownJoin`, `pushTableSample`, `pushLimit`, `pushOffset`, `pushTopN` — and behind each sits a `JdbcDialect` capability flag. The flags matter more than the entry points, because `supportsLimit`, `supportsOffset`, `supportsTableSample`, `supportsHint` and `supportsJoin` all default to **`false`** on the base `JdbcDialect`: a dialect opts in, and one that does not silently declines every offer.
 
-**Why** — this is the difference between a query that runs in your database and a query that drags the whole table across the network so Spark can throw most of it away, and *nothing in the plan announces which happened* unless you go looking for the pushed-down SQL. It is also the most version-sensitive corner of the connector surface, in a direction that trips people twice over: join pushdown is real from 4.1 for Oracle, Postgres, MySQL and SQLServer, but the config that enables it — `spark.sql.optimizer.datasourceV2JoinPushdown` — is **`internal()`** and defaults to **`false`**, so "Spark 4.1 added join pushdown" is true and yet nothing changes when you upgrade. Reading a release note as if a feature were on is a general failure mode; this is the cleanest example of it on the page.
+**Why** — this is the difference between a query that runs in your database and a query that drags the whole table across the network so Spark can throw most of it away, and *nothing in the plan announces which happened* unless you go looking for the pushed-down SQL. It is also the most version-sensitive corner of the connector surface, in a direction that trips people twice over: join pushdown is real from 4.1 for Oracle, Postgres, MySQL and SQLServer, but the config that enables it — `spark.sql.optimizer.datasourceV2JoinPushdown` — is **`internal()`** and defaults to **`false`**, so "Spark 4.1 added join pushdown" is true and yet nothing changes when you upgrade. Worse, the two halves disagree: the per-read JDBC option `pushDownJoin` defaults to **`true`**, so the connector is willing and the optimizer is not, and reading either one alone tells you the opposite of what happens. Reading a release note as if a feature were on is a general failure mode; this is the cleanest example of it on the page.
 
 **Learn** — no book covers V2 pushdown · docs: [JDBC To Other Databases](https://spark.apache.org/docs/latest/sql-data-sources-jdbc.html) — the pushdown options and the per-dialect notes; [Data Source V2](https://spark.apache.org/docs/latest/sql-data-sources-v2.html); [TABLESAMPLE](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-sampling.html) for what the SQL side means before you ask a database to do it · feature history: [Connectors](reference/spark-feature-history/connectors.md) and [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) · source: `sql/core/.../datasources/v2/jdbc/JDBCScanBuilder.scala` is the seven `push*` methods; `sql/core/.../jdbc/JdbcDialects.scala` is the capability flags and their defaults · sweeps [datasources](reference/spark-source-map/sweeps/sql-core-datasources.md), [optimizer](reference/spark-source-map/sweeps/sql-catalyst-optimizer.md) · prerequisite: **I34** · related: **A1**, **A10**, **A17**
 
@@ -2304,7 +2320,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [SQL & Catalyst](reference/spark-feature-history/sql-catalyst.md) | 1,458 · 135 | **B11**, **I40**–**I43**, **A1**–**A14**, **A17**, **A20**–**A22**, **E9**–**E11** |
 | [Misc / Other](reference/spark-feature-history/misc.md) | 927 · 10 | no single home — a residual bucket, not a subsystem |
 | [MLlib / ML](reference/spark-feature-history/mllib.md) | 723 · 6 | **A44** only — **thin**, see below |
-| [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**, **I45**, **A29**, **A30**, **A35**–**A37**, **A46**–**A48**, **E34**, **E40**–**E42**, **E52** |
+| [Connectors](reference/spark-feature-history/connectors.md) | 611 · 62 | **I34**, **I36**, **I44**–**I46**, **A29**, **A30**, **A35**–**A37**, **A46**–**A48**, **E34**, **E40**–**E42**, **E52** |
 | [Build & Language support](reference/spark-feature-history/build-lang.md) | 407 · 37 | **B1** version floors — the rest is **out of scope**, see below |
 | [Data Sources & DSv2](reference/spark-feature-history/datasources-dsv2.md) | 324 · 56 | **I33**, **A31**, **A38**, **A46**, **A48**, **E31**, **E32** |
 | [Core / RDD / Scheduler](reference/spark-feature-history/core-rdd.md) | 298 · 12 | **I16**–**I23**, **A25**–**A28**, **E6**, **E12**–**E14** |
@@ -2341,7 +2357,7 @@ flowchart LR
     subgraph BEG["Beginner · 12 · 32–45 hrs"]
       B1["engine model<br/>B1–B2"] --> B2["DataFrame verbs<br/>B3–B6"] --> B3["shaping<br/>B7–B9"] --> B4["I/O + SQL + functions<br/>B10–B12"]
     end
-    subgraph INT["Intermediate · 45 · 68–90 hrs"]
+    subgraph INT["Intermediate · 46 · 70–92 hrs"]
       I1["types<br/>I1–I7"] --> I2["windows<br/>I8–I9"] --> I3["Python<br/>I10–I15"] --> I4["RDDs<br/>I16–I23"] --> I5["partition/cache/UI<br/>I24–I27"] --> I6["table formats<br/>I36–I39"]
     end
     subgraph ADV["Advanced · 48 · 75–108 hrs"]
@@ -2353,11 +2369,11 @@ flowchart LR
     BEG --> INT --> ADV --> EXP
 ```
 
-The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I45), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
+The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I46), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
 
 ### Where you are
 
-**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 157**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
+**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 158**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
 
 **Everything done is carrying 🔄** — written against Spark 4.1.x and now partly stale under 4.2.0.
 
