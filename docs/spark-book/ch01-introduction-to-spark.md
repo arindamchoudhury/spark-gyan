@@ -92,43 +92,44 @@ The rules of the model are strict:
 - The **reduce function** sees one key at a time, together with an iterator over all values for that key, and emits output records.
 - The output of the reduce phase is written to HDFS before the next job can start.
 
-**Word count in MapReduce** — the canonical example that shows exactly what the user supplies vs what the framework owns:
+??? note "Going deeper — word count in MapReduce (Java)"
+    Optional on a first read. The contract is already stated above, and this book does not return to the Java API. It is here because seeing the two functions in full is what makes the contrast with a Spark DAG concrete.
 
-```java
-// Mapper: one record in (a line of text), many (word, 1) pairs out
-public class TokenizerMapper
-    extends Mapper<Object, Text, Text, IntWritable> {
+    ```java
+    // Mapper: one record in (a line of text), many (word, 1) pairs out
+    public class TokenizerMapper
+        extends Mapper<Object, Text, Text, IntWritable> {
 
-  private final IntWritable one = new IntWritable(1);
-  private final Text word = new Text();
+      private final IntWritable one = new IntWritable(1);
+      private final Text word = new Text();
 
-  public void map(Object key, Text value, Context context)
-      throws IOException, InterruptedException {
-    StringTokenizer itr = new StringTokenizer(value.toString());
-    while (itr.hasMoreTokens()) {
-      word.set(itr.nextToken());
-      context.write(word, one);   // emit ("word", 1) for every token
+      public void map(Object key, Text value, Context context)
+          throws IOException, InterruptedException {
+        StringTokenizer itr = new StringTokenizer(value.toString());
+        while (itr.hasMoreTokens()) {
+          word.set(itr.nextToken());
+          context.write(word, one);   // emit ("word", 1) for every token
+        }
+      }
     }
-  }
-}
 
-// Reducer: one key + all its values in, one (word, total) out
-public class IntSumReducer
-    extends Reducer<Text, IntWritable, Text, IntWritable> {
+    // Reducer: one key + all its values in, one (word, total) out
+    public class IntSumReducer
+        extends Reducer<Text, IntWritable, Text, IntWritable> {
 
-  private final IntWritable result = new IntWritable();
+      private final IntWritable result = new IntWritable();
 
-  public void reduce(Text key, Iterable<IntWritable> values, Context context)
-      throws IOException, InterruptedException {
-    int sum = 0;
-    for (IntWritable val : values) sum += val.get();
-    result.set(sum);
-    context.write(key, result);   // emit ("word", total_count)
-  }
-}
-```
+      public void reduce(Text key, Iterable<IntWritable> values, Context context)
+          throws IOException, InterruptedException {
+        int sum = 0;
+        for (IntWritable val : values) sum += val.get();
+        result.set(sum);
+        context.write(key, result);   // emit ("word", total_count)
+      }
+    }
+    ```
 
-The framework handles everything between: partitioning map output by key, sorting within each partition, and routing each key's values to exactly one reducer. The user supplies only `map` and `reduce`.
+    The framework handles everything between: partitioning map output by key, sorting within each partition, and routing each key's values to exactly one reducer. The user supplies only `map` and `reduce`.
 
 **The chaining problem.** Consider a realistic pipeline: (1) filter out log lines with a malformed timestamp, (2) join the cleaned logs against a users table to enrich each row with a country code, (3) count events per country. In MapReduce each step is a separate job — Job 1 writes filtered logs to HDFS, Job 2 reads them back to do the join and writes enriched rows to HDFS, Job 3 reads those back to count. Job 2 cannot start until Job 1 has finished writing its complete output. Every logical step adds a full HDFS read and write round-trip:
 
@@ -171,7 +172,9 @@ Hadoop MapReduce solved distribution, fault tolerance, and load balancing on com
 | Data between nodes | Mandatory HDFS write + read | In-memory pipeline within a stage; disk only at shuffle boundaries |
 | Working-set reuse | Impossible — every job rereads from disk | `.cache()` keeps partitions in executor memory across actions |
 
-!!! note "Note — two levels of DAG in Spark"
+??? note "Going deeper — two levels of DAG in Spark"
+    Optional on a first read; it qualifies the table above rather than adding to the argument. The distinction is developed in **Chapter 02 (B1)** and **Chapter 22 (A1)**.
+
     The "one operator per DAG node" description applies to the *logical plan* (the Catalyst tree the optimizer rewrites). At *execution* time the DAGScheduler works with **stages**, not individual operators: consecutive narrow operators (`filter → withColumn → select`) collapse into a single stage and run as one pipeline pass, with no materialization between them. Wide operators (`groupBy`, `join`) introduce a shuffle boundary and start a new stage. So the logical DAG is operator-grained; the execution DAG is stage-grained. The table captures the right spirit — Spark's unit of work is far more granular than a MapReduce job — but the execution node is a stage, not a single operator.
 
 Two classes of workloads exposed this cost directly:
@@ -327,9 +330,14 @@ Spark was designed as a reaction to MapReduce's limitations, but it kept the par
 
 **The shuffle mechanism.** Spark's shuffle is mechanically similar to MapReduce's shuffle+sort. When a wide operation (`groupBy`, `join`) triggers a stage boundary, map-side tasks sort and write partitioned output to local disk, and reduce-side tasks fetch from those files across the network. The difference is scope: this only happens at stage boundaries, not between every logical step. The underlying protocol — map tasks register their output location with a central tracker, reducers fetch by partition index — is the same pattern MapReduce established.
 
-**The stage model.** Each wide dependency creates a `ShuffleMapStage` boundary. There is exactly one `ResultStage` per job — always the terminal stage that runs the action. A job with one shuffle produces `ShuffleMapStage → ResultStage`; a job with two shuffles produces `ShuffleMapStage → ShuffleMapStage → ResultStage`. The naming echoes MapReduce: `ShuffleMapStage` tasks return `MapStatus` objects to the driver, and the `MapOutputTracker` coordinates where output lives — the same shuffle protocol MapReduce established, applied at each stage boundary.
+**The stage model.** Spark's unit of work between shuffles is the *stage*, and the vocabulary it uses for stages is inherited from MapReduce. **Data locality.** Both systems prefer to run a task where its data already lives — same node, or failing that same rack — rather than pulling the data across the network.
 
-**Data locality.** Both MapReduce and Spark prefer to run tasks where data already lives — on the same node, or at least the same rack — to avoid unnecessary network transfer. Spark's `TaskScheduler` uses the same locality levels (PROCESS_LOCAL → NODE_LOCAL → RACK_LOCAL → ANY) and waits a configurable period at each level before falling back.
+??? note "Going deeper — stage classes and locality levels by name"
+    Optional on a first read. This is class-name detail; **Chapter 02 (B1 — Spark Architecture and the Execution Model)** covers the stage model properly, and **Chapter 32 (E1 — Spark Internals)** covers the scheduler call chain.
+
+    Each wide dependency creates a `ShuffleMapStage` boundary. There is exactly one `ResultStage` per job — always the terminal stage that runs the action. A job with one shuffle produces `ShuffleMapStage → ResultStage`; a job with two shuffles produces `ShuffleMapStage → ShuffleMapStage → ResultStage`. The naming echoes MapReduce: `ShuffleMapStage` tasks return `MapStatus` objects to the driver, and the `MapOutputTracker` coordinates where output lives — the same shuffle protocol MapReduce established, applied at each stage boundary.
+
+    On locality, Spark's `TaskScheduler` uses the same levels MapReduce did — PROCESS_LOCAL → NODE_LOCAL → RACK_LOCAL → ANY — and waits a configurable period at each level before falling back to the next.
 
 **Key-value operations.** At the RDD level, Spark's model is explicitly key-value: `reduceByKey`, `groupByKey`, `combineByKey`, `mapToPair`. These are direct analogues of MapReduce's emit/reduce pattern. The DataFrame API abstracts this away, but the RDD layer underneath still speaks in keys and values.
 
@@ -341,18 +349,21 @@ The rule that decides where a stage boundary falls — narrow versus wide depend
 
 ## Storage backends Spark supports
 
-For file-based storage, Spark reads and writes any system that implements the Hadoop `FileSystem` API — the URI scheme in the path determines which connector is used:
+For file-based storage, Spark reads and writes any system that implements the Hadoop `FileSystem` API — the URI scheme in the path decides which connector is used. In practice that means `hdfs://` on a Hadoop cluster, `file://` on a laptop, and one of `s3a://`, `gs://`, or `abfss://` on a cloud object store.
 
-| Storage | URI scheme | Notes |
-|---|---|---|
-| HDFS | `hdfs://` | Built-in; true data locality |
-| Local filesystem | `file://` | Single-node only |
-| Amazon S3 | `s3a://` | Preferred; `s3n://` is legacy |
-| Google Cloud Storage | `gs://` | Via GCS connector |
-| Azure Blob Storage | `wasb://` | Legacy; use `abfss://` (ADLS Gen2) |
-| Azure Data Lake Gen 2 | `abfs://` / `abfss://` | |
-| Alibaba Cloud OSS | — | Via JindoFS SDK |
-| OpenStack Swift | — | Via Stocator |
+??? note "Going deeper — the full connector table"
+    Optional on a first read. **Chapter 07 (B4 — Reading and Writing Data)** covers the options each connector takes.
+
+    | Storage | URI scheme | Notes |
+    |---|---|---|
+    | HDFS | `hdfs://` | Built-in; true data locality |
+    | Local filesystem | `file://` | Single-node only |
+    | Amazon S3 | `s3a://` | Preferred; `s3n://` is legacy |
+    | Google Cloud Storage | `gs://` | Via GCS connector |
+    | Azure Blob Storage | `wasb://` | Legacy; use `abfss://` (ADLS Gen2) |
+    | Azure Data Lake Gen 2 | `abfs://` / `abfss://` | |
+    | Alibaba Cloud OSS | — | Via JindoFS SDK |
+    | OpenStack Swift | — | Via Stocator |
 
 Spark also connects to sources outside the `FileSystem` API entirely:
 
