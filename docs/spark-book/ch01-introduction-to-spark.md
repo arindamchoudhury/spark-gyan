@@ -25,7 +25,7 @@ Together, these properties create processing demands that stress a single machin
 
 ### Vertical scaling and its ceiling
 
-The instinct when data grows is to buy a bigger machine — more RAM, more CPUs, faster storage. This is **vertical scaling** (scaling up): concentrate more power in a single node. It works up to a point, and that point arrives sooner than hardware catalogues suggest.
+The instinct when data grows is to buy a bigger machine — more RAM, more CPUs, faster storage. This is **vertical scaling** (scaling up): concentrate more power in a single node. It works up to a point, and that point arrives sooner than hardware catalogs suggest.
 
 **Hardware ceiling.** A typical server in 2026 carries 1–2 TB of RAM, and even the highest-end machines top out at a handful of terabytes. A streaming platform's daily event log, a bank's transaction history, or a retailer's click-stream can each be orders of magnitude larger. At the physical limit of what a single machine can hold, vertical scaling stops being an option — there is no bigger box to buy.
 
@@ -196,7 +196,7 @@ The files Spark reads from — whether on HDFS, S3, or GCS — are already prote
 
 To counter this, Spark uses **lineage**. Every RDD records how it was derived — which parent RDD it came from and which transformation produced it. This chain of derivations reaches all the way back to the original source data, which is durably stored in HDFS or S3. Crucially, the lineage graph lives in the **driver** — the separate JVM process that runs the user's main program — not in the executors. Executors compute partition data when tasks run, and retain it only if the RDD is explicitly cached; the driver holds the recipe regardless. When an executor crashes, the driver is still alive and still holds the complete lineage. The DAGScheduler (running in the driver) detects the failed tasks, walks the lineage it already has, and schedules recomputation of only the lost partitions on surviving executors. The rest of the job continues uninterrupted. Lineage is what makes it safe to keep intermediate results only in memory: you never need a replica, because you can always rebuild. The driver going down is a different failure mode — it kills the entire application, because the lineage lives there.
 
-The full anatomy of a Spark application — driver, cluster manager, executors, and the DAGScheduler/TaskScheduler path from an action to a running task — is covered in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**. The RDD API itself, including the five-part interface from the 2012 paper and the transformation catalogue, is covered in **Chapter 05 (I4 — RDD Fundamentals)**.
+The full anatomy of a Spark application — driver, cluster manager, executors, and the DAGScheduler/TaskScheduler path from an action to a running task — is covered in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**. The RDD API itself, including the five-part interface from the 2012 paper and the transformation catalog, is covered in **Chapter 05 (I4 — RDD Fundamentals)**.
 
 ### From RDDs to the DataFrame API
 
@@ -317,7 +317,7 @@ When an action fires, the **DAGScheduler** receives the full graph and compiles 
 
 **The key consequence:** intermediate results between consecutive narrow transformations are never written anywhere. They flow directly from one operation to the next inside the same executor, in the same CPU pass, without touching memory as a materialized object. This is why a chain of ten `filter` and `select` calls costs no more than one.
 
-The transformation/action split and what laziness buys the optimizer are developed in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**; the transformation catalogue itself is in **Chapter 06 (B3 — The DataFrame API: Basics)**.
+The transformation/action split and what laziness buys the optimizer are developed in **Chapter 02 (B1 — Spark Architecture and the Execution Model)**; the transformation catalog itself is in **Chapter 06 (B3 — The DataFrame API: Basics)**.
 
 ---
 
