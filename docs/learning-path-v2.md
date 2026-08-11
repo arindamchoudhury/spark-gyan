@@ -1,6 +1,6 @@
 # Learning Path v2: Apache Spark / PySpark
 
-> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 179 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
+> **Created:** 2026-08-09 — first full re-carve of the path since it was written. Same knowledge base, rebuilt around three things v1 did not have: an explicit **method** for learning (which resource to trust for what, and in which order), **strands** so that 180 topics are navigable rather than a flat list per level, and the **feature history** folded in as a first-class dimension so you always know which of your sources is talking about a Spark you are not running.
 >
 > **Updated:** 2026-08-10 — audited the Types strand against [ANSI & Data Types](reference/spark-feature-history/ansi-types.md) in the feature history and found two clusters with no topic at all: the datetime/timezone family (session time zone, `TIMESTAMP_NTZ`) and the ANSI `INTERVAL` types. Added **I5** and **I6** to cover them; **I5**–**I41** shifted to **I7**–**I43**. The same audit found four smaller gaps that belonged to topics that already existed, so those were extended in place rather than given topics of their own: `CHAR`/`VARCHAR` storage and padding into **B4**, the ANSI rules the one-line summary hides plus the view-persistence trap into **B5**, the ANSI aggregate family into **B7** with the windowed half in **I8**, and the public `UserDefinedType` API into **I1**.
 >
@@ -45,6 +45,8 @@
 > **Updated:** 2026-08-10 — audited [PySpark & Python UDFs](reference/spark-feature-history/pyspark.md): 297 rows, **96** of them in the 4.x line, the second-largest 4.x footprint on this page. The Python Data Source API (**A31**), UDTFs (**I11**) and the Arrow work (**I13**–**I14**) were covered; three clusters were not, and two are the whole shape of 4.1. Added **I50** for the **Python worker itself** — daemon versus direct spawn, `worker.reuse` defaulting to `true` (which is why module-level state survives between tasks), the idle pool and its 4.1 cap, the idle-timeout pair, Unix domain sockets, and the two switches that turn a vanished worker into a readable failure: `faulthandler` and `tracebackDumpIntervalSeconds`. Added **I51** for **seeing inside it** — worker-side logging (`spark.sql.pyspark.worker.logging.enabled`, 4.1, default `false`), the `"perf"`/`"memory"` UDF profiler with `spark.profile.render`, and `pyspark.errors`: `PySparkException` with `getCondition()`, `getMessageParameters()`, `getSqlState()` (4.2) and the DataFrame query context that points at the Python line that built the column. Folded rather than given topics: the 4.0 **plotting API** into **I15**, because a plot is a `collect` bounded by `spark.sql.pyspark.plotting.max_rows` (1000) that takes the *first* rows for bar charts and a *sample* for scatter; and the scattered "now in the DataFrame API" additions into a routing callout in **B3**. All defaults read from `config/Python.scala`, `SQLConf.scala` and `python/pyspark/` at tag `v4.2.0`.
 >
 > **Updated:** 2026-08-10 — audited [Security](reference/spark-feature-history/security.md), 66 rows, and found the page asserting something false *as a correction*. **E15** told readers there is no Spark UI Content-Security-Policy setting and not to look for one; SPARK-57589 added `spark.ui.contentSecurityPolicy.enabled` in **4.2.0**, and `HttpSecurityFilter` emits a real CSP header with a per-request nonce when it is on (default `false`). Both the callout and the earlier changelog entry are corrected. Added a second **E15** callout for the rest of 4.2.0's security work, which is the area's busiest release since the 2.x line: constant-time secret comparison (57066), AuthV2 reaching `StreamRequest` and the metadata operations (57889, 57882), owner-only temporary files (57920), and three redaction additions (57098, 57262, 57580) — including the one exception to redaction being opt-in, JDBC URLs, which are now truncated after the subprotocol whether or not a regex is configured, precisely because `spark.sql.redaction.string.regex` is unset by default.
+>
+> **Updated:** 2026-08-10 — audited [Shuffle / Storage / Memory](reference/spark-feature-history/shuffle-storage.md). The correctness half was covered (**A25**, **A26**) and the tuning half too (**A18**, **A19**, **A27**), but the *bytes* had no owner: checksums, compression codecs and the network transport are the whole 4.x line of this area and appeared nowhere. Added **A58**, whose central fact is that Spark has **two unrelated shuffle checksums** — the order-*sensitive* `spark.shuffle.checksum` (3.2, `true`, `ADLER32` by default with `CRC32C` optional since 4.0) that detects **file corruption**, and the order-*independent* `spark.sql.shuffle.orderIndependentChecksum` (4.1, `true`) that detects a stage producing **different data across attempts**. On mismatch 4.1 re-runs the consuming stage by default; 4.2's stronger query-level rollback is `internal()` and defaults to **`false`**, so "4.2 rolls back and fully retries" describes a config you must turn on. Also in **A58**: `spark.io.compression.codec` (`lz4`) governing shuffle, cache *and* event logs together, the 4.x ZSTD/LZF parallelism knobs, `spark.checkpoint.compress` flipping to `true` in 4.1, `spark.io.mode.default` defaulting to **`AUTO`** so a 4.1 Linux cluster is silently on epoll, and a callout on shuffle cleanup and the shuffle service's RocksDB state store. **A26**'s checksum sentence is corrected to name which checksum it meant. Folded: the four 4.x memory changes (byte-based spill threshold, bounded k-way merge, eager task-result release, off-heap `LongHashedRelation`) into **E1**, and BloomFilter V2 becoming the default into **A14**.
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
@@ -142,7 +144,7 @@ Roughly two thirds of the topics below came from reading the Spark source rather
 flowchart TD
     B["<b>Beginner</b> — write correct Spark<br/>12 topics · 32–45 hrs"]
     I["<b>Intermediate</b> — real data, real formats, read a plan<br/>51 topics · 80–102 hrs"]
-    A["<b>Advanced</b> — make it fast, make it stream<br/>57 topics · 91–128 hrs"]
+    A["<b>Advanced</b> — make it fast, make it stream<br/>58 topics · 93–130 hrs"]
     E["<b>Expert</b> — run it in production, know the internals<br/>59 topics · 96–142 hrs"]
     B -->|"🎯 end-to-end batch pipeline"| I
     I -->|"🎯 diagnose a slow job from a plan"| A
@@ -156,7 +158,7 @@ Each level is divided into **strands** — short runs of topics that belong toge
 |---|---|
 | **Beginner** | The engine model · Core DataFrame verbs · Shaping data · Data in and out, and SQL |
 | **Intermediate** | Types beyond the basics · Windows and row multiplication · The Python boundary · RDDs underneath · Partitioning, caching, diagnosis · Ingestion depth · Table formats and the lakehouse · Procedural SQL · Formats and the types they carry · Shared variables · Declared constraints · Getting a job onto a cluster · The Python process |
-| **Advanced** | How a query is compiled · Statistics and adaptive execution · Joins, aggregation and windows at scale · Reliability of a running job · The file boundary · Streaming · Pipelines · Engineering practice · Pushdown and the write path · Stragglers · The connector API itself · Machine learning |
+| **Advanced** | How a query is compiled · Statistics and adaptive execution · Joins, aggregation and windows at scale · Reliability of a running job · The file boundary · Streaming · Pipelines · Engineering practice · Pushdown and the write path · Stragglers · The connector API itself · Machine learning · Shuffle mechanics |
 | **Expert** | Memory and execution internals · Scheduling and cluster reliability · Deployment · Observability · Connect · Catalogs, governance, transactions · Streaming state and operations · Kafka operations · Pipelines in production · Platform engineering · Legacy engines · Data at rest · Multi-tenancy · Row-level DML · Elasticity · Kubernetes delivery · Training that is not MLlib |
 
 ### What the 2026 market asks for, and where it lands
@@ -1099,7 +1101,7 @@ Take a pipeline that is too slow and diagnose it without guessing:
 
 **Goal:** write high-performance production pipelines. Understand the optimiser deeply enough to fix it when it decides wrongly. Handle streaming workloads. Build declarative pipelines.
 
-**Estimated time:** 91–128 hrs · **57 topics**
+**Estimated time:** 93–130 hrs · **58 topics**
 
 Strands *how a query is compiled* → *statistics and adaptive execution* → *joins at scale* are the tuning spine, read in order. *Streaming* is a self-contained run and can be taken first if that is what your job needs.
 
@@ -1275,6 +1277,8 @@ Strands *how a query is compiled* → *statistics and adaptive execution* → *j
 
 **Milestone** — read an `EXPLAIN` plan and point at the `DynamicPruningSubquery` or `BloomFilterMightContain` node that proves a runtime filter was planted; explain why DPP requires a *partitioned* table while the bloom filter does not; and given a join where neither fired, name which threshold or precondition blocked it.
 
+> **The bloom filter itself changed in 4.1.** `spark.sql.optimizer.runtime.bloomFilter.*` governs *whether* a runtime filter is planted; SPARK-47547 replaced the implementation underneath with **BloomFilter V2** and made it the default. Worth knowing for exactly one reason: false-positive behaviour and serialized size changed, so a 4.1 upgrade can shift how much a runtime filter actually skips without any config of yours moving — and the same V2 implementation is what `bloom_filter_agg` and the write-side filters in **A48** use.
+
 > **New in 4.2.0 — the DSv2 equivalent has its own currency: `PartitionPredicate`.** DPP above is a file-source mechanism. A DSv2 table prunes through a different channel — `SupportsRuntimeFiltering` / `SupportsRuntimeV2Filtering` at runtime, and from 4.2.0 a dedicated `PartitionPredicate` (SPARK-55596) that a connector evaluates against `Table.partitioning()` directly, addressing partition *fields by ordinal* rather than data columns. It reached three places at once: partition-statistics filtering via `HasPartitionStatistics`, nested partition columns (56190), metadata-only `DELETE` (56346 — the fast path in **E54**), and runtime filters themselves (56521). The reason to know it exists: a v2 table showing no `DynamicPruningSubquery` in its plan is not un-pruned, it is pruned somewhere the plan does not print — inside the connector — and the evidence is in the scan's partition count, not the plan tree.
 
 ### Strand — Joins, aggregation and windows at scale
@@ -1421,7 +1425,7 @@ Strands *how a query is compiled* → *statistics and adaptive execution* → *j
 
 `v1: A14`
 
-**What** — if a shuffle map stage produces *different data* when re-run — `repartition` on unordered input, `zipWithIndex`, a non-deterministic UDF — any downstream stage that already consumed the old output is inconsistent. Spark's defence is to roll back and re-run every succeeding stage, or abort when it cannot. Spark 4.2.0 adds runtime detection: a checksum comparison when a `MapStatus` is re-registered for a partition that already had one.
+**What** — if a shuffle map stage produces *different data* when re-run — `repartition` on unordered input, `zipWithIndex`, a non-deterministic UDF — any downstream stage that already consumed the old output is inconsistent. Spark's defence is to roll back and re-run every succeeding stage, or abort when it cannot. Spark 4.1 added runtime detection through an **order-independent** checksum per mapper (`spark.sql.shuffle.orderIndependentChecksum.enabled`, default `true`) — a different instrument from the order-*sensitive* `spark.shuffle.checksum` that detects file corruption, and **A58** is where the pair is taught. On mismatch, 4.1 re-runs every task of the consuming stage by default; 4.2's stronger query-level rollback exists but is `internal()` and **off**.
 
 **Why** — the alternative to the abort is **silently wrong data**. The trigger is an unrelated retry, so a pipeline can run correctly for a year and then abort. And the new runtime detection means jobs that previously produced quiet corruption will start failing loudly after a 4.2.0 upgrade — recognise that as a pre-existing correctness bug being surfaced, not a regression.
 
@@ -1837,6 +1841,22 @@ Read A50 → A51 → A52 → A53 in order. **A50** is the object graph every oth
 
 **Milestone** — cross-validate a full `Pipeline` and time it; raise `parallelism`, time it again, and say what you traded and why the cluster had been idle. Then run the deliberately wrong version — feature stages fitted once, outside the `CrossValidator` — and quantify the optimism by scoring both on a held-out set you never touched. Choose a metric on purpose: on an imbalanced binary problem report `areaUnderROC` and `areaUnderPR` side by side and say which belongs in the report. Finally, save the fitted `PipelineModel`, inspect the directory it wrote — metadata and Parquet, and on which filesystem? — reload it in a fresh session, and state what would have to be true for a model saved by Spark 3.5 to load here.
 
+### Strand — Shuffle mechanics
+
+#### ⬜ A58 — Shuffle Bytes: Two Checksums, the Codec, and the Transport
+
+**New topic** · no v1 code · sourced from the [feature history](reference/spark-feature-history/shuffle-storage.md), whose whole 4.x line is this topic — CRC32C checksums (SPARK-49459), checksum-based full stage retry (51756) and query-level rollback (54556, 55064), parallel LZF and ZSTD (48518, 46256), `ZSTD_strategy` (52924), `spark.checkpoint.compress` on by default (52174), AUTO IO mode and native Netty transports (54009, 54023, 54032), KQueue (53999) and zero-copy `sendfile` (56279). **A18** tunes shuffle volume and **A27** covers push-based shuffle; nothing covered the bytes themselves
+
+**What** — what happens to a shuffle block between being written and being read. **Two independent checksums**, and confusing them is the most common mistake here. `spark.shuffle.checksum.enabled` (3.2, default **`true`**, `algorithm` default **`ADLER32`** with `CRC32C` added as an option in 4.0) is **order-sensitive** and exists to detect *file corruption* — it is what turns "a fetch failed and I do not know why" into "this block is corrupt on disk". `spark.sql.shuffle.orderIndependentChecksum.enabled` (4.1, default **`true`**) is a different thing entirely: an order-**independent** checksum per mapper, returned to the driver, whose purpose is to detect that *two attempts of the same partition produced different data* — indeterminacy (**A26**), not corruption. **Compression** is next: `spark.io.compression.codec` (default **`lz4`**) covers shuffle blocks, cached RDD partitions and event logs alike, with `zstd.level` (1), `zstd.workers` (0 = single-threaded; 4.0 made it parallel), `zstd.strategy` (4.1) and `lzf.parallel.enabled` (4.0, **`true`**) as the tuning surface — and `spark.checkpoint.compress`, which **became `true` by default in 4.1**. Finally the **transport**: `spark.io.mode.default` (4.1) selects `NIO`, `EPOLL`, `KQUEUE` or `AUTO`, and **`AUTO` is the default** — Spark now prefers a native Netty transport where one exists (epoll on Linux, KQueue on BSD and macOS) and falls back to NIO, with zero-copy `sendfile` for file regions from 4.2.
+
+**Why** — because the checksum pair decides what a retry does to your *results*, and the defaults are asymmetric in a way worth knowing before an incident. When the order-independent checksums of two attempts disagree, `spark.sql.shuffle.orderIndependentChecksum.enableFullRetryOnMismatch` (4.1, default **`true`**) re-runs every task of the consuming stage — that is the safe, expensive answer. Spark 4.2 added the stronger one, `…enableQueryLevelRollbackOnMismatch`, which cancels and resubmits the producing map stages and aborts the running result stage — and it is `internal()` and defaults to **`false`**. So "4.2 rolls back and fully retries on a checksum mismatch" is true of a config you have to turn on, which is exactly the class of release-note claim this page exists to check. The codec side matters for a different reason: one setting governs shuffle, cache and event logs together, so raising `zstd.level` to shrink shuffle traffic also slows every cached block you write, and `zstd.workers` spends *executor CPU you were using for tasks* to do it. And the transport switch is the kind of default change that shows up as an unexplained throughput difference after an upgrade rather than as a config you set: a 4.1 cluster on Linux is using epoll unless you told it not to.
+
+**Learn** — no book covers any of this · docs: [Configuration → shuffle behavior](https://spark.apache.org/docs/latest/configuration.html#shuffle-behavior) and [→ compression and serialization](https://spark.apache.org/docs/latest/configuration.html#compression-and-serialization) — the two blocks to read together; [Tuning → data serialization](https://spark.apache.org/docs/latest/tuning.html) · feature history: [Shuffle / Storage / Memory](reference/spark-feature-history/shuffle-storage.md) · source: the `spark.shuffle.checksum.*`, `spark.io.compression.*` and `spark.checkpoint.compress` blocks in `core/.../internal/config/package.scala`; the three `spark.sql.shuffle.orderIndependentChecksum.*` entries in `SQLConf.scala`, whose docstrings state the corruption-versus-indeterminacy distinction more clearly than any guide; `common/network-common/.../util/TransportConf.java` for `ioMode()` defaulting to `AUTO` · sweeps [shuffle & memory](reference/spark-source-map/sweeps/core-shuffle-memory.md), [storage & serializer](reference/spark-source-map/sweeps/core-storage-serializer.md) · related: **A26** (what the second checksum protects), **A25** (the failure that triggers a retry), **A27** (push-based shuffle, which forfeits corruption diagnosis), **A18**, **E1**, **E5**
+
+**Milestone** — state, without looking, which of the two checksums detects a corrupt block and which detects a non-deterministic stage, and name the default of each. Then run a job with a deliberately indeterminate `repartition`, force a fetch failure, and read from the driver log which retry policy fired — then say what would have happened differently with the 4.2 query-level rollback enabled, and why it is off. Switch `spark.io.compression.codec` from `lz4` to `zstd` and measure shuffle write bytes *and* stage wall-clock; raise `zstd.workers` and say which resource you just spent. Finally, check `spark.io.mode.default` on your cluster, force `NIO`, and report whether the difference is visible in shuffle read time.
+
+> **Two more things that decide when shuffle bytes go away.** **Cleanup:** ordinarily shuffle files live until the RDD is garbage-collected and the `ContextCleaner` catches up, which on a long-lived session means disks fill with the output of queries that finished hours ago. 4.0 added a `ShuffleCleanupMode` for SQL executions (SPARK-47764), 4.2 extended it to child executions (55035) and gave the Thrift server its own cleanup (53469) — the fix for "my Thrift server's local disks fill up over a week" that is not a bigger disk. **The external shuffle service's own state:** it keeps a database of registered executors so a restart does not lose them, and 4.0 switched the default backend from LevelDB to **RocksDB** (SPARK-45351); a `spark.shuffle.service.db.backend` mismatch across a rolling upgrade is a service that comes back empty. Neither is a tuning knob you reach for often, and both are the answer to an operational question with no other answer.
+
 ### 🎯 Advanced Checkpoint
 
 Take a production-shaped workload and make it fast and reliable:
@@ -1869,6 +1889,8 @@ Nothing in this level is required before anything else in it. Read the strand th
 **Learn** — SDG Ch 15 and Ch 19; LS2e Ch 3; ADEB Module 3 · docs: [Memory Tuning](https://spark.apache.org/docs/latest/tuning.html#memory-tuning) · source: sweeps [shuffle & memory](reference/spark-source-map/sweeps/core-shuffle-memory.md), [storage & serialization](reference/spark-source-map/sweeps/core-storage-serializer.md), [execution engine](reference/spark-source-map/sweeps/core-execution-engine.md), [expressions](reference/spark-source-map/sweeps/sql-catalyst-expressions.md)
 
 **Milestone** — explain execution memory versus storage memory in unified memory management, and name two causes of excessive GC in PySpark that the task memory metrics would surface. Then account for a PySpark executor's total memory: JVM heap, off-heap, Python workers, and what is outside `spark.memory.fraction` entirely (see **E4**).
+
+> **New in 4.x — four memory changes you will meet as symptoms, not settings.** All in this topic's territory and none of them a knob you would think to look for. **Spill by size, not just count:** `spark.shuffle.spill.numElementsForceSpillThreshold` has forced a sorter spill by *element count* since 1.6 (default `Integer.MAX_VALUE`, i.e. never), and 4.1 added `spark.shuffle.spill.maxSizeInBytesForSpillThreshold` (SPARK-49386, default `Long.MaxValue`) so wide rows can trigger the same thing by bytes — the fix for a sorter that OOMs long before it reaches a hundred million elements. **A bounded k-way merge** in `UnsafeExternalSorter` (56410, 4.2) caps how many spill files are merged at once, which is where the memory went when a heavily-spilling stage died at the *end*. **Task results are freed eagerly** during serialization on the executor (56302, 4.2), shortening the window where a large result exists twice. And the shuffled hash join can now build its `LongHashedRelation` **off-heap** (54116, 4.2), moving the one structure in **A16** that could not spill out of the heap it was pressuring.
 
 #### ⬜ E2 — Unroll Memory: Materialising a Cached Partition Without an OOM
 
@@ -2708,7 +2730,7 @@ The [feature history](reference/spark-feature-history/index.md) sorts all 7,190 
 | [PySpark & Python UDFs](reference/spark-feature-history/pyspark.md) | 297 · 96 | **I10**–**I15**, **I50**, **I51**, **A24**, **A31**, **A45** |
 | [Web UI / History / Metrics](reference/spark-feature-history/web-ui.md) | 284 · 65 | **I26**, **I27**, **E24**, **E25** |
 | [Deploy](reference/spark-feature-history/deploy.md) | 280 · 25 | **I35**, **I49**, **A27**, **A28**, **E15**–**E23**, **E55**–**E58** |
-| [Shuffle / Storage / Memory](reference/spark-feature-history/shuffle-storage.md) | 259 · 25 | **I24**, **I25**, **A18**, **A19**, **A27**, **E1**–**E5** |
+| [Shuffle / Storage / Memory](reference/spark-feature-history/shuffle-storage.md) | 259 · 25 | **I24**, **I25**, **A18**, **A19**, **A25**, **A26**, **A27**, **A58**, **E1**–**E5** |
 | [Structured Streaming](reference/spark-feature-history/structured-streaming.md) | 234 · 94 | **A32**–**A38**, **E35**–**E39** |
 | [Built-in Functions](reference/spark-feature-history/builtin-functions.md) | 200 · 36 | **B12** (the catalogue), **B7**, **B5**, **I1**, **I8**, **A21**, **A23** |
 | [Spark Connect](reference/spark-feature-history/spark-connect.md) | 178 · 149 | **B2**, **A45**, **E26**–**E28** |
@@ -2749,7 +2771,7 @@ flowchart LR
     subgraph INT["Intermediate · 51 · 80–102 hrs"]
       I1["types<br/>I1–I7"] --> I2["windows<br/>I8–I9"] --> I3["Python<br/>I10–I15"] --> I4["RDDs<br/>I16–I23"] --> I5["partition/cache/UI<br/>I24–I27"] --> I6["table formats<br/>I36–I39"]
     end
-    subgraph ADV["Advanced · 57 · 91–128 hrs"]
+    subgraph ADV["Advanced · 58 · 93–130 hrs"]
       A1["compilation<br/>A1–A9"] --> A2["stats + AQE<br/>A10–A14"] --> A3["scale<br/>A15–A24"] --> A4["streaming<br/>A32–A38"]
     end
     subgraph EXP["Expert · 59 · 96–142 hrs"]
@@ -2758,11 +2780,11 @@ flowchart LR
     BEG --> INT --> ADV --> EXP
 ```
 
-The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I46), shared variables (I47), declared constraints (I48), submission (I49), the Python process (I50–I51), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), stragglers (A49), the connector API itself (A50–A53), machine learning (A44, A54–A57), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
+The strands not shown on the diagram — ingestion depth (I28–I35), procedural SQL (I40–I43), formats and types (I44–I46), shared variables (I47), declared constraints (I48), submission (I49), the Python process (I50–I51), reliability (A25–A28), the file boundary (A29–A31), pipelines (A39–A42), practice (A43–A45), pushdown and the write path (A46–A48), stragglers (A49), the connector API itself (A50–A53), machine learning (A44, A54–A57), shuffle mechanics (A58), and most of Expert — are read **on demand**, when the underlying problem finds you. They are written to the same standard as the main line; they are simply not sequential coursework.
 
 ### Where you are
 
-**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 179**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
+**Done:** the Beginner level and the first five Intermediate topics under v1 numbering — v2 **B1–B4, B6–B8, B10–B11** and **I1, I8, I10, I16, I24**. That is **14 of 180**, with chapters written for each in [`docs/spark-book/`](spark-book/index.md).
 
 **Everything done is carrying 🔄** — written against Spark 4.1.x and now partly stale under 4.2.0.
 
@@ -2804,7 +2826,7 @@ All three are proctored, multiple-choice, $200, English-delivered (the DE exams 
 
 **Structure.**
 
-- Topics are grouped into **strands** — 4 in Beginner, 13 in Intermediate, 12 in Advanced, 17 in Expert — so a level is a set of short runs rather than a list of forty.
+- Topics are grouped into **strands** — 4 in Beginner, 13 in Intermediate, 13 in Advanced, 17 in Expert — so a level is a set of short runs rather than a list of forty.
 - Codes are **renumbered to reading order** within each level. v1's codes ran in discovery order, with source-derived topics appended after the level checkpoint; here the number and the order agree.
 - The two checkpoints that sat *mid-level* in v1 now sit at the end of their level, where a gate belongs.
 
@@ -2822,7 +2844,7 @@ All three are proctored, multiple-choice, $200, English-delivered (the DE exams 
 
 ## v1 → v2 code map
 
-Every v1 topic appears exactly once. The table below lists the seven topics that were new when v2 was written; the twenty-eight added since by the feature-history audits (**I44**–**I51**, **A46**–**A57**, **E52**–**E59**) carry a **New topic** line in place of a v1 code and are not repeated here.
+Every v1 topic appears exactly once. The table below lists the seven topics that were new when v2 was written; the twenty-nine added since by the feature-history audits (**I44**–**I51**, **A46**–**A58**, **E52**–**E59**) carry a **New topic** line in place of a v1 code and are not repeated here.
 
 | v1 | v2 | Title |
 |---|---|---|
@@ -3024,6 +3046,7 @@ Every v1 topic appears exactly once. The table below lists the seven topics that
 - `core/src/main/scala/org/apache/spark/internal/config/Python.scala` — the entire `spark.python.*` family behind **I50** with every default: `worker.reuse` `true`, `use.daemon` `true`, `worker.faulthandler.enabled` `false`, `worker.idleTimeoutSeconds` `0` with `killOnIdleTimeout` `false`, `worker.tracebackDumpIntervalSeconds` `0`, `factory.idleWorkerMaxPoolSize` unbounded, `unix.domain.socket.enabled` defaulting from `PYSPARK_UDS_MODE`; `core/.../api/python/PythonWorkerFactory.scala` for the pool and its LRU eviction
 - `SQLConf.scala` and `python/pyspark/` — `spark.sql.pyspark.worker.logging.enabled` (4.1, `false`), `spark.sql.pyspark.udf.profiler` (`perf`/`memory`), `spark.sql.dataFrameQueryContext.enabled` (`internal()`, `true`) and `spark.sql.pyspark.plotting.max_rows` (`1000`) behind **I51** and the **I15** callout; `python/pyspark/errors/exceptions/base.py` for `PySparkException.getCondition`/`getMessageParameters`/`getSqlState`/`getQueryContext`, and `python/pyspark/sql/plot/` for the plotting backend
 - `core/src/main/scala/org/apache/spark/internal/config/UI.scala` and `core/.../ui/HttpSecurityFilter.scala` — `spark.ui.contentSecurityPolicy.enabled` (`.version("4.2.0")`, default `false`) and the header it emits, which is what corrected **E15**'s claim that no such setting exists; `core/.../util/Utils.scala` (`chmod700`) for owner-only temporary files, `security/SocketAuthHelper.scala` for `MessageDigest.isEqual`, `internal/config/package.scala` for the two redaction regexes and their defaults, and `sql/core/.../jdbc/JDBCOptions.scala` (`redactUrl`) for the unconditional JDBC-URL redaction
+- `core/.../internal/config/package.scala`, `SQLConf.scala` and `common/network-common/.../TransportConf.java` — everything **A58** quotes: `spark.shuffle.checksum.enabled` (`true`) and `.algorithm` (`ADLER32`), the three `spark.sql.shuffle.orderIndependentChecksum.*` entries with their 4.1 `true` / 4.2 `internal()` `false` split, `spark.io.compression.codec` (`lz4`) with the zstd `level`/`workers`/`strategy` and `lzf.parallel.enabled` knobs, `spark.checkpoint.compress`, and `ioMode()` reading `spark.io.mode.default` with a literal `"AUTO"` fallback; plus `spark.shuffle.spill.maxSizeInBytesForSpillThreshold` (4.1) behind the **E1** callout
 - `sql/gen-sql-functions-docs.py` — the function-group list that decides the `api/sql/*-functions/` page names cited throughout
 - `python/docs/source/tutorial/pandas_on_spark/` — the pandas-on-Spark user-guide pages behind **I12**
 
