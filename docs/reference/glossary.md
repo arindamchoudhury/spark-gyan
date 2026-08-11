@@ -170,3 +170,20 @@ Terms that come from reading the Spark source rather than from any book — most
 | **SQL `PATH`** | A search path for unqualified function and view names, set with `SET PATH` and read with `CURRENT_PATH()`. Persisted into views and SQL functions so they resolve the same way later. | [4.2.0 release](../research-cache/spark-420-release.md) |
 | **Real-Time Mode (RTM)** | A Structured Streaming trigger targeting low latency, exposed to PySpark in 4.2.0. | [4.2.0 release](../research-cache/spark-420-release.md) |
 | **SRID** | Spatial Reference System Identifier — the coordinate system a geospatial value is expressed in. Carried on the type in Spark's `GEOMETRY`/`GEOGRAPHY`; 4.2.0 ships a full registry built from PROJ 9.7.1. | [4.2.0 release](../research-cache/spark-420-release.md) |
+
+## From the Spark Book
+
+Terms first defined in a chapter of the [Spark Book](../spark-book/index.md), where the chapter is the place they are explained rather than merely mentioned.
+
+| Term | Meaning | Source |
+| --- | --- | --- |
+| **`childMainClass`** | The class `SparkSubmit.runMain` actually loads. In `client` deploy mode it is your class; in `cluster` mode a launcher (`ClientApp`, `YarnClusterApplication`, `KubernetesClientApplication`) is substituted and your `main()` runs elsewhere. Why `print()` output vanishes in cluster mode. | Spark Book Ch 02 |
+| **`executeTake` loop** | `SparkPlan.executeTake(n)` scans `spark.sql.limit.initialNumPartitions` (1) partitions and, if short of *n* rows, multiplies by `spark.sql.limit.scaleUpFactor` (4) and submits another job. One `show()` over a selective filter routinely runs four or five jobs. | Spark Book Ch 02 |
+| **`FetchFailed`** | A shuffle read finding its upstream output gone. Qualitatively different from a task failure: the `DAGScheduler` resubmits the **parent stage** rather than retrying the task, which is why a stage you watched complete can run again. | Spark Book Ch 02 |
+| **`IndirectTaskResult`** | What a task result becomes when it exceeds `spark.rpc.message.maxSize` (128 MB): the executor stores it in the block manager and sends a handle, which `TaskResultGetter` fetches separately. | Spark Book Ch 02 |
+| **Locality wait** | The scheduler deliberately holding a task rather than placing it on a worse-located slot, for up to `spark.locality.wait` (3s) per level. Idle cores beside pending tasks can therefore be correct behaviour — and are always wasted when reading object storage, which has no locality. | Spark Book Ch 02 |
+| **`MapStatus`** | What a `ShuffleMapTask` returns to the driver: the `BlockManagerId` holding each output partition and its size. Not data. That return type *is* the stage boundary — a `ResultTask` returns values instead. | Spark Book Ch 02 |
+| **Shuffle-writer selection** | `SortShuffleManager.getWriter` picks between `BypassMergeSortShuffleWriter` (no sort, gated by `spark.shuffle.sort.bypassMergeThreshold` = 200), `UnsafeShuffleWriter` (sorts pointers, not objects) and `SortShuffleWriter` (the fallback). Crossing the threshold silently changes which one runs. | Spark Book Ch 02 |
+| **`TakeOrderedAndProjectExec`** | The operator `SpecialLimits.planTakeOrdered` substitutes for `Limit(n, Sort(…))` below `spark.sql.execution.topKSortFallbackThreshold`. Each partition emits a local top-*n* and the driver merges — so a sort under a `show(n)` plans **no global-sort shuffle**. | Spark Book Ch 02 |
+| **`TaskSet`** | One task per partition of a ready stage, created by the `DAGScheduler` and handed to the `TaskScheduler`, which wraps it in a `TaskSetManager` that tracks per-task state and retries. Immutable, which is what makes retries and speculation safe. | Spark Book Ch 02 |
+| **Unmanaged memory** | Spark 4.x's third memory category alongside execution and storage: allocations by components that manage their own memory outside the unified pool — RocksDB state stores, native libraries. Polling is off by default (`spark.memory.unmanagedMemoryPollingInterval = 0s`), so those allocations are invisible to the allocator. | Spark Book Ch 02 |

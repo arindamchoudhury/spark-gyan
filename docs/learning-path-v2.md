@@ -177,7 +177,7 @@ Each level is divided into **strands** — short runs of topics that belong toge
 
 #### 🔄 B1 — Spark Architecture and the Execution Model
 
-`v1: B1` · chapters [01](spark-book/ch01-introduction-to-spark.md), [02](spark-book/ch02-spark-architecture.md), [03](spark-book/ch03-spark-installation.md) written against 4.1.x
+`v1: B1` · chapters [01](spark-book/ch01-introduction-to-spark.md) and [02](spark-book/ch02-spark-architecture.md) revised against 4.2.0; [03](spark-book/ch03-spark-installation.md) still written against 4.1.x
 
 **What** — how Spark distributes work: driver, executors, cluster manager, JVM vs Python process, lazy evaluation, DAG, stages, tasks.
 
@@ -187,7 +187,9 @@ Each level is divided into **strands** — short runs of topics that belong toge
 
 **Milestone** — explain without notes what happens between `spark.read.parquet(...)` and `.show()`: where the plan lives, when it executes, which process runs the Python. Then, from the source: name the single function that decides where one stage ends and the next begins; explain why a failing task retries four times on a cluster but aborts the stage immediately on your laptop; explain why a stage you watched succeed can run again.
 
-> **Carrying 🔄.** Ch03 states Spark 4.x supports only Java 17 and 21 — 4.2.0 builds and runs on **Java 25** (SPARK-51167). It also misses that Spark 4.x is **Scala 2.13 only**, which decides the `_2.13` suffix on every dependency artifact. The architecture material in Ch01–Ch02 re-verified clean against 4.2.0; only the install chapter needs work.
+> **Carrying 🔄 — for Ch03 only now.** Ch03 states Spark 4.x supports only Java 17 and 21 — 4.2.0 builds and runs on **Java 25** (SPARK-51167). It also misses that Spark 4.x is **Scala 2.13 only**, which decides the `_2.13` suffix on every dependency artifact, and its header still pins `Spark 4.1.x`.
+>
+> Ch02 was **rewritten against 4.2.0 on 2026-08-11** and is clear. The rewrite fixed both errors the 2026-08-10 completeness pass found — the three-stage word-count walkthrough (a `rangepartitioning` shuffle that `TakeOrderedAndProjectExec` means Spark never plans) and "one action = one job" stated as an invariant — and closed the nine open gaps: the three shuffle writers and what gates each, `FetchFailed` resubmitting the parent stage, executor loss unregistering map output, `maxResultSize` dropping results at the executor, locality wait as the explanation for idle cores, the two heartbeat timers that declare an executor dead, the listener bus dropping events on overflow, intra-application FIFO/FAIR scheduling, and where the task count comes from. Every number in it was measured against a running Spark 4.2.0 stack rather than derived from the code's shape.
 
 > **The version floors, and where they are actually enforced.** The [docs index](https://spark.apache.org/docs/latest/index.html) states it in one line: *Java 17/21/25, Scala 2.13, Python 3.10+, R 4.0+ (Deprecated)* — with the caveat that **Java 25 before 25.0.3 is deprecated as of 4.2.0**, so "Java 25" is not quite a free choice of patch level. On the Python side the [PySpark installation page](https://spark.apache.org/docs/latest/api/python/getting_started/install.html) is the reference: `python_requires=">=3.10"`, classifiers declaring **3.10 through 3.14**, and the dependency floors `pandas>=2.2.0,<3.0.0`, `pyarrow>=18.0.0`, and `grpcio`/`grpcio-status` `>=1.76.0` for Connect. Check these before debugging anything strange in a new environment — a missing or too-old PyArrow does not fail loudly, it silently costs you the Arrow path (**I13**).
 
