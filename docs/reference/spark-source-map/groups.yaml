@@ -157,7 +157,7 @@ _meta:
 
     State: every class and package named here resolves in v4.2.0; every package in every
     swept module is either claimed by a group or recorded as plumbing; every topics: code
-    resolves in learning-path.md. Re-check with:
+    resolves in learning-path-v2.md. Re-check with:
       python tools/spark_source_map/check_drift.py
       python tools/spark_source_map/check_drift.py --coverage
       python tools/spark_source_map/check_drift.py --sweeps

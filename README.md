@@ -4,7 +4,8 @@ A [Zensical](https://zensical.org/) static site built from personal study notes 
 
 Four layers, in dependency order:
 
-- `docs/learning-path.md` — the topic taxonomy (B/I/A/E codes), what to read for each, and where I am. 62 topics: 42 on the main line, 20 discovered from the Spark source
+- `docs/learning-path-v2.md` — the topic taxonomy (B/I/A/E codes), what to read for each, and where I am. 185 topics in strands across four levels, with every capability area of the feature history audited against Spark 4.2.0
+- `docs/learning-path.md` — **v1, deprecated and frozen.** Kept only for its per-topic source-finding callouts; v2 supersedes it and carries a v1 → v2 code crosswalk
 - `docs/reference/spark-source-map/` — what the source itself says, mined from the checkout: a config catalog, per-topic traces, and per-subsystem sweeps. Feeds the path and backs the book with `file:line` anchors
 - `docs/books/<slug>/` — source-faithful reading notes, one directory per external book
 - `docs/spark-book/` — the synthesis: one chapter per learning-path topic, blending every source read on it
@@ -37,7 +38,7 @@ Tools in `tools/spark_source_map/` mine the Apache Spark source using a hybrid t
 
 **Two tracing directions:**
 - **Topic-first** (`trace <code>`) — start from a learning-path topic, find the backing source classes and configs. Output: `topics/<code>.md`.
-- **Source-first sweep** (`sweep <subsystem>`) — scan a subsystem and report what is in it, whether or not anything covers it yet. Output: `sweeps/<slug>.md` + new topics appended to `learning-path.md`.
+- **Source-first sweep** (`sweep <subsystem>`) — scan a subsystem and report what is in it, whether or not anything covers it yet. Output: `sweeps/<slug>.md` + new topics appended to `learning-path-v2.md`.
 
 **The sweeper discovers topics to learn independently of the book and of the learning path.** That is the point of the source-first direction: it asks *what is in this code*, not *what does the curriculum still need*. So the learning path is an **output** of sweeping, not a filter on it — concepts no topic covers are the deliverable, sweeps grow the path as a matter of course, and sweep order follows discovery yield rather than whichever chapter is next. A run that surfaces nothing new has swept too shallowly.
 
@@ -49,7 +50,7 @@ The `spark-source-map` skill (in `~/.claude/skills/`) owns this pipeline. Say on
 
 | Say | It does |
 |---|---|
-| `trace B7` | Traces the topic, writes `topics/b7.md`, adds the trace to that topic's "Learn it with" in `learning-path.md`, flips any stale chapter to 🔄, wires nav, commits |
+| `trace B7` | Traces the topic, writes `topics/b7.md`, adds the trace to that topic's **Learn** line in `learning-path-v2.md`, flips any stale chapter to 🔄, wires nav, commits |
 | `sweep core execution-engine` | Sweeps that one group, writes the sweep page, writes up every topic it discovered, reconciles every existing topic it touched, commits |
 | `regroup core` | Surveys with `--coverage` and `--sweeps`, proposes a carving, edits `groups.yaml`, loops `check_drift.py` to green, regenerates, syncs the table below, commits |
 | `refresh the spark configs` | Regenerates the catalog, runs the parser tests and the drift checks, commits |
@@ -81,10 +82,10 @@ python tools/spark_source_map/gen_configs.py
 python tools/spark_source_map/check_drift.py
 
 # Regenerate the landing page / coverage matrix
-# Also appends topics discovered by sweeps to learning-path.md automatically.
+# Also appends topics discovered by sweeps to learning-path-v2.md automatically.
 # Pass --no-write-proposals to skip the learning-path update.
 python tools/spark_source_map/gen_coverage.py
-# Output: docs/reference/spark-source-map/index.md (+ learning-path.md if there are new topics)
+# Output: docs/reference/spark-source-map/index.md (+ learning-path-v2.md if there are new topics)
 
 # Re-resolve file:line anchors against a newer Spark (dry run; --apply to write)
 python tools/spark_source_map/refresh_anchors.py --to v4.3.0
@@ -141,10 +142,10 @@ status: complete            # or: partial, when the group's scope isn't fully co
 spark_version: "4.2.0"
 concepts:
   - name: broadcast
-    topics: [I4, E1]        # learning-path codes this concept backs
+    topics: [I4, E1]        # learning-path-v2 codes this concept backs
   - name: pair-rdd-functions
     topics: []              # no topic covers this yet — the sweep's product.
-    propose:                # gen_coverage.py appends it to learning-path.md
+    propose:                # gen_coverage.py appends it to learning-path-v2.md
       code: I13
       level: Intermediate
       title: "Pair RDD Aggregations"
@@ -360,7 +361,7 @@ That handles the bookkeeping, **not the meaning**: a resolved anchor points at t
 
 **6. Reconcile the prose layers.**
 
-- `docs/learning-path.md` header — bump **Last updated**, **Current Spark stable**, and the maintenance lines; note what changed in the new release and which topics it touches.
+- `docs/learning-path-v2.md` header — bump **Updated**, **Current Spark stable**, and the maintenance lines; note what changed in the new release and which topics it touches. (v1 is frozen: do not update it.)
 - `docs/spark-book/index.md` — chapters written against the old version need their status reviewed. Distinguish **wrong** (a changed default, a dropped requirement) from merely **incomplete** (new surface not yet covered): mark the first 🔄 and fix it before trusting the chapter, and treat the second as safe to read as-is. Every chapter also carries a `Spark <version>` line in its header.
 - `README.md` — the "Targets Spark X" line at the top.
 

@@ -54,7 +54,7 @@ This section covers **reading notes** for the Rioux book. Synthesized chapters o
 ## Chapter content conventions
 
 - Open with a source citation line and a 📌 callout noting version differences from Spark 3.2 (book) to current Spark 4.2.0 / Python 3.10+.
-- **Check the current stable version before writing** rather than trusting this line — it drifts. `docs/learning-path.md`'s header records what was last verified, and `docs/reference/spark-source-map/configs/catalog.yaml` records the version the config catalog was parsed from.
+- **Check the current stable version before writing** rather than trusting this line — it drifts. `docs/learning-path-v2.md`'s header records what was last verified (v1, `docs/learning-path.md`, is deprecated and frozen — never update it), and `docs/reference/spark-source-map/configs/catalog.yaml` records the version the config catalog was parsed from.
 - Chapters 01–16 were written against Spark 4.1.x; four carry a 🔄 revisit banner (see `docs/spark-book/index.md`). When touching any pre-4.2.0 chapter, bump its header version line as you go.
 - Exceptions moved in Spark 4.x live under `pyspark.errors`, not the old paths.
 - Use `❓` to mark open questions inline.
