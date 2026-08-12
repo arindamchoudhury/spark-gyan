@@ -584,9 +584,9 @@ Read I16 in sequence; the rest on demand, when you hit the underlying problem.
 
 `v1: I13`
 
-**What** — `PairRDDFunctions` adds key-value operations by implicit conversion; every aggregation bottoms out in `combineByKeyWithClassTag`, which either combines in place or routes through a `ShuffledRDD`.
+**What** — the pair-RDD aggregation family, all of which are `combineByKey` underneath: `combineByKey(createCombiner, mergeValue, mergeCombiners, numPartitions, partitionFunc)` is the general form — one function to start an accumulator from the first value of a key, one to fold a value into it map-side, one to merge two accumulators reduce-side. `reduceByKey` is the case where all three are the same associative function; `aggregateByKey` is the case where the accumulator type differs from the value type; `foldByKey` supplies a zero. `groupByKey` is the one that does **no** map-side work.
 
-**Why** — `reduceByKey` versus `groupByKey` is the canonical RDD-level skew and OOM lesson, and `combineByKey` explains every higher-level shuffle.
+**Why** — because the difference between them is *where* the data moves, and only one of them can be read off the API. `reduceByKey` and `aggregateByKey` combine on the map side, so what crosses the network is one accumulator per key per partition; `groupByKey` shuffles every value and then materialises the whole group for a key in memory on one executor — which is fine until one key is large, at which point it is the OOM in **A16**. PySpark's own docstring says as much, recommending `reduceByKey` or `aggregateByKey` whenever you are aggregating rather than genuinely needing every value. The second point is that `combineByKey` lets `mergeValue` and `mergeCombiners` **mutate and return their first argument**, which is documented and is how you avoid allocating a new accumulator per row — the difference between a fast aggregation and a garbage-collection problem.
 
 **Learn** — SDG Ch 13 · docs: [shuffle operations](https://spark.apache.org/docs/latest/rdd-programming-guide.html#shuffle-operations) · source: [trace I13](reference/spark-source-map/topics/i13.md), sweep [api bridge](reference/spark-source-map/sweeps/core-api-bridge.md)
 
@@ -1325,9 +1325,9 @@ Strands *how a query is compiled* → *statistics and adaptive execution* → *j
 
 `v1: A4`
 
-**What** — why some partitions take 10× longer; salting keys; the skew hint; shuffle partition tuning; spill to disk.
+**What** — the two shapes skew takes and the two mechanisms that address them. **Partition skew** is one shuffle partition far larger than its peers: AQE splits it, governed by `spark.sql.adaptive.skewJoin.enabled` (3.0, **`true`**), `skewedPartitionFactor` (**`5.0`** — a partition is skewed when it exceeds five times the median) and `skewedPartitionThresholdInBytes`, both of which must be true at once. **Key skew** is one *key* with more rows than a task can hold, which splitting a partition cannot fix because the key stays whole (**A16**). Around them: `spark.sql.shuffle.partitions` as the blunt instrument, salting as the manual answer to key skew, and broadcast joins as the way to avoid the shuffle entirely (**A15**).
 
-**Why** — data skew is the most common cause of slow Spark jobs and OOM errors in production.
+**Why** — because the two shapes look identical in the UI — one long task — and respond to opposite fixes. Raising `shuffle.partitions` divides partitions more finely and does nothing at all for a single hot key; salting fixes the hot key and wastes work on merely-lumpy partitions. Worse, AQE's skew detection reads the *estimated* sizes in **A19**, which above 2,000 partitions are an average rather than a measurement — so a skew it structurally cannot see is not the same as a skew below the threshold, and only one of those is fixed by lowering `skewedPartitionFactor`. Read **A19** before tuning either number.
 
 **Learn** — ADEB Module 3; LS2e Ch 7; SDG Ch 19 · docs: [optimizing skew join](https://spark.apache.org/docs/latest/sql-performance-tuning.html#optimizing-skew-join), [splitting skewed shuffle partitions](https://spark.apache.org/docs/latest/sql-performance-tuning.html#splitting-skewed-shuffle-partitions) · source: sweeps [shuffle & memory](reference/spark-source-map/sweeps/core-shuffle-memory.md), [adaptive](reference/spark-source-map/sweeps/sql-core-adaptive.md), [joins](reference/spark-source-map/sweeps/sql-core-joins-exec.md) · read with **A19**, which says what the skew detector can actually see
 
@@ -1647,9 +1647,9 @@ Read A32 → A33 → A34 in order; A35–A38 then attach it to a real queue and 
 
 `v1: A10`
 
-**What** — unit testing with `pytest` and a local `SparkSession`; testing transformations in isolation; integration testing; DataFrame equality assertions; testing UDFs via `.func`.
+**What** — how you test a PySpark pipeline. `pyspark.testing` ships `assertDataFrameEqual` and `assertSchemaEqual`, and the first one's parameters are the topic: `checkRowOrder=False` by default (so it sorts before comparing), `rtol=1e-5` / `atol=1e-8` for float comparison, `ignoreNullable=True`, plus `ignoreColumnOrder`, `ignoreColumnName`, `ignoreColumnType`, `maxErrors` and `showOnlyDiff`. Around that: a session fixture reused across the suite rather than created per test, small hand-built DataFrames instead of files, and pushing business logic into functions that take and return DataFrames so a test needs no I/O.
 
-**Why** — untested pipelines break silently in production. A unit suite takes minutes to run and catches most schema and logic errors before deployment.
+**Why** — the defaults encode the two things that make DataFrame assertions different from ordinary ones. **Row order is not part of equality unless you say so**: a distributed result has no inherent order, so a test that passes locally and fails on the cluster is usually one that assumed it. **Float equality is a tolerance**, not `==`, and the two tolerances are separate — relative for large magnitudes, absolute for values near zero. `ignoreNullable=True` is the third: schema nullability is a *hint* Spark does not enforce on read (**B4**), so comparing it strictly makes tests fail on a difference that has no runtime meaning. Beyond the assertions, the expensive mistake is session-per-test — a `SparkSession` costs seconds to build, which turns a hundred fast tests into a suite nobody runs.
 
 **Learn** — SDG Ch 16; DEB Module 4 · docs: [Testing PySpark](https://spark.apache.org/docs/latest/api/python/getting_started/testing_pyspark.html) — including `assertDataFrameEqual`, which is built in since 4.0 and replaces most of what third-party libraries were for · do this before **E48** (CI/CD), which automates it
 
@@ -1962,9 +1962,9 @@ Nothing in this level is required before anything else in it. Read the strand th
 
 `v1: E11`
 
-**What** — `KryoSerializer` uses Kryo with a pool, unsafe I/O and optional class registration; `JavaSerializer` (the default) uses Java object streams with periodic reset to bound stream-table memory.
+**What** — `spark.serializer` decides how *task closures, broadcast values and cached RDD partitions* are turned into bytes, and it still defaults to **`org.apache.spark.serializer.JavaSerializer`** at `v4.2.0` — Kryo is opt-in, not the default. Switching to `KryoSerializer` brings its own surface: `spark.kryo.registrationRequired` (**`false`**) turns an unregistered class from a silent cost into an error; `spark.kryo.classesToRegister` and `spark.kryo.registrator` are the two ways to register; `spark.kryo.referenceTracking` (**`true`**) handles object graphs that share or cycle, at a cost; `spark.kryo.unsafe` (**`true`** since 2.1) and `spark.kryo.pool` (**`true`**) are throughput knobs; and `spark.kryoserializer.buffer` / `buffer.max` bound a single serialised object.
 
-**Why** — serializer choice determines shuffle and broadcast throughput for RDDs of custom objects; Kryo needs explicit class registration for production determinism, and misconfiguration produces cryptic `NotSerializableException` or corruption.
+**Why** — three things follow. **This is not the DataFrame path.** A DataFrame's rows are serialised by Tungsten's binary format (**E1**), so switching serializer changes nothing for SQL — it matters for RDDs, closures, broadcast variables (**I47**) and cached objects. **Unregistered classes are the whole point.** Kryo without registration writes the full class name with every instance, which can cost more than Java serialization it replaced; `registrationRequired=true` is how you find out, and the failure it produces is the feature. **The buffer is per object, not per task**: one oversized record raises a buffer-overflow error naming a config, and raising `buffer.max` is the fix only until you ask why one record is that large.
 
 **Learn** — SDG Ch 19 · docs: [Data Serialization](https://spark.apache.org/docs/latest/tuning.html#data-serialization) · source: sweeps [storage & serialization](reference/spark-source-map/sweeps/core-storage-serializer.md), [joins](reference/spark-source-map/sweeps/sql-core-joins-exec.md)
 
@@ -1974,9 +1974,9 @@ Nothing in this level is required before anything else in it. Read the strand th
 
 `v1: E10`
 
-**What** — `AccumulatorV2[IN,OUT]` is the base for user-defined accumulators; each task receives a `copy()`, calls `add()` locally, and the driver merges every copy via `merge()` at task completion.
+**What** — `AccumulatorV2[IN, OUT]` is the write-only half of Spark's shared variables (**I47** is the read-only half). You implement six methods — `isZero`, `copy`, `reset`, `add`, `merge`, `value` — register the instance with `sc.register(acc, name)`, and Spark ships a *copy* to each task, merging the copies back on the driver. A named accumulator appears in the Spark UI's stage page; PySpark's built-in `Accumulator` is the simpler, typed cousin.
 
-**Why** — accumulators are the only executor-to-driver side channel, and the copy-merge lifecycle plus `countFailedValues` is what prevents double-counting bugs under speculation and task retries.
+**Why** — the contract's sharp edge is the one people meet in production: **accumulator updates are guaranteed exactly-once only inside an action, and only for tasks that succeed**. A task that fails and retries, or a speculative duplicate (**A49**), can add twice; a stage recomputed because of a fetch failure (**A25**) re-runs its accumulator updates as well. Updates inside transformations have no guarantee at all, because a transformation can be re-executed for reasons that have nothing to do with failure. That makes accumulators sound for *metrics you tolerate being approximate under retry* — rows filtered, malformed records seen — and unsound for anything you would reconcile against, which is what **I27**'s `observe` is for. The other trap is laziness: reading `.value` before an action has run returns the zero value, not a wrong number, so a debug print in the wrong place reads as a bug in your logic.
 
 **Learn** — SDG Ch 14 · docs: [Accumulators](https://spark.apache.org/docs/latest/rdd-programming-guide.html#accumulators) · source: sweep [execution engine](reference/spark-source-map/sweeps/core-execution-engine.md) · leads to: **E7**
 
