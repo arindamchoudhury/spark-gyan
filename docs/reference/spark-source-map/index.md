@@ -10,150 +10,191 @@ One row per learning-path topic. A topic is traced when its page exists under `t
 
 | Topic | Title | Chapter | Repos | Status |
 |---|---|---|---|---|
-| B1 | Spark Architecture & the Execution Model | [03](../../spark-book/ch03-spark-installation.md) 🔄 | apache/spark | ✅ complete |
+| B1 | Spark Architecture and the Execution Model | [03](../../spark-book/ch03-spark-installation.md) 🔄 | apache/spark | ✅ complete |
 | B2 | SparkSession and Entry Points | [04](../../spark-book/ch04-sparksession.md) 🔄 | apache/spark | ✅ complete |
 | B3 | The DataFrame API: Basics | [06](../../spark-book/ch06-dataframe-basics.md) 🔄 | apache/spark | ✅ complete |
-| B4 | Reading and Writing Data | [07](../../spark-book/ch07-reading-writing-data.md) 🔄 | apache/spark | ✅ complete |
-| B5 | Schema: StructType, DDL Strings, and Type Safety | [08](../../spark-book/ch08-schema-type-safety.md) 🔄 | apache/spark | ✅ complete |
-| B6 | Basic Aggregations and GroupBy | [09](../../spark-book/ch09-aggregations-groupby.md) 🔄 | apache/spark | ✅ complete |
-| B7 | Joins: Types and Mechanics | [10](../../spark-book/ch10-joins.md) 🔄 | apache/spark | ✅ complete |
-| B8 | Spark SQL | [11](../../spark-book/ch11-spark-sql.md) 🔄 | apache/spark | ✅ complete |
-| B9 | Null Handling | [12](../../spark-book/ch12-null-handling.md) 🔄 | apache/spark | ✅ complete |
-| B10 | Combining DataFrames: union, unionByName, and How Columns Are Matched | — | — | ⬜ |
+| B4 | Schema: StructType, DDL Strings, and Type Safety | [08](../../spark-book/ch08-schema-type-safety.md) 🔄 | apache/spark | ✅ complete |
+| B5 | ANSI Mode, EvalMode, and Error-Safe Evaluation with `try_*` | — | apache/spark | ✅ complete |
+| B6 | Null Handling | [12](../../spark-book/ch12-null-handling.md) 🔄 | apache/spark | ✅ complete |
+| B7 | Aggregations and GroupBy | [09](../../spark-book/ch09-aggregations-groupby.md) 🔄 | apache/spark | ✅ complete |
+| B8 | Joins: Types and Mechanics | [10](../../spark-book/ch10-joins.md) 🔄 | apache/spark | ✅ complete |
+| B9 | Combining DataFrames: `union`, `unionByName`, and How Columns Are Matched | — | apache/spark | ✅ complete |
+| B10 | Reading and Writing Data | [07](../../spark-book/ch07-reading-writing-data.md) 🔄 | — | ⬜ |
+| B11 | Spark SQL | [11](../../spark-book/ch11-spark-sql.md) 🔄 | — | ⬜ |
+| B12 | The Built-in Function Catalogue: Finding What Already Exists | — | — | ⬜ |
 | I1 | Complex Column Types: Arrays, Maps, Structs | [13](../../spark-book/ch13-complex-types.md) 🔄 | apache/spark | ✅ complete |
-| I2 | Window Functions | [14](../../spark-book/ch14-window-functions.md) 🔄 | apache/spark | ✅ complete |
-| I3 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) 🔄 | apache/spark | ✅ complete |
-| I4 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) 🔄 | apache/spark | ✅ complete |
-| I5 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) 🔄 | apache/spark | ✅ complete |
-| I6 | Caching and Persistence | — | apache/spark | ✅ complete |
-| I7 | The Spark UI: Reading Plans and Diagnosing Jobs | — | apache/spark | ✅ complete |
-| I8 | Delta Lake Basics | — | delta-io/delta, apache/spark | ✅ complete |
-| I9 | The Medallion Architecture | — | delta-io/delta, apache/spark | ✅ complete |
-| I10 | Data Formats: Parquet, Delta, Avro, JSON | — | apache/spark | ✅ complete |
-| I11 | Apache Iceberg and Table-Format Interoperability | — | apache/iceberg, delta-io/delta, apache/spark | ✅ complete |
-| I12 | SQL Scripting | — | — | ⬜ |
-| I13 | Pair RDD Aggregations: combineByKey, reduceByKey, groupByKey | — | apache/spark | ✅ complete |
-| I14 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
-| I15 | AsyncRDDActions: Non-Blocking Job Submission | — | — | ⬜ |
-| I16 | Approximate Actions and Partial Results | — | — | ⬜ |
-| I17 | Whole-File and Binary RDD Sources | — | — | ⬜ |
-| I18 | Dependency Management at Submit Time: --packages, Ivy, and Jars | — | — | ⬜ |
-| I19 | Sampling: sample, takeSample, and Stratified Sampling | — | — | ⬜ |
-| I20 | ANSI Mode, EvalMode, and Error-Safe Evaluation with try_* | — | — | ⬜ |
-| I21 | String Collation | — | — | ⬜ |
-| I22 | The VARIANT Type and Semi-Structured Data | — | — | ⬜ |
-| I23 | Schema Inference for CSV, JSON and XML | — | — | ⬜ |
-| I24 | Malformed Records: PERMISSIVE, DROPMALFORMED, FAILFAST and _corrupt_record | — | — | ⬜ |
-| I25 | Decimal Precision, Scale, and Silent Rounding | — | — | ⬜ |
-| I26 | Observing Metrics Mid-Query: df.observe() and the Observation API | — | — | ⬜ |
-| I27 | Partition Column Type Inference: How a Directory Name Becomes a Typed Column | — | — | ⬜ |
-| I28 | Driver-Side File Listing: The Cost Before Any Task Runs | — | — | ⬜ |
-| I29 | Bucketed Tables: bucketBy, and the Two Rules That Undo Bucketing | — | — | ⬜ |
-| I30 | Python UDTFs: Table Functions That Return Many Rows | — | — | ⬜ |
-| I31 | SQL Scripting Condition Handlers: EXIT, CONTINUE and SQLSTATE Matching | — | — | ⬜ |
-| I32 | SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken | — | — | ⬜ |
-| I33 | SQL UDFs: CREATE FUNCTION … RETURN and Plan Inlining | — | — | ⬜ |
-| I34 | Row-Multiplying Operators: explode, LATERAL VIEW, and the Expand Behind ROLLUP | — | — | ⬜ |
-| I35 | Column DEFAULT Values: DDL, INSERT, and the Provider Allowlist | — | — | ⬜ |
-| I36 | JDBC as a Source and a Sink: Type Mapping, Batching, and the Transaction per Partition | — | — | ⬜ |
-| I37 | Hadoop InputFormats from PySpark: sequenceFile, Writables, and Custom Converters | — | — | ⬜ |
-| I38 | Getting Data Back to the Python Driver: collect, toLocalIterator, and the Serving Socket | — | — | ⬜ |
+| I2 | The `VARIANT` Type and Semi-Structured Data | — | apache/spark | ✅ complete |
+| I3 | String Collation | — | apache/spark | ✅ complete |
+| I4 | Decimal Precision, Scale, and Silent Rounding | — | apache/spark | ✅ complete |
+| I5 | Dates, Timestamps, and `TIMESTAMP_NTZ` | — | apache/spark | ✅ complete |
+| I6 | `INTERVAL` Types and Date Arithmetic | — | apache/spark | ✅ complete |
+| I7 | Geospatial Types: `GEOMETRY`, `GEOGRAPHY`, and the Five `ST_*` Functions That Exist | — | apache/spark | ✅ complete |
+| I8 | Window Functions | [14](../../spark-book/ch14-window-functions.md) 🔄 | delta-io/delta, apache/spark | ✅ complete |
+| I9 | Row-Multiplying Operators: `explode`, `LATERAL VIEW`, and the `Expand` Behind `ROLLUP` | — | delta-io/delta, apache/spark | ✅ complete |
+| I10 | User-Defined Functions | [15](../../spark-book/ch15-udfs.md) 🔄 | apache/spark | ✅ complete |
+| I11 | Python UDTFs: Table Functions That Return Many Rows | — | apache/iceberg, delta-io/delta, apache/spark | ✅ complete |
+| I12 | The pandas API on Spark | — | — | ⬜ |
+| I13 | The Arrow Boundary: `toPandas`, `createDataFrame`, and What Survives the Conversion | — | apache/spark | ✅ complete |
+| I14 | Whole-Partition Python APIs: `mapInPandas`, `mapInArrow`, and `applyInArrow` | — | — | ⬜ |
+| I15 | Getting Data Back to the Python Driver: `collect`, `toLocalIterator`, and the Serving Socket | — | — | ⬜ |
+| I16 | RDD Fundamentals | [05](../../spark-book/ch05-rdds.md) 🔄 | — | ⬜ |
+| I17 | Pair RDD Aggregations: `combineByKey`, `reduceByKey`, `groupByKey` | — | — | ⬜ |
+| I18 | Closure Cleaning and the Task-Not-Serializable Problem | — | — | ⬜ |
+| I19 | Sampling: `sample`, `takeSample`, and Stratified Sampling | — | — | ⬜ |
+| I20 | Whole-File and Binary RDD Sources | — | — | ⬜ |
+| I21 | Hadoop InputFormats from PySpark: `sequenceFile`, Writables, Converters | — | — | ⬜ |
+| I22 | Approximate Actions and Partial Results | — | — | ⬜ |
+| I23 | `AsyncRDDActions`: Non-Blocking Job Submission | — | — | ⬜ |
+| I24 | Partitioning: Concepts and Control | [16](../../spark-book/ch16-partitioning.md) 🔄 | — | ⬜ |
+| I25 | Caching and Persistence | — | — | ⬜ |
+| I26 | The Spark UI: Reading Plans and Diagnosing Jobs | — | — | ⬜ |
+| I27 | Observing Metrics Mid-Query: `df.observe()` and the Observation API | — | — | ⬜ |
+| I28 | Schema Inference for CSV, JSON and XML | — | — | ⬜ |
+| I29 | Malformed Records: `PERMISSIVE`, `DROPMALFORMED`, `FAILFAST` and `_corrupt_record` | — | — | ⬜ |
+| I30 | Partition Column Type Inference: How a Directory Name Becomes a Typed Column | — | — | ⬜ |
+| I31 | Driver-Side File Listing: The Cost Before Any Task Runs | — | — | ⬜ |
+| I32 | Bucketed Tables: `bucketBy`, and the Two Rules That Undo It | — | — | ⬜ |
+| I33 | Column `DEFAULT` Values: DDL, `INSERT`, and the Provider Allowlist | — | — | ⬜ |
+| I34 | JDBC as a Source and a Sink: Type Mapping, Batching, and the Transaction per Partition | — | — | ⬜ |
+| I35 | Dependency Management at Submit Time: `--packages`, Ivy, and Jars | — | — | ⬜ |
+| I36 | Data Formats: Parquet, Delta, Avro, JSON | — | — | ⬜ |
+| I37 | Delta Lake Basics | — | — | ⬜ |
+| I38 | Apache Iceberg and Table-Format Interoperability | — | — | ⬜ |
+| I39 | The Medallion Architecture | — | — | ⬜ |
+| I40 | SQL Scripting | — | — | ⬜ |
+| I41 | SQL Scripting Condition Handlers: `EXIT`, `CONTINUE` and SQLSTATE Matching | — | — | ⬜ |
+| I42 | SQL Cursors: Row-at-a-Time Iteration and Where the Snapshot Is Taken | — | — | ⬜ |
+| I43 | SQL UDFs: `CREATE FUNCTION … RETURN` and Plan Inlining | — | — | ⬜ |
+| I44 | The `TIME` Type and What Each Format Does With It | — | — | ⬜ |
+| I45 | Avro Beyond the Format Name: Schemas, Unions, and the Three SQL Functions | — | — | ⬜ |
+| I46 | File Metadata Columns: `_metadata`, and the Two Kinds of Field Inside It | — | — | ⬜ |
+| I47 | Broadcast Variables: The Other Shared Variable, and Why `unpersist` Is Not `destroy` | — | — | ⬜ |
+| I48 | Table Constraints: `CHECK` Is Enforced, the Keys Are Not | — | — | ⬜ |
+| I49 | `spark-submit`: Deploy Modes, Where Configs Actually Come From, and the Launcher | — | — | ⬜ |
+| I50 | The Python Worker: Reuse, the Daemon, Idle Timeouts, and Unix Domain Sockets | — | — | ⬜ |
+| I51 | Debugging PySpark: Worker Logging, the Two Profilers, and `pyspark.errors` | — | — | ⬜ |
+| I52 | How a SQL Name Resolves: `SET PATH`, `system.builtin`, and Shadowing | — | — | ⬜ |
+| I53 | The 4.x SQL Surface: Pipe Syntax, Session Variables, `EXECUTE IMMEDIATE`, `QUALIFY` | — | — | ⬜ |
 | A1 | Query Optimisation: Catalyst and the Physical Plan | — | — | ⬜ |
-| A2 | Adaptive Query Execution (AQE) | — | — | ⬜ |
-| A3 | Join Strategies and Tuning | — | — | ⬜ |
-| A4 | Data Skew and Shuffle Optimisation | — | — | ⬜ |
-| A5 | Advanced pandas UDFs and UDFs on Windows | — | — | ⬜ |
-| A6 | Delta Lake Advanced Operations | — | — | ⬜ |
-| A7 | Structured Streaming: Fundamentals | — | — | ⬜ |
-| A8 | Structured Streaming: Stateful Processing | — | — | ⬜ |
-| A9 | ML Pipelines with Spark MLlib | — | — | ⬜ |
-| A10 | Testing PySpark Pipelines | — | — | ⬜ |
-| A11 | Spark Declarative Pipelines | — | — | ⬜ |
-| A12 | Kafka and Streaming Ingestion | — | — | ⬜ |
-| A13 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up | — | — | ⬜ |
-| A14 | Determinism, Indeterminate Stages, and Correctness Under Retry | — | — | ⬜ |
-| A15 | Push-Based Shuffle | — | — | ⬜ |
-| A16 | Stage-Level Scheduling and Accelerator-Aware Resources (GPU/FPGA) | — | — | ⬜ |
-| A17 | Table and Column Statistics and the Cost-Based Optimizer | — | — | ⬜ |
-| A18 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters | — | — | ⬜ |
-| A19 | Correlated Subqueries and Decorrelation | — | — | ⬜ |
-| A20 | Map Output Sizes: What AQE and Skew Detection Actually See | — | — | ⬜ |
-| A21 | Subexpression Elimination and Common Expression Reuse | — | — | ⬜ |
-| A22 | Approximate Aggregation with Sketches | — | — | ⬜ |
+| A2 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration | — | — | ⬜ |
+| A3 | Attribute Identity: `ExprId`, `DeduplicateRelations`, and Ambiguous Self-Joins | — | — | ⬜ |
+| A4 | Distribution, Partitioning, and Why Spark Inserts an Exchange | — | — | ⬜ |
+| A5 | Subexpression Elimination and Common Expression Reuse | — | — | ⬜ |
+| A6 | Correlated Subqueries and Decorrelation | — | — | ⬜ |
+| A7 | `LIMIT`, `OFFSET` and the Incremental Take Loop | — | — | ⬜ |
+| A8 | Recursive CTEs: `WITH RECURSIVE` and the `UnionLoop` Operator | — | — | ⬜ |
+| A9 | `UNION ALL`: Partitioning-Aware Output and Codegen Fusion | — | — | ⬜ |
+| A10 | Table and Column Statistics and the Cost-Based Optimizer | — | — | ⬜ |
+| A11 | Adaptive Query Execution | — | — | ⬜ |
+| A12 | AQE Cost Evaluation: When a Better Plan Is Thrown Away | — | — | ⬜ |
+| A13 | Runtime Empty-Relation Elimination and the All-Null Anti Join Short-Circuit | — | — | ⬜ |
+| A14 | Runtime Filtering: Dynamic Partition Pruning and Bloom Filters | — | — | ⬜ |
+| A15 | Join Strategies and Tuning | — | — | ⬜ |
+| A16 | Join-Side Buffering and Spill: Why One Key Kills a Task | — | — | ⬜ |
+| A17 | Storage-Partitioned Joins | — | — | ⬜ |
+| A18 | Data Skew and Shuffle Optimisation | — | — | ⬜ |
+| A19 | Map Output Sizes: What AQE and Skew Detection Actually See | — | — | ⬜ |
+| A20 | Two-Level Hash Aggregation and the Codegen Fast Hash Map | — | — | ⬜ |
+| A21 | Approximate Aggregation with Sketches | — | — | ⬜ |
+| A22 | Segment-Tree Window Frames: O(log W) Sliding Windows | — | — | ⬜ |
 | A23 | Vector Expressions for Embeddings and Similarity | — | — | ⬜ |
-| A24 | SQL Parsing: the Grammar, Reserved Keywords, and Parser Configuration | — | — | ⬜ |
-| A25 | Storage-Partitioned Joins | — | — | ⬜ |
-| A26 | Distribution, Partitioning, and Why Spark Inserts an Exchange | — | — | ⬜ |
-| A27 | Hive Table Conversion: When Spark Reads Hive Tables Natively | — | — | ⬜ |
-| A28 | LIMIT, OFFSET and the Incremental Take Loop | — | — | ⬜ |
-| A29 | Recursive CTEs: WITH RECURSIVE and the UnionLoop Operator | — | — | ⬜ |
-| A30 | Join-Side Buffering and Spill: Why One Key Kills a Task | — | — | ⬜ |
-| A31 | AQE Cost Evaluation: When a Better Plan Is Thrown Away | — | — | ⬜ |
-| A32 | Runtime Empty-Relation Elimination and the All-Null Anti Join Short-Circuit | — | — | ⬜ |
-| A33 | Two-Level Hash Aggregation and the Codegen Fast Hash Map | — | — | ⬜ |
-| A34 | Segment-Tree Window Frames: O(log W) Sliding Windows | — | — | ⬜ |
-| A35 | Python Data Sources: Writing a Connector Without the JVM | — | — | ⬜ |
-| A36 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart | — | — | ⬜ |
-| A37 | Column Without an Engine: ColumnNode and the api/classic/connect Split | — | — | ⬜ |
-| A38 | Dataflow Graph Resolution: Parallel Fixed-Point Analysis | — | — | ⬜ |
-| A39 | Pipeline Schema Inference and Evolution: Merge, Diff, and Alter | — | — | ⬜ |
-| A40 | Stream Rate Limiting and Backpressure: the PID Loop and Per-Partition Caps | — | — | ⬜ |
-| A41 | Decoupling Spark Tasks from Kafka Partitions: minPartitions and maxRecordsPerPartition | — | — | ⬜ |
-| A42 | UNION ALL: Partitioning-Aware Output and Codegen Fusion | — | — | ⬜ |
-| A43 | Attribute Identity: ExprId, DeduplicateRelations, and Ambiguous Self-Joins | — | — | ⬜ |
-| A44 | Type Conversion at the File Boundary: Widening, Unsigned Types, and Refused Reads | — | — | ⬜ |
-| A45 | Writing a Streaming Sink: the DSv2 StreamingWrite Path and Epoch-Id Idempotence | — | — | ⬜ |
+| A24 | Advanced pandas UDFs and UDFs over Windows | — | — | ⬜ |
+| A25 | Stage Retry: Fetch Failures, Executor Loss, and When Spark Gives Up | — | — | ⬜ |
+| A26 | Determinism, Indeterminate Stages, and Correctness Under Retry | — | — | ⬜ |
+| A27 | Push-Based Shuffle | — | — | ⬜ |
+| A28 | Stage-Level Scheduling and Accelerator-Aware Resources | — | — | ⬜ |
+| A29 | Type Conversion at the File Boundary: Widening, Unsigned Types, Refused Reads | — | — | ⬜ |
+| A30 | Hive Table Conversion: When Spark Reads Hive Tables Natively | — | — | ⬜ |
+| A31 | Python Data Sources: Writing a Connector Without the JVM | — | — | ⬜ |
+| A32 | Structured Streaming: Fundamentals | — | — | ⬜ |
+| A33 | The Streaming Checkpoint Protocol: Offset Log, Commit Log, and Restart | — | — | ⬜ |
+| A34 | Structured Streaming: Stateful Processing | — | — | ⬜ |
+| A35 | Kafka and Streaming Ingestion | — | — | ⬜ |
+| A36 | Decoupling Spark Tasks from Kafka Partitions: `minPartitions` and `maxRecordsPerPartition` | — | — | ⬜ |
+| A37 | Stream Rate Limiting and Backpressure: the PID Loop and Per-Partition Caps | — | — | ⬜ |
+| A38 | Writing a Streaming Sink: the DSv2 `StreamingWrite` Path and Epoch-Id Idempotence | — | — | ⬜ |
+| A39 | Delta Lake Advanced Operations | — | — | ⬜ |
+| A40 | Spark Declarative Pipelines | — | — | ⬜ |
+| A41 | Dataflow Graph Resolution: Parallel Fixed-Point Analysis | — | — | ⬜ |
+| A42 | Pipeline Schema Inference and Evolution: Merge, Diff, and Alter | — | — | ⬜ |
+| A43 | Testing PySpark Pipelines | — | — | ⬜ |
+| A44 | ML Pipelines with Spark MLlib | — | — | ⬜ |
+| A45 | Column Without an Engine: `ColumnNode` and the api/classic/connect Split | — | — | ⬜ |
+| A46 | DSv2 Pushdown to JDBC: Aggregates, Top-N, Sample, and the 4.1 Join Pushdown | — | — | ⬜ |
+| A47 | Cloud Output Committers: Why a Write to Object Storage Is Not a Rename | — | — | ⬜ |
+| A48 | Pushdown Into a File: Aggregates, Nested Columns, and the V1/V2 Split That Decides Which You Get | — | — | ⬜ |
+| A49 | Speculative Execution: Racing a Straggler, and the Two Defaults That Mean Nothing Happens | — | — | ⬜ |
+| A50 | The DSv2 Connector Interface: `TableProvider`, Capabilities, `Scan` and `Write` | — | — | ⬜ |
+| A51 | Catalog Plugins: `CatalogManager`, `spark_catalog`, and How a Name Resolves | — | — | ⬜ |
+| A52 | Connector-Provided Callables: the DSv2 `FunctionCatalog` and `CALL` | — | — | ⬜ |
+| A53 | What a Connector Demands of a Write: Required Distribution and Ordering | — | — | ⬜ |
+| A54 | Feature Engineering: `ml.feature`, `ml.linalg`, and the One Vector Column | — | — | ⬜ |
+| A55 | MLlib's Algorithm Families: What Exists, and What to Reach For | — | — | ⬜ |
+| A56 | Recommendation with ALS: Implicit Feedback, Cold Start, and the `NaN` Default | — | — | ⬜ |
+| A57 | Judging a Model: Evaluators, the Grid, and What `save` Actually Writes | — | — | ⬜ |
+| A58 | Shuffle Bytes: Two Checksums, the Codec, and the Transport | — | — | ⬜ |
+| A59 | `transformWithState`: State Variables, Timers, and TTL | — | — | ⬜ |
+| A60 | Seeing Into a Running Query: the State Data Source and Named Sources | — | — | ⬜ |
 | E1 | Spark Internals: Memory, Execution, and Serialisation | — | — | ⬜ |
-| E2 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
-| E3 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
-| E4 | Delta Lake Internals: Transaction Log, MVCC, and Concurrency | — | — | ⬜ |
-| E5 | Catalogs, Governance, and Data Security | — | — | ⬜ |
-| E6 | Pipeline Orchestration with Dagster | — | — | ⬜ |
-| E7 | CI/CD for Data Engineering | — | — | ⬜ |
-| E8 | Change Data Capture (CDC) and Slowly Changing Dimensions | — | — | ⬜ |
-| E9 | Spark Connect and the Modern Client Architecture | — | — | ⬜ |
-| E10 | AccumulatorV2: Distributed Side-Effect Counters | — | — | ⬜ |
-| E11 | Serialization: KryoSerializer vs JavaSerializer | — | — | ⬜ |
+| E2 | Unroll Memory: Materialising a Cached Partition Without an OOM | — | — | ⬜ |
+| E3 | Block Locking and Cache Visibility | — | — | ⬜ |
+| E4 | Unmanaged Memory: Native Allocators Outside the Unified Pool | — | — | ⬜ |
+| E5 | Serialization: `KryoSerializer` vs `JavaSerializer` | — | — | ⬜ |
+| E6 | `AccumulatorV2`: Distributed Side-Effect Counters | — | — | ⬜ |
+| E7 | Task Metrics and the Accumulator Pipeline | — | — | ⬜ |
+| E8 | Executor Class Loading, Classpath Precedence, and Session Isolation | — | — | ⬜ |
+| E9 | Columnar Execution and the `ColumnarRule` Plugin API | — | — | ⬜ |
+| E10 | `SparkSessionExtensions`: The Sixteen Injection Points | — | — | ⬜ |
+| E11 | Extending AQE: The Four Rule Injection Points | — | — | ⬜ |
 | E12 | Executor Exclusion and Health Tracking | — | — | ⬜ |
 | E13 | Barrier Execution Mode | — | — | ⬜ |
-| E14 | Unmanaged Memory: Native Allocators Outside the Unified Pool | — | — | ⬜ |
-| E15 | Block Locking and Cache Visibility | — | — | ⬜ |
-| E16 | Standalone High Availability and Recovery | — | — | ⬜ |
-| E17 | Output Commit Coordination and Speculative Write Safety | — | — | ⬜ |
-| E18 | Reattachable Execution: How Spark Connect Survives a Dropped Connection | — | — | ⬜ |
-| E19 | Spark Connect Artifacts: Shipping Code to a Remote Session | — | — | ⬜ |
-| E20 | JVM Profiling on a Cluster: async-profiler, Flame Graphs and JFR | — | — | ⬜ |
-| E21 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders and Jars | — | — | ⬜ |
-| E22 | Columnar Execution and the ColumnarRule Plugin API | — | — | ⬜ |
-| E23 | Transactional Writes: DSv2 Catalog Transactions | — | — | ⬜ |
-| E24 | Extending AQE: The Four Rule Injection Points | — | — | ⬜ |
-| E25 | Column Matching Between File and Table Schema: by Name, by Position, by Field ID | — | — | ⬜ |
-| E26 | transformWithStateInPySpark: The Per-Task State Server | — | — | ⬜ |
-| E27 | The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance | — | — | ⬜ |
-| E28 | Offline State Repartition: Changing shuffle.partitions on a Stateful Query | — | — | ⬜ |
-| E29 | SparkSessionExtensions: The Sixteen Injection Points | — | — | ⬜ |
-| E30 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping | — | — | ⬜ |
-| E31 | Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop | — | — | ⬜ |
-| E32 | Out-of-Order CDC: Tombstones, Sequence Watermarks, and Deletes You Cannot See | — | — | ⬜ |
-| E33 | Executor Pod Reconciliation: Watch, Poll, and the Events You Miss | — | — | ⬜ |
-| E34 | Vertical Scaling on Kubernetes: In-Place Pod Resize and PVC Growth | — | — | ⬜ |
-| E35 | Spark on Kubernetes: Identity, RBAC, and Credential Propagation | — | — | ⬜ |
-| E36 | YARN Container Placement: Locality Preferences and Rack Resolution | — | — | ⬜ |
-| E37 | Application Attempts on YARN: Retry, Final Status, and the Staging Directory | — | — | ⬜ |
-| E38 | The YARN Web Proxy: Why the Spark UI Redirects and Who It Thinks You Are | — | — | ⬜ |
-| E39 | Container Classpath Construction on YARN: Ordering, User-First, and Path Rewriting | — | — | ⬜ |
+| E14 | Output Commit Coordination and Speculative Write Safety | — | — | ⬜ |
+| E15 | Production Deployment: Cluster Management and Scaling | — | — | ⬜ |
+| E16 | Spark on Kubernetes: Identity, RBAC, and Credential Propagation | — | — | ⬜ |
+| E17 | Executor Pod Reconciliation: Watch, Poll, and the Events You Miss | — | — | ⬜ |
+| E18 | Vertical Scaling on Kubernetes: In-Place Pod Resize and PVC Growth | — | — | ⬜ |
+| E19 | YARN Container Placement: Locality Preferences and Rack Resolution | — | — | ⬜ |
+| E20 | Application Attempts on YARN: Retry, Final Status, and the Staging Directory | — | — | ⬜ |
+| E21 | Container Classpath Construction on YARN: Ordering, User-First, and Path Rewriting | — | — | ⬜ |
+| E22 | The YARN Web Proxy: Why the Spark UI Redirects and Who It Thinks You Are | — | — | ⬜ |
+| E23 | Standalone High Availability and Recovery | — | — | ⬜ |
+| E24 | Observability: Monitoring, Alerting, and Logging | — | — | ⬜ |
+| E25 | JVM Profiling on a Cluster: async-profiler, Flame Graphs, and JFR | — | — | ⬜ |
+| E26 | Spark Connect and the Modern Client Architecture | — | — | ⬜ |
+| E27 | Reattachable Execution: How Connect Survives a Dropped Connection | — | — | ⬜ |
+| E28 | Connect Artifacts: Shipping Code to a Remote Session | — | — | ⬜ |
+| E29 | Catalogs, Governance, and Data Security | — | — | ⬜ |
+| E30 | Connecting to an External Hive Metastore: Versions, Isolated Classloaders, Jars | — | — | ⬜ |
+| E31 | Transactional Writes: DSv2 Catalog Transactions | — | — | ⬜ |
+| E32 | Column Matching Between File and Table Schema: by Name, by Position, by Field Id | — | — | ⬜ |
+| E33 | Delta Lake Internals: Transaction Log, MVCC, and Concurrency | — | — | ⬜ |
+| E34 | Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels | — | — | ⬜ |
+| E35 | The State Store Engine: RocksDB, Changelog Checkpointing, and Maintenance | — | — | ⬜ |
+| E36 | Avro State Encoding and State Schema Evolution | — | — | ⬜ |
+| E37 | Offline State Repartition: Changing `shuffle.partitions` on a Stateful Query | — | — | ⬜ |
+| E38 | `transformWithStateInPySpark`: The Per-Task State Server | — | — | ⬜ |
+| E39 | Continuous Processing and the Epoch Coordinator | — | — | ⬜ |
 | E40 | The Kafka Executor Consumer Cache: Reuse, Eviction, and the Random-Access Cliff | — | — | ⬜ |
-| E41 | failOnDataLoss: What the Kafka Source Does When an Offset Is Gone | — | — | ⬜ |
+| E41 | `failOnDataLoss`: What the Kafka Source Does When an Offset Is Gone | — | — | ⬜ |
 | E42 | Multi-Cluster Kafka Authentication: Delegation Tokens Across Several Secured Clusters | — | — | ⬜ |
-| E43 | The DStream Execution Model: What Structured Streaming Replaced | — | — | ⬜ |
-| E44 | Receivers and the Write-Ahead Log: Spark's First Answer to Exactly-Once Ingest | — | — | ⬜ |
-| E45 | TRANSFORM … USING: Piping Rows Through an External Process | — | — | ⬜ |
-| E46 | Parquet Page Decoding: Encodings, Dictionaries, and Definition/Repetition Levels | — | — | ⬜ |
-| E47 | Avro State Encoding and State Schema Evolution | — | — | ⬜ |
-| E48 | Continuous Processing and the Epoch Coordinator | — | — | ⬜ |
-| E49 | Task Metrics and the Accumulator Pipeline | — | — | ⬜ |
-| E50 | Executor Class Loading, Classpath Precedence, and Session Isolation | — | — | ⬜ |
-| E51 | Unroll Memory: Materialising a Cached Partition Without an OOM | — | — | ⬜ |
+| E43 | Pipeline Run Semantics: Flow States, Retry, and Downstream Skipping | — | — | ⬜ |
+| E44 | Pipeline Checkpoints and Full Refresh: Numbered Generations, Truncate and Drop | — | — | ⬜ |
+| E45 | Out-of-Order CDC: Tombstones, Sequence Watermarks, and Deletes You Cannot See | — | — | ⬜ |
+| E46 | Change Data Capture and Slowly Changing Dimensions | — | — | ⬜ |
+| E47 | Pipeline Orchestration with Dagster | — | — | ⬜ |
+| E48 | CI/CD for Data Engineering | — | — | ⬜ |
+| E49 | The DStream Execution Model: What Structured Streaming Replaced | — | — | ⬜ |
+| E50 | Receivers and the Write-Ahead Log: Spark's First Answer to Exactly-Once Ingest | — | — | ⬜ |
+| E51 | `TRANSFORM … USING`: Piping Rows Through an External Process | — | — | ⬜ |
+| E52 | Column Encryption and Key Management: Parquet Envelopes, ORC Masks, and Who Holds the Key | — | — | ⬜ |
+| E53 | Scheduling Within One Application: FAIR Pools, Weights, and the Thread-Local That Selects Them | — | — | ⬜ |
+| E54 | Row-Level Operations in DSv2: Group-Based Rewrite vs Delta-Based | — | — | ⬜ |
+| E55 | Dynamic Allocation: Two Timeouts, Four Conditions, and the Executor That Never Leaves | — | — | ⬜ |
+| E56 | Decommissioning: Graceful Shutdown, Block Migration, and Fallback Storage | — | — | ⬜ |
+| E57 | Spark on Kubernetes: Images, Feature Steps, Pod Templates, and Volumes | — | — | ⬜ |
+| E58 | Beyond `spark-submit` on Kubernetes: the Operator, Pod Allocators, and Gang Scheduling | — | — | ⬜ |
+| E59 | Distributed Deep Learning and ML on Connect: `TorchDistributor`, DeepSpeed, and `pyspark.ml.connect` | — | — | ⬜ |
+| E60 | Running Spark Connect: `spark.api.mode`, the JDBC Driver, Sessions, and What You Can See | — | — | ⬜ |
 
 ## Source concept map
 
@@ -1065,7 +1106,7 @@ flowchart LR
 
 ## Topics discovered from the source
 
-Source-first sweeps discover concepts independently of the learning path; these are the ones it did not already cover. **New** = no topic covered the concept at all. **Refinement** = a broader topic touched it, but it warrants its own. Both are auto-appended to `learning-path.md` when `gen_coverage.py` runs — growing the path is the point of sweeping, not a side effect.
+Source-first sweeps discover concepts independently of the learning path; these are the ones it did not already cover. **New** = no topic covered the concept at all. **Refinement** = a broader topic touched it, but it warrants its own. Both are auto-appended to `learning-path-v2.md` when `gen_coverage.py` runs — growing the path is the point of sweeping, not a side effect.
 
 | Concept | Subsystem | Kind | Proposed code | Proposed title |
 |---|---|---|---|---|
