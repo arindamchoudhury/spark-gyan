@@ -4,6 +4,11 @@
 
 **Goal:** Build the labs skeleton and two worked labs, wired into the learning path, so the remaining ten labs are a repeatable recipe.
 
+> **Status 2026-08-12: Tasks 1-2 complete, Tasks 3-6 withdrawn.** The user decided labs are written as part of
+> writing the corresponding book chapter rather than as a batch. `_labkit.py` and `datasets.yaml` exist and are
+> tested; the notebook, site-integration and checker tasks below are kept as the **recipe** a chapter-writing
+> session follows for its lab, not as work to dispatch on their own.
+
 **Architecture:** Notebooks live in the stack repo at `workspace/notebooks/labs/` and execute against the running Spark 4.2.0 + Delta + Unity Catalog stack over Spark Connect. A single `_labkit.py` module holds all plumbing (session, dataset fetch, plan and partition helpers) so notebooks stay about Spark. Datasets are declared in `datasets.yaml`, fetched on demand, never committed. The notes site gains a labs index and one `**Lab**` line per covered topic; a checker script keeps the two in sync.
 
 **Tech Stack:** Python 3.10+, PySpark 4.2.0 (Spark Connect client), PyYAML, pytest, Jupyter notebooks, Delta Lake 4.3.1, Unity Catalog OSS 0.5.1, Zensical for the site.
@@ -409,10 +414,12 @@ def session(app_name: str, local: bool = False):
 
 
 def explain_contains(df, node: str) -> bool:
-    """True when the physical plan contains an operator whose name includes `node`."""
-    return node in df._jdf.queryExecution().executedPlan().toString() if hasattr(df, "_jdf") else (
-        node in df.__getattr__("explain") and False
-    ) or node in _plan_text(df)
+    """True when the physical plan contains an operator whose name includes `node`.
+
+    Reads the printed plan rather than the JVM object: a Connect DataFrame has no
+    `_jdf`, and the same call must work in both session modes.
+    """
+    return node in _plan_text(df)
 
 
 def _plan_text(df) -> str:
@@ -440,21 +447,7 @@ def partition_sizes(df) -> list[int]:
     return [row["count"] for row in counts]
 ```
 
-- [ ] **Step 4: Simplify `explain_contains` before running the tests**
-
-The version above is deliberately wrong — it mixes a classic-only `_jdf` path with the Connect path and will not behave the same on both. Replace the whole `explain_contains` function with:
-
-```python
-def explain_contains(df, node: str) -> bool:
-    """True when the physical plan contains an operator whose name includes `node`.
-
-    Uses the printed plan rather than the JVM object, because a Connect
-    DataFrame has no `_jdf` — the same call must work in both session modes.
-    """
-    return node in _plan_text(df)
-```
-
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
 python -m pytest tests/test_labkit_spark.py -v
@@ -462,7 +455,7 @@ python -m pytest tests/test_labkit_spark.py -v
 
 Expected: 5 passed. The two Spark tests take ~20 s while the local session starts.
 
-- [ ] **Step 6: Commit (stack repo)**
+- [ ] **Step 5: Commit (stack repo)**
 
 ```bash
 cd C:/opt/learn/spark/spark-delta-unitycatalog
@@ -574,7 +567,7 @@ Before running the next cell, predict the partition count. The file is ~50 MB an
 """)
 
 code("""df = spark.read.parquet(str(data))
-print("partitions:", df.rdd.getNumPartitions() if hasattr(df, "rdd") else "n/a (Connect)")
+print("partitions:", len(partition_sizes(df.select("VendorID"))))
 print("rows:", df.count())
 print("maxPartitionBytes:", spark.conf.get("spark.sql.files.maxPartitionBytes"))
 """)

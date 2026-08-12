@@ -1,6 +1,9 @@
 # Spark labs — design
 
-> **Status:** approved 2026-08-12. Implementation plan follows separately.
+> **Status:** approved 2026-08-12; **workflow amended 2026-08-12** — a lab is written as part of writing that
+> topic's book chapter, not as a standalone batch. The skeleton (`_labkit.py`, `datasets.yaml`) was built ahead
+> of time and is done; the twelve labs below are a backlog that drains as chapters get written, in whatever
+> order the chapters happen. The build order at the end of this document no longer applies.
 
 Hands-on labs with real datasets, anchored to topics in
 [learning path v2](../../learning-path-v2.md), executed as Jupyter notebooks against the
@@ -148,7 +151,13 @@ Asserts three things and exits non-zero otherwise:
 
 The path has drifted before. A twenty-line checker is cheap insurance.
 
-## Build order
+## Build order — superseded
+
+> A lab is now written with its chapter (see the status note above), so this ordering
+> no longer drives anything. It survives as a record of which labs were judged highest
+> value: 01 first as the template, then 04, 05, 03, then 08, 09, 07.
+
+### Original order
 
 1. Skeleton — `_labkit.py`, `datasets.yaml`, `fetch()`, labs README.
 2. **Lab 01 end to end**, including the site index, nav entry and its `**Lab**` line —
