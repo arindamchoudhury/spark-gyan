@@ -10,6 +10,7 @@ extra_javascript = ["javascripts/sidebar-toggle.js"]
 nav = [
     { "Home" = "index.md" },
     { "Learning Path" = "learning-path-v2.md" },
+    { "Learning Path — changelog" = "learning-path-v2-changelog.md" },
     { "Learning Path v1 (deprecated)" = "learning-path.md" },
     { "Spark Source Map" = [
         { "Overview" = "reference/spark-source-map/index.md" },
