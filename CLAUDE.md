@@ -51,6 +51,29 @@ This section covers **reading notes** for the Rioux book. Synthesized chapters o
 3. Append new terms to `docs/reference/glossary.md` with source attribution (column: "Rioux Ch N").
 4. Add any topics the chapter touches to the backlog table in `docs/topics/index.md`.
 
+## The learning path
+
+`docs/learning-path-v2.md` is **the** learning path: 185 topics in strands across four levels.
+`docs/learning-path.md` is v1 — deprecated and frozen, kept only for its per-topic source-finding
+callouts. Never update v1; its codes mean different topics than v2's, and the crosswalk is at the
+end of v2.
+
+**Coverage is audited, not assumed.** All 22 capability areas in
+`docs/reference/spark-feature-history/` have been walked row by row against the path. The
+conventions that came out of those passes, and that any future audit should follow:
+
+- Enumerate the area's complete non-`Improvement` row list *before* grepping the path — grep
+  confirms what you name and cannot reveal what you forgot to name.
+- Verify every claim against the local checkout at `C:\opt\learn\sparkepos\spark`, not
+  against the release note. Several release-note claims turned out to describe a config that
+  defaults to off, or a feature whose name resolves to nothing in the OSS tree.
+- Fold small clusters into existing topics as `>` callouts; add a topic only when nothing owns
+  the mechanism. New topics go at the end of their level in a new strand, so nothing renumbers.
+- State deliberate omissions in the coverage section with a reason. "Out of scope" and "thin"
+  are different claims: the first is argued and closed, the second is an open decision.
+- After adding topics, resync the counts that appear in five places: the level header, the
+  mermaid subgraph, the map table, the strand list, and "14 of N".
+
 ## Chapter content conventions
 
 - Open with a source citation line and a 📌 callout noting version differences from Spark 3.2 (book) to current Spark 4.2.0 / Python 3.10+.
