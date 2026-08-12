@@ -64,7 +64,8 @@ conventions that came out of those passes, and that any future audit should foll
 
 - Enumerate the area's complete non-`Improvement` row list *before* grepping the path — grep
   confirms what you name and cannot reveal what you forgot to name.
-- Verify every claim against the local checkout at `C:\opt\learn\sparkepos\spark`, not
+- Verify every claim against the local checkout at `C:/opt/learn/spark/repos/spark`, not
+epos\spark`, not
   against the release note. Several release-note claims turned out to describe a config that
   defaults to off, or a feature whose name resolves to nothing in the OSS tree.
 - Fold small clusters into existing topics as `>` callouts; add a topic only when nothing owns
