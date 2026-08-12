@@ -2395,7 +2395,7 @@ Nothing in this level is required before anything else in it. Read the strand th
 
 **Why** — until this existed, the answer to "my stateful query is under-parallelised" was to rebuild the checkpoint and reprocess from source. It is the single highest-consequence operational procedure in streaming, it leaves a half-finished batch behind if it fails, and 4.2.0 ships a startup check specifically to detect that.
 
-**Learn** — no book covers this, and the docs are thin — read the source sweep · source: sweep [streaming execution](reference/spark-source-map/sweeps/sql-core-streaming-exec.md) · prerequisites: **A33**, **E35**
+**Learn** — no book covers this, and the docs barely do: the nearest official statement is one bullet in [Structured Streaming → additional information](https://spark.apache.org/docs/latest/streaming/additional-information.html) saying `coalesce` can reduce tasks for stateful operations, which is advice about the *query*, not about a checkpoint whose partition count is already fixed — read the source instead · source: sweep [streaming execution](reference/spark-source-map/sweeps/sql-core-streaming-exec.md) · prerequisites: **A33**, **E35** · related: **A60** (reading the state you are about to repartition)
 
 **Milestone** — take a stateful query with small state, note its partition count from the state-metadata source, stop it, and run the offline repartition to a different count. Confirm three things: the checkpoint's newest batch is the repartition batch, `spark.sql.shuffle.partitions` still has no effect on the running query, and the restarted query reports the new count. Then state what `checkUnfinishedRepartitionOnRestart` would detect if the runner were killed mid-way.
 
