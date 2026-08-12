@@ -826,7 +826,7 @@ requires an explicit `initialize(partitionIndex)` before `eval`, and the reason
     It encodes the partition index in bits 33–63. Change the partition count — a different cluster
     size, an AQE coalesce, a repartition — and every value changes. Using it as a surrogate key
     that must survive a re-run is the classic misuse; it is also non-deterministic, so a stage retry
-    can produce different values for the same rows. See [A14](../../../learning-path.md) on
+    can produce different values for the same rows. See [A26](../../../learning-path-v2.md) on
     indeterminate stages.
 
 **Configs:** none read here

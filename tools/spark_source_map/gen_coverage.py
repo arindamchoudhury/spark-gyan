@@ -167,6 +167,13 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
     # sweep proposal reuses its code, producing two topics with the same code.
     existing_codes = {m.group(1)
                       for m in re.finditer(rf"####\s+(?:{STATUS_MARK})\s+([BIAE]\d+)\s+—", text)}
+    # Identity is the sweep concept, not the code: a proposal whose code was taken gets
+    # reallocated below, so keying dedup on the code would append it again -- with a new
+    # code -- on every run. The generated section carries `subsystem: concept` verbatim,
+    # and it is matched as a literal: a regex over backticked spans pairs the closing
+    # backtick of one section with the opening backtick of the next and loses concepts.
+    def concept_key(prop: dict) -> str:
+        return f"`{prop['subsystem']}: {prop['concept']}`"
     appended: list[str] = []
 
     insert_point = SUGGESTED_RE.search(text)
@@ -174,8 +181,11 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
         return appended
 
     additions: list[tuple[int, str, str]] = []
+    pending_concepts: set[str] = set()
     for p in proposals:
         level = p.get("level", "Advanced")
+        if concept_key(p) in text or concept_key(p) in pending_concepts:
+            continue
         code = p.get("code", "")
         # v2 renumbered every topic, so a proposal authored against v1 numbering can
         # name a code that now belongs to something unrelated. Never overwrite and
@@ -216,6 +226,8 @@ def append_proposals_to_learning_path(root: Path, proposals: list[dict]) -> list
                     break
         additions.append((target_pos, section, code))
         existing_codes.add(code)
+        # Later proposals in this same run must see it too, before anything is written.
+        pending_concepts.add(concept_key(p))
 
     if additions:
         # Proposals from one sweep usually share a level, and so share an offset.

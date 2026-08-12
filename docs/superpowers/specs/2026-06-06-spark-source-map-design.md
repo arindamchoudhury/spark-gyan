@@ -1,5 +1,7 @@
 # Spark Source Map — Design
 
+> **Superseded in part (2026-08-10).** Where this spec says `learning-path.md`, the pipeline now reads and writes **`learning-path-v2.md`**; v1 is frozen. Topic headings are `####` rather than `###`, proposals land before a level's 🎯 checkpoint, and a proposal whose code is already taken is reallocated to the next free code in its level rather than dropped. The rest of the design holds.
+
 **Date:** 2026-06-06 · **Status:** approved, implementing · **Author:** brainstormed with Claude
 
 ## Goal
