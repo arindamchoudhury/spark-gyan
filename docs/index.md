@@ -6,7 +6,8 @@ Everything here is written against **Spark 4.2.0**. Where a book predates it, th
 
 ## Start here
 
-- **[Learning path](learning-path.md)** — 62 topics across four levels, each with what it is, why it matters, which resources to read in what order, and a milestone to test yourself against. Start at the level you are actually at, not at B1.
+- **[Learning path v2](learning-path-v2.md)** — the path to study from: 185 topics across four levels, grouped into strands, each with what it is, why it matters, which resources to read in what order, and a milestone to test yourself against. Start at the level you are actually at, not at B1.
+- [Learning path v1](learning-path.md) — **deprecated and frozen**. Kept only for its per-topic source findings; v2 supersedes it and carries a code crosswalk.
 
 ## The Spark Book
 

@@ -58,7 +58,7 @@
 >
 > **Current Spark stable:** 4.2.0 (Jul 14 2026) · **Maintenance lines:** 4.1.3, 4.0.4 (Jul 15 2026), 3.5.9 (Jul 16 2026) · verified against the local source checkout at tag `v4.2.0`.
 >
-> **Relationship to [v1](learning-path.md).** v1 remains the detail store: it carries the long `!!! info` / `!!! warning` blocks recording specific source findings per topic, and it is not deleted. v2 is the page you study from. Every topic here names its v1 code so you can jump to that detail, and the [v1 → v2 code map](#v1-v2-code-map) at the end is the full crosswalk.
+> **Relationship to [v1](learning-path.md).** v1 is **deprecated and frozen** — it is not maintained, and its version claims and status markers stopped moving on 2026-08-09. It is kept for one reason: the long `!!! info` / `!!! warning` blocks recording specific source findings per topic, which this page deliberately does not carry. v2 is the page you study from. Topics carried over from v1 name their v1 code so you can jump to that detail, and the [v1 → v2 code map](#v1-v2-code-map) at the end is the full crosswalk; topics added since carry a **New topic** line instead.
 
 !!! note "Status key"
     **Topics:** ⬜ not started · ✅ done and current · 🔄 done, but written against an older Spark and now needs revisiting.
